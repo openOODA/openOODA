@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `ed5e4ea` — see **SPRINT.md** (open M135–M139) |
+| Tip (board) | `ooda` `7cd1362` — see **SPRINT.md** (M135–M139) |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -75,9 +75,9 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 3.1 | **Unified capability sandboxing** (`&NetCap`, `&FsCap`, …; biometric goal) | **partial** | M8 process-local caps + residual pack `BIOMETRIC_CAPS.md` / smoke — no biometric/crypto object-caps |
 | 3.2 | **Time & entropy sandboxing** (`&TimeCap`, `&RandCap`) | **partial** | **M12:** static+runtime TimeCap/RandCap (process-local tokens); `caps_matrix_smoke`; not crypto object-caps / CSPRNG claim |
 | 3.3 | **Memory quotas / heap sandboxing** (`&AllocCap<…>`) | **partial** | **M17 + M125:** process-local ambient List quota (env `OO_LIST_AMBIENT_QUOTA` + `alloc_bytes` raise); explicit AllocCap helpers; not OS rlimit / typed `&AllocCap<N>` |
-| 3.4 | **CPU quotas / execution sandboxing** (`#[MaxCycles]`) | **partial** | **M48/M54/M58 + M126:** while + range-for + **call-entry/recursion** on shared static `__oo_mc` under `// MAX_CYCLES: N`; not OS cgroup / `#[MaxCycles]` grammar |
-| 3.5 | **Static taint tracking** (`#[Secret]`) | **partial** | **M52–M60 + M113 + M128 + M131:** println + write_file + **fetch URL** sinks, assign-prop, interproc/concat In; residual other OS sinks / `#[Secret]` attr (`SECRET_TAINT.md`) |
-| 3.6 | **Automated contract fuzzer** (`ooda test --fuzz`) | **partial** | Int/Bool/String/List + **M46/M49 Int multi 2/3** + **M56 Bool** + **M106 String multi arity-2** pure; arity≥4 / List multi residual; **M50** verify pure |
+| 3.4 | **CPU quotas / execution sandboxing** (`#[MaxCycles]`) | **partial** | **M48/M54/M58 + M126 + M138:** while + range-for + recursion; **multi-digit N** proved (`OO_MC_LIMIT`); not OS cgroup / `#[MaxCycles]` grammar |
+| 3.5 | **Static taint tracking** (`#[Secret]`) | **partial** | **M52–M60 + M113 + M128 + M131 + M135:** println + write_file + fetch URL + **sys_exec argv** sinks In; residual other OS sinks / `#[Secret]` attr (`SECRET_TAINT.md`) |
+| 3.6 | **Automated contract fuzzer** (`ooda test --fuzz`) | **partial** | Int/Bool/String/List + multi Int 2/3 + Bool + String a2 + **M137 List multi arity-2** pure; arity≥4 residual; **M50** verify pure |
 | 3.7 | **0ms GC & memory safety (RAII + ARC)** | **partial** | M2 free + M23 put_last + **M47** match-assign reassign_arc; DESIGN full 0ms GC still broader |
 | 3.8 | **Temporal memory (state rollback)** | **residual** | Residual pack `TEMPORAL_MEM.md` + smoke; not state rollback runtime |
 | 3.9 | **Cryptographic call-graph integrity** | **residual** | Residual pack `CALLGRAPH_CRYPTO.md` + smoke; not signed call-graph |
@@ -149,13 +149,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 ### Open (active sprint)
 
-| # | Name | PM | Notes |
-|---|------|-----|--------|
-| M135 | Secret `sys_exec` sink refuse | 3.5 | slice only; leaf stays partial |
-| M136 | SECRET_TAINT + residual smoke for M135 | 3.5 | honesty match |
-| M137 | Pure List multi-arg fuzz arity-2 | 3.6 | slice only; leaf stays partial |
-| M138 | MaxCycles multi-digit N prove | 3.4 | slice only; leaf stays partial |
-| M139 | Lock + pin honesty | meta | tip + line lock + claimed smokes |
+*(none — see `SPRINT.md`)*
 
 Living detail: **`SPRINT.md`**.
 
@@ -163,6 +157,11 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M139 | Lock + pin honesty | **PASS** | tip pinned; O=0; smokes as claimed |
+| M138 | MaxCycles multi-digit prove | **PASS** | N=50 emit OO_MC_LIMIT; leaf stays partial |
+| M137 | List multi fuzz arity-2 | **PASS** | pure pass/fail rails; leaf stays partial |
+| M136 | SECRET_TAINT for sys_exec | **PASS** | doc + residual smoke |
+| M135 | Secret sys_exec sink | **PASS** | argv refuse emit+check; leaf stays partial |
 | M134 | Prove secret rails | **PASS** | enforce + residual smokes green; line lock O=0 |
 | M133 | SECRET_TAINT honesty | **PASS** | fetch In named; residual IFC/other sinks |
 | M132 | Secret enforce smoke structure | **PASS** | valid bash; fetch fixtures wired |
