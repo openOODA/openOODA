@@ -75,6 +75,21 @@ Prefer small changes that produce a **true** pass/fail signal quickly.
 Never trust summaries, commit messages, or "task complete" claims from peer agents (or yourself) without independently verifying the actual code.
 A "green CI" is only as trustworthy as its test coverage for the specific module modified. Always verify that security constraints (e.g., capability checks, budget decrements) were not silently bypassed to force a "happy path" success.
 
+### 1.10 Plain English (standing policy)
+**Scope:** Talk to the human owner. Ship reports. Sprint handoffs. Board updates meant for the owner.
+
+**Bar (ASD-STE100 spirit — controlled, simple English):**
+- Use short sentences. One main idea per sentence.
+- Prefer common words. Avoid slang and marketing fluff.
+- Do **not** assume the owner reads code, git, or compiler jargon.
+- When a technical name is required, say it once, then explain what it means in plain words.
+- State: what changed · why it matters · what still is not done · what to do next (if anything).
+- Prefer proof in plain terms (“the test that should fail did fail”) over tool names alone.
+
+**Allowed technical detail:** Inside code, commits to product trees, and agent-to-agent notes when needed. Even then, the **owner-facing** summary stays plain.
+
+**Fail:** Long dense paragraphs. Unexplained acronyms. “We shipped M131 on c_emit” with no plain meaning.
+
 ---
 
 ## 2. Heuristics (support the axioms)
@@ -133,7 +148,8 @@ Repos may extend \(S\) (product-only terms).
 
 ## 6. Non-goals
 
-No language mandating, no product binary lists, no smoke inventories. Those are **ROOT** docs.
+No product binary lists or smoke inventories inside RULES. Those are **ROOT** product docs.  
+**Exception:** §1.10 Plain English **is** mandatory for owner-facing talk. That is process, not product grammar.
 
 ---
 
