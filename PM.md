@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `ed5e4ea` — see **SPRINT.md** (M130–M134 / M131 fetch) |
+| Tip (board) | `ooda` `ed5e4ea` — see **SPRINT.md** (open M135–M139) |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -149,7 +149,13 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 ### Open (active sprint)
 
-*(none — see `SPRINT.md`; pick next ≤5 from this board by first principles)*
+| # | Name | PM | Notes |
+|---|------|-----|--------|
+| M135 | Secret `sys_exec` sink refuse | 3.5 | slice only; leaf stays partial |
+| M136 | SECRET_TAINT + residual smoke for M135 | 3.5 | honesty match |
+| M137 | Pure List multi-arg fuzz arity-2 | 3.6 | slice only; leaf stays partial |
+| M138 | MaxCycles multi-digit N prove | 3.4 | slice only; leaf stays partial |
+| M139 | Lock + pin honesty | meta | tip + line lock + claimed smokes |
 
 Living detail: **`SPRINT.md`**.
 

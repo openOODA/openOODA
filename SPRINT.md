@@ -1,30 +1,42 @@
 # openOODA sprint
-Team: planner · coder · devil · reviewer · through 2026-08-11 17:00
+Team: planner · coder · devil · reviewer · through 2026-08-12 17:00
 
 ## Pin
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Product tip (`ooda` `main`) | `ed5e4ea` — M130–M134 ship |
-| Rails | `secret_sink_enforce_smoke` + residual PASS · line lock `O=0` |
+| Product tip (`ooda` `main`) | `ed5e4ea` — start of this rotation |
+| Rails | prove each M done-bar; line lock `O=0` on touched files |
 | CLI | `ooda 0.184.0-alpha (pure .oo CLI)` |
 | Beta | **Not claimed** |
 
-## Open (0)
-*(none — pick next ≤5 from PM.md by first principles)*
+## Open (≤5) — power law + first principles
 
-## Closed (this rotation)
-**M130** Pin honesty — tip `ed5e4ea`; PM pin matches product HEAD.  
-**M131** Secret `fetch` URL sink refuse (3.5) — bare SECRET IDENT as URL fails emit+check; pass/fail fixtures.  
-**M132** Secret enforce smoke structure — valid bash; fetch fixtures wired.  
-**M133** SECRET_TAINT residual honesty — fetch In; other OS/NetCap friends residual; marker kept.  
-**M134** Prove rails — smokes green; line lock O=0 on `c_emit_secret` / `c_emit_lower` (≤256).  
+**Rank:** security fail-open → self-test depth → CPU quota honesty → diag honesty → lock.
 
-## Residual named (honest)
+**Note:** Closing an M# means the **slice** met its done-bar. PM leaf stays **partial** until the whole DESIGN claim is honest.
+
+| # | Slice | PM leaf | Done-bar (this M only) | PM after ship |
+|---|--------|---------|------------------------|---------------|
+| **M135** | Secret `sys_exec` sink refuse | **3.5** | Bare SECRET IDENT in `sys_exec` argv (program or later args) fails **emit + check**; pass + fail fixtures; enforce smoke wired | 3.5 stays **partial** (other sinks / attr / IFC residual) |
+| **M136** | Secret residual doc + smoke match M135 | **3.5** | `SECRET_TAINT.md` names sys_exec In; residual list honest; residual smoke still PASS | same |
+| **M137** | Pure List multi-arg fuzz arity-2 | **3.6** | `ooda test --fuzz` pure path covers List arity-2 multi (or named fail-closed residual if blocked); immune smoke; no fake full fuzz claim | 3.6 stays **partial** (arity≥4 residual) |
+| **M138** | MaxCycles multi-digit N prove | **3.4** | `// MAX_CYCLES: N` with **N≥10** (multi-digit) works on while or recursion path; pass + fail fixtures; residual still ≠ OS cgroup / `#[MaxCycles]` | 3.4 stays **partial** |
+| **M139** | Lock + pin honesty | meta | Touched files line lock O=0; secret/fuzz/max_cycles smokes green as claimed; SPRINT/PM tip = real `ooda` HEAD | — |
+
+## Closed (prior rotation)
+**M130–M134** pin honesty · Secret fetch URL · enforce smoke fix · SECRET_TAINT · prove rails (`ed5e4ea`).
+
+## Residual named (honest) — still true
 - Secret ≠ full IFC / `#[Secret]` attr / all OS sinks  
-- Ambient quota ≠ OS rlimit  
-- MaxCycles ≠ OS cgroup / attr grammar  
+- Fuzz ≠ full DESIGN contract fuzzer / arity≥4  
+- MaxCycles ≠ OS cgroup / attr grammar / static WCET  
 - LLVM ≠ self-host floor  
+- Beta not claimed  
 
-## S report (optional)
-`S: low (Δ down) — U=0 on M131 claim F=0 W=0 O=0` (touched files ≤256)
+## Decide rationale (short)
+1. **3.5** — keep closing fail-open Secret sinks (next: `sys_exec` after fetch/write_file/println).  
+2. **3.6** — self-testing depth; List multi-arg is named residual with clear bar.  
+3. **3.4** — prior residual said multi-digit weak; prove or keep honest.  
+4. **M139** — RULES Lock; pin matches tree.  
+5. Long tail (GPU, hive-mind, macros) ignored this turn.
