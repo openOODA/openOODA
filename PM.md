@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `e1f6e44` — see **SPRINT.md** (M125–M129 ship) |
+| Tip (board) | `ooda` `ed5e4ea` — see **SPRINT.md** (M130–M134 / M131 fetch) |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -76,7 +76,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 3.2 | **Time & entropy sandboxing** (`&TimeCap`, `&RandCap`) | **partial** | **M12:** static+runtime TimeCap/RandCap (process-local tokens); `caps_matrix_smoke`; not crypto object-caps / CSPRNG claim |
 | 3.3 | **Memory quotas / heap sandboxing** (`&AllocCap<…>`) | **partial** | **M17 + M125:** process-local ambient List quota (env `OO_LIST_AMBIENT_QUOTA` + `alloc_bytes` raise); explicit AllocCap helpers; not OS rlimit / typed `&AllocCap<N>` |
 | 3.4 | **CPU quotas / execution sandboxing** (`#[MaxCycles]`) | **partial** | **M48/M54/M58 + M126:** while + range-for + **call-entry/recursion** on shared static `__oo_mc` under `// MAX_CYCLES: N`; not OS cgroup / `#[MaxCycles]` grammar |
-| 3.5 | **Static taint tracking** (`#[Secret]`) | **partial** | **M52–M60 + M113 + M128:** println + write_file sinks, assign-prop, interproc/concat In; residual NetCap/fetch / `#[Secret]` attr (`SECRET_TAINT.md`) |
+| 3.5 | **Static taint tracking** (`#[Secret]`) | **partial** | **M52–M60 + M113 + M128 + M131:** println + write_file + **fetch URL** sinks, assign-prop, interproc/concat In; residual other OS sinks / `#[Secret]` attr (`SECRET_TAINT.md`) |
 | 3.6 | **Automated contract fuzzer** (`ooda test --fuzz`) | **partial** | Int/Bool/String/List + **M46/M49 Int multi 2/3** + **M56 Bool** + **M106 String multi arity-2** pure; arity≥4 / List multi residual; **M50** verify pure |
 | 3.7 | **0ms GC & memory safety (RAII + ARC)** | **partial** | M2 free + M23 put_last + **M47** match-assign reassign_arc; DESIGN full 0ms GC still broader |
 | 3.8 | **Temporal memory (state rollback)** | **residual** | Residual pack `TEMPORAL_MEM.md` + smoke; not state rollback runtime |
@@ -157,6 +157,11 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M134 | Prove secret rails | **PASS** | enforce + residual smokes green; line lock O=0 |
+| M133 | SECRET_TAINT honesty | **PASS** | fetch In named; residual IFC/other sinks |
+| M132 | Secret enforce smoke structure | **PASS** | valid bash; fetch fixtures wired |
+| M131 | Secret fetch URL sink | **PASS** | bare SECRET URL IDENT refuse emit+check; immune fixtures |
+| M130 | Pin honesty | **PASS** | tip `ed5e4ea`; boards path honest |
 | M129 | LLVM Secret dual-path | **PASS** | `emit-llvm` runs check_secret before IR; llvm_fail_closed immune |
 | M128 | Secret write_file sink | **PASS** | content IDENT refuse emit+check; fixtures + enforce |
 | M127 | Secret residual honesty re-sync | **PASS** | SECRET_TAINT/PM match product (interproc/concat/write_file In) |
