@@ -1,60 +1,41 @@
 # openOODA sprint
-Team: planner · coder · devil · reviewer
 
 ## Pin
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Product tip (`ooda` `main`) | `6815444` — ten OODA rotations M144–M152 |
-| Rails | secret enforce + residual PASS · line lock O=0 |
+| Product tip | `bbae8ba` — **PM 3.4 MaxCycles done (alpha)** |
+| Rails | `max_cycles_product_floor_smoke: PASSED` |
 | Beta | **Not claimed** |
 
 ## Open (0)
 *(none)*
 
-## Closed — ten OODA rotations (this goal)
+## Closed (this work)
+**PM 3.4 MaxCycles → done (alpha)**
 
-### Rotation 1 — Ship `678a632`
-- Decide ≤5: M144 write_file **path** secret refuse + emit guard
-- Act/Lock/Ship: pass+fail fixtures; line lock O=0
-- SWARM: solo
+What is production-ready (alpha product floor):
+- You can set a cycle budget with `// MAX_CYCLES: N` (large numbers work).
+- Loops and recursive calls spend that budget.
+- Going over the budget fails clearly (error + non-zero exit).
+- Zero/invalid budgets fail closed (not silent).
 
-### Rotation 2 — Ship `97dfaaf`
-- Decide: M145 seed value secret refuse; fixtures + product path
+What is still not claimed (residual):
+- Not an OS-level CPU jail.
+- Not the fancy attribute form from the vision doc.
+- Not a compile-time proof that every infinite loop is impossible.
 
-### Rotation 3 — Ship `13eecf1`
-- Decide: M146 sleep_ms duration secret refuse
-
-### Rotation 4 — Ship `31293b5`
-- Decide: M147 free_bytes amount secret refuse
-
-### Rotation 5 — Ship `0cd90ce`
-- Decide: M148 alloc_bytes amount secret refuse
-
-### Rotation 6 — Ship `9a61d37`
-- Decide: M149 process_exit code secret refuse
-
-### Rotation 7 — Ship `d929f36`
-- Decide: M150 E_SECRET fix_hint lists expanded sinks
-
-### Rotation 8 — Ship `0e1c8b7`
-- Decide: M151 fuzz residual honesty (List multi a2 In)
-
-### Rotation 9 — Ship `6815444`
-- Decide: M152 SECRET_TAINT honesty for expanded sinks
-
-### Rotation 10 — boards
-- Decide: pin tip + plain ten-rotation report
-- Act: SPRINT/PM only
-- Lock: tip matches product HEAD `6815444`
-- Ship: boards push
+Also shipped:
+- Recursion check now runs from the product folder so it works reliably.
+- One umbrella check runs all MaxCycles product rails.
 
 ## Residual named (honest)
-- PM **3.5** stays **partial** (no `#[Secret]` attr; not full IFC).
-- Beta not claimed.
+- OS cgroup / attribute grammar / static WCET — residual only
+- Beta not claimed
+- Other PM items unchanged
 
 ## SWARM
-solo product turns (shared secret emit modules).
+solo Act
 
 ## S
-`S: low — U=0 on closed slices F=0 W=0 O=0`
+`S: low — U=0 on 3.4 floor F=0 W=0 O=0`

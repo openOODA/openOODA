@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `6815444` — ten OODA rotations M144–M152 |
+| Tip (board) | `ooda` `bbae8ba` — MaxCycles 3.4 done (alpha) |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -75,7 +75,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 3.1 | **Unified capability sandboxing** (`&NetCap`, `&FsCap`, …; biometric goal) | **partial** | M8 process-local caps + residual pack `BIOMETRIC_CAPS.md` / smoke — no biometric/crypto object-caps |
 | 3.2 | **Time & entropy sandboxing** (`&TimeCap`, `&RandCap`) | **partial** | **M12:** static+runtime TimeCap/RandCap (process-local tokens); `caps_matrix_smoke`; not crypto object-caps / CSPRNG claim |
 | 3.3 | **Memory quotas / heap sandboxing** (`&AllocCap<…>`) | **partial** | **M17 + M125:** process-local ambient List quota (env `OO_LIST_AMBIENT_QUOTA` + `alloc_bytes` raise); explicit AllocCap helpers; not OS rlimit / typed `&AllocCap<N>` |
-| 3.4 | **CPU quotas / execution sandboxing** (`#[MaxCycles]`) | **partial** | **M48/M54/M58 + M126 + M138:** while + range-for + recursion; **multi-digit N** proved (`OO_MC_LIMIT`); not OS cgroup / `#[MaxCycles]` grammar |
+| 3.4 | **CPU quotas / execution sandboxing** (`#[MaxCycles]`) | **done** (alpha) | Path A **In**: `// MAX_CYCLES: N` (multi-digit) + while + range-for + recursion/shared `__oo_mc`; product-floor smokes green. Residual: OS cgroup / `#[MaxCycles]` attr / static WCET (`MAX_CYCLES.md`) |
 | 3.5 | **Static taint tracking** (`#[Secret]`) | **partial** | **M144–M149** write path/seed/sleep/alloc/free/exit (+ prior sinks) In; residual attr/full IFC (`SECRET_TAINT.md`) |
 | 3.6 | **Automated contract fuzzer** (`ooda test --fuzz`) | **partial** | Int/Bool/String/List + multi Int 2/3 + Bool + String a2 + **M137 List multi arity-2** pure; arity≥4 residual; **M50** verify pure |
 | 3.7 | **0ms GC & memory safety (RAII + ARC)** | **partial** | M2 free + M23 put_last + **M47** match-assign reassign_arc; DESIGN full 0ms GC still broader |
