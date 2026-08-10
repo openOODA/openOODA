@@ -6,7 +6,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | Doc | Role |
 |-----|------|
-| **DESIGN.md** / `spec/DESIGN.md` | Vision (north star) — do not track progress there |
+| **DESIGN.md** (`openOODA/openOODA`) | Vision (north star) — do not track progress there |
 | **PM.md** (this file) | Progress checklist vs DESIGN + pin/rails |
 | **SPRINT.md** | Living sprint: tip SHA, active M work, agent safety |
 | **Research papers (DESIGN)** | `openOODA/docs` → `research/` — one paper per DESIGN item (`RP-*`) |
