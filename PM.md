@@ -22,12 +22,12 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `adeb3c9` — M169–M172 path A closed; **pure multi dual-green residual** (host free-name lag vs source table; cross-module String → `long long`) |
+| Tip (board) | `ooda` product host **m174** + source free-name tip; **pure multi dual-green residual** (~16 gcc sites after free-name host path) |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
 | Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153); library residuals **path A seal/stub** (M161); AGY language floors **path A** (M166–M169). Full DESIGN impl still residual-named. No fake full moonshot. |
-| Open residual | Pure multi dual-green (rebuild host with free-name table); sec/net import-graph ambient quota; DESIGN residual list on SPRINT. Cap path-A forge refuse green; object-caps DESIGN residual. |
+| Open residual | Pure multi dual-green (~16 free-name misses; pure-linked hosts caret regression); typecheck file-local line numbers; AI/toktools wave deferred. sec/net split green. Cap path-A forge green. |
 
 ---
 
@@ -153,8 +153,9 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| R1 | Pure multi self-host dual-green | **residual** | tip `adeb3c9` source free-name ahead of host; pure rebuild gcc fails until host rebuilt with String free-name table |
-| R2 | sec/net dnssec + ipsec check | **residual** | split + types fixed; green at ≥1GiB ambient; default quota may ERRcap on import graph |
+| R1 | Pure multi self-host dual-green | **residual** | free-name host path 671→~16 gcc; product tip m174; do not tip-flip pure_final until caret lex proven |
+| R2 | Typecheck error line numbers | **residual** | import-concat absolute positions |
+| R3 | AI/LLM + toktools libs | **residual** | 0/30 planned (Issue #5) |
 | — | Full DESIGN residual | **residual** | SMT, real GPU, unrestricted dlopen, `&str`, `&mut`, nested List[Struct], object-caps, Tier C — see SPRINT once |
 
 Living detail: **`SPRINT.md`**.

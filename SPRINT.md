@@ -4,15 +4,18 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` (stay alpha) |
-| Focus | Pure multi self-host dual-green residual |
-| Tip (product `ooda`) | `adeb3c9` (host binary still m174-class; source free-name ahead of host) |
-| Tip (monorepo boards) | (this file) |
+| Focus | Pure multi dual-green residual (free-name host path) |
+| Tip (product `ooda`) | `9e87bc9` source + **host binary m174** (product residual smokes green) |
+| Host research | m175–m178 free-name hosts in `oodac/` (not product tip — caret/`^` lex regression on pure-linked hosts) |
 | Beta | **Not claimed** |
 
 ## Path A closed (do not re-open)
-M158–M172 path A language floors · product residual smokes (m169, agy_lang_blockers, cap_forge, m167, bitwise, malloc) · M171 untyped-let SEGV · M172 token CLI.
+M158–M172 language floors · product residual smokes (m169, agy, cap_forge, m167, bitwise, malloc) · M171 SEGV short-circuit · M172 token CLI · **M172 sec/net split + 30 perf libs** (all check green default ambient).
 
-**This rotation also closed path-A noise:** wrong `let mut e: Int = env` in emit (ident/block) → `String`; free-name String table expanded in sources for typecheck/env helpers.
+**This rotation:**
+- Issues #1/#2 type pollution: **closed by DnssecRecord type + splits** — `dnssec.oo` shim + evaluate OK on default ambient.
+- Free-name table expanded in source; `c_struct_lit_ty_name` uses `byte_at` ranges.
+- Pure multi gcc errors **671 → ~16** on free-name host path (m178). Not dual-green yet.
 
 ## Open work (path A)
 
@@ -21,29 +24,38 @@ M158–M172 path A language floors · product residual smokes (m169, agy_lang_bl
 
 | Fact | Detail |
 |------|--------|
-| Product floors | Residual smokes exit 0 on tip host |
-| Pure rebuild | `scripts/oodac_pure_build.sh oodac/main.oo` → gcc fails |
-| Root class | Host tip emits cross-module String returns as `long long` (no cross-module `__fr__` map). Free-name table lives in **source** (`c_emit_let_ext.oo`); host binary must be rebuilt with that table before pure all.c types clean. |
-| Progress | `long long e = env` eliminated (annotation fix). Source free-name table covers `resolve_type_alias`, `indent`, `build_*_table`, … Mechanical hostfix of pure all.c still ~200 gcc errs (ilist_get / concat residual). Bootstrap seed too old for current `main.oo`. |
-| Done when | Pure rebuild produces executable that re-emits core modules without SEGV; product smokes still green |
-| Out of scope | Bit-identical fixed-point forever; cold start from air |
+| Product floors | m174 host: residual smokes exit 0 (including caret `^` product) |
+| Free-name host path | all_fix5 + free-name splice + double-cap path_exists fix → m178; pure rebuild **~16** gcc errors left (`oo_str_concat` / `c_struct_field_c_ty` / bare `let name = id` env binds) |
+| Mechanical pure bin | Exists in agent SCRATCH (`oodac.pure_final`) after promoting those ~16 sites; **does not** replace product tip (caret lex fails on that binary — investigate pack_tok/ARC/`^` before tip flip) |
+| Second pure | pure_final as host still re-emits the same ~16 long long misses without mechanical promote |
+| Done when | `oodac_pure_build.sh` produces executable **without** post-hoc all.c rewrite; re-emits core modules; product smokes green on that tip |
+| Out of scope | Bit-identical fixed-point forever |
 
-**Evidence:** pure_rebuild.log / hostfix_gcc.err in agent SCRATCH. Prefer `ooda err-digest` — do not paste full `all.c`.
+**Next fix targets (source):** ensure free-name / env bind for `oo_str_concat` and bare IDENT copies; do not soft-pass dual-green.
 
-### 2. sec/net check residual (import-graph quota)
-| Item | State |
-|------|--------|
-| `dnssec*` | Split ≤256 lines; **`DnssecRecord` type alias added**; evaluate uses `is_valid` field. **OK** under `OO_LIST_AMBIENT_QUOTA≥1GiB`. Default ambient may `ERRcap` on import-heavy check. |
-| `ipsec*` | Split into types/selector/sa/ike/policy/… shims. **OK** under high ambient. |
+### 2. Issue #3 — typecheck error line numbers
+**Status:** open (medium). Token stream positions span import concat; errors report absolute stream line (e.g. 1700+) not file-local line.  
+**Fix path:** track per-file line offset in check/load; subtract before print.
 
-**Done when:** `oodac check` green under product default ambient (or documented smoke-only quota without claiming lock compliance).
+### 3. Issue #5 — AI/LLM + toktools libraries (deferred)
+**Status:** planned 0/30. ~20 `std/src/ooda/ai_llm/*` + ~10 `toktools/*`. Follow-on after pure dual-green or parallel light wave.
 
-## Residual named (full DESIGN — not this path A)
-Full SMT/quantifiers · free-form multi-code · full HITL · actor supervision · real GPU · unrestricted dlopen · native `&str` · nested `List[Struct]` · product `&mut T` · object-cap crypto / cast surface beyond path-A refuse · SOCK_RAW · full async epoll/inotify · OS rlimit heap · Tier C (temporal/hive/hot-reload/LSP/…)
+## Residual named (full DESIGN)
+Full SMT · free-form multi-code · full HITL · actor supervision · real GPU · unrestricted dlopen · native `&str` · nested `List[Struct]` · product `&mut T` · object-cap crypto · SOCK_RAW · full async I/O · OS rlimit heap · Tier C moonshots.
 
-**Cap forgery:** path A refuse green (`cap_forge_path_a`); object-caps DESIGN residual.
+**Cap forgery:** path A refuse green; object-caps DESIGN residual.
 
 Beta not claimed.
 
-## Library wave honesty
-`std/` + `sec/*` path-A stub/check pattern stands. Do not re-list AGY “Currently missing” language floors (closed M166–M169).
+## Grok issues disposition (this board)
+
+| # | Item | Disposition |
+|---|------|-------------|
+| 1 | dnssec shim phantom type | **REMOVE** — fixed (DnssecRecord + evaluate); green default ambient |
+| 2 | `&DnssecRecord` field / is_valid | **REMOVE** — use field; helper residual note only if reintroduced |
+| 3 | Wrong typecheck line numbers | **RESIDUAL_NOTE** open work §2 |
+| 4 | `if field == false` deep files | **REMOVE** — workaround standard; same root as #1 family |
+| 5 | AI/toktools wave | **RESIDUAL_NOTE** open work §3 |
+
+## M172 sec/net + perf (done)
+dnssec 6/6 · ipsec 11/11 · perf 30/30 green under default ambient. Do not re-open.
