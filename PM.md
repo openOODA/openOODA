@@ -22,11 +22,12 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `80008cf` — **M165 honest leftovers path A** |
+| Tip (board) | `ooda` `b6c996b` — **M166 AGY language backlog path A** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
-| Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153); library residuals **path A seal/stub** (M161). Full DESIGN impl still residual-named. No fake full moonshot. |
+| Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153); library residuals **path A seal/stub** (M161); AGY language floors **path A** (M166). Full DESIGN impl still residual-named. No fake full moonshot. |
+| M166 | **Language Feature Backlog (AGY) path A** — tip `b6c996b`. Stay alpha; beta not claimed. Cap forgery via cast still residual. Pure self-host rebuild residual on some hosts. |
 
 ---
 
@@ -150,7 +151,9 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 ### Open (active sprint)
 
-*(none — see `SPRINT.md`)*
+| # | Name | Status | Notes |
+|---|------|--------|-------|
+| M166 | Language Feature Backlog (AGY) path A | **PASS** | tip `b6c996b`; smokes in `ci_product`; pure self-host rebuild residual; cap forgery residual; beta not claimed |
 
 Living detail: **`SPRINT.md`**.
 
@@ -158,6 +161,7 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M165 | Honest leftovers path A | **PASS** | arith contracts; E_HITL autofix; verify_human; actors; GPU noop/cpu; system dlopen; str ops; dual-run green; beta not claimed |
 | M164 | Finish residual trio path A | **PASS** | real libssl TLS handshake; ThreadCap channels; List[Int] byte buffer; dual-run green; beta not claimed |
 | M163 | TLS / join / bytes path A | **PASS** | joinable threads; `byte_slice`/`bytes_len`; TLS residual after TCP (+ OpenSSL gate); dual-run rails; beta not claimed |
 | M162 | Residual-named deepen path A | **PASS** | multi-pass fix; `\|\|` contracts; HITL auto-approve; allowlisted OS dlopen; real TCP/UDP + pthread mutex/spawn; AES-128-ECB limited; `byte_at`; TLS/GPU residual; beta not claimed |
