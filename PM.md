@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `992967a` — **M162 residual-named deepen** |
+| Tip (board) | `ooda` `ooda` `44b302d` — **M163 TLS/join/bytes path A** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -158,6 +158,7 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M163 | TLS / join / bytes path A | **PASS** | joinable threads; `byte_slice`/`bytes_len`; TLS residual after TCP (+ OpenSSL gate); dual-run rails; beta not claimed |
 | M162 | Residual-named deepen path A | **PASS** | multi-pass fix; `\|\|` contracts; HITL auto-approve; allowlisted OS dlopen; real TCP/UDP + pthread mutex/spawn; AES-128-ECB limited; `byte_at`; TLS/GPU residual; beta not claimed |
 | M161 | Library residuals path A | **PASS** | Result assert_eq; Thread/Gpu caps; MD5/SHA1; net/process residual seals; pure semver/markup/archive; Byte/&str residual honesty; dual-run rails green; beta not claimed |
 | M154 | AI-native agent loop floor | **PASS** | outline+reflect+E_CAP suggested_fix+patch; `ai_native_product_floor_smoke` green; auto-apply residual |

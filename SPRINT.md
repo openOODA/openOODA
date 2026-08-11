@@ -4,35 +4,25 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` (stay alpha) |
-| Focus | M162 residual-named deepen (not beta) |
-| Rails | m162_residual_deepen, libfloor_*, crypto_md5_sha1, hitl_product, etc_autofix, contracts_and |
+| Focus | M163 next residual deepen — TLS / join / bytes (not beta) |
+| Rails | thread_join, byte_str_path_a, tls_path_a, libfloor_*, m162, hitl, contracts_and |
 | Beta | **Not claimed** |
 
 ## Closed
-**M158** E_TC undefined-var `ooda fix`  
-**M159** simple `&&` contracts  
-**M160** Secret `eprintln` sink  
-**M161** Library residuals path A  
-**M162** Residual-named open items path A deepen — see below  
+**M158–M162** as prior  
+**M163** TLS + joinable threads + byte slice path A — see below  
 
-## M162 Residual-named deepen (path A)
+## M163 next residual deepen (path A) — 3 swarms
 
-| Item | What we did | Still not done (plain English) |
-|------|-------------|-------------------------------|
-| Multi-code autofix | `ooda fix` multi-pass E_CAP + E_TC | Other error codes; free-form rewrite |
-| SMT / contracts | Simple `\|\|` runtime requires/ensures | Full SMT / quantifiers / old-state |
-| Interactive HITL | Allow env + auto-approve without TTY; line-scan fix | Full human harness / record-replay |
-| OS dlopen | Real `dlopen` only with allowlist env + dir | Free OS load of any path / full FFI |
-| TLS | Still residual seal | Real TLS handshake |
-| AES | AES-128-ECB for 16-byte blocks | Full AES modes / padding / product API |
-| Threads | Real pthread mutex + spawn (noop) | Join / channels / fearless concurrency |
-| GPU | Still residual seal | Real shaders |
-| Byte / `&str` | `byte_at` raw 0..255 | Borrowed `&str`, true Byte arrays |
-| Tier C moonshots | Still default-deny free names | Full moonshot products |
+| Swarm | Item | What we did | Still not done (plain English) |
+|-------|------|-------------|-------------------------------|
+| **T** | TLS | TCP first, then residual `OpenSSL not linked`; opt-in insecure TCP; OpenSSL client when headers present | Full TLS product on this host (no OpenSSL installed) |
+| **J** | Joinable threads | `thread_spawn` → `tid:N`, `thread_join(slot)` waits on pthread | Channels, thread pools, fearless concurrency DESIGN |
+| **B** | Byte / string bytes | `bytes_len`, `byte_slice` (owned byte copy), `bytes_eq` + `byte_at` | True borrowed `&str` / lifetimes / `List[Byte]` ABI |
 
 ## Residual named (still open for full product)
-SMT quantifiers · multi-code beyond E_CAP/E_TC · full HITL harness · unrestricted OS dlopen · full TLS · full AES · full threads/GPU · native `&str`/Byte arrays · Tier C moonshots  
+SMT quantifiers · multi-code beyond E_CAP/E_TC · full HITL harness · unrestricted OS dlopen · **OpenSSL-linked TLS** · full AES modes · channels/GPU · native `&str` lifetimes · Tier C moonshots  
 Beta not claimed
 
 ## S
-`S: low — U=0 on M162 F=0 W=0 O=0`
+`S: low — U=0 on M163 F=0 W=0 O=0`
