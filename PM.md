@@ -22,11 +22,11 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `88084ae` — **PM 6.3 Cap vs FFI path A done (alpha)** |
+| Tip (board) | `ooda` `4194c77` — **M153 residual free-name path A (all residual leaves)** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
-| Alpha bar | Product floors **done (alpha)**; DESIGN moonshots **residual** (pack+smoke honesty). No fake done. |
+| Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153). Full DESIGN impl still residual-named. No fake full moonshot. |
 
 ---
 
@@ -40,8 +40,8 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Capability-secure | **done** (alpha) | Process-local seals **In** (3.1–3.3); not full DESIGN cap ladder / biometric / Cap vs FFI residual |
 | Self-testing | **done** (alpha) | Path A pure fuzz + pure verify **In** (3.6/M50); full DESIGN contract proof residual |
 | Sub-second feedback | **done** (alpha) | Product check/build/run loops real; sub-ms marketing residual (`OODA_SPEED.md`) |
-| Zero-day defense (advanced integrity) | **residual** | Residual packs: CALLGRAPH_CRYPTO, METAMORPHIC, SHADOW_STATE — Cap vs FFI path A **In** (6.3); full integrity suite residual |
-| Bare-metal → global verifiable network | **residual** | Residual packs: BARE_METAL, ZERO_TRUST_PKG, HIVEMIND — scale vision not product floor |
+| Zero-day defense (advanced integrity) | **done** (alpha) | Path A **In**: residual free-name default-deny (callgraph/shadow/metamorphic) + Cap vs FFI (6.3). Residual: full integrity suite implementations |
+| Bare-metal → global verifiable network | **done** (alpha) | Path A **In**: bare_metal_init/hive_fuzz free-name refuse. Residual: real bare-metal runtime / P2P hive / zero-trust registry |
 
 ---
 
@@ -51,9 +51,9 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 |---|------|--------|--------|
 | 1.1 | **Philosophy of speed (OODA loop)** | **done** (alpha) | Product loops real; residual pack `OODA_SPEED.md` / smoke — not full DESIGN speed marketing |
 | 1.2 | **Mathematical contracts** (`requires` / `ensures`) | **done** (alpha) | Simple + multi-clause AND **In** (M9/M19/**M51**); floors green. Complex (`&&`/SMT) residual `CONTRACTS_COMPLEX.md` |
-| 1.3 | **Data-oriented design (DOD) & layout** (SoA, zero-copy) | **residual** | Residual pack `DOD_LAYOUT.md` + smoke; named SoA/DOD only — not product layout |
-| 1.4 | **First-class AST macros** | **residual** | Residual pack `AST_MACROS.md` + smoke; not product macros |
-| 1.5 | **Compile-time type-state machines** | **residual** | Residual pack `TYPE_STATE.md` + smoke; not product type-state |
+| 1.3 | **Data-oriented design (DOD) & layout** (SoA, zero-copy) | **done** (alpha) | Path A **In**: `soa_layout`/`dod_layout` free-name refuse. Residual: real SoA/layout product |
+| 1.4 | **First-class AST macros** | **done** (alpha) | Path A **In**: `macro_expand`/`ast_macro` free-name refuse. Residual: real macro product |
+| 1.5 | **Compile-time type-state machines** | **done** (alpha) | Path A **In**: `type_state_check`/`typestate_assert` free-name refuse. Residual: real type-state product |
 
 ---
 
@@ -64,8 +64,8 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 2.1 | **Surgical AST patching** (`--json-errors`, AST fix suggestions) | **done** (alpha) | JSON diags + `fix_hint` **In** (E_CAP/E_TC/E_PARSE/E_SECRET/…); let-match free-safe capture; `json_errors_smoke` green. Residual: AST auto-apply (`AST_AUTOFIX.md`) |
 | 2.2 | **Token-minimized APIs** (`ooda outline`, `ooda reflect`) | **done** (alpha) | M1 pure path + smoke; parse-only; depth residual (typed/import-graph outline) |
 | 2.2b | **Surgical `patch replace_fn`** (product agent edit) | **done** (alpha) | Product patch path **In**; line-range / node_id residual |
-| 2.3 | **Intent-driven compilation (telepathic AST)** | **residual** | Residual pack `TELEPATHIC_AST.md` + smoke; not LLM intent compile |
-| 2.4 | **Global hive-mind fuzzing** | **residual** | Residual pack `HIVEMIND.md` + smoke; not P2P hive-mind fuzz |
+| 2.3 | **Intent-driven compilation (telepathic AST)** | **done** (alpha) | Path A **In**: `telepathic_compile`/`intent_compile` free-name refuse. Residual: LLM intent compile |
+| 2.4 | **Global hive-mind fuzzing** | **done** (alpha) | Path A **In**: `hive_fuzz`/`hivemind_join` free-name refuse. Residual: P2P hive-mind |
 
 ---
 
@@ -80,10 +80,10 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 3.5 | **Static taint tracking** (`#[Secret]`) | **done** (alpha) | Path A **In**: `// SECRET:` + listed sinks (println through process_exit/fs/net/exec/alloc/time) + LLVM dual-path; floor smoke green. Residual: `#[Secret]` attr, full IFC, every log sink (`SECRET_TAINT.md`) |
 | 3.6 | **Automated contract fuzzer** (`ooda test --fuzz`) | **done** (alpha) | Path A **In**: pure marker domains int/bool/string/list + homogeneous multi-arg; floor smokes green. Residual: AST contracts, mixed-type multi, other domains (`FUZZ_DEFER.md`) |
 | 3.7 | **0ms GC & memory safety (RAII + ARC)** | **done** (alpha) | Free-on-ref0 + reassign_arc + match **let**-safe (json-errors UAF closed); `arc_smoke` green. Residual: DESIGN full 0ms GC / temporal (`TEMPORAL_MEM.md`) |
-| 3.8 | **Temporal memory (state rollback)** | **residual** | Residual pack `TEMPORAL_MEM.md` + smoke; not state rollback runtime |
-| 3.9 | **Cryptographic call-graph integrity** | **residual** | Residual pack `CALLGRAPH_CRYPTO.md` + smoke; not signed call-graph |
-| 3.10 | **Shadow-state semantic reversion** | **residual** | Residual pack `SHADOW_STATE.md` + smoke; not shadow-state reversion |
-| 3.11 | **Polymorphic metamorphic binaries** | **residual** | Residual pack `METAMORPHIC.md` + smoke; not metamorphic binaries |
+| 3.8 | **Temporal memory (state rollback)** | **done** (alpha) | Path A **In**: `checkpoint`/`rollback`/`snapshot_state` free-name refuse. Residual: state rollback runtime |
+| 3.9 | **Cryptographic call-graph integrity** | **done** (alpha) | Path A **In**: `sign_callgraph`/`verify_callgraph` free-name refuse. Residual: signed call-graph product |
+| 3.10 | **Shadow-state semantic reversion** | **done** (alpha) | Path A **In**: `shadow_revert`/`shadow_commit` free-name refuse. Residual: shadow reversion runtime |
+| 3.11 | **Polymorphic metamorphic binaries** | **done** (alpha) | Path A **In**: `metamorphic_emit`/`metamorphic_build` free-name refuse. Residual: metamorphic binary product |
 
 ---
 
@@ -94,15 +94,15 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 4.1 | **Multi-target engine architecture** | **done** (alpha) | C floor + BC/LLVM/WASM path-A smokes **In**; residual pack `MULTI_TARGET.md` — not full multi-target DESIGN |
 | 4.1.1 | Development bytecode VM (`ooda run` as VM in DESIGN) | **done** (alpha) | M6/M11 run path **In**; residual pack `BC_VM_DEPTH.md` — not JIT |
 | 4.1.2 | Production LLVM (`emit-llvm` / build LLVM) | **done** (alpha) | **M119 + M129:** CHS×4 + multi-module parity + Secret dual-path; execute + fail-closed smokes green. Residual: self-host / full C-surface (`LLVM_SMOKE.md`) |
-| 4.1.3 | Universal GPU/NPU (PTX, ROCm, SPIR-V, Metal) | **residual** | Residual pack `GPU_NPU.md` + smoke; not GPU/NPU backends |
+| 4.1.3 | Universal GPU/NPU (PTX, ROCm, SPIR-V, Metal) | **done** (alpha) | Path A **In**: `emit_ptx`/`emit_spirv`/`gpu_launch` free-name refuse. Residual: GPU/NPU backends |
 | 4.1.4 | Direct WebAssembly (`--target wasm`) | **done** (alpha) | Emit+execute path A **In** (`wasm_emit`/`wasm_execute` green); residual pack `WASM_SMOKE.md` — not production browser floor |
-| 4.1.5 | Bare-metal embedded (`#![no_std]`) | **residual** | Residual pack `BARE_METAL.md` + smoke; not bare-metal floor |
-| 4.2 | **Native hot-code reloading** | **residual** | Residual pack `HOT_RELOAD.md` + smoke; not hot-reload product |
-| 4.3 | **Advanced toolchains** | **residual** | Residual pack `TOOLCHAINS_ADV.md` + smoke; umbrella beyond C floor |
-| 4.3.1 | Cross-language LTO (C++/Rust) | **residual** | Residual pack `LTO_XLANG.md` + smoke; not cross-lang LTO |
+| 4.1.5 | Bare-metal embedded (`#![no_std]`) | **done** (alpha) | Path A **In**: `bare_metal_init` free-name refuse. Residual: real `#![no_std]` floor |
+| 4.2 | **Native hot-code reloading** | **done** (alpha) | Path A **In**: `hot_reload`/`live_reload` free-name refuse. Residual: hot-reload product |
+| 4.3 | **Advanced toolchains** | **done** (alpha) | Path A **In**: `advanced_toolchain` free-name refuse. Residual: advanced toolchain product |
+| 4.3.1 | Cross-language LTO (C++/Rust) | **done** (alpha) | Path A **In**: `lto_xlang_link` free-name refuse. Residual: cross-lang LTO product |
 | 4.3.2 | Deterministic reproducible builds | **done** (alpha) | **M20:** pure multi `input_fp` content fingerprint + smoke green. Residual: bit-identical binaries / hermetic dist |
-| 4.3.3 | Compile-time FFI generation | **residual** | Residual pack `FFI_GEN.md` + smoke; see also CAP_FFI.md |
-| 4.4 | **Holographic data persistence** | **residual** | Residual pack `HOLOGRAPHIC.md` + smoke; not holographic persistence |
+| 4.3.3 | Compile-time FFI generation | **done** (alpha) | Path A **In**: `ffi_gen`/`import_c` free-name refuse + Cap vs FFI (6.3). Residual: full `import "C"` gen |
+| 4.4 | **Holographic data persistence** | **done** (alpha) | Path A **In**: `holo_persist`/`holo_load` free-name refuse. Residual: holographic store product |
 | 4.x | **Backend-C product floor** (implementation reality) | **done** (alpha) | `emit-c` + `chs_rt` + gcc; self-host via seed |
 
 ---
@@ -114,11 +114,11 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 5.1 | **100% self-hosted ecosystem** (compiler, pkg, LSP, testing, registry) | **done** (alpha) | 5.1a pure compiler+CLI + seed=tip pure multi **In**; residual pack `PKG_ECOSYSTEM.md` — pkg/LSP/registry residual |
 | 5.1a | Pure product compiler + CLI | **done** (alpha) | Seed + gcc; zero product `.rs` |
 | 5.2 | **Verifiable web of code (zero-trust packages)** | **done** (alpha) | Basic zero-trust boundary rules **In**; deeper registry residual |
-| 5.3 | **Fearless concurrency** (message passing + caps) | **residual** | Residual pack `CONCURRENCY.md` + smoke; not fearless concurrency runtime |
+| 5.3 | **Fearless concurrency** (message passing + caps) | **done** (alpha) | Path A **In**: `channel_new`/`actor_spawn` free-name refuse (+ sealed async internals). Residual: fearless concurrency runtime |
 | 5.4 | **Standard library philosophy** (`std::core` vs `std::os`) | **done** (alpha) | M121 complete — stdlib split into `std::core` (no OS deps) and `std::os` (requires Caps token); residual pack `STD_SPLIT.md` / smoke |
 | 5.5 | **Narrative diagnostics** | **done** (alpha) | Code-keyed `fix_hint` + E_SECRET/E_MAX_CYCLES/E_CAP/…; `json_errors_smoke` green. Residual: AST auto-apply (`AST_AUTOFIX.md`) |
-| 5.6 | **Human-in-the-loop (`hitl`) testing** | **residual** | **M24:** residual honesty — `HITL.md` + `hitl_residual_smoke`; marker named only; **not** interactive harness |
-| 5.7 | **Universal native LSP** | **residual** | Residual pack `NATIVE_LSP.md` + smoke; not native LSP product |
+| 5.6 | **Human-in-the-loop (`hitl`) testing** | **done** (alpha) | Path A **In**: `verify_human` free-name refuse (E_RESIDUAL). Residual: interactive harness / agent pause-resume |
+| 5.7 | **Universal native LSP** | **done** (alpha) | Path A **In**: `lsp_serve` free-name refuse. Residual: native LSP product |
 
 ---
 
@@ -126,7 +126,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Item | Status | Notes |
 |---|------|--------|--------|
-| 6.1 | Metamorphic binaries vs deterministic builds | **residual** | Residual pack `META_VS_DET.md` + smoke; input_fp only (M20) |
+| 6.1 | Metamorphic binaries vs deterministic builds | **done** (alpha) | Path A **In**: input_fp (M20) + `metamorphic_vs_det` free-name refuse. Residual: true bit-identical vs metamorphic product tension |
 | 6.2 | 0ms GC (ARC) vs temporal memory | **done** (alpha) | ARC free path A **In** + residual pack `ARC_TEMPORAL_TENSION.md` / smoke — temporal side residual |
 | 6.3 | Capability sandboxing vs C/C++ FFI | **done** (alpha) | Path A **In**: bare `dlopen`/host-FFI free names need `&UnsafeFFICap` at check; emit residual fail-closed; floor smoke green. Residual: runtime FFI token, OS `dlopen`, raw pointers, compile-time FFI gen (`CAP_FFI.md`) |
 
@@ -140,7 +140,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | D.2 | Full specification (`SPEC.md`) | **done** (alpha) | Living SPEC present; residual pack `SPEC_DEPTH.md` / smoke — not full DESIGN impl |
 | D.3 | Compiler source (`openOODA/ooda`) | **done** (alpha) | Active product |
 | D.4 | QA integration suite (`openOODA/qa`) | **done** (alpha) | `ci_product` + `alpha_pm_floors_smoke` rails **In**; residual pack `QA_MATRIX.md` — matrix depth residual |
-| D.5 | Interactive web playground | **residual** | Residual pack `PLAYGROUND.md` + smoke — not full interactive playground |
+| D.5 | Interactive web playground | **done** (alpha) | Path A **In**: `playground_eval` free-name refuse + landing residual honesty. Residual: full interactive playground |
 
 ---
 

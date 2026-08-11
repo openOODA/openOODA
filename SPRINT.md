@@ -4,30 +4,30 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Product tip | `88084ae` — **PM 6.3 Cap vs FFI path A** |
-| Rails | `cap_ffi_product_floor_smoke` PASSED |
+| Product tip | `4194c77` — **M153 residual free-name path A** |
+| Rails | `residual_path_a_floor_smoke` PASSED |
 | Beta | **Not claimed** |
 
 ## Open (0)
 *(none)*
 
 ## Closed
-**M152 Cap vs FFI path A → done (alpha)**
+**M153 Residual free-name path A — all former residual PM leaves**
 
 What is production-ready (alpha):
-- Calling raw **dlopen** / host-FFI names without an **unsafe FFI token** is refused at check.
-- With `&UnsafeFFICap` and the token as the first argument, check allows the name form.
-- The C backend still **does not** lower real `dlopen` (fail-closed residual) — no silent fake lower.
+- Unshipped DESIGN free calls (`verify_human`, `hive_fuzz`, `emit_ptx`, …) are **refused at check**.
+- Machine-readable code **E_RESIDUAL** on `--json-errors`.
+- Every former residual PM leaf has a path A refuse floor + residual honesty for full DESIGN impl.
 
 What is still not claimed:
-- Runtime process-local FFI token / forge deny for OS `dlopen`.
-- Full C TCB seal, raw pointers, compile-time FFI generation.
+- Full implementations of moonshots (real GPU backend, interactive HITL, native LSP, …).
+- Beta tag (owner only).
 
-SWARM: solo Act (check_cap_util / lower / fixtures / docs overlap).
+SWARM: solo Act (check_residual + drive + packs overlap).
 
 ## Residual named (honest)
-- Runtime UnsafeFFICap, OS dlopen, raw-pointer, FFI_GEN
+- Full DESIGN moonshot *implementations* remain residual-named inside each pack
 - Beta not claimed
 
 ## S
-`S: low — U=0 on 6.3 path A F=0 W=0 O=0`
+`S: low — U=0 on residual path A F=0 W=0 O=0`
