@@ -22,12 +22,12 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` product host **m174** + source free-name tip; **pure multi dual-green residual** (~16 gcc sites after free-name host path) |
+| Tip (board) | `ooda` `4317efb` + host **m174**; migrate disabled; typecheck rails + line smoke; pure dual-green residual |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
 | Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153); library residuals **path A seal/stub** (M161); AGY language floors **path A** (M166–M169). Full DESIGN impl still residual-named. No fake full moonshot. |
-| Open residual | Pure multi dual-green (~16 free-name misses; pure-linked hosts caret regression); typecheck file-local line numbers; AI/toktools wave deferred. sec/net split green. Cap path-A forge green. |
+| Open residual | Pure multi dual-green; remaining >600 splits (fhe/anneal/aero/auto); Issue #6 remainder domains; multi-import line offset; Issue #15 300–600 files; DESIGN/SPEC residual honesty (~57). Cap path-A forge green. |
 
 ---
 
