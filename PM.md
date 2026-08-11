@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `3afe982` — **M155–M157 + skeptic fixes** |
+| Tip (board) | `ooda` `c17525b` — **Phase 1–2 build-ready deepen** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -50,7 +50,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | # | Item | Status | Notes |
 |---|------|--------|--------|
 | 1.1 | **Philosophy of speed (OODA loop)** | **done** (alpha) | Product loops real; residual pack `OODA_SPEED.md` / smoke — not full DESIGN speed marketing |
-| 1.2 | **Mathematical contracts** (`requires` / `ensures`) | **done** (alpha) | Simple + multi-clause AND **In** (M9/M19/**M51**); floors green. Complex (`&&`/SMT) residual `CONTRACTS_COMPLEX.md` |
+| 1.2 | **Mathematical contracts** (`requires` / `ensures`) | **done** (alpha) | Simple + multi-clause + **simple `&&` runtime In** (contracts_and_smoke). Residual: SMT/quantifiers |
 | 1.3 | **Data-oriented design (DOD) & layout** (SoA, zero-copy) | **done** (alpha) | Path A **In**: `soa_layout`/`dod_layout` free-name refuse. Residual: real SoA/layout product |
 | 1.4 | **First-class AST macros** | **done** (alpha) | Path A **In**: `macro_expand`/`ast_macro` free-name refuse. Residual: real macro product |
 | 1.5 | **Compile-time type-state machines** | **done** (alpha) | Path A **In**: `type_state_check`/`typestate_assert` free-name refuse. Residual: real type-state product |
@@ -61,7 +61,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Item | Status | Notes |
 |---|------|--------|--------|
-| 2.1 | **Surgical AST patching** (`--json-errors`, AST fix suggestions) | **done** (alpha) | JSON diags + `ooda fix` E_CAP structural apply **In** (M155); floors green. Residual: multi-code AST auto-apply |
+| 2.1 | **Surgical AST patching** (`--json-errors`, AST fix suggestions) | **done** (alpha) | `ooda fix` E_CAP + **E_TC undefined-var** (M158); residual multi-code auto-apply |
 | 2.2 | **Token-minimized APIs** (`ooda outline`, `ooda reflect`) | **done** (alpha) | M1 pure path + smoke; parse-only; depth residual (typed/import-graph outline) |
 | 2.2b | **Surgical `patch replace_fn`** (product agent edit) | **done** (alpha) | Product patch path **In**; line-range / node_id residual |
 | 2.3 | **Intent-driven compilation (telepathic AST)** | **done** (alpha) | Path A **In**: `telepathic_compile`/`intent_compile` free-name refuse. Residual: LLM intent compile |
@@ -77,7 +77,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 3.2 | **Time & entropy sandboxing** (`&TimeCap`, `&RandCap`) | **done** (alpha) | Process-local Time/Rand seals **In** (now_ms/sleep_ms/random/seed + forge deny); floor smoke green. Residual: not CSPRNG / attested clock (`TIME_ENTROPY.md`) |
 | 3.3 | **Memory quotas / heap sandboxing** (`&AllocCap<…>`) | **done** (alpha) | Process-local AllocCap helpers + ambient List quota fail-closed; floor smoke green. Residual: not OS rlimit / typed `&AllocCap<N>` (`MEMORY_QUOTA.md`) |
 | 3.4 | **CPU quotas / execution sandboxing** (`#[MaxCycles]`) | **done** (alpha) | Path A **In**: `// MAX_CYCLES: N` (multi-digit) + while + range-for + recursion/shared `__oo_mc`; product-floor smokes green. Residual: OS cgroup / `#[MaxCycles]` attr / static WCET (`MAX_CYCLES.md`) |
-| 3.5 | **Static taint tracking** (`#[Secret]`) | **done** (alpha) | Path A **In**: `// SECRET:` + listed sinks (println through process_exit/fs/net/exec/alloc/time) + LLVM dual-path; floor smoke green. Residual: `#[Secret]` attr, full IFC, every log sink (`SECRET_TAINT.md`) |
+| 3.5 | **Static taint tracking** (`#[Secret]`) | **done** (alpha) | Path A + **eprintln sink** (M160); residual `#[Secret]` attr / full IFC |
 | 3.6 | **Automated contract fuzzer** (`ooda test --fuzz`) | **done** (alpha) | Path A **In**: pure marker domains int/bool/string/list + homogeneous multi-arg; floor smokes green. Residual: AST contracts, mixed-type multi, other domains (`FUZZ_DEFER.md`) |
 | 3.7 | **0ms GC & memory safety (RAII + ARC)** | **done** (alpha) | Free-on-ref0 + reassign_arc + match **let**-safe (json-errors UAF closed); `arc_smoke` green. Residual: DESIGN full 0ms GC / temporal (`TEMPORAL_MEM.md`) |
 | 3.8 | **Temporal memory (state rollback)** | **done** (alpha) | Path A **In**: `checkpoint`/`rollback`/`snapshot_state` free-name refuse. Residual: state rollback runtime |
