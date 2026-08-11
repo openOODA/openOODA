@@ -8,11 +8,11 @@
 ## 1. Core Vision & Design Philosophy
 
 * **File Extension**: `.oo` (e.g. `main.oo`, `auth.oo`).
-* **The OODA Loop (Rapid Feedback Velocity)**: Sub-second iteration loops between observing code state, orienting diagnostics, deciding edits, and acting on tests.
+* **The OODA Loop (Rapid Feedback Velocity)**: Product `check`/`build`/`run` loops are real on the alpha pin. **[STATUS: residual — "sub-second" marketing not proven on full self-host builds; see residual pack `OODA_SPEED.md`]**
 * **Safety Without Friction**: Make incorrect code impossible to compile without burdening the developer with unnecessary ceremony.
 * **Self-Testing Code**: Every function carries its own contracts and executable tests as first-class language constructs.
 * **AI Vibe-Coding Native**: Machine-readable AST diff diagnostics, strict contracts, and instant toolchain feedback.
-* **Zero-Dependency Ecosystem Standard**: Compiler, LSP, test runner, package manager, formatter, and linter bundled in a single binary (`ooda`).
+* **Zero-Dependency Ecosystem Standard**: Compiler + CLI shipped in the product binary (`ooda`). **[STATUS: residual — pkg/LSP/registry not shipped; not a full "single binary" toolchain]**
 
 ---
 
@@ -48,7 +48,7 @@
 
 ## 4. Self-Testing & Executable Contracts
 
-* **Design by Contract (`requires` / `ensures`)**: Preconditions and postconditions run during development and enable the compiler to auto-synthesize property-based tests:
+* **Design by Contract (`requires` / `ensures`)**: Preconditions and postconditions run during development. **[STATUS: residual — simple runtime only; auto-synthesis not shipped]** Goal (not product path): enable the compiler to auto-synthesize property-based tests:
   ```ooda
   fn divide(a: Float, b: Float) -> Float
       requires b != 0.0
@@ -81,19 +81,19 @@
 ## 6. AI & Tooling Integration ("Vibe-Coding Guard Rails")
 
 * **Machine-Readable Diagnostics (`--json-errors`)**: Compiler emits structured JSON errors containing line locations, error codes, and **AST diff patches** for AI agents to auto-fix code instantly.
-* **Compile-Time Code Execution (`comptime`)**: Type generation, schema validation, and meta-programming executed using standard language logic at build time (no macro black magic).
+* **Compile-Time Code Execution (`comptime`)** — **[STATUS: residual]**: Type generation, schema validation, and meta-programming executed using standard language logic at build time (no macro black magic). Not a working product feature on alpha (`macro_expand`/`ast_macro` free-name refuse).
 
 ---
 
 ## 7. Unified Developer Toolchain
 
-Single binary (`ooda`) providing out of the box:
-* `ooda build` / `ooda run` — Compiler & runner
+Product CLI (`ooda`) — **[STATUS: residual — compiler + CLI shipped; pkg/LSP/registry residual; not a full single-binary toolchain]**:
+* `ooda build` / `ooda run` / `ooda check` — Compiler & runner (shipped alpha)
 * `ooda test` — Integrated unit, contract, doc, and fuzz test runner
 * `ooda fmt` — Zero-config code formatter
 * `ooda lint` — Static analysis & rule enforcement
 * `ooda lsp` — **[STATUS: residual]** Language Server Protocol goal for IDEs (not a shipping daemon on alpha pin)
-* `ooda pkg` — Built-in dependency manager
+* `ooda pkg` — **[STATUS: residual]** Built-in dependency manager (not shipped)
 
 ---
 
@@ -131,8 +131,8 @@ A modern language cannot succeed in isolation. OODA is built to seamlessly talk 
    // residual — not a shipping ML embed floor
    // import python::torch
    ```
-3. **C-Header Auto-Import**:
-   * OODA's compiler can read `.h` files directly at compile time via `comptime` to auto-generate OODA type signatures on the fly.
+3. **C-Header Auto-Import** — **[STATUS: residual; `import_c` is refuse-stub, no header reading]**:
+   * Goal: OODA's compiler can read `.h` files directly at compile time via `comptime` to auto-generate OODA type signatures on the fly. Alpha: `ffi_gen`/`import_c` free-name refuse; full `import "C"` gen residual.
 
 ---
 
@@ -144,8 +144,8 @@ Because OODA is a new language, LLMs will have zero pre-training examples in the
    * The complete syntax and core grammar can be expressed in an EBNF grammar file under **2,000 tokens (~4 pages of text)**.
    * Any AI agent can ingest the entire language grammar in its system prompt without overloading context memory.
 
-2. **Grammar-Constrained Decoding Support**:
-   * Ships with an official `ooda.gbnf` grammar file. LLM samplers (like Gemini, llama.cpp, vLLM) can use this grammar file to force the LLM to output 100% syntactically valid OODA code on the first attempt.
+2. **Grammar-Constrained Decoding Support** — **[STATUS: file present; sampler integration not shipped]**:
+   * Official `ooda.gbnf` grammar file exists under `ooda/ooda.gbnf`. Goal: LLM samplers (like Gemini, llama.cpp, vLLM) can use this grammar file to force the LLM to output 100% syntactically valid OODA code on the first attempt. Sampler integration path is not a product feature on alpha.
 
 3. **High Orthogonality (Logical Uniformity)**:
    * No special-case syntax rules or obscure syntactic sugar. One way to express each concept (e.g. every control flow construct is an expression, every error is a `Result`).
@@ -187,8 +187,8 @@ Inspired by real-world AI pair-programming best practices (such as keeping files
    * When an AI agent needs to understand a dependency or sibling file, `ooda outline src/user.oo` returns **only type signatures, contracts, and public APIs**, stripping function bodies completely.
    * Reduces token consumption by **80-90%** when referencing codebase APIs.
 
-6. **Incremental AST Diff Edits (`ooda patch`)**:
-   * Instead of generating an entire 256-line file to update 3 lines, AI agents emit surgical AST node patches or diffs (`ooda patch <node_id>`), cutting output tokens by **90%**.
+6. **Incremental AST Diff Edits (`ooda patch`)** — **[STATUS: aspirational; node-id patches residual]**:
+   * Instead of generating an entire 256-line file to update 3 lines, AI agents emit surgical AST node patches or diffs (`ooda patch <node_id>`). Product patch path is In; line-range / node_id residual. Token-cut "90%" is aspirational, not measured.
 
 7. **Token-Optimized Diagnostics (`--json-minimal`)**:
    * Compiler errors are formatted into compact, token-dense JSON (stripping boilerplate formatting) so agents process error feedback using minimal tokens.

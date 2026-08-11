@@ -5,7 +5,7 @@
 
 ## 🏛️ Executive Summary
 
-**OODA** (*Observe, Orient, Decide, Act*) is an AI-native, capability-secure, self-testing systems programming language designed for sub-second development feedback, zero-day defense, and bare-metal native execution. It is built to seamlessly scale from embedded hardware to a global, verifiable compute network.
+**OODA** (*Observe, Orient, Decide, Act*) is an AI-native, capability-secure, self-testing systems programming language designed for rapid development feedback, zero-day defense, and native execution. **[STATUS: residual; bare-metal target is refuse-stub]** — bare-metal / `#![no_std]` is Path-A refuse, not a shipping target. **[STATUS: residual — "sub-second" / global verifiable compute network not proven product paths]** — product check/build/run loops are real; full DESIGN speed marketing and global compute network remain residual.
 
 ---
 
@@ -22,7 +22,7 @@
 *   **Surgical AST Patching:** `--json-errors` emits machine-readable diagnostics with surgical AST diff-fix suggestions, allowing AI agents to auto-fix code in a single turn.
 *   **Token-Minimized APIs:** `ooda outline` and `ooda reflect` export compressed symbol metadata, yielding an 85–90% token reduction when AI agents read the codebase.
 *   **Intent-Driven Compilation (Telepathic AST):** You can write the `requires/ensures` contracts and leave the function body entirely blank (`...`). At compile time, the compiler spins up an embedded LLM, synthesizes the optimal algorithm, formally verifies it, and lowers it to assembly.
-*   **Global Hive-Mind Fuzzing:** The compiler runs as a background daemon, connecting to a global peer-to-peer network of idle openOODA compilers. The network collaboratively generates AI-driven semantic mutations while you sleep, mathematically proving or breaking your contracts overnight.
+*   **Global Hive-Mind Fuzzing — [STATUS: residual / path-A refuse; not a shipped P2P network]:** Goal: the compiler runs as a background daemon, connecting to a global peer-to-peer network of idle openOODA compilers that collaboratively generate AI-driven semantic mutations while you sleep. Alpha product: `hive_fuzz`/`hivemind_join` free-name refuse — not a working P2P network.
 
 ## 3. The Safety & Security Engine
 
