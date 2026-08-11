@@ -92,7 +92,7 @@ Single binary (`ooda`) providing out of the box:
 * `ooda test` — Integrated unit, contract, doc, and fuzz test runner
 * `ooda fmt` — Zero-config code formatter
 * `ooda lint` — Static analysis & rule enforcement
-* `ooda lsp` — Language Server Protocol engine for IDEs
+* `ooda lsp` — **[STATUS: residual]** Language Server Protocol goal for IDEs (not a shipping daemon on alpha pin)
 * `ooda pkg` — Built-in dependency manager
 
 ---
@@ -125,11 +125,11 @@ A modern language cannot succeed in isolation. OODA is built to seamlessly talk 
    ```ooda
    extern "C" fn sqlite3_open(filename: *const char, db: **sqlite3) -> i32
    ```
-2. **Python AI Ecosystem Bridge (`embed "python"`)**:
-   * AI applications require access to PyTorch, HuggingFace, and NumPy. OODA provides an in-process, type-safe Python bridge so developers can call Python ML packages without leaving OODA:
+2. **Python AI Ecosystem Bridge (`embed "python"`)** — **[STATUS: residual / fail-closed stub]**:
+   * Goal: in-process type-safe calls into PyTorch / HuggingFace / NumPy. Alpha product: Python surface may exist as residual stubs; `load_model` / torch import is **not** a working loaded-model path (see `std/os/python.oo` honesty comments). Do not treat sample imports as product-ready:
    ```ooda
-   import python::torch
-   import python::transformers
+   // residual — not a shipping ML embed floor
+   // import python::torch
    ```
 3. **C-Header Auto-Import**:
    * OODA's compiler can read `.h` files directly at compile time via `comptime` to auto-generate OODA type signatures on the fly.
@@ -227,7 +227,7 @@ OODA implements a multi-layered, zero-trust security model across memory, supply
 
 5. **Zero-Day Vulnerability Defense Architecture**:
    * **Default-Deny Capability Trapping**: Even if a 3rd-party dependency contains an unpatched zero-day exploit, the attacker **cannot access disk, network, environment secrets, or shell commands** unless the top-level `main()` function explicitly passed capability handles (`&FsCap`, `&NetCap`) to that specific module. The zero-day is neutralized inside a capability-less sandbox.
-   * **Elimination of ~70% of Historic Zero-Days**: According to Google/Microsoft security research, ~70% of severe zero-days are memory corruption bugs (Buffer Overflows, Use-After-Free, Double-Free, Null-Pointers). OODA's scope-based memory safety and bounds checking mechanically eliminate this entire vulnerability class at compile time.
+   * **[STATUS: residual goal]** **Memory-corruption class defense**: Industry research (Google/Microsoft) attributes a large share of severe zero-days to memory corruption (buffer overflow, UAF, double-free, null deref). openOODA aims to shrink that class via RAII/ARC, bounds checks, and capability defaults — **not** a proven compile-time elimination of ~70% of zero-days on this alpha. Path-A product floors ship; full heap sandbox / dual-green self-host residual. See `PM.md` and `bootstrap/*RESIDUAL*.md`.
    * **Task-Isolated Blast Radius**: Memory is partitioned into isolated task scopes. If a zero-day exploit causes an unrecoverable fault inside a worker task, the supervisor tree kills the isolated task scope without leaking global state or compromising sibling tasks.
 
 ---
@@ -309,15 +309,16 @@ OODA was designed by deconstructing programming language design down to fundamen
 
 ## 17. Pre-1.0 Governance, Ecosystem & Release Strategy
 
-1. **Private Development Repositories**:
-   * All openOODA repositories remain **private** during the pre-1.0 alpha and beta construction phases.
+1. **Repository visibility**:
+   * **[STATUS: alpha pin]** Product is **public** (install pulls GitHub release assets). Governance may keep some boards private; do not claim all repos stay private while alpha ships publicly.
 
 2. **Pre-1.0 Branching & Versioning Pipeline**:
-   * Primary development branch: `main` (represents the active pre-release state).
-   * `v0.1.0-alpha` — Phase 1 & 2: Grammar (`ooda.ebnf`), AST parser, and instant JIT runner (`ooda run`).
-   * `v0.5.0-beta` — Phase 3: AI AST diff diagnostics, `verify` test runner, and `ooda fmt`.
-   * `v0.9.0-rc` — Phase 4: Full LLVM IR native code generator (`ooda build`) and capability security verifier.
-   * `v1.0.0-stable` — Official public open-source release!
+   * Primary development branch: `main` (active pre-release).
+   * **Actual pin (PM.md / SPRINT.md):** `v0.184.0-alpha`. **Beta is not claimed.** Historical ladder below is aspirational, not a completed track:
+   * `v0.1.0-alpha` — grammar / parser / run path (partial history).
+   * `v0.5.0-beta` — **[STATUS: not claimed]** AI diagnostics / verify / fmt goals.
+   * `v0.9.0-rc` — **[STATUS: not claimed]** full LLVM + capability verifier goals.
+   * `v1.0.0-stable` — future public stable goal.
 
 3. **Batteries-Included Standard Library (`std`)**:
    * **Core Core**: HTTP/Web server, JSON/MessagePack, Cryptography, UTF-8 String, Async Task Runtime, File System, and Math primitives built-in. No need for 50 micro-dependencies just to start a web server.
@@ -329,5 +330,5 @@ OODA was designed by deconstructing programming language design down to fundamen
 5. **Process Resilience & Actor Supervisor Trees**:
    * Inspired by Erlang/BEAM: Isolated task scopes act as micro-actors. If a child task encounters an unrecoverable failure, supervisor strategies (`one_for_one`, `rest_for_one`) restart only the affected task without bringing down the entire server process.
 
-6. **Automated Migration & Zero-Breaking-Change Editions (`ooda migrate`)**:
-   * Modeled after Rust Editions: The language supports automated AST codemods (`ooda migrate`). Upgrading compiler versions automatically refactors legacy syntax to the latest edition without breaking existing codebases.
+6. **Automated Migration & Editions (`ooda migrate`)** — **[STATUS: disabled residual]**:
+   * Goal: Rust-style edition codemods. **Alpha:** `ooda migrate` is **fail-closed disabled** (SPRINT Issue #14). A prior `sed` that rewrote every `let x =` into `let mut x =` was unsafe and is removed. Do not run migrate expecting a safe codemod until an AST-based tool ships.

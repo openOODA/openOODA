@@ -61,7 +61,7 @@
 *   **The Standard Library Philosophy:** The standard library is strictly bifurcated into `std::core` (pure logic, requires zero capabilities, runs anywhere) and `std::os` (requires OS capabilities, runs on LLVM/JIT).
 *   **Narrative Diagnostics:** When a contract or capability is violated, the compiler doesn't just throw a stack trace. It emits a causal story, tracing the exact flow of data from its origin to the violation, making complex systemic bugs trivial to read and understand.
 *   **Human-in-the-Loop (`hitl`) Testing:** openOODA natively supports subjective human feedback in its testing pipeline. Primitives like `verify_human("Review this output")` allow autonomous AI fuzzer loops to pause and request your subjective approval via the CLI before marking a build as passing.
-*   **Universal Native LSP:** The sub-millisecond compiler runs natively as a background daemon. Because it uses the open Language Server Protocol, it plugs instantly into Neovim, CLI-based AI agents, Cursor, or any environment you prefer. Zero editor lock-in.
+*   **Universal Native LSP — [STATUS: residual / path-A refuse]:** Goal: sub-ms compiler as LSP daemon for Neovim, agents, Cursor. **Alpha product:** `ooda lsp` is not a shipping daemon; free-name `lsp_serve` is residual-refuse (`check_residual`). Do not claim a live LSP background service until dual-green product path lands.
 
 ---
 
