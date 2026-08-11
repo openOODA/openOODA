@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `ad05f16` — PM 3.6 fuzz path A done (alpha) |
+| Tip (board) | `ooda` `7a46f6a` — PM 3.2/3.3 floors done (alpha) |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -73,8 +73,8 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | # | Item | Status | Notes |
 |---|------|--------|--------|
 | 3.1 | **Unified capability sandboxing** (`&NetCap`, `&FsCap`, …; biometric goal) | **done** (alpha) | Process-local seals **In** (check+emit+runtime forge deny) for Fs/Sys/Env/Net/Time/Rand/Alloc; floor smoke green. Residual: biometric/crypto object-caps, OS isolation, Cap vs FFI (`STATIC_CAPS.md`, `BIOMETRIC_CAPS.md`) |
-| 3.2 | **Time & entropy sandboxing** (`&TimeCap`, `&RandCap`) | **partial** | **M12:** static+runtime TimeCap/RandCap (process-local tokens); `caps_matrix_smoke`; not crypto object-caps / CSPRNG claim |
-| 3.3 | **Memory quotas / heap sandboxing** (`&AllocCap<…>`) | **partial** | **M17 + M125:** process-local ambient List quota (env `OO_LIST_AMBIENT_QUOTA` + `alloc_bytes` raise); explicit AllocCap helpers; not OS rlimit / typed `&AllocCap<N>` |
+| 3.2 | **Time & entropy sandboxing** (`&TimeCap`, `&RandCap`) | **done** (alpha) | Process-local Time/Rand seals **In** (now_ms/sleep_ms/random/seed + forge deny); floor smoke green. Residual: not CSPRNG / attested clock (`TIME_ENTROPY.md`) |
+| 3.3 | **Memory quotas / heap sandboxing** (`&AllocCap<…>`) | **done** (alpha) | Process-local AllocCap helpers + ambient List quota fail-closed; floor smoke green. Residual: not OS rlimit / typed `&AllocCap<N>` (`MEMORY_QUOTA.md`) |
 | 3.4 | **CPU quotas / execution sandboxing** (`#[MaxCycles]`) | **done** (alpha) | Path A **In**: `// MAX_CYCLES: N` (multi-digit) + while + range-for + recursion/shared `__oo_mc`; product-floor smokes green. Residual: OS cgroup / `#[MaxCycles]` attr / static WCET (`MAX_CYCLES.md`) |
 | 3.5 | **Static taint tracking** (`#[Secret]`) | **done** (alpha) | Path A **In**: `// SECRET:` + listed sinks (println through process_exit/fs/net/exec/alloc/time) + LLVM dual-path; floor smoke green. Residual: `#[Secret]` attr, full IFC, every log sink (`SECRET_TAINT.md`) |
 | 3.6 | **Automated contract fuzzer** (`ooda test --fuzz`) | **done** (alpha) | Path A **In**: pure marker domains int/bool/string/list + homogeneous multi-arg; floor smokes green. Residual: AST contracts, mixed-type multi, other domains (`FUZZ_DEFER.md`) |
