@@ -3,39 +3,36 @@
 ## Pin
 | Item | Value |
 |------|--------|
-| Release | `v0.184.0-alpha` |
-| Product tip | `bbae8ba` — **PM 3.4 MaxCycles done (alpha)** |
-| Rails | `max_cycles_product_floor_smoke: PASSED` |
+| Release |  |
+| Product tip |  — **PM 3.1 capability floor done (alpha)** |
+| Rails |  |
 | Beta | **Not claimed** |
 
 ## Open (0)
 *(none)*
 
-## Closed (this work)
-**PM 3.4 MaxCycles → done (alpha)**
+## Closed
+**PM 3.1 Capability sandboxing → done (alpha)**
 
-What is production-ready (alpha product floor):
-- You can set a cycle budget with `// MAX_CYCLES: N` (large numbers work).
-- Loops and recursive calls spend that budget.
-- Going over the budget fails clearly (error + non-zero exit).
-- Zero/invalid budgets fail closed (not silent).
+What is production-ready (alpha):
+- Privileged actions need the right **capability token** (disk, network, process, env, time, random, alloc helpers).
+- Missing token: refused at check time.
+- Fake token: refused at run time.
+- More “missing token” checks (write/path/size/sleep/seed).
+- Full product-floor smoke is green.
 
-What is still not claimed (residual):
-- Not an OS-level CPU jail.
-- Not the fancy attribute form from the vision doc.
-- Not a compile-time proof that every infinite loop is impossible.
+What is still not claimed:
+- FaceID / biometric tokens
+- Unforgeable crypto capability objects
+- OS-level isolation (cgroups / rlimits as the cap system)
+- Caps that seal raw C foreign code
 
-Also shipped:
-- Recursion check now runs from the product folder so it works reliably.
-- One umbrella check runs all MaxCycles product rails.
+SWARM: 2 explore mappers → solo Act.
 
 ## Residual named (honest)
-- OS cgroup / attribute grammar / static WCET — residual only
+- Biometric/crypto object-caps residual
+- Cap vs FFI residual
 - Beta not claimed
-- Other PM items unchanged
-
-## SWARM
-solo Act
 
 ## S
-`S: low — U=0 on 3.4 floor F=0 W=0 O=0`
+
