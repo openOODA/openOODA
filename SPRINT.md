@@ -4,32 +4,31 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Product tip | living `ooda` main — beta eligibility re-proved (not beta tagged) |
-| Rails | B0–B5 + Part B.1 sample rails green — see `../ooda/bootstrap/BETA_PROOF_LOG.md` |
-| Beta | **Not claimed** (owner only). Gates **eligible** for owner consideration. |
+| Focus | **PM top:** AI-native systems language |
+| Rails | `ai_native_product_floor_smoke` PASSED |
+| Beta | **Not claimed** |
 
 ## Open (0)
 *(none)*
 
-## Closed this rotation
-**Beta eligibility re-prove (no tag)**
+## Closed
+**M154 AI-native agent loop floor (top PM executive item)**
 
-What is true:
-- Purity B0/B1 green (no product `.rs`, no Cargo product path).
-- Fixed-point B2 green (stage digests matched).
-- Part B.1 product surface smokes green (CLI, check, diags, outline/reflect/patch, caps, emit-c, residual path A, Cap vs FFI, honesty).
-- Pin `v0.184.0-alpha` aligns CLI + `install/BOOTSTRAP_PIN`.
+What is stronger:
+- One smoke proves the agent loop: **outline → reflect → json-errors (with E_CAP suggested_fix) → patch**.
+- E_CAP machine fields asserted for agents (`kind`, `suggested_fix`, `fix_hint`).
+- Telepathic free-names still refuse (no fake intent compile).
 
 What is still not claimed:
-- **Beta tag** (owner only).
-- Production.
-- Full DESIGN moonshot implementations (refuse path A remains for those free names).
+- Automatic AST apply of suggestions.
+- Telepathic / hive-mind product.
+- Beta tag.
 
-SWARM: solo Act (shared rails / fixed_point).
+SWARM: solo Act (scripts/docs + json smoke overlap).
 
 ## Residual named (honest)
-- Full DESIGN moonshots residual-named in packs
+- AST auto-apply, telepathic, hive-mind
 - Beta not claimed
 
 ## S
-`S: low — U=0 on beta eligibility sample F=0 W=0 O=0`
+`S: low — U=0 on AI-native floor F=0 W=0 O=0`

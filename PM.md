@@ -36,7 +36,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | Item | Status | Notes |
 |------|--------|--------|
-| AI-native systems language | **done** (alpha) | Direction + agent tools (outline/reflect/patch/json-errors) **In**; full AI stack residual (telepathic/hive-mind packs) |
+| AI-native systems language | **done** (alpha) | Agent loop floor **In**: outline + reflect + json-errors (`fix_hint` + E_CAP `suggested_fix`) + patch replace_fn (`ai_native_product_floor_smoke`). Residual: AST auto-apply, telepathic, hive-mind |
 | Capability-secure | **done** (alpha) | Process-local seals **In** (3.1–3.3); not full DESIGN cap ladder / biometric / Cap vs FFI residual |
 | Self-testing | **done** (alpha) | Path A pure fuzz + pure verify **In** (3.6/M50); full DESIGN contract proof residual |
 | Sub-second feedback | **done** (alpha) | Product check/build/run loops real; sub-ms marketing residual (`OODA_SPEED.md`) |
@@ -61,7 +61,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Item | Status | Notes |
 |---|------|--------|--------|
-| 2.1 | **Surgical AST patching** (`--json-errors`, AST fix suggestions) | **done** (alpha) | JSON diags + `fix_hint` **In** (E_CAP/E_TC/E_PARSE/E_SECRET/…); let-match free-safe capture; `json_errors_smoke` green. Residual: AST auto-apply (`AST_AUTOFIX.md`) |
+| 2.1 | **Surgical AST patching** (`--json-errors`, AST fix suggestions) | **done** (alpha) | JSON diags + `fix_hint` **In**; E_CAP `kind`+`suggested_fix` agent surface; free-safe capture; floors green. Residual: automatic AST apply (`AST_AUTOFIX.md`) |
 | 2.2 | **Token-minimized APIs** (`ooda outline`, `ooda reflect`) | **done** (alpha) | M1 pure path + smoke; parse-only; depth residual (typed/import-graph outline) |
 | 2.2b | **Surgical `patch replace_fn`** (product agent edit) | **done** (alpha) | Product patch path **In**; line-range / node_id residual |
 | 2.3 | **Intent-driven compilation (telepathic AST)** | **done** (alpha) | Path A **In**: `telepathic_compile`/`intent_compile` free-name refuse. Residual: LLM intent compile |
