@@ -4,33 +4,35 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` (stay alpha) |
-| Focus | M161 library residuals path A (not Tier C / not beta) |
-| Rails | assert_eq_result, crypto_md5_sha1, libfloor_*, std_semver/markup/archive, byte_str residual, etc_autofix, contracts_and, std_smoke, secret_eprintln |
+| Focus | M162 residual-named deepen (not beta) |
+| Rails | m162_residual_deepen, libfloor_*, crypto_md5_sha1, hitl_product, etc_autofix, contracts_and |
 | Beta | **Not claimed** |
 
 ## Closed
 **M158** E_TC undefined-var `ooda fix`  
-**M159** simple `&&` contracts product rails + std `res_map_ok_prefix` / `res_ok_eq`  
-**M160** Secret `eprintln` sink depth  
-**M161** Library residuals path A (25-agent backlog) — see below
+**M159** simple `&&` contracts  
+**M160** Secret `eprintln` sink  
+**M161** Library residuals path A  
+**M162** Residual-named open items path A deepen — see below  
 
-## M161 Library Residuals — path A closed
+## M162 Residual-named deepen (path A)
 
-| Swarm | Item | Path A | Residual honesty |
-|-------|------|--------|------------------|
-| s1 | Result `assert_eq!` / `OoResS` structural eq | C `oo_res_eq` + LLVM extractvalue; `assert_eq_result_smoke` | generic `Result[T,E]` not lowered |
-| s2 | Byte / `&str` | residual pack + `std/byte.oo` Int convention; `byte_str_residual_smoke` | no native borrow / Byte arrays |
-| s3–s6 | ThreadCap / GpuCap / mutex / thread_spawn / gpu_launch | grant+seal+runtime Err residual; dual forge deny | no OS pthreads / GPU shaders |
-| s4 | MD5 / SHA-1 / AES | real MD5+SHA1 hex; AES `STUB_FAIL_CLOSED` | no AES product crypto |
-| s5 | TCP / UDP / TLS | NetCap seal + residual Err | no real sockets/TLS |
-| s7 | sys_spawn / wait / kill | SysCap seal + residual Err; real work via `sys_exec` | no fork/wait/kill product on residual names |
-| s8 | `std/semver` | pure major.minor.patch | prerelease/build residual |
-| s9 | markup TOML/YAML/XML/JSON Schema | tiny subsets + residual | full parsers residual |
-| s10 | archive tar/zip/gzip | magic-detect only | full decompress residual |
+| Item | What we did | Still not done (plain English) |
+|------|-------------|-------------------------------|
+| Multi-code autofix | `ooda fix` multi-pass E_CAP + E_TC | Other error codes; free-form rewrite |
+| SMT / contracts | Simple `\|\|` runtime requires/ensures | Full SMT / quantifiers / old-state |
+| Interactive HITL | Allow env + auto-approve without TTY; line-scan fix | Full human harness / record-replay |
+| OS dlopen | Real `dlopen` only with allowlist env + dir | Free OS load of any path / full FFI |
+| TLS | Still residual seal | Real TLS handshake |
+| AES | AES-128-ECB for 16-byte blocks | Full AES modes / padding / product API |
+| Threads | Real pthread mutex + spawn (noop) | Join / channels / fearless concurrency |
+| GPU | Still residual seal | Real shaders |
+| Byte / `&str` | `byte_at` raw 0..255 | Borrowed `&str`, true Byte arrays |
+| Tier C moonshots | Still default-deny free names | Full moonshot products |
 
-## Residual named (still open)
-SMT contracts · multi-code autofix · interactive HITL · OS dlopen · full TLS/AES/threads/GPU · native `&str`/Byte arrays · Tier C moonshots  
+## Residual named (still open for full product)
+SMT quantifiers · multi-code beyond E_CAP/E_TC · full HITL harness · unrestricted OS dlopen · full TLS · full AES · full threads/GPU · native `&str`/Byte arrays · Tier C moonshots  
 Beta not claimed
 
 ## S
-`S: low — U=0 on M161 F=0 W=0 O=0`
+`S: low — U=0 on M162 F=0 W=0 O=0`
