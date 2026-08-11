@@ -153,7 +153,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| M166 | Language Feature Backlog (AGY) path A | **PASS** | tip `b6c996b`; smokes in `ci_product`; pure self-host rebuild residual; cap forgery residual; beta not claimed |
+| — | (none) | — | M166 closed tip `b6c996b`. Next owner: pure self-host rebuild residual / full DESIGN residual named / beta gate |
 
 Living detail: **`SPRINT.md`**.
 
@@ -161,6 +161,7 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M166 | Language Feature Backlog (AGY) path A | **PASS** | tip `b6c996b`; bitops/math/malloc/net/index/tensor/sys; smokes in `ci_product`; pure self-host residual; cap forgery residual; beta not claimed |
 | M165 | Honest leftovers path A | **PASS** | arith contracts; E_HITL autofix; verify_human; actors; GPU noop/cpu; system dlopen; str ops; dual-run green; beta not claimed |
 | M164 | Finish residual trio path A | **PASS** | real libssl TLS handshake; ThreadCap channels; List[Int] byte buffer; dual-run green; beta not claimed |
 | M163 | TLS / join / bytes path A | **PASS** | joinable threads; `byte_slice`/`bytes_len`; TLS residual after TCP (+ OpenSSL gate); dual-run rails; beta not claimed |
