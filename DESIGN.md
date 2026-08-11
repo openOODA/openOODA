@@ -11,56 +11,56 @@
 
 ## 1. The openOODA Language (Core Syntax & Philosophy)
 
-*   **The Philosophy of Speed (The OODA Loop):** The language is fundamentally engineered around the *Observe, Orient, Decide, Act* cycle. By combining sub-millisecond compile times with rich JSON metadata, the language guarantees the tightest possible feedback loop between human intent, AI generation, and compiler validation.
-*   **Mathematical Contracts:** Preconditions (`requires`) and postconditions (`ensures`) are first-class language keywords that mathematically bound function behavior, forming the foundation for local fuzzing and global verification.
-*   **Data-Oriented Design (DOD) & Layout:** First-class support for Struct-of-Arrays (SoA) memory layouts to guarantee CPU cache-locality, and native zero-copy serialization for parsing network packets at zero CPU cost.
-*   **First-Class AST Macros:** The ability to write standard openOODA functions that execute at compile-time to surgically rewrite the Abstract Syntax Tree (AST), providing the power of Rust macros with native readability.
-*   **Compile-Time Type-State Machines:** Objects can transition through explicit lifecycles (e.g., `Unopened` -> `Opened` -> `Closed`). The compiler statically proves that `.read()` can never be called on an `Unopened` file, eliminating entire classes of logic bugs.
+*   **The Philosophy of Speed (The OODA Loop) — [STATUS: residual — sub-ms marketing; product loops real (`OODA_SPEED.md`)]:** The language is engineered around the *Observe, Orient, Decide, Act* cycle. Product `check`/`build`/`run` loops are real; full DESIGN "sub-millisecond compile" marketing is residual.
+*   **Mathematical Contracts:** Preconditions (`requires`) and postconditions (`ensures`) are first-class language keywords that bound function behavior. **[STATUS: residual — simple runtime In; SMT/quantifiers not shipped]**
+*   **Data-Oriented Design (DOD) & Layout — [STATUS: residual / path-A refuse]:** Goal: SoA layouts and zero-copy serialization. Alpha: `soa_layout`/`dod_layout` free-name refuse — not a shipping product path.
+*   **First-Class AST Macros — [STATUS: residual / path-A refuse]:** Goal: compile-time AST rewrite via ordinary functions. Alpha: `macro_expand`/`ast_macro` free-name refuse — not shipped.
+*   **Compile-Time Type-State Machines — [STATUS: residual / path-A refuse]:** Goal: static lifecycle proofs (e.g. `Unopened` → `Opened`). Alpha: `type_state_check`/`typestate_assert` free-name refuse — not shipped.
 
 ## 2. AI-Native Tooling (Vibe-Coding)
 
-*   **Surgical AST Patching:** `--json-errors` emits machine-readable diagnostics with surgical AST diff-fix suggestions, allowing AI agents to auto-fix code in a single turn.
-*   **Token-Minimized APIs:** `ooda outline` and `ooda reflect` export compressed symbol metadata, yielding an 85–90% token reduction when AI agents read the codebase.
-*   **Intent-Driven Compilation (Telepathic AST):** You can write the `requires/ensures` contracts and leave the function body entirely blank (`...`). At compile time, the compiler spins up an embedded LLM, synthesizes the optimal algorithm, formally verifies it, and lowers it to assembly.
+*   **Surgical AST Patching:** `--json-errors` + E_CAP `ooda fix` structural apply are alpha product. **[STATUS: residual — multi-code / 1-turn auto-fix not shipped]**
+*   **Token-Minimized APIs:** `ooda outline` and `ooda reflect` ship (parse-only alpha). **[STATUS: residual — "85–90% token reduction" not measured product claim]**
+*   **Intent-Driven Compilation (Telepathic AST) — [STATUS: residual / path-A refuse]:** Goal: blank-body `...` filled by embedded LLM at compile time. Alpha: `telepathic_compile`/`intent_compile` free-name refuse — not a shipping LLM intent path.
 *   **Global Hive-Mind Fuzzing — [STATUS: residual / path-A refuse; not a shipped P2P network]:** Goal: the compiler runs as a background daemon, connecting to a global peer-to-peer network of idle openOODA compilers that collaboratively generate AI-driven semantic mutations while you sleep. Alpha product: `hive_fuzz`/`hivemind_join` free-name refuse — not a working P2P network.
 
 ## 3. The Safety & Security Engine
 
-*   **Unified Capability Sandboxing:** A default-deny security model where functions cannot perform I/O without explicit capability tokens (e.g., `&NetCap`, `&FsCap`). This scales all the way up to **Biometric Attestation** (e.g., `&SysCap<RequireBiometric>`), which pauses execution to require a physical hardware enclave or FaceID scan before running critical logic.
-*   **Time & Entropy Sandboxing:** Code cannot read the system clock or generate random numbers without `&TimeCap` and `&RandCap`, guaranteeing functions are mathematically pure and testing is 100% deterministic.
-*   **Memory Quotas (Heap Sandboxing):** Capabilities like `&AllocCap<10MB>` mathematically restrict a specific module from allocating more than a designated RAM limit, neutralizing Out-Of-Memory (OOM) and zip-bomb attacks from 3rd-party libraries.
-*   **CPU Quotas (Execution Sandboxing):** Functions can be tagged with `#[MaxCycles(5000)]`. If the static analyzer cannot mathematically prove the loop bounds will finish under that limit, it refuses to compile—making infinite loops impossible.
-*   **Static Taint Tracking:** Tag sensitive variables (like passwords) with `#[Secret]`. The compiler mathematically tracks the AST flow to guarantee the data can physically never reach a function that logs to `stdout` or writes to an unencrypted `&NetCap`.
-*   **Automated Contract Fuzzer:** The `ooda test --fuzz` engine continuously attempts to generate edge cases to mathematically break your `requires/ensures` contracts.
-*   **0ms GC & Memory Safety:** Scope-based RAII and Automatic Reference Counting (ARC) eliminate memory leaks and completely avoid Stop-The-World garbage collection pauses.
-*   **Temporal Memory (State Rollback):** "Undo for RAM." Variables store their historical states. Upon a fatal crash, the runtime can roll memory back 3 seconds to a known-safe state and execute a fallback path rather than segfaulting.
-*   **Cryptographic Call-Graph Integrity:** The compiler generates a cryptographic hash of all valid function transitions. If a hacker exploits a vulnerability (e.g., a ROP attack), the CPU traps the mismatched return pointer and detonates the process.
-*   **Shadow-State Semantic Reversion:** Critical modules run a few instructions ahead in a virtual "ghost state." If a mutation violates a semantic `ensures` contract, the runtime cancels the execution before the CPU commits the change to physical RAM.
-*   **Polymorphic Metamorphic Binaries (Immune Systems):** Compiled binaries mutate their own assembly code every few milliseconds at runtime. The logical output remains mathematically identical, but registers and memory layouts randomize continuously, making the binary's attack surface physically impossible to target.
+*   **Unified Capability Sandboxing:** Process-local seals for Fs/Sys/Env/Net/Time/Rand/Alloc (+ ThreadCap/GpuCap) are alpha product. **[STATUS: residual — biometric attestation / crypto object-caps / OS isolation not shipped]** Goal (not product): `&SysCap<RequireBiometric>` FaceID/enclave pauses.
+*   **Time & Entropy Sandboxing:** TimeCap/RandCap process-local seals are alpha product. **[STATUS: residual — not CSPRNG / attested clock]**
+*   **Memory Quotas (Heap Sandboxing):** Process-local AllocCap helpers + ambient List quota are alpha product. **[STATUS: residual — not OS rlimit / typed `&AllocCap<N>`]**
+*   **CPU Quotas (Execution Sandboxing):** Path-A `// MAX_CYCLES: N` while/for/recursion fuel is alpha product. **[STATUS: residual — not OS cgroup / `#[MaxCycles]` attr / static WCET]**
+*   **Static Taint Tracking:** Path-A `// SECRET:` sinks (println/write_file/…) are alpha product. **[STATUS: residual — not full `#[Secret]` IFC / interproc taint]**
+*   **Automated Contract Fuzzer:** Path-A pure fuzz domains (int/bool/string/list) are alpha product. **[STATUS: residual — AST contracts / mixed-type multi / full domains not shipped]**
+*   **0ms GC & Memory Safety — [STATUS: residual — ARC free-on-ref0 In; full "0ms GC / smart-pointer product" not claimed]:** Scope-based RAII + ARC reclaim is alpha; DESIGN full pause-free GC marketing remains residual.
+*   **Temporal Memory (State Rollback) — [STATUS: residual / path-A refuse]:** Goal: "Undo for RAM" / 3-second rollback. Alpha: `checkpoint`/`rollback`/`snapshot_state` free-name refuse — not shipped.
+*   **Cryptographic Call-Graph Integrity — [STATUS: residual / path-A refuse]:** Goal: hashed valid call transitions / ROP trap. Alpha: `sign_callgraph`/`verify_callgraph` free-name refuse — not shipped.
+*   **Shadow-State Semantic Reversion — [STATUS: residual / path-A refuse]:** Goal: ghost-state cancel before commit. Alpha: `shadow_revert`/`shadow_commit` free-name refuse — not shipped.
+*   **Polymorphic Metamorphic Binaries (Immune Systems) — [STATUS: residual / path-A refuse]:** Goal: runtime assembly mutation. Alpha: `metamorphic_emit`/`metamorphic_build` free-name refuse — not shipped.
 
 ## 4. The Compiler & Execution Targets
 
-*   **Multi-Target Engine Architecture:** 
-    *   **Development JIT (`ooda run`):** Instant sub-millisecond execution via a built-in bytecode VM.
-    *   **Production LLVM (`ooda build --emit-llvm`):** Compiles directly to native LLVM IR (`.ll`) for bare-metal CPU performance.
-    *   **Universal GPU/NPU Acceleration:** Native compilation down to NVIDIA (PTX), AMD (ROCm), Intel (SPIR-V), and Apple Silicon (Metal) for zero-overhead tensor math and parallel compute—bypassing Python/C++ bindings entirely.
-    *   **Direct WebAssembly (`ooda build --target wasm`):** Native WASM emission for browsers and edge environments.
-    *   **Bare-Metal Embedded (`#![no_std]`):** Replaces OS capabilities with raw hardware limits (e.g., `&GpioPin4`) for IoT.
-*   **Native Hot-Code Reloading:** The JIT VM supports swapping new ASTs into the running process, allowing developers to edit code without losing active application state.
-*   **Advanced Toolchains:** 
-    *   **Cross-Language LTO:** Link directly with C++/Rust so tightly that the LLVM backend optimizes them together with zero FFI penalty.
-    *   **Deterministic Reproducible Builds:** Sandboxed compilation guarantees identical byte-for-byte hashes across all machines.
-    *   **Compile-Time FFI Generation:** `import "C" "sqlite3.h"` auto-generates safe openOODA wrappers at compile time.
-*   **Holographic Data Persistence:** A struct in RAM can be directly mapped to a persistent, immutable Merkle-tree on an NVMe drive. There is no `save()` function. If the server loses power, the exact memory state materializes upon boot. Data becomes immortal.
+*   **Multi-Target Engine Architecture:** Product floor is **Backend-C** (`emit-c` + `chs_rt` + gcc). BC/LLVM/WASM path-A smokes exist; full multi-target DESIGN is residual (`MULTI_TARGET.md`).
+    *   **Development run path (`ooda run`) — [STATUS: residual — not JIT; BC surface / native run; sub-ms marketing residual]:** Default product run is native (Backend-C). BC VM surface exists; not a shipping JIT.
+    *   **LLVM (`ooda build --emit-llvm`) — [STATUS: residual — experimental smoke path; Backend-C is product floor; not full self-host/release LLVM]:** Emit/execute smokes green; not the default production compiler path.
+    *   **Universal GPU/NPU Acceleration — [STATUS: residual / path-A refuse]:** Goal: PTX/ROCm/SPIR-V/Metal. Alpha: `emit_ptx`/`emit_spirv` free-name refuse; `gpu_launch` residual under GpuCap — not real GPU backends.
+    *   **Direct WebAssembly (`ooda build --target wasm`) — [STATUS: residual — emit/execute path-A; not production browser floor]:**
+    *   **Bare-Metal Embedded (`#![no_std]`) — [STATUS: residual / path-A refuse]:** Alpha: `bare_metal_init` free-name refuse — not a shipping IoT/`no_std` floor.
+*   **Native Hot-Code Reloading — [STATUS: residual / path-A refuse]:** Goal: swap ASTs into a running process. Alpha: `hot_reload`/`live_reload` free-name refuse — not shipped.
+*   **Advanced Toolchains — [STATUS: residual / path-A refuse on xlang LTO + full import-C]:**
+    *   **Cross-Language LTO — [STATUS: residual / path-A refuse]:** Alpha: `lto_xlang_link` free-name refuse — not C++/Rust LTO product.
+    *   **Deterministic Reproducible Builds:** Content fingerprint (`input_fp`) is alpha product. **[STATUS: residual — not bit-identical hermetic dist]**
+    *   **Compile-Time FFI Generation — [STATUS: residual / path-A refuse]:** Alpha: `ffi_gen`/`import_c` free-name refuse — not full `import "C"` gen.
+*   **Holographic Data Persistence — [STATUS: residual / path-A refuse]:** Goal: RAM↔Merkle NVMe immortal mapping. Alpha: `holo_persist`/`holo_load` free-name refuse — not shipped.
 
 ## 5. Ecosystem & Developer Experience (DX)
 
-*   **100% Self-Hosted Ecosystem:** It is not enough for the compiler to be self-hosted. The package manager, the Language Server, the testing framework, and the network registry nodes must all be written in pure openOODA to mathematically preserve the cryptographic security chain.
-*   **The Verifiable Web of Code (Zero-Trust):** A decentralized package manager where imported modules are mathematically proven by the compiler's Formal Verification solver. Third-party libraries are cryptographically minted with a strict capability manifest, allowing you to dynamically import AI-generated code with 100% mathematical trust.
-*   **Fearless Concurrency:** Multithreading without Mutexes. Threads communicate via message passing, and the compiler enforces that capabilities are relinquished across thread boundaries, guaranteeing zero data races at compile time.
-*   **The Standard Library Philosophy:** The standard library is strictly bifurcated into `std::core` (pure logic, requires zero capabilities, runs anywhere) and `std::os` (requires OS capabilities, runs on LLVM/JIT).
-*   **Narrative Diagnostics:** When a contract or capability is violated, the compiler doesn't just throw a stack trace. It emits a causal story, tracing the exact flow of data from its origin to the violation, making complex systemic bugs trivial to read and understand.
-*   **Human-in-the-Loop (`hitl`) Testing:** openOODA natively supports subjective human feedback in its testing pipeline. Primitives like `verify_human("Review this output")` allow autonomous AI fuzzer loops to pause and request your subjective approval via the CLI before marking a build as passing.
+*   **100% Self-Hosted Ecosystem — [STATUS: residual — pure compiler+CLI In; pkg/LSP/registry not shipped]:** Compiler+CLI self-host path is alpha; full DESIGN ecosystem chain residual (`PKG_ECOSYSTEM.md`).
+*   **The Verifiable Web of Code (Zero-Trust) — [STATUS: residual — basic boundary rules In; formal FV solver / mint registry not shipped]:**
+*   **Fearless Concurrency — [STATUS: residual / path-A refuse for channels/actors; ThreadCap seals partial]:** Alpha: `channel_new`/`actor_spawn` free-name refuse; ThreadCap mutex/spawn seal + residual Err. Full OS message-passing runtime residual.
+*   **The Standard Library Philosophy:** `std::core` vs `std::os` split is alpha direction. **[STATUS: residual — depth packs honest; not full DESIGN std surface]**
+*   **Narrative Diagnostics:** Code-keyed `fix_hint` is alpha product. **[STATUS: residual — full causal-story / AST auto-apply not shipped]**
+*   **Human-in-the-Loop (`hitl`) Testing:** Path-A non-interactive deny + `verify_human` dual-cap are alpha product. **[STATUS: residual — interactive harness not shipped]**
 *   **Universal Native LSP — [STATUS: residual / path-A refuse]:** Goal: sub-ms compiler as LSP daemon for Neovim, agents, Cursor. **Alpha product:** `ooda lsp` is not a shipping daemon; free-name `lsp_serve` is residual-refuse (`check_residual`). Do not claim a live LSP background service until dual-green product path lands.
 
 ---
@@ -69,9 +69,9 @@
 
 At the bleeding edge of systems design, extreme features often contradict each other. openOODA resolves these inherent tension points through strict boundary definitions:
 
-*   **Metamorphic Binaries vs. Deterministic Builds:** To support supply-chain security, compilation produces a byte-for-byte deterministic hash on disk. The polymorphic metamorphism only occurs dynamically in RAM during the OS load sequence or JIT phase, ensuring reproducible builds don't fight binary immune systems.
-*   **0ms GC (ARC) vs. Temporal Memory:** ARC strictly destroys standard variables the instant they leave scope. Temporal Memory rollback is an opt-in keyword (e.g., `temporal struct`). For these specific structures, ARC routes them to a ring-buffer Event Log Arena that prunes states older than 3 seconds, avoiding Use-After-Free segfaults.
-*   **Capability Sandboxing vs. C/C++ FFI:** Because C/C++ code has no capability tracking and can execute arbitrary syscalls, any openOODA function that invokes Compile-Time FFI must explicitly demand an `&UnsafeFFICap` in its parameter list. The capability taint-tracking treats the FFI boundary as a deliberate, statically tracked sandbox breach.
+*   **Metamorphic Binaries vs. Deterministic Builds — [STATUS: residual — input_fp In; true bit-identical vs metamorphic product tension residual]:** Goal: deterministic disk hash + RAM-only polymorphism. Alpha: metamorphic free-names refuse; full tension product not shipped.
+*   **0ms GC (ARC) vs. Temporal Memory — [STATUS: residual — ARC free path In; temporal side residual]:** ARC reclaim is alpha; temporal ring-buffer Event Log Arena not shipped.
+*   **Capability Sandboxing vs. C/C++ FFI — [STATUS: residual — check seal + process-local FFI grant In; full OS dlopen / C TCB residual]:** Path-A `&UnsafeFFICap` seal exists; unrestricted FFI not claimed.
 
 ---
 
@@ -81,4 +81,4 @@ At the bleeding edge of systems design, extreme features often contradict each o
 * 📄 **Full Specification**: `SPEC.md`
 * ⚙️ **Compiler Source**: `openOODA/ooda`
 * 🧪 **QA Integration Suite**: `openOODA/qa`
-* 🌐 **Interactive Web Playground**: `openOODA/docs/index.html`
+* 🌐 **Interactive Web Playground — [STATUS: residual / path-A refuse; landing only, not full interactive playground]:** `openOODA/docs/index.html`

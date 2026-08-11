@@ -22,12 +22,12 @@
 * **Algebraic Data Types & Exhaustive Matching**: No `null` or `undefined`. Optionality and errors use `Option[T]` and `Result[T, E]`. Exhaustive pattern matching is strictly enforced by the compiler.
 * **Strong Static Typing with Local Inference**: Inferred types keep syntax clean while maintaining 100% type safety.
 * **Traits & Composition over Inheritance**: Interfaces/traits define decoupled behaviors without class hierarchy trees.
-* **Refinement Types**: Value bounds verified at compile-time or upon construction:
+* **Refinement Types** — **[STATUS: residual — full compile-time refinements not shipped]**: Goal: value bounds verified at compile-time or upon construction:
   ```ooda
   type Port = Int where 1..=65535
   type NonEmptyString = String where self.len() > 0
   ```
-* **Strong Newtypes**: Prevent accidental mixing of underlying primitive types:
+* **Strong Newtypes** — **[STATUS: residual — `newtype` product surface not claimed as full DESIGN]**: Goal: prevent accidental mixing of underlying primitive types:
   ```ooda
   type UserId = newtype u64
   type PostId = newtype u64
@@ -37,12 +37,12 @@
 
 ## 3. Built-in Guard Rails & Security
 
-* **Capability-Based Security (Effect System)**: Functions must explicitly take capability parameters (`NetCap`, `FsCap`) to perform I/O, preventing unauthorized disk/network access by untrusted packages or AI code:
+* **Capability-Based Security (Effect System)**: Process-local capability seals (Fs/Sys/Env/Net/Time/Rand/Alloc + ThreadCap/GpuCap) are alpha product. **[STATUS: residual — full DESIGN cap ladder / biometric not shipped]**:
   ```ooda
   fn fetch_user(net: &NetCap, url: String) -> Result[User, Error]
   ```
-* **Must-Use Enforcement**: Unhandled `Result`, `Option`, or resource instances trigger hard compiler errors.
-* **No Null/Wild Pointers**: All references are checked; scope-based cleanup ensures zero leaks.
+* **Must-Use Enforcement**: Unhandled `Result`, `Option`, or resource instances trigger hard compiler errors. **[STATUS: residual — depth/coverage not full DESIGN]**
+* **No Null/Wild Pointers** — **[STATUS: residual — ARC/RAII floors In; not proven elimination of all memory-safety classes]**: References/cleanup aim zero leaks; full "impossible" claim residual.
 
 ---
 
@@ -57,8 +57,8 @@
       return a / b
   }
   ```
-* **Executable Doc-Tests (`@example`)**: Examples inside function documentation are compiled as mandatory unit tests.
-* **Inline `verify` Blocks**: Co-located tests declared right next to function bodies:
+* **Executable Doc-Tests (`@example`)** — **[STATUS: residual]**: Goal: examples inside function documentation compiled as mandatory unit tests.
+* **Inline `verify` Blocks**: Pure verify path is alpha product. **[STATUS: residual — full co-located DESIGN surface depth residual]**:
   ```ooda
   fn parse_user_id(raw: String) -> Result[UserId, ParseError] { ... }
 
@@ -66,21 +66,21 @@
       assert_eq!(parse_user_id("  123 "), Ok(UserId(123)))
   }
   ```
-* **Automated Fuzzing (`#[auto_fuzz]`)**: Built-in test runner automatically stress-tests functions against boundary inputs (null bytes, `MAX_INT`, empty arrays, etc.).
+* **Automated Fuzzing (`#[auto_fuzz]`)** — **[STATUS: residual — path-A pure domains In; `#[auto_fuzz]` attr / full boundary suite residual]**: Built-in pure fuzz domains (int/bool/string/list) exist; full DESIGN auto-fuzz marketing residual.
 
 ---
 
 ## 5. Memory & Concurrency Model
 
-* **Deterministic Scope Management (RAII + Region Arenas)**: No global Stop-The-World garbage collection pauses. Automatic memory and resource cleanup at block boundaries.
-* **Structured Concurrency**: Async background tasks are strictly bound to parent scope trees—child tasks can never leak or outlive their parent execution block.
-* **Zero Data Races**: Thread-shared data must be immutable (`Shared[T]`) or transferred via isolated message channels.
+* **Deterministic Scope Management (RAII + Region Arenas)** — **[STATUS: residual — ARC free-on-ref0 In; full region-arena / 0ms-GC marketing residual]**: No global STW GC as product story; DESIGN region arenas residual.
+* **Structured Concurrency** — **[STATUS: residual / path-A refuse for full actor/channel runtime]**: Goal: async tasks bound to parent scopes. Alpha: channels/actors free-name refuse; ThreadCap partial.
+* **Zero Data Races** — **[STATUS: residual — not proven compile-time zero races on full concurrency product]**: Message-passing / Shared[T] full DESIGN residual.
 
 ---
 
 ## 6. AI & Tooling Integration ("Vibe-Coding Guard Rails")
 
-* **Machine-Readable Diagnostics (`--json-errors`)**: Compiler emits structured JSON errors containing line locations, error codes, and **AST diff patches** for AI agents to auto-fix code instantly.
+* **Machine-Readable Diagnostics (`--json-errors`)**: Structured JSON errors + E_CAP fix hints are alpha product. **[STATUS: residual — multi-code / 1-turn auto-fix not shipped]**
 * **Compile-Time Code Execution (`comptime`)** — **[STATUS: residual]**: Type generation, schema validation, and meta-programming executed using standard language logic at build time (no macro black magic). Not a working product feature on alpha (`macro_expand`/`ast_macro` free-name refuse).
 
 ---
@@ -88,10 +88,10 @@
 ## 7. Unified Developer Toolchain
 
 Product CLI (`ooda`) — **[STATUS: residual — compiler + CLI shipped; pkg/LSP/registry residual; not a full single-binary toolchain]**:
-* `ooda build` / `ooda run` / `ooda check` — Compiler & runner (shipped alpha)
-* `ooda test` — Integrated unit, contract, doc, and fuzz test runner
-* `ooda fmt` — Zero-config code formatter
-* `ooda lint` — Static analysis & rule enforcement
+* `ooda build` / `ooda run` / `ooda check` — Compiler & runner (shipped alpha; **Backend-C product floor**)
+* `ooda test` — Integrated unit, contract, doc, and fuzz test runner (path-A pure verify/fuzz In)
+* `ooda fmt` — **[STATUS: residual — fmt depth not claimed full]** Zero-config code formatter goal
+* `ooda lint` — **[STATUS: residual]** Static analysis & rule enforcement goal
 * `ooda lsp` — **[STATUS: residual]** Language Server Protocol goal for IDEs (not a shipping daemon on alpha pin)
 * `ooda pkg` — **[STATUS: residual]** Built-in dependency manager (not shipped)
 
@@ -110,9 +110,10 @@ Product CLI (`ooda`) — **[STATUS: residual — compiler + CLI shipped; pkg/LSP
 
 ## 9. Compilation Target Architecture
 
-* **LLVM IR Backend**: Compiles directly to low-level LLVM Intermediate Representation, generating optimized native machine code (x86_64, ARM64/Apple Silicon, RISC-V) comparable to Rust and C++.
-* **WebAssembly (WASM) Target**: Compiles to WASM/WASI natively, allowing OODA code to execute securely inside browsers, Cloudflare Workers, or edge runtimes.
-* **Instant JIT Mode (`ooda run`)**: Includes a fast JIT/Interpreter frontend for instant execution during rapid AI development and testing iterations, switching to LLVM for release builds.
+* **Product floor: Backend-C** (`emit-c` + `chs_rt` + gcc) — shipping alpha native path.
+* **LLVM IR Backend** — **[STATUS: residual — experimental smoke; not default product/release path; not full self-host LLVM]**: `emit-llvm` smokes exist; do not treat as shipping production backend comparable to Rust/C++.
+* **WebAssembly (WASM) Target** — **[STATUS: residual — emit/execute path-A; not production browser/edge floor]**:
+* **Instant JIT Mode (`ooda run`)** — **[STATUS: residual — not JIT; native/BC run; sub-second marketing residual (`OODA_SPEED.md`)]**: Product `ooda run` is real; DESIGN "fast JIT then LLVM release" story residual.
 
 ---
 
@@ -120,8 +121,8 @@ Product CLI (`ooda`) — **[STATUS: residual — compiler + CLI shipped; pkg/LSP
 
 A modern language cannot succeed in isolation. OODA is built to seamlessly talk to existing software ecosystems:
 
-1. **Zero-Cost C-ABI FFI (C / C++ / Rust)**:
-   * Direct, zero-overhead import of native `.so`, `.dylib`, or `.dll` libraries without wrapper boilerplate:
+1. **Zero-Cost C-ABI FFI (C / C++ / Rust)** — **[STATUS: residual — Cap vs FFI seal In; unrestricted zero-cost FFI / Rust interop LTO not shipped]**:
+   * Goal: direct import of native `.so`/`.dylib`/`.dll` without wrapper boilerplate. Alpha: process-local FFI grant + residual OS `dlopen`/full C TCB:
    ```ooda
    extern "C" fn sqlite3_open(filename: *const char, db: **sqlite3) -> i32
    ```
@@ -140,9 +141,9 @@ A modern language cannot succeed in isolation. OODA is built to seamlessly talk 
 
 Because OODA is a new language, LLMs will have zero pre-training examples in their training corpus. OODA solves this using **Zero-Shot AI Adaptability**:
 
-1. **Ultra-Compact Grammar Specification (`ooda.grammar`)**:
-   * The complete syntax and core grammar can be expressed in an EBNF grammar file under **2,000 tokens (~4 pages of text)**.
-   * Any AI agent can ingest the entire language grammar in its system prompt without overloading context memory.
+1. **Ultra-Compact Grammar Specification (`ooda.grammar`)** — **[STATUS: residual — living EBNF present; "under 2,000 tokens" not a hard product gate]**:
+   * Goal: complete syntax/core grammar expressible in a small EBNF for agent prompts.
+   * Living `ooda.ebnf` exists; alignment residual (`EBNF_ALIGN.md`).
 
 2. **Grammar-Constrained Decoding Support** — **[STATUS: file present; sampler integration not shipped]**:
    * Official `ooda.gbnf` grammar file exists under `ooda/ooda.gbnf`. Goal: LLM samplers (like Gemini, llama.cpp, vLLM) can use this grammar file to force the LLM to output 100% syntactically valid OODA code on the first attempt. Sampler integration path is not a product feature on alpha.
@@ -162,7 +163,7 @@ Because OODA is a new language, LLMs will have zero pre-training examples in the
      ```
 
 5. **Self-Describing Standard Library API (`ooda reflect`)**:
-   * AI agents can run `ooda reflect <module>` to get concise, token-optimized API signatures and contract specifications directly from the standard library in real time.
+   * AI agents can run `ooda reflect <module>` to get concise, token-optimized API signatures (parse-only alpha). **[STATUS: residual — typed/import-graph depth residual]**
 
 ---
 
@@ -173,25 +174,24 @@ Inspired by real-world AI pair-programming best practices (such as keeping files
 1. **Zero-Boilerplate File-System Modules**:
    * Drop any `.oo` file into a directory and it is automatically a module (e.g. `src/auth/jwt.oo` -> `auth::jwt`). No manual `mod jwt;` declaration trees needed.
 
-2. **Compiler Modular-Size Lints (`max_file_lines`)**:
-   * Built-in linter warns when a single source file exceeds ~256–300 lines.
-   * Encourages AI agents and developers to split code at clean, functional boundaries automatically.
+2. **Compiler Modular-Size Lints (`max_file_lines`)** — **[STATUS: residual — soft convention / monofile debt remains; not hard product gate]**:
+   * Goal: built-in linter warns when a single source file exceeds ~256–300 lines.
 
 3. **Isolated Functional Units**:
    * Each small file encapsulates its types, logic, capability requirements, and co-located `verify` tests in a single, tight context block that fits comfortably inside an LLM's prompt window.
 
-4. **Granular Symbol Reflection**:
-   * AI agents can request just a single function's context (`ooda context src/auth/jwt.oo#verify_token`) rather than feeding an entire large repository into the prompt.
+4. **Granular Symbol Reflection** — **[STATUS: residual — full `ooda context path#symbol` product depth residual]**:
+   * Goal: request a single function's context rather than an entire large repository.
 
-5. **Module Type Outlines (`ooda outline`) — 90% Token Reduction**:
-   * When an AI agent needs to understand a dependency or sibling file, `ooda outline src/user.oo` returns **only type signatures, contracts, and public APIs**, stripping function bodies completely.
-   * Reduces token consumption by **80-90%** when referencing codebase APIs.
+5. **Module Type Outlines (`ooda outline`) — [STATUS: residual — outline ships parse-only; "90% token reduction" not measured]**:
+   * When an AI agent needs to understand a dependency or sibling file, `ooda outline src/user.oo` returns type signatures / public surface (alpha parse-only).
+   * **80–90% token reduction** is aspirational marketing, not a benchmarked product number.
 
 6. **Incremental AST Diff Edits (`ooda patch`)** — **[STATUS: aspirational; node-id patches residual]**:
    * Instead of generating an entire 256-line file to update 3 lines, AI agents emit surgical AST node patches or diffs (`ooda patch <node_id>`). Product patch path is In; line-range / node_id residual. Token-cut "90%" is aspirational, not measured.
 
-7. **Token-Optimized Diagnostics (`--json-minimal`)**:
-   * Compiler errors are formatted into compact, token-dense JSON (stripping boilerplate formatting) so agents process error feedback using minimal tokens.
+7. **Token-Optimized Diagnostics (`--json-minimal`)** — **[STATUS: residual]**:
+   * Goal: compact token-dense JSON errors; full `--json-minimal` surface residual if not dual-green product.
 
 ---
 
@@ -200,7 +200,7 @@ Inspired by real-world AI pair-programming best practices (such as keeping files
 OODA implements a multi-layered, zero-trust security model across memory, supply chain, input validation, and AI execution:
 
 1. **Capability-Based Sandboxing (Supply Chain & Dependency Security)**:
-   * Third-party packages and imported modules **cannot access disk, network, environment variables, or spawn processes by default**.
+   * Process-local default-deny capability seals are alpha product. **[STATUS: residual — not full OS isolation / package registry auditing]**
    * Access to system resources requires explicit capability tokens passed down from `main()`:
      ```ooda
      // This function CANNOT make network calls or touch disk
@@ -211,9 +211,9 @@ OODA implements a multi-layered, zero-trust security model across memory, supply
      ```
    * If a malicious package tries to steal `~/.ssh/id_rsa` or env secrets, the compiler rejects it because no `FsCap` or `EnvCap` token was passed to it.
 
-2. **Memory Safety (Eliminating Exploits)**:
-   * **No Null Pointers**: Eliminates NullPointerDereference vulnerability class.
-   * **Scope-Based RAII & Automatic Bounds Checking**: Array indexing is bounds-checked at compile-time or runtime. Memory is managed deterministically, eliminating Use-After-Free, Double-Free, and Buffer Overflow attacks.
+2. **Memory Safety (Eliminating Exploits)** — **[STATUS: residual — ARC/RAII floors In; not proven compile-time elimination of UAF/overflow classes]**:
+   * **No Null Pointers**: Design goal to shrink NullPointerDereference class.
+   * **Scope-Based RAII & Automatic Bounds Checking**: Bounds/RAII aims shrink UAF/double-free/overflow; full mechanical elimination residual on alpha.
 
 3. **Injection Prevention (SQLi & Command Injection)**:
    * Structured system execution APIs require string arrays rather than raw command strings, blocking shell injection by design:
@@ -222,36 +222,34 @@ OODA implements a multi-layered, zero-trust security model across memory, supply
      process::exec(sys_cap, "git", ["clone", user_input])
      ```
 
-4. **AI Code Containment (Prompt Injection Defense)**:
-   * If an AI model is prompt-injected or hallucinates malicious code, OODA's static capability system and sandboxed JIT runtime trap the execution before it can read system files or execute rogue network calls.
+4. **AI Code Containment (Prompt Injection Defense)** — **[STATUS: residual — caps In; "sandboxed JIT runtime" not product (no shipping JIT)]**:
+   * Capability default-deny traps unauthorized I/O. Do not claim a sandboxed JIT containment product path.
 
 5. **Zero-Day Vulnerability Defense Architecture**:
    * **Default-Deny Capability Trapping**: Even if a 3rd-party dependency contains an unpatched zero-day exploit, the attacker **cannot access disk, network, environment secrets, or shell commands** unless the top-level `main()` function explicitly passed capability handles (`&FsCap`, `&NetCap`) to that specific module. The zero-day is neutralized inside a capability-less sandbox.
    * **[STATUS: residual goal]** **Memory-corruption class defense**: Industry research (Google/Microsoft) attributes a large share of severe zero-days to memory corruption (buffer overflow, UAF, double-free, null deref). openOODA aims to shrink that class via RAII/ARC, bounds checks, and capability defaults — **not** a proven compile-time elimination of ~70% of zero-days on this alpha. Path-A product floors ship; full heap sandbox / dual-green self-host residual. See `PM.md` and `bootstrap/*RESIDUAL*.md`.
-   * **Task-Isolated Blast Radius**: Memory is partitioned into isolated task scopes. If a zero-day exploit causes an unrecoverable fault inside a worker task, the supervisor tree kills the isolated task scope without leaking global state or compromising sibling tasks.
+   * **Task-Isolated Blast Radius** — **[STATUS: residual — supervisor/actor trees not shipping product]**: Goal: kill isolated task scope without leaking global state.
 
 ---
 
 ## 14. High-Performance Engine Architecture
 
-OODA is designed to achieve **C / C++ / Rust level execution speeds** while keeping development ergonomic:
+OODA aims at competitive native speeds; alpha product floor is **Backend-C**, not full DESIGN dual-engine marketing:
 
-1. **Zero Garbage Collection (0ms Pause Times)**:
-   * Uses scope-based RAII and **Region Arena Allocations**. Memory allocated during an HTTP request or game frame is deallocated all at once in a single `O(1)` pointer reset, eliminating Stop-The-World latency spikes.
+1. **Zero Garbage Collection (0ms Pause Times)** — **[STATUS: residual — ARC free-on-ref0 In; region-arena / 0ms GC marketing residual]**:
+   * Uses scope-based RAII and (goal) region arenas. DESIGN "O(1) pointer reset / 0ms STW" full claim residual.
 
-2. **LLVM IR Optimizer & Bare-Metal Compilation**:
-   * Production builds (`ooda build --release`) compile to LLVM IR, leveraging industrial-grade Link-Time Optimization (LTO), dead-code elimination, and auto-vectorization (SIMD / AVX-512 / ARM Neon).
+2. **LLVM IR Optimizer & Bare-Metal Compilation** — **[STATUS: residual — LLVM experimental; bare-metal refuse; Backend-C is product release path]**:
+   * Do not treat `ooda build --release` as shipping industrial LLVM LTO/AVX product. Bare-metal residual.
 
-3. **Monomorphized Generics & Value Types**:
-   * Structs and primitives are contiguous value types on the stack or memory arena. No pointer chasing or heap boxing (`java.lang.Integer` style overhead). Generics generate specialized native code per type.
+3. **Monomorphized Generics & Value Types** — **[STATUS: residual — depth not full DESIGN monomorph product claim]**:
 
-4. **Zero-Cost Abstractions & Strippable Contracts**:
-   * Higher-order functions (`map`, `filter`), traits, and pattern matching compile down to direct machine jumps and raw loops.
-   * `requires` and `ensures` contracts run as inline assertions in debug/test builds, and are optimized out in maximum performance production builds.
+4. **Zero-Cost Abstractions & Strippable Contracts** — **[STATUS: residual — simple contracts runtime In; full zero-cost / strip-in-release product residual]**:
+   * `requires`/`ensures` run in development; complex contracts fail-closed. Full "optimized out in production" residual.
 
-5. **Dual-Engine Execution**:
-   * **Development (`ooda run`)**: Instant JIT interpreter for sub-second edit/test loops during AI vibe coding.
-   * **Production (`ooda build --release`)**: Fully optimized native binary with zero runtime overhead.
+5. **Dual-Engine Execution** — **[STATUS: residual — no shipping JIT; LLVM not default release; Backend-C product]**:
+   * **Development (`ooda run`)**: Product run path real; not "instant JIT interpreter."
+   * **Production (`ooda build --release`)**: Native via Backend-C product floor; full DESIGN LLVM release residual.
 
 ---
 
@@ -259,25 +257,20 @@ OODA is designed to achieve **C / C++ / Rust level execution speeds** while keep
 
 OODA integrates structured logging, telemetry, and debugging directly into the core language runtime and toolchain:
 
-1. **Zero-Config Structured Logging & Spans**:
-   * Built-in `log::info!`, `log::warn!`, and `log::error!` macros emit structured telemetry (JSON or terminal pretty-print) with zero external dependencies.
-   * Async tasks automatically track **tracing spans**, reporting function execution duration, active capability tokens, and parent/child task IDs.
+1. **Zero-Config Structured Logging & Spans** — **[STATUS: residual — full log macros / async tracing spans not claimed product]**:
+   * Goal: built-in `log::info!` / spans with zero external dependencies.
 
-2. **AI-Enriched Stack Traces**:
-   * Failures emit clear, structured stack traces containing:
-     * Clickable source line URIs (`file:///path/to/file.oo:42`).
-     * Exact function argument values passed at the time of failure.
-     * Active capability permissions (`FsCap`, `NetCap`).
-     * Machine-readable AST diff fix suggestions.
+2. **AI-Enriched Stack Traces** — **[STATUS: residual — full arg-value / AST-fix stack product residual]**:
+   * Failures emit structured diagnostics where product paths exist; full DESIGN stack-trace marketing residual.
 
-3. **Time-Travel Replay Debugging (`ooda replay`)**:
-   * In dev/test mode, OODA can record input streams and scope executions. If a test or contract fails, running `ooda replay <test_id>` replays the exact execution step-by-step deterministically for instant root-cause analysis.
+3. **Time-Travel Replay Debugging (`ooda replay`)** — **[STATUS: residual / not shipped]**:
+   * Goal: record/replay failed tests deterministically. Not a shipping product CLI path.
 
-4. **Zero-Overhead Production Probes**:
-   * `log::debug!` statements and tracing hooks are compiled out completely in `--release` builds unless explicitly enabled via telemetry feature flags.
+4. **Zero-Overhead Production Probes** — **[STATUS: residual]**:
+   * Goal: `log::debug!` compiled out in `--release` unless enabled.
 
-5. **Built-in Performance Profiler (`ooda profile`)**:
-   * Single command (`ooda profile my_app`) generates CPU flamegraphs, memory allocation heatmaps, and function latency reports without requiring external tools like `perf` or `valgrind`.
+5. **Built-in Performance Profiler (`ooda profile`)** — **[STATUS: residual / not shipped]**:
+   * Goal: single-command flamegraphs without external `perf`/`valgrind`. Not product CLI on alpha.
 
 ---
 
@@ -291,7 +284,7 @@ OODA was designed by deconstructing programming language design down to fundamen
 
 ### 2. Cognition & LLM Context Are Structurally Finite
 * **Axiom**: Both human working memory and LLM prompt windows degrade as context size increases.
-* **First Principle**: The language grammar must fit in <2,000 tokens, and source files are naturally soft-capped at ~256 lines with zero-boilerplate file-system module routing.
+* **First Principle**: The language grammar must fit in <2,000 tokens, and source files are naturally soft-capped at ~256 lines with zero-boilerplate file-system module routing. **[STATUS: residual — soft goals; monofile debt + EBNF align residual]**
 
 ### 3. Security Is an Invariant of Capabilities, Not Input Sanitization
 * **Axiom**: You cannot secure code by trying to sanitize every string; you secure code by denying unauthorized capabilities at the type level.
@@ -299,11 +292,11 @@ OODA was designed by deconstructing programming language design down to fundamen
 
 ### 4. Memory Lifecycles Follow Execution Scopes
 * **Axiom**: Most application memory belongs to a request, a task, or a function block. Garbage collectors waste CPU trying to discover lifecycle patterns that execution scopes already define.
-* **First Principle**: Scope-based RAII + Region Arenas achieve $O(1)$ instant deallocation with 0ms GC pause spikes and C-level performance.
+* **First Principle**: Scope-based RAII + Region Arenas achieve $O(1)$ instant deallocation with 0ms GC pause spikes and C-level performance. **[STATUS: residual — ARC floors In; full 0ms/region marketing residual]**
 
 ### 5. Feedback Velocity Dictates Engineering Quality
 * **Axiom**: The shorter the loop between writing code, running tests, and receiving actionable diagnostics, the higher the software quality.
-* **First Principle**: Dual JIT/LLVM engines + machine-readable AST diff diagnostics + a zero-config single binary toolchain (`ooda`).
+* **First Principle**: Product check/build/run + JSON diagnostics + compiler/CLI binary. **[STATUS: residual — dual JIT/LLVM + full single-binary toolchain marketing residual]**
 
 ---
 
@@ -320,15 +313,17 @@ OODA was designed by deconstructing programming language design down to fundamen
    * `v0.9.0-rc` — **[STATUS: not claimed]** full LLVM + capability verifier goals.
    * `v1.0.0-stable` — future public stable goal.
 
-3. **Batteries-Included Standard Library (`std`)**:
-   * **Core Core**: HTTP/Web server, JSON/MessagePack, Cryptography, UTF-8 String, Async Task Runtime, File System, and Math primitives built-in. No need for 50 micro-dependencies just to start a web server.
+3. **Batteries-Included Standard Library (`std`)** — **[STATUS: residual — growing path-A std; not full "HTTP server + no micro-deps" DESIGN claim]**:
+   * Goal: HTTP/JSON/crypto/async/fs/math built-in. Alpha std is partial with residual packs honest.
 
-4. **Decentralized & Lockfile Package Governance (`ooda.lock`)**:
-   * Cryptographically hashed lockfiles (`ooda.lock`) guarantee reproducible builds.
-   * Supports Git repositories, IPFS, or central registries with strict capability auditing during package installation.
+4. **Decentralized & Lockfile Package Governance (`ooda.lock`)** — **[STATUS: residual — pkg/registry/IPFS not shipped]**:
+   * Goal: cryptographically hashed lockfiles and capability-audited installs. Alpha: `ooda pkg` residual.
 
-5. **Process Resilience & Actor Supervisor Trees**:
-   * Inspired by Erlang/BEAM: Isolated task scopes act as micro-actors. If a child task encounters an unrecoverable failure, supervisor strategies (`one_for_one`, `rest_for_one`) restart only the affected task without bringing down the entire server process.
+5. **Process Resilience & Actor Supervisor Trees** — **[STATUS: residual / path-A refuse for actor_spawn; not Erlang supervisor product]**:
+   * Goal: isolated task scopes with `one_for_one` / `rest_for_one`. Alpha free-name refuse; full runtime residual.
 
 6. **Automated Migration & Editions (`ooda migrate`)** — **[STATUS: disabled residual]**:
    * Goal: Rust-style edition codemods. **Alpha:** `ooda migrate` is **fail-closed disabled** (SPRINT Issue #14). A prior `sed` that rewrote every `let x =` into `let mut x =` was unsafe and is removed. Do not run migrate expecting a safe codemod until an AST-based tool ships.
+
+7. **Standards / RPC / conftest / benchmark numbers** — **[STATUS: residual — no shipping RPC/conftest suite or published benchmark board as product claims]**:
+   * Do not treat unspecified standards conformance, RPC floors, or benchmark percentages in DESIGN vision as alpha product without residual packs / smokes.
