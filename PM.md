@@ -22,11 +22,11 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `c17525b` — **Phase 1–2 build-ready deepen** |
+| Tip (board) | `ooda` `8b4aad9` — **M161 library residuals path A** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
-| Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153). Full DESIGN impl still residual-named. No fake full moonshot. |
+| Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153); library residuals **path A seal/stub** (M161). Full DESIGN impl still residual-named. No fake full moonshot. |
 
 ---
 
@@ -73,7 +73,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Item | Status | Notes |
 |---|------|--------|--------|
-| 3.1 | **Unified capability sandboxing** (`&NetCap`, `&FsCap`, …; biometric goal) | **done** (alpha) | Process-local seals **In** (check+emit+runtime forge deny) for Fs/Sys/Env/Net/Time/Rand/Alloc; floor smoke green. Residual: biometric/crypto object-caps, OS isolation, Cap vs FFI (`STATIC_CAPS.md`, `BIOMETRIC_CAPS.md`) |
+| 3.1 | **Unified capability sandboxing** (`&NetCap`, `&FsCap`, …; biometric goal) | **done** (alpha) | Process-local seals **In** for Fs/Sys/Env/Net/Time/Rand/Alloc + **ThreadCap/GpuCap** (M161 grant+forge deny); floor smokes green. Residual: biometric/crypto object-caps, OS isolation, Cap vs FFI (`STATIC_CAPS.md`, `BIOMETRIC_CAPS.md`) |
 | 3.2 | **Time & entropy sandboxing** (`&TimeCap`, `&RandCap`) | **done** (alpha) | Process-local Time/Rand seals **In** (now_ms/sleep_ms/random/seed + forge deny); floor smoke green. Residual: not CSPRNG / attested clock (`TIME_ENTROPY.md`) |
 | 3.3 | **Memory quotas / heap sandboxing** (`&AllocCap<…>`) | **done** (alpha) | Process-local AllocCap helpers + ambient List quota fail-closed; floor smoke green. Residual: not OS rlimit / typed `&AllocCap<N>` (`MEMORY_QUOTA.md`) |
 | 3.4 | **CPU quotas / execution sandboxing** (`#[MaxCycles]`) | **done** (alpha) | Path A **In**: `// MAX_CYCLES: N` (multi-digit) + while + range-for + recursion/shared `__oo_mc`; product-floor smokes green. Residual: OS cgroup / `#[MaxCycles]` attr / static WCET (`MAX_CYCLES.md`) |
@@ -94,7 +94,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 4.1 | **Multi-target engine architecture** | **done** (alpha) | C floor + BC/LLVM/WASM path-A smokes **In**; residual pack `MULTI_TARGET.md` — not full multi-target DESIGN |
 | 4.1.1 | Development bytecode VM (`ooda run` as VM in DESIGN) | **done** (alpha) | M6/M11 run path **In**; residual pack `BC_VM_DEPTH.md` — not JIT |
 | 4.1.2 | Production LLVM (`emit-llvm` / build LLVM) | **done** (alpha) | **M119 + M129:** CHS×4 + multi-module parity + Secret dual-path; execute + fail-closed smokes green. Residual: self-host / full C-surface (`LLVM_SMOKE.md`) |
-| 4.1.3 | Universal GPU/NPU (PTX, ROCm, SPIR-V, Metal) | **done** (alpha) | Path A **In**: `emit_ptx`/`emit_spirv`/`gpu_launch` free-name refuse. Residual: GPU/NPU backends |
+| 4.1.3 | Universal GPU/NPU (PTX, ROCm, SPIR-V, Metal) | **done** (alpha) | Path A **In**: `emit_ptx`/`emit_spirv` free-name refuse; `gpu_launch` sealed under `&GpuCap` + runtime residual Err (M161). Residual: real GPU/NPU backends |
 | 4.1.4 | Direct WebAssembly (`--target wasm`) | **done** (alpha) | Emit+execute path A **In** (`wasm_emit`/`wasm_execute` green); residual pack `WASM_SMOKE.md` — not production browser floor |
 | 4.1.5 | Bare-metal embedded (`#![no_std]`) | **done** (alpha) | Path A **In**: `bare_metal_init` free-name refuse. Residual: real `#![no_std]` floor |
 | 4.2 | **Native hot-code reloading** | **done** (alpha) | Path A **In**: `hot_reload`/`live_reload` free-name refuse. Residual: hot-reload product |
@@ -114,8 +114,8 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 5.1 | **100% self-hosted ecosystem** (compiler, pkg, LSP, testing, registry) | **done** (alpha) | 5.1a pure compiler+CLI + seed=tip pure multi **In**; residual pack `PKG_ECOSYSTEM.md` — pkg/LSP/registry residual |
 | 5.1a | Pure product compiler + CLI | **done** (alpha) | Seed + gcc; zero product `.rs` |
 | 5.2 | **Verifiable web of code (zero-trust packages)** | **done** (alpha) | Basic zero-trust boundary rules **In**; deeper registry residual |
-| 5.3 | **Fearless concurrency** (message passing + caps) | **done** (alpha) | Path A **In**: `channel_new`/`actor_spawn` free-name refuse (+ sealed async internals). Residual: fearless concurrency runtime |
-| 5.4 | **Standard library philosophy** (`std::core` vs `std::os`) | **done** (alpha) | M121 complete — stdlib split into `std::core` (no OS deps) and `std::os` (requires Caps token); residual pack `STD_SPLIT.md` / smoke |
+| 5.3 | **Fearless concurrency** (message passing + caps) | **done** (alpha) | Path A **In**: `channel_new`/`actor_spawn` free-name refuse; **ThreadCap** mutex/thread_spawn seal + residual Err (M161). Residual: OS threads / message-passing runtime |
+| 5.4 | **Standard library philosophy** (`std::core` vs `std::os`) | **done** (alpha) | M121 split + **M161** growth: Result assert_eq, MD5/SHA1, semver, markup subsets, archive magic-detect, net/process/thread wrappers; residual packs honest |
 | 5.5 | **Narrative diagnostics** | **done** (alpha) | Code-keyed `fix_hint` + E_SECRET/E_MAX_CYCLES/E_CAP/…; `json_errors_smoke` green. Residual: AST auto-apply (`AST_AUTOFIX.md`) |
 | 5.6 | **Human-in-the-loop (`hitl`) testing** | **done** (alpha) | Path A **In**: `// HITL: pause` non-interactive deny (E_HITL) + `verify_human` refuse. Residual: interactive harness |
 | 5.7 | **Universal native LSP** | **done** (alpha) | Path A **In**: `lsp_serve` free-name refuse. Residual: native LSP product |
@@ -158,6 +158,7 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M161 | Library residuals path A | **PASS** | Result assert_eq; Thread/Gpu caps; MD5/SHA1; net/process residual seals; pure semver/markup/archive; Byte/&str residual honesty; dual-run rails green; beta not claimed |
 | M154 | AI-native agent loop floor | **PASS** | outline+reflect+E_CAP suggested_fix+patch; `ai_native_product_floor_smoke` green; auto-apply residual |
 | M153 | Residual free-name path A (all moonshots) | **PASS** | check_residual default-deny; residual_path_a_floor_smoke green |
 | M152 | Cap vs FFI path A (6.3) | **PASS** | `&UnsafeFFICap` check seal for dlopen/host-FFI free names; emit residual; `cap_ffi_product_floor_smoke` green; full C TCB residual |
