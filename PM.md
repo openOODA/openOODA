@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `5670be8` — **M154 AI-native agent loop floor** |
+| Tip (board) | `ooda` `727214c` — **M155–M157 deepen floors** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -36,7 +36,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | Item | Status | Notes |
 |------|--------|--------|
-| AI-native systems language | **done** (alpha) | Agent loop floor **In**: outline + reflect + json-errors (`fix_hint` + E_CAP `suggested_fix`) + patch replace_fn (`ai_native_product_floor_smoke`). Residual: AST auto-apply, telepathic, hive-mind |
+| AI-native systems language | **done** (alpha) | Agent loop + **E_CAP `ooda fix` structural apply (M155)** + outline/reflect/patch. Residual: multi-code auto-apply, telepathic, hive-mind |
 | Capability-secure | **done** (alpha) | Process-local seals **In** (3.1–3.3); not full DESIGN cap ladder / biometric / Cap vs FFI residual |
 | Self-testing | **done** (alpha) | Path A pure fuzz + pure verify **In** (3.6/M50); full DESIGN contract proof residual |
 | Sub-second feedback | **done** (alpha) | Product check/build/run loops real; sub-ms marketing residual (`OODA_SPEED.md`) |
@@ -61,7 +61,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Item | Status | Notes |
 |---|------|--------|--------|
-| 2.1 | **Surgical AST patching** (`--json-errors`, AST fix suggestions) | **done** (alpha) | JSON diags + `fix_hint` **In**; E_CAP `kind`+`suggested_fix` agent surface; free-safe capture; floors green. Residual: automatic AST apply (`AST_AUTOFIX.md`) |
+| 2.1 | **Surgical AST patching** (`--json-errors`, AST fix suggestions) | **done** (alpha) | JSON diags + `ooda fix` E_CAP structural apply **In** (M155); floors green. Residual: multi-code AST auto-apply |
 | 2.2 | **Token-minimized APIs** (`ooda outline`, `ooda reflect`) | **done** (alpha) | M1 pure path + smoke; parse-only; depth residual (typed/import-graph outline) |
 | 2.2b | **Surgical `patch replace_fn`** (product agent edit) | **done** (alpha) | Product patch path **In**; line-range / node_id residual |
 | 2.3 | **Intent-driven compilation (telepathic AST)** | **done** (alpha) | Path A **In**: `telepathic_compile`/`intent_compile` free-name refuse. Residual: LLM intent compile |
@@ -117,7 +117,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 5.3 | **Fearless concurrency** (message passing + caps) | **done** (alpha) | Path A **In**: `channel_new`/`actor_spawn` free-name refuse (+ sealed async internals). Residual: fearless concurrency runtime |
 | 5.4 | **Standard library philosophy** (`std::core` vs `std::os`) | **done** (alpha) | M121 complete — stdlib split into `std::core` (no OS deps) and `std::os` (requires Caps token); residual pack `STD_SPLIT.md` / smoke |
 | 5.5 | **Narrative diagnostics** | **done** (alpha) | Code-keyed `fix_hint` + E_SECRET/E_MAX_CYCLES/E_CAP/…; `json_errors_smoke` green. Residual: AST auto-apply (`AST_AUTOFIX.md`) |
-| 5.6 | **Human-in-the-loop (`hitl`) testing** | **done** (alpha) | Path A **In**: `verify_human` free-name refuse (E_RESIDUAL). Residual: interactive harness / agent pause-resume |
+| 5.6 | **Human-in-the-loop (`hitl`) testing** | **done** (alpha) | Path A **In**: `// HITL: pause` non-interactive deny (E_HITL) + `verify_human` refuse. Residual: interactive harness |
 | 5.7 | **Universal native LSP** | **done** (alpha) | Path A **In**: `lsp_serve` free-name refuse. Residual: native LSP product |
 
 ---
@@ -128,7 +128,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 |---|------|--------|--------|
 | 6.1 | Metamorphic binaries vs deterministic builds | **done** (alpha) | Path A **In**: input_fp (M20) + `metamorphic_vs_det` free-name refuse. Residual: true bit-identical vs metamorphic product tension |
 | 6.2 | 0ms GC (ARC) vs temporal memory | **done** (alpha) | ARC free path A **In** + residual pack `ARC_TEMPORAL_TENSION.md` / smoke — temporal side residual |
-| 6.3 | Capability sandboxing vs C/C++ FFI | **done** (alpha) | Path A **In**: bare `dlopen`/host-FFI free names need `&UnsafeFFICap` at check; emit residual fail-closed; floor smoke green. Residual: runtime FFI token, OS `dlopen`, raw pointers, compile-time FFI gen (`CAP_FFI.md`) |
+| 6.3 | Capability sandboxing vs C/C++ FFI | **done** (alpha) | Path A **In**: check seal + process-local `oo_cap_grant_ffi` + `oo_dlopen` stub (M156); forge deny. Residual: OS `dlopen`/full C TCB (`CAP_FFI.md`) |
 
 ---
 
