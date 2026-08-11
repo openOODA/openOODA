@@ -4,29 +4,30 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Product tip | `28d678b` — **full PM alpha pass** |
-| Rails | `alpha_pm_floors_smoke` PASSED (floors + residual honesty packs) |
+| Product tip | `88084ae` — **PM 6.3 Cap vs FFI path A** |
+| Rails | `cap_ffi_product_floor_smoke` PASSED |
 | Beta | **Not claimed** |
 
 ## Open (0)
 *(none)*
 
 ## Closed
-**M151 Full PM alpha pass**
+**M152 Cap vs FFI path A → done (alpha)**
 
 What is production-ready (alpha):
-- Every **product floor** leaf is **done (alpha)** with green smoke (caps, time/rand, memory, max-cycles, secret, fuzz, contracts, json-errors, ARC free, C/LLVM/WASM path A, outline/reflect/patch, diagnostics).
-- Machine-readable check errors work under free (`--json-errors`); pass is `[]`; fails use stable codes + hints.
-- Moonshots are **residual** with named packs + residual smokes — not fake done.
+- Calling raw **dlopen** / host-FFI names without an **unsafe FFI token** is refused at check.
+- With `&UnsafeFFICap` and the token as the first argument, check allows the name form.
+- The C backend still **does not** lower real `dlopen` (fail-closed residual) — no silent fake lower.
 
-What is still not claimed (honest residual):
-- AST auto-apply, biometric caps, CSPRNG, OS rlimits/cgroups, full IFC, JIT, GPU/NPU, bare-metal, hive-mind, native LSP, interactive HITL/playground, Cap vs C FFI seal, bit-identical hermetic dist, full pkg registry.
+What is still not claimed:
+- Runtime process-local FFI token / forge deny for OS `dlopen`.
+- Full C TCB seal, raw pointers, compile-time FFI generation.
 
-SWARM: solo Act (emit/diag modules overlap) — no multi-agent file collision.
+SWARM: solo Act (check_cap_util / lower / fixtures / docs overlap).
 
 ## Residual named (honest)
-- See PM.md **residual** rows + `bootstrap/*RESIDUAL*.md` packs (39 indexed)
+- Runtime UnsafeFFICap, OS dlopen, raw-pointer, FFI_GEN
 - Beta not claimed
 
 ## S
-`S: low — U=0 on product floors F=0 W=0 O=0 (diag_json ≤256)`
+`S: low — U=0 on 6.3 path A F=0 W=0 O=0`

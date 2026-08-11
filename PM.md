@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `28d678b` — **full PM alpha pass** (`alpha_pm_floors_smoke` PASSED) |
+| Tip (board) | `ooda` `88084ae` — **PM 6.3 Cap vs FFI path A done (alpha)** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -40,7 +40,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Capability-secure | **done** (alpha) | Process-local seals **In** (3.1–3.3); not full DESIGN cap ladder / biometric / Cap vs FFI residual |
 | Self-testing | **done** (alpha) | Path A pure fuzz + pure verify **In** (3.6/M50); full DESIGN contract proof residual |
 | Sub-second feedback | **done** (alpha) | Product check/build/run loops real; sub-ms marketing residual (`OODA_SPEED.md`) |
-| Zero-day defense (advanced integrity) | **residual** | Residual packs: CALLGRAPH_CRYPTO, METAMORPHIC, SHADOW_STATE, CAP_FFI — not product integrity suite |
+| Zero-day defense (advanced integrity) | **residual** | Residual packs: CALLGRAPH_CRYPTO, METAMORPHIC, SHADOW_STATE — Cap vs FFI path A **In** (6.3); full integrity suite residual |
 | Bare-metal → global verifiable network | **residual** | Residual packs: BARE_METAL, ZERO_TRUST_PKG, HIVEMIND — scale vision not product floor |
 
 ---
@@ -128,7 +128,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 |---|------|--------|--------|
 | 6.1 | Metamorphic binaries vs deterministic builds | **residual** | Residual pack `META_VS_DET.md` + smoke; input_fp only (M20) |
 | 6.2 | 0ms GC (ARC) vs temporal memory | **done** (alpha) | ARC free path A **In** + residual pack `ARC_TEMPORAL_TENSION.md` / smoke — temporal side residual |
-| 6.3 | Capability sandboxing vs C/C++ FFI | **residual** | M25 CAP_FFI residual pack + smoke; process-local caps do not seal C FFI |
+| 6.3 | Capability sandboxing vs C/C++ FFI | **done** (alpha) | Path A **In**: bare `dlopen`/host-FFI free names need `&UnsafeFFICap` at check; emit residual fail-closed; floor smoke green. Residual: runtime FFI token, OS `dlopen`, raw pointers, compile-time FFI gen (`CAP_FFI.md`) |
 
 ---
 
@@ -158,6 +158,7 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M152 | Cap vs FFI path A (6.3) | **PASS** | `&UnsafeFFICap` check seal for dlopen/host-FFI free names; emit residual; `cap_ffi_product_floor_smoke` green; full C TCB residual |
 | M151 | Full PM alpha pass | **PASS** | json-errors free-safe (let-match); `alpha_pm_floors_smoke` PASSED; all product floors **done (alpha)**; moonshots stay **residual** honesty |
 | M139 | Lock + pin honesty | **PASS** | tip pinned; O=0; smokes as claimed |
 | M138 | MaxCycles multi-digit prove | **PASS** | N=50 emit OO_MC_LIMIT; leaf stays partial |
