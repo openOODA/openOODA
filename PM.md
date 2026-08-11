@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `b6c996b` — **M166 AGY language backlog path A** |
+| Tip (board) | `ooda` `1d44a91` — **M167 residual deepen path A** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -153,7 +153,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| — | (none) | — | M166 closed tip `b6c996b`. Next owner: pure self-host rebuild residual / full DESIGN residual named / beta gate |
+| — | (none) | — | M167 closed tip `1d44a91`. Next owner: pure self-host rebuild residual / full DESIGN residual named / beta gate |
 
 Living detail: **`SPRINT.md`**.
 

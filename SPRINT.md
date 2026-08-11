@@ -4,15 +4,16 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` (stay alpha) |
-| Focus | M166 Language Feature Backlog (AGY) path A **closed** |
-| Rails | malloc_path_a, bitwise_ops, math_trig, tensor_path_a, tcp_io, sys_syscall_path_a, list_index_path_a (all in `ci_product`) |
-| Tip | `ooda` `b6c996b` |
+| Focus | M167 residual deepen path A **closed** |
+| Rails | m167_residual_deepen, malloc_path_a, bitwise_ops (+ M166 rails) |
+| Tip | `ooda` `1d44a91` |
 | Beta | **Not claimed** |
 
 ## Closed
 **M158–M164** as prior  
 **M165 residual leftovers path A** (compiler/runtime) — see below  
-**M166 Language Feature Backlog (AGY) path A** — tip `b6c996b`
+**M166 Language Feature Backlog (AGY) path A** — tip `b6c996b`  
+**M167 residual deepen path A** — tip `1d44a91`
 
 ## M165 honest leftovers (path A) — 4 swarms
 
@@ -53,6 +54,19 @@ Beta not claimed
 **Fixtures:** `malloc_path_a.oo`, `bitwise_ops.oo`, `math_trig.oo`, `tensor_path_a.oo`, `sys_syscall_path_a.oo`, `list_index.oo`, `libfloor_tcp_io.oo`.  
 **Docs:** `bootstrap/MEMORY_QUOTA.md`, `BYTE_STR.md`, `MATH_TRIG.md`, `CAPS_MATRIX.md`, `STATIC_CAPS.md` (M166 cap scoping + forgery residual).
 
+
+## M167 residual deepen (path A)
+
+**Status:** path A **shipped** tip `1d44a91`. Stay **alpha**. **Do not claim beta.**
+
+| Residual (from M166) | Path A this mile | Still residual |
+|----------------------|------------------|----------------|
+| Pure self-host / untyped free-name `let` SEGV | `c_emit_let_ext` free-name short-circuit source; `token_next` typed lets emit on tip; fixture typed `let p: Int = malloc` | Full pure multi dual-green of oodac on tip host (92 modules still SEGV emit untyped) |
+| Caret `^` token | Source floor in `token_scan_punct` | Product host lags rebuild (lex residual until pure multi) |
+| Cap forgery via `as fn` cast | Doc honesty only | **Not fixed** |
+
+**Smoke:** `scripts/m167_residual_deepen_smoke.sh` (also `ci_product`).
+
 ## M165 openOODA Library Fleshing (AGY)
 *   **Massive Standard Library Expansion**: Fleshed out and implemented 359 `std/` openOODA library files across multiple domains (Geometry, Tensors, Hardware APIs, Database Connectors, Codecs, UI, Agents, and NLP).
 *   **Fail-Closed Strictness**: All files strictly implement the fail-closed recursive stub pattern (`process_exit(1)`) while explicitly enumerating parameter types, realistic struct fields, and respecting capability checks (e.g. `&SysCap`, `&NetCap`, `&ThreadCap`).
@@ -70,3 +84,6 @@ Beta not claimed
 *   **String/Byte Conversions (`ord()`)**: Missing character-to-integer conversion primitives. Blocks Base64 encoding/decoding, HMAC cryptographic hashing, and Named Entity Recognition (NER) algorithms.
 *   **Capability Scoping (`&SysCap`, `&NetCap`)**: Standard library `.oo` signatures often lack `&SysCap` or `&NetCap` tokens, making it impossible to shell out for missing functionality (e.g., executing `/bin/ping` for ICMP) or mutating OS pseudo-filesystems (e.g., `cgroups` at `/sys/fs/cgroup`).
 *   **Capability Forgery Vulnerability**: A critical security flaw was discovered by the X11 GUI agent where `&UnsafeFFICap` (and potentially other capabilities) can be forged natively without authorization. By casting a builtin function (e.g. `dlopen`) using `as fn(&UnsafeFFICap, String) -> Int`, the compiler static type checker was successfully bypassed to execute unsafe C functions natively.
+*   **Integer Comparison Constraint (`Int < 0`)**: The `oodac` compiler type checker rejects expressions comparing `Int < 0` directly. Code must check `x == 0` prior to decrementing/subtracting.
+*   **Parameter Symbol Shadowing in Expressions**: Parameter names that shadow struct field names within the same expression context cause binary operator type resolution errors (e.g. `(b).b` when `b` is both a parameter and a field name).
+
