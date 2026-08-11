@@ -22,12 +22,12 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `4c208c4` + host **m174**; pure dual **link** green (research pure_g5/g6); pure tip quality residual (caret/ARROW); beta not claimed |
+| Tip (board) | `ooda` source `ffb9a03` + host **m181 pure dual-green** (research pure_g10: caret+hello+bitwise_ops_smoke PASSED). Product binary may still be m174 residual on disk if m181 not product-flipped. Beta not claimed. |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
 | Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153); library residuals **path A seal/stub** (M161); AGY language floors **path A** (M166–M169). Full DESIGN impl still residual-named. No fake full moonshot. |
-| Open residual | Pure tip quality (caret + hello on pure host) before tip-flip; ~60 monofiles still >600; #6 leftover domains; #9/#10 multi-module LINE; #13 doc honesty remainder (~57). ZT-1..6 path A **In** (runtime policy getenv + dual-cap verify_human). |
+| Open residual | **55** monofiles still >600 (next power-law batches); #9/#10 multi-module LINE; full DESIGN residual once (SMT, GPU, `&str`, …); 250 domain libraries blocked on compiler limits; #13 light residual after #58 STATUS tags. Pure dual-green **FIXED** (M178 #56). ZT-1..6 path A **In**. |
 
 ---
 
@@ -118,7 +118,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 5.3 | **Fearless concurrency** (message passing + caps) | **done** (alpha) | Path A **In**: `channel_new`/`actor_spawn` free-name refuse; **ThreadCap** mutex/thread_spawn seal + residual Err (M161). Residual: OS threads / message-passing runtime |
 | 5.4 | **Standard library philosophy** (`std::core` vs `std::os`) | **done** (alpha) | M121 split + **M161** growth: Result assert_eq, MD5/SHA1, semver, markup subsets, archive magic-detect, net/process/thread wrappers; residual packs honest |
 | 5.5 | **Narrative diagnostics** | **done** (alpha) | Code-keyed `fix_hint` + E_SECRET/E_MAX_CYCLES/E_CAP/…; `json_errors_smoke` green. Residual: AST auto-apply (`AST_AUTOFIX.md`) |
-| 5.6 | **Human-in-the-loop (`hitl`) testing** | **done** (alpha) | Path A **In**: `// HITL: pause` non-interactive deny (E_HITL) + `verify_human` dual EnvCap+FsCap + policy getenv allowlist (ZT). Residual: interactive harness; product m174 host lag for dual-cap emit until pure tip quality |
+| 5.6 | **Human-in-the-loop (`hitl`) testing** | **done** (alpha) | Path A **In**: `// HITL: pause` non-interactive deny (E_HITL) + `verify_human` dual EnvCap+FsCap + policy getenv allowlist (ZT). Residual: interactive harness only (pure dual-green host research m181; dual-cap path A In) |
 | 5.7 | **Universal native LSP** | **done** (alpha) | Path A **In**: `lsp_serve` free-name refuse. Residual: native LSP product |
 
 ---
@@ -153,10 +153,9 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| R1 | Pure multi dual-green | **partial** | dual pure **link** green (g5/g6); caret/ARROW residual on pure tip — no tip-flip; product m174 |
-| R2 | Multi-import typecheck LINE | **residual** | single-file local OK |
-| R3 | Remaining >600 monofiles | **residual** | ckks/bgv/gaussian/fusion split this wave; ~60 still >600 |
-| R4 | Issue #6 leftover domains | **residual** | perf/sys/crypto/cps/fin/bio done; quantum/edge/3d/… open |
+| R2 | Multi-import typecheck LINE | **residual** | #9/#10 absolute LINE; single-file local OK |
+| R3 | Remaining >600 monofiles | **residual** | **55** still >600 after #57 top-5 (bfv/bulletproofs/pe/navigation/hsm shimmed); next power-law batches |
+| R5 | 250 New Domain Libraries | **residual** | blocked on compiler alpha limits — honest refuse stubs |
 | — | Full DESIGN residual | **residual** | SMT, real GPU, unrestricted dlopen, `&str`, `&mut`, nested List[Struct], object-caps, Tier C — see SPRINT once |
 
 Living detail: **`SPRINT.md`**.
@@ -165,7 +164,9 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
-| M178 | ZT + M176/M177 audit closeout | **PASS** | ZT-1..6 policy getenv + dual-cap verify_human; soft-pass e2e delete/tighten; honesty tags; runner false-pass closed; #15 + power-law monofile splits; pure dual-link research residual |
+| M178 | ZT + M176/M177 + #56–#60 closeout | **PASS** | ZT-1..6; soft-pass e2e; honesty tags; runner false-pass; #15 + monofile splits; **#56 pure dual-green** (`ffb9a03`/m181 pure_g10); #57 top-5 shims; #58 STATUS tags; #59 audit CI; #60 leftover parens; pure caret/ARROW residual **cleared** |
+| R1 | Pure multi dual-green | **PASS** | pure9→pure10 dual-green; caret lex + ARROW skip; host m181 research pure dual-green |
+| R4 | Issue #6 leftover domains | **PASS** | paren field-access batches incl. quantum/edge/enterprise/gui/grid/robot/3d (`std` `3f619f0`) |
 | M172 | Token tooling + product CLI | **PASS** | digest/health/err-digest/pack + outline/reflect; not a Grok skill |
 | M171 | Untyped-let emit SEGV short-circuit | **PASS** | free-name short-circuit; product floors green; pure dual-green still residual |
 | M169 | Residual closeout path A | **PASS** | tip `661466d`; typed-let rebuild readiness; cap forgery posture; pure dual-green residual |
