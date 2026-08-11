@@ -22,12 +22,12 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `4317efb` + host **m174**; migrate disabled; typecheck rails + line smoke; pure dual-green residual |
+| Tip (board) | `ooda` `4317efb` + host **m174**; pure **first** multi link green (m180 research); 2nd pure + caret residual |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
 | Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153); library residuals **path A seal/stub** (M161); AGY language floors **path A** (M166–M169). Full DESIGN impl still residual-named. No fake full moonshot. |
-| Open residual | Pure multi dual-green; remaining >600 splits (fhe/anneal/aero/auto); Issue #6 remainder domains; multi-import line offset; Issue #15 300–600 files; DESIGN/SPEC residual honesty (~57). Cap path-A forge green. |
+| Open residual | Pure 2nd-gen dual-green + caret on pure tip; many sec/crypto & aero monofiles still >600; Issue #6 leftover domains; multi-import lines; Issue #15 peers; doc honesty ~57. |
 
 ---
 
@@ -153,9 +153,10 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| R1 | Pure multi self-host dual-green | **residual** | free-name host path 671→~16 gcc; product tip m174; do not tip-flip pure_final until caret lex proven |
-| R2 | Typecheck error line numbers | **residual** | import-concat absolute positions |
-| R3 | AI/LLM + toktools libs | **residual** | 0/30 planned (Issue #5) |
+| R1 | Pure multi dual-green | **partial** | first pure link OK (m180); 2nd pure 8 errs; caret fail on pure tip; product m174 |
+| R2 | Multi-import typecheck LINE | **residual** | single-file local OK |
+| R3 | Remaining >600 monofiles | **residual** | ckks/bgv/gaussian/fusion/… inventory on SPRINT |
+| R4 | Issue #6 leftover domains | **residual** | perf/sys/crypto/cps/fin/bio done; quantum/edge/3d/… open |
 | — | Full DESIGN residual | **residual** | SMT, real GPU, unrestricted dlopen, `&str`, `&mut`, nested List[Struct], object-caps, Tier C — see SPRINT once |
 
 Living detail: **`SPRINT.md`**.
