@@ -4,9 +4,9 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` (stay alpha) |
-| Focus | M168 AGY library language blockers path A **closed** |
-| Rails | agy_lang_blockers, m167_residual_deepen (+ prior) |
-| Tip | `ooda` `1848e1a` |
+| Focus | **M169 residual closeout path A** (open) |
+| Rails | pure rebuild / struct product / caret / untyped let / board hygiene |
+| Tip | `ooda` `1848e1a` (until M169 ship) |
 | Beta | **Not claimed** |
 
 ## Closed
@@ -15,6 +15,23 @@
 **M166 Language Feature Backlog (AGY) path A** — tip `b6c996b`  
 **M167 residual deepen path A** — tip `1d44a91`  
 **M168 AGY library language blockers path A** — tip `1848e1a`
+
+## M169 residual closeout (path A) — **OPEN**
+
+**Goal:** Close agent-actionable residuals left after M166–M168. Stay **alpha**. **Not** full DESIGN / beta.
+
+| # | Work item | Done when | Out of scope (still residual) |
+|---|-----------|-----------|-------------------------------|
+| A | **Pure multi rebuild tip `oodac`** | `scripts/oodac_pure_build.sh` (or hybrid seed) produces executable `oodac/oodac` that self-emits core modules without SEGV; tip SHA advances | Bit-identical fixed-point forever; cold start from air |
+| B | **Struct typedef product green** | `agy_struct_path_a` / `agy_lang_blockers_smoke` product path: emit has `typedef struct {…} Box;`, gcc+run **7 / 11 / 2** | Nested `List[Struct]` ABI |
+| C | **Untyped free-name `let` binds** | `let p = alloc_bytes(alloc, 64)` emit+run on tip (not only typed `let p: Int`) | Full heap sandbox / GC |
+| D | **Caret `^` product** | `println(1 ^ 2)` lex+emit+run on tip; bitwise smoke no “caret residual” skip | Float bitops / rotate |
+| E | **Cap forgery path A** | Documented refuse or check fail for AGY-style `as fn(&UnsafeFFICap,…)` forge if surface exists; smoke + `STATIC_CAPS.md` update | Cryptographic object-caps |
+| F | **Board hygiene** | Fix corrupted S line; M165 AGY “missing” bullets marked path-A done where M166/M168 closed | Full DESIGN residual named list |
+
+**Acceptance:** dual-green rails for A–D where product binary is rebuilt; E–F honesty; O=0; stay alpha.
+
+**Order (agent):** A → B/C/D (prove on new tip) → E → F → ship tip + boards.
 
 ## M165 honest leftovers (path A) — 4 swarms
 
@@ -30,9 +47,8 @@ Full SMT/quantifiers · free-form multi-code · full HITL harness · unrestricte
 Beta not claimed
 
 ## S
-`S: low — U=0 on M168 AGY blockers F=0 W=0 O=0`  
-*(tip 1848e1a; pure multi for struct typedef product residual)* low — U=0 on M166 path A tip ship F=0 W=0 O=0`  
-*(product tip `b6c996b`; pure self-host rebuild of oodac still residual on some hosts — product fixtures/smokes green on tip binary)*
+`S: med — U=1 on M169 residual closeout (pure rebuild blocks B–D) F=0 W=0 O=0`  
+*(tip `1848e1a`; open work A–F above; beta not claimed)*
 
 ## M166 Language Feature Backlog (AGY) path A
 

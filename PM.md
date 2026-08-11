@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `1848e1a` — **M168 AGY library language blockers path A** |
+| Tip (board) | `ooda` `1848e1a` — **M168 closed; open M169 residual closeout path A** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -153,7 +153,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| — | (none) | — | M168 closed tip `1848e1a`. Next: pure self-host rebuild (struct typedef product) / full DESIGN residual / beta gate |
+| M169 | Residual closeout path A | **OPEN** | Pure multi rebuild tip oodac; struct typedef product; untyped alloc let; caret `^` product; cap forgery path A; board hygiene. See `SPRINT.md` M169 table A–F. Stay alpha; beta not claimed. |
 
 Living detail: **`SPRINT.md`**.
 
