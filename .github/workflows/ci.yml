@@ -11,5 +11,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+
+    - name: Audit disk persistence gate (Issue #59 / RULES §1.9)
+      run: |
+        set -euo pipefail
+        # Fail closed if the M177 honesty audit README is missing.
+        # Path is repo-relative (this workflow lives in the openOODA boards repo).
+        test -f audit/round5_m177_honesty_README.md \
+          || { echo "missing audit README: audit/round5_m177_honesty_README.md"; exit 1; }
+        # Prefer the exact historical filename; also accept any round5_m177*.md.
+        shopt -s nullglob
+        matches=(audit/round5_m177*.md)
+        if [[ ${#matches[@]} -lt 1 ]]; then
+          echo "missing audit README matching audit/round5_m177*.md" >&2
+          exit 1
+        fi
+        echo "OK audit persistence: ${matches[*]}"
+
     - name: Run checks
       run: echo "Replace with actual build/test commands"
