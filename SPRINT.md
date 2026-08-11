@@ -4,16 +4,17 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` (stay alpha) |
-| Focus | M167 residual deepen path A **closed** |
-| Rails | m167_residual_deepen, malloc_path_a, bitwise_ops (+ M166 rails) |
-| Tip | `ooda` `1d44a91` |
+| Focus | M168 AGY library language blockers path A **closed** |
+| Rails | agy_lang_blockers, m167_residual_deepen (+ prior) |
+| Tip | `ooda` `1848e1a` |
 | Beta | **Not claimed** |
 
 ## Closed
 **M158–M164** as prior  
 **M165 residual leftovers path A** (compiler/runtime) — see below  
 **M166 Language Feature Backlog (AGY) path A** — tip `b6c996b`  
-**M167 residual deepen path A** — tip `1d44a91`
+**M167 residual deepen path A** — tip `1d44a91`  
+**M168 AGY library language blockers path A** — tip `1848e1a`
 
 ## M165 honest leftovers (path A) — 4 swarms
 
@@ -29,7 +30,8 @@ Full SMT/quantifiers · free-form multi-code · full HITL harness · unrestricte
 Beta not claimed
 
 ## S
-`S: low — U=0 on M166 path A tip ship F=0 W=0 O=0`  
+`S: low — U=0 on M168 AGY blockers F=0 W=0 O=0`  
+*(tip 1848e1a; pure multi for struct typedef product residual)* low — U=0 on M166 path A tip ship F=0 W=0 O=0`  
 *(product tip `b6c996b`; pure self-host rebuild of oodac still residual on some hosts — product fixtures/smokes green on tip binary)*
 
 ## M166 Language Feature Backlog (AGY) path A
@@ -54,6 +56,21 @@ Beta not claimed
 **Fixtures:** `malloc_path_a.oo`, `bitwise_ops.oo`, `math_trig.oo`, `tensor_path_a.oo`, `sys_syscall_path_a.oo`, `list_index.oo`, `libfloor_tcp_io.oo`.  
 **Docs:** `bootstrap/MEMORY_QUOTA.md`, `BYTE_STR.md`, `MATH_TRIG.md`, `CAPS_MATRIX.md`, `STATIC_CAPS.md` (M166 cap scoping + forgery residual).
 
+
+
+## M168 AGY library language blockers (path A)
+
+**Status:** path A **shipped** tip `1848e1a`. Stay **alpha**. **Do not claim beta.**
+
+| AGY item | Path A finished | Residual |
+|----------|-----------------|----------|
+| `Int < 0` comparison | Product check+build+run (`agy_int_lt0`) | — |
+| Param/field name shadow `(b).b` | Typechecks; struct emit source floor | Tip product typedef lag until pure rebuild |
+| Generic struct field `List[T]` | `List[Int]`/`List[String]` fields emit as OoIList/OoSList | `List[Struct]` nested not product |
+| Immutable `&T` mutation | By-value mut + field assign source floor | **`&mut T` not product** |
+| User `type Name = struct` C emit | `c_emit_struct` + `c_ty_at` + field assign | Tip host pure-rebuild residual for typedefs |
+
+**Smoke:** `scripts/agy_lang_blockers_smoke.sh`. **Doc:** `bootstrap/STRUCT_PATH_A.md`.
 
 ## M167 residual deepen (path A)
 
@@ -86,4 +103,7 @@ Beta not claimed
 *   **Capability Forgery Vulnerability**: A critical security flaw was discovered by the X11 GUI agent where `&UnsafeFFICap` (and potentially other capabilities) can be forged natively without authorization. By casting a builtin function (e.g. `dlopen`) using `as fn(&UnsafeFFICap, String) -> Int`, the compiler static type checker was successfully bypassed to execute unsafe C functions natively.
 *   **Integer Comparison Constraint (`Int < 0`)**: The `oodac` compiler type checker rejects expressions comparing `Int < 0` directly. Code must check `x == 0` prior to decrementing/subtracting.
 *   **Parameter Symbol Shadowing in Expressions**: Parameter names that shadow struct field names within the same expression context cause binary operator type resolution errors (e.g. `(b).b` when `b` is both a parameter and a field name).
+*   **Generic Struct Member Type Resolution**: Accessing generic fields through wrapper structs (e.g. `tree.nodes` where `nodes: List[Node]`) can cause type inference failures in `oodac`. Workaround: pass the generic `List[Node]` directly to functions.
+*   **Immutable Reference Parameter Mutation (`&T`)**: Struct mutation cannot occur through immutable `&T` parameter references. All state mutating procedures must take `T` by value and return updated `T` values or take `&mut T`.
+
 

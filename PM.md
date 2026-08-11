@@ -153,7 +153,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| — | (none) | — | M167 closed tip `1d44a91`. Next owner: pure self-host rebuild residual / full DESIGN residual named / beta gate |
+| — | (none) | — | M168 closed tip `1d44a91`. Next owner: pure self-host rebuild residual / full DESIGN residual named / beta gate |
 
 Living detail: **`SPRINT.md`**.
 
