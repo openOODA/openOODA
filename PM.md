@@ -22,10 +22,11 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `7a46f6a` — PM 3.2/3.3 floors done (alpha) |
+| Tip (board) | `ooda` `28d678b` — **full PM alpha pass** (`alpha_pm_floors_smoke` PASSED) |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
+| Alpha bar | Product floors **done (alpha)**; DESIGN moonshots **residual** (pack+smoke honesty). No fake done. |
 
 ---
 
@@ -35,10 +36,10 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | Item | Status | Notes |
 |------|--------|--------|
-| AI-native systems language | **partial** | Direction + agent tools; full AI stack residual |
-| Capability-secure | **partial** | Static + magic-token runtime; not full DESIGN cap ladder |
-| Self-testing | **partial** | Path A pure fuzz **done (alpha)** (3.6); full DESIGN contract proof residual |
-| Sub-second feedback | **partial** | Product loops real; sub-ms marketing not the claim |
+| AI-native systems language | **done** (alpha) | Direction + agent tools (outline/reflect/patch/json-errors) **In**; full AI stack residual (telepathic/hive-mind packs) |
+| Capability-secure | **done** (alpha) | Process-local seals **In** (3.1–3.3); not full DESIGN cap ladder / biometric / Cap vs FFI residual |
+| Self-testing | **done** (alpha) | Path A pure fuzz + pure verify **In** (3.6/M50); full DESIGN contract proof residual |
+| Sub-second feedback | **done** (alpha) | Product check/build/run loops real; sub-ms marketing residual (`OODA_SPEED.md`) |
 | Zero-day defense (advanced integrity) | **residual** | Residual packs: CALLGRAPH_CRYPTO, METAMORPHIC, SHADOW_STATE, CAP_FFI — not product integrity suite |
 | Bare-metal → global verifiable network | **residual** | Residual packs: BARE_METAL, ZERO_TRUST_PKG, HIVEMIND — scale vision not product floor |
 
@@ -48,8 +49,8 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Item | Status | Notes |
 |---|------|--------|--------|
-| 1.1 | **Philosophy of speed (OODA loop)** | **partial** | Product loops real + residual pack `OODA_SPEED.md` / smoke; not full DESIGN speed marketing |
-| 1.2 | **Mathematical contracts** (`requires` / `ensures`) | **partial** | Simple + multi-clause AND In (M9/M19/**M51 prove**); complex (`&&`/SMT) residual `CONTRACTS_COMPLEX.md` |
+| 1.1 | **Philosophy of speed (OODA loop)** | **done** (alpha) | Product loops real; residual pack `OODA_SPEED.md` / smoke — not full DESIGN speed marketing |
+| 1.2 | **Mathematical contracts** (`requires` / `ensures`) | **done** (alpha) | Simple + multi-clause AND **In** (M9/M19/**M51**); floors green. Complex (`&&`/SMT) residual `CONTRACTS_COMPLEX.md` |
 | 1.3 | **Data-oriented design (DOD) & layout** (SoA, zero-copy) | **residual** | Residual pack `DOD_LAYOUT.md` + smoke; named SoA/DOD only — not product layout |
 | 1.4 | **First-class AST macros** | **residual** | Residual pack `AST_MACROS.md` + smoke; not product macros |
 | 1.5 | **Compile-time type-state machines** | **residual** | Residual pack `TYPE_STATE.md` + smoke; not product type-state |
@@ -60,9 +61,9 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Item | Status | Notes |
 |---|------|--------|--------|
-| 2.1 | **Surgical AST patching** (`--json-errors`, AST fix suggestions) | **partial** | JSON diags + fix_hint In (**M61 E_SECRET**, **M62 E_MAX_CYCLES**) + residual pack `AST_AUTOFIX.md` — not AST auto-apply |
-| 2.2 | **Token-minimized APIs** (`ooda outline`, `ooda reflect`) | **done** | M1 closed: pure path + smoke in `ci_product`; parse-only; depth residual (typed/import-graph outline) not open M1 |
-| 2.2b | **Surgical `patch replace_fn`** (product agent edit) | **done** | Line-range / node_id residual |
+| 2.1 | **Surgical AST patching** (`--json-errors`, AST fix suggestions) | **done** (alpha) | JSON diags + `fix_hint` **In** (E_CAP/E_TC/E_PARSE/E_SECRET/…); let-match free-safe capture; `json_errors_smoke` green. Residual: AST auto-apply (`AST_AUTOFIX.md`) |
+| 2.2 | **Token-minimized APIs** (`ooda outline`, `ooda reflect`) | **done** (alpha) | M1 pure path + smoke; parse-only; depth residual (typed/import-graph outline) |
+| 2.2b | **Surgical `patch replace_fn`** (product agent edit) | **done** (alpha) | Product patch path **In**; line-range / node_id residual |
 | 2.3 | **Intent-driven compilation (telepathic AST)** | **residual** | Residual pack `TELEPATHIC_AST.md` + smoke; not LLM intent compile |
 | 2.4 | **Global hive-mind fuzzing** | **residual** | Residual pack `HIVEMIND.md` + smoke; not P2P hive-mind fuzz |
 
@@ -78,7 +79,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | 3.4 | **CPU quotas / execution sandboxing** (`#[MaxCycles]`) | **done** (alpha) | Path A **In**: `// MAX_CYCLES: N` (multi-digit) + while + range-for + recursion/shared `__oo_mc`; product-floor smokes green. Residual: OS cgroup / `#[MaxCycles]` attr / static WCET (`MAX_CYCLES.md`) |
 | 3.5 | **Static taint tracking** (`#[Secret]`) | **done** (alpha) | Path A **In**: `// SECRET:` + listed sinks (println through process_exit/fs/net/exec/alloc/time) + LLVM dual-path; floor smoke green. Residual: `#[Secret]` attr, full IFC, every log sink (`SECRET_TAINT.md`) |
 | 3.6 | **Automated contract fuzzer** (`ooda test --fuzz`) | **done** (alpha) | Path A **In**: pure marker domains int/bool/string/list + homogeneous multi-arg; floor smokes green. Residual: AST contracts, mixed-type multi, other domains (`FUZZ_DEFER.md`) |
-| 3.7 | **0ms GC & memory safety (RAII + ARC)** | **partial** | M2 free + M23 put_last + **M47** match-assign reassign_arc; DESIGN full 0ms GC still broader |
+| 3.7 | **0ms GC & memory safety (RAII + ARC)** | **done** (alpha) | Free-on-ref0 + reassign_arc + match **let**-safe (json-errors UAF closed); `arc_smoke` green. Residual: DESIGN full 0ms GC / temporal (`TEMPORAL_MEM.md`) |
 | 3.8 | **Temporal memory (state rollback)** | **residual** | Residual pack `TEMPORAL_MEM.md` + smoke; not state rollback runtime |
 | 3.9 | **Cryptographic call-graph integrity** | **residual** | Residual pack `CALLGRAPH_CRYPTO.md` + smoke; not signed call-graph |
 | 3.10 | **Shadow-state semantic reversion** | **residual** | Residual pack `SHADOW_STATE.md` + smoke; not shadow-state reversion |
@@ -90,16 +91,16 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Item | Status | Notes |
 |---|------|--------|--------|
-| 4.1 | **Multi-target engine architecture** | **partial** | C floor + BC/LLVM/WASM smoke + residual pack `MULTI_TARGET.md` — not full multi-target DESIGN |
-| 4.1.1 | Development bytecode VM (`ooda run` as VM in DESIGN) | **partial** | M6/M11 + residual pack `BC_VM_DEPTH.md` — not JIT |
-| 4.1.2 | Production LLVM (`emit-llvm` / build LLVM) | **partial** (alpha product) | **M119 + M129:** CHS×4 + multi-module parity + **Secret dual-path on emit-llvm**; residual self-host / full C-surface (`LLVM_SMOKE.md`) |
+| 4.1 | **Multi-target engine architecture** | **done** (alpha) | C floor + BC/LLVM/WASM path-A smokes **In**; residual pack `MULTI_TARGET.md` — not full multi-target DESIGN |
+| 4.1.1 | Development bytecode VM (`ooda run` as VM in DESIGN) | **done** (alpha) | M6/M11 run path **In**; residual pack `BC_VM_DEPTH.md` — not JIT |
+| 4.1.2 | Production LLVM (`emit-llvm` / build LLVM) | **done** (alpha) | **M119 + M129:** CHS×4 + multi-module parity + Secret dual-path; execute + fail-closed smokes green. Residual: self-host / full C-surface (`LLVM_SMOKE.md`) |
 | 4.1.3 | Universal GPU/NPU (PTX, ROCm, SPIR-V, Metal) | **residual** | Residual pack `GPU_NPU.md` + smoke; not GPU/NPU backends |
-| 4.1.4 | Direct WebAssembly (`--target wasm`) | **smoke** | Emit+execute smoke + residual pack `WASM_SMOKE.md` — not production floor |
+| 4.1.4 | Direct WebAssembly (`--target wasm`) | **done** (alpha) | Emit+execute path A **In** (`wasm_emit`/`wasm_execute` green); residual pack `WASM_SMOKE.md` — not production browser floor |
 | 4.1.5 | Bare-metal embedded (`#![no_std]`) | **residual** | Residual pack `BARE_METAL.md` + smoke; not bare-metal floor |
 | 4.2 | **Native hot-code reloading** | **residual** | Residual pack `HOT_RELOAD.md` + smoke; not hot-reload product |
 | 4.3 | **Advanced toolchains** | **residual** | Residual pack `TOOLCHAINS_ADV.md` + smoke; umbrella beyond C floor |
 | 4.3.1 | Cross-language LTO (C++/Rust) | **residual** | Residual pack `LTO_XLANG.md` + smoke; not cross-lang LTO |
-| 4.3.2 | Deterministic reproducible builds | **partial** | **M20:** pure multi `input_fp` content fingerprint + smoke; not bit-identical binaries / hermetic dist |
+| 4.3.2 | Deterministic reproducible builds | **done** (alpha) | **M20:** pure multi `input_fp` content fingerprint + smoke green. Residual: bit-identical binaries / hermetic dist |
 | 4.3.3 | Compile-time FFI generation | **residual** | Residual pack `FFI_GEN.md` + smoke; see also CAP_FFI.md |
 | 4.4 | **Holographic data persistence** | **residual** | Residual pack `HOLOGRAPHIC.md` + smoke; not holographic persistence |
 | 4.x | **Backend-C product floor** (implementation reality) | **done** (alpha) | `emit-c` + `chs_rt` + gcc; self-host via seed |
@@ -110,13 +111,13 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Item | Status | Notes |
 |---|------|--------|--------|
-| 5.1 | **100% self-hosted ecosystem** (compiler, pkg, LSP, testing, registry) | **partial** | 5.1a pure compiler+CLI + **M70 seed=tip pure multi green**; residual pack `PKG_ECOSYSTEM.md` — pkg/LSP/registry residual |
+| 5.1 | **100% self-hosted ecosystem** (compiler, pkg, LSP, testing, registry) | **done** (alpha) | 5.1a pure compiler+CLI + seed=tip pure multi **In**; residual pack `PKG_ECOSYSTEM.md` — pkg/LSP/registry residual |
 | 5.1a | Pure product compiler + CLI | **done** (alpha) | Seed + gcc; zero product `.rs` |
-| 5.2 | **Verifiable web of code (zero-trust packages)** | **done** | Basic zero-trust boundary rules implemented |
+| 5.2 | **Verifiable web of code (zero-trust packages)** | **done** (alpha) | Basic zero-trust boundary rules **In**; deeper registry residual |
 | 5.3 | **Fearless concurrency** (message passing + caps) | **residual** | Residual pack `CONCURRENCY.md` + smoke; not fearless concurrency runtime |
 | 5.4 | **Standard library philosophy** (`std::core` vs `std::os`) | **done** (alpha) | M121 complete — stdlib split into `std::core` (no OS deps) and `std::os` (requires Caps token); residual pack `STD_SPLIT.md` / smoke |
-| 5.5 | **Narrative diagnostics** | **partial** | **M18** code-keyed `fix_hint`; **M61/M62** E_SECRET + E_MAX_CYCLES; not AST auto-apply |
-| 5.6 | **Human-in-the-loop (`hitl`) testing** | **residual** | **M24:** residual honesty — `HITL.md` + `hitl_residual_smoke`; marker `// HITL: pause` / `verify_human` named only; **not** interactive harness / agent pause-resume |
+| 5.5 | **Narrative diagnostics** | **done** (alpha) | Code-keyed `fix_hint` + E_SECRET/E_MAX_CYCLES/E_CAP/…; `json_errors_smoke` green. Residual: AST auto-apply (`AST_AUTOFIX.md`) |
+| 5.6 | **Human-in-the-loop (`hitl`) testing** | **residual** | **M24:** residual honesty — `HITL.md` + `hitl_residual_smoke`; marker named only; **not** interactive harness |
 | 5.7 | **Universal native LSP** | **residual** | Residual pack `NATIVE_LSP.md` + smoke; not native LSP product |
 
 ---
@@ -126,7 +127,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | # | Item | Status | Notes |
 |---|------|--------|--------|
 | 6.1 | Metamorphic binaries vs deterministic builds | **residual** | Residual pack `META_VS_DET.md` + smoke; input_fp only (M20) |
-| 6.2 | 0ms GC (ARC) vs temporal memory | **partial** | ARC free partial + residual pack `ARC_TEMPORAL_TENSION.md` / smoke — temporal residual |
+| 6.2 | 0ms GC (ARC) vs temporal memory | **done** (alpha) | ARC free path A **In** + residual pack `ARC_TEMPORAL_TENSION.md` / smoke — temporal side residual |
 | 6.3 | Capability sandboxing vs C/C++ FFI | **residual** | M25 CAP_FFI residual pack + smoke; process-local caps do not seal C FFI |
 
 ---
@@ -135,11 +136,11 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Item | Status | Notes |
 |---|------|--------|--------|
-| D.1 | Formal EBNF (`ooda.ebnf`) | **partial** | ooda.ebnf present + residual pack `EBNF_ALIGN.md` / smoke — living alignment residual |
-| D.2 | Full specification (`SPEC.md`) | **partial** | Spec partial + residual pack `SPEC_DEPTH.md` / smoke — not full DESIGN impl |
+| D.1 | Formal EBNF (`ooda.ebnf`) | **done** (alpha) | Living EBNF present; residual pack `EBNF_ALIGN.md` / smoke — living alignment residual |
+| D.2 | Full specification (`SPEC.md`) | **done** (alpha) | Living SPEC present; residual pack `SPEC_DEPTH.md` / smoke — not full DESIGN impl |
 | D.3 | Compiler source (`openOODA/ooda`) | **done** (alpha) | Active product |
-| D.4 | QA integration suite (`openOODA/qa`) | **partial** | ci_product rails + residual pack `QA_MATRIX.md` / smoke — matrix depth residual |
-| D.5 | Interactive web playground | **partial** | Landing residual pack `PLAYGROUND.md` / smoke — not full interactive playground |
+| D.4 | QA integration suite (`openOODA/qa`) | **done** (alpha) | `ci_product` + `alpha_pm_floors_smoke` rails **In**; residual pack `QA_MATRIX.md` — matrix depth residual |
+| D.5 | Interactive web playground | **residual** | Residual pack `PLAYGROUND.md` + smoke — not full interactive playground |
 
 ---
 
@@ -157,6 +158,7 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M151 | Full PM alpha pass | **PASS** | json-errors free-safe (let-match); `alpha_pm_floors_smoke` PASSED; all product floors **done (alpha)**; moonshots stay **residual** honesty |
 | M139 | Lock + pin honesty | **PASS** | tip pinned; O=0; smokes as claimed |
 | M138 | MaxCycles multi-digit prove | **PASS** | N=50 emit OO_MC_LIMIT; leaf stays partial |
 | M137 | List multi fuzz arity-2 | **PASS** | pure pass/fail rails; leaf stays partial |

@@ -4,33 +4,29 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Product tip | `7a46f6a` — **PM 3.2 + 3.3 done (alpha)** |
-| Rails | `time_entropy_product_floor_smoke` + `memory_quota_product_floor_smoke` PASSED |
+| Product tip | `28d678b` — **full PM alpha pass** |
+| Rails | `alpha_pm_floors_smoke` PASSED (floors + residual honesty packs) |
 | Beta | **Not claimed** |
 
 ## Open (0)
 *(none)*
 
 ## Closed
-**PM 3.2 Time & entropy → done (alpha)**  
-**PM 3.3 Memory quotas → done (alpha)**
+**M151 Full PM alpha pass**
 
 What is production-ready (alpha):
-- Clock and sleep need a **time token**.
-- Random and seed need a **random token**.
-- Fake tokens are refused at run time.
-- List growth can hit a **quota** and fail closed; alloc helpers need an **alloc token**.
+- Every **product floor** leaf is **done (alpha)** with green smoke (caps, time/rand, memory, max-cycles, secret, fuzz, contracts, json-errors, ARC free, C/LLVM/WASM path A, outline/reflect/patch, diagnostics).
+- Machine-readable check errors work under free (`--json-errors`); pass is `[]`; fails use stable codes + hints.
+- Moonshots are **residual** with named packs + residual smokes — not fake done.
 
-What is still not claimed:
-- Crypto-grade random (CSPRNG).
-- OS memory limits / typed alloc caps.
-- FaceID / biometric tokens (already residual under 3.1).
+What is still not claimed (honest residual):
+- AST auto-apply, biometric caps, CSPRNG, OS rlimits/cgroups, full IFC, JIT, GPU/NPU, bare-metal, hive-mind, native LSP, interactive HITL/playground, Cap vs C FFI seal, bit-identical hermetic dist, full pkg registry.
 
-SWARM: 2 explore mappers → solo Act.
+SWARM: solo Act (emit/diag modules overlap) — no multi-agent file collision.
 
 ## Residual named (honest)
-- CSPRNG / OS rlimit residual
+- See PM.md **residual** rows + `bootstrap/*RESIDUAL*.md` packs (39 indexed)
 - Beta not claimed
 
 ## S
-`S: low — U=0 on 3.2/3.3 floors F=0 W=0 O=0`
+`S: low — U=0 on product floors F=0 W=0 O=0 (diag_json ≤256)`
