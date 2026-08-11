@@ -22,12 +22,12 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `661466d` — **M169 residual closeout path A** |
+| Tip (board) | `ooda` `3c56f35` — M169–M172 path A closed; **pure multi dual-green residual** (emit quality: untyped let → `long long` vs `OoStr`) |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
-| Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153); library residuals **path A seal/stub** (M161); AGY language floors **path A** (M166). Full DESIGN impl still residual-named. No fake full moonshot. |
-| M166 | **Language Feature Backlog (AGY) path A** — tip `b6c996b`. Stay alpha; beta not claimed. Cap forgery via cast still residual. Pure self-host rebuild residual on some hosts. |
+| Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153); library residuals **path A seal/stub** (M161); AGY language floors **path A** (M166–M169). Full DESIGN impl still residual-named. No fake full moonshot. |
+| Open residual | Pure multi self-host dual-green; `sec/net/dnssec.oo` + `ipsec.oo` line-pressure check; DESIGN residual list on SPRINT. Cap path-A forge refuse green; object-caps DESIGN residual. |
 
 ---
 
@@ -153,7 +153,9 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| — | (none) | — | M169 closed tip `661466d`. Pure dual-green lag residual; beta not claimed |
+| R1 | Pure multi self-host dual-green | **residual** | tip `3c56f35`; product residual smokes green; pure `oodac_pure_build` gcc fails on untyped-let `long long` vs `OoStr` emit quality |
+| R2 | sec/net dnssec + ipsec check | **residual** | ambient List quota / line pressure (~840–882 lines); split or fix type patterns |
+| — | Full DESIGN residual | **residual** | SMT, real GPU, unrestricted dlopen, `&str`, `&mut`, nested List[Struct], object-caps, Tier C — see SPRINT once |
 
 Living detail: **`SPRINT.md`**.
 
@@ -161,6 +163,8 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M172 | Token tooling + product CLI | **PASS** | digest/health/err-digest/pack + outline/reflect; not a Grok skill |
+| M171 | Untyped-let emit SEGV short-circuit | **PASS** | free-name short-circuit; product floors green; pure dual-green still residual |
 | M169 | Residual closeout path A | **PASS** | tip `661466d`; typed-let rebuild readiness; cap forgery posture; pure dual-green residual |
 | M166 | Language Feature Backlog (AGY) path A | **PASS** | tip `b6c996b`; bitops/math/malloc/net/index/tensor/sys; smokes in `ci_product`; pure self-host residual; cap forgery residual; beta not claimed |
 | M165 | Honest leftovers path A | **PASS** | arith contracts; E_HITL autofix; verify_human; actors; GPU noop/cpu; system dlopen; str ops; dual-run green; beta not claimed |
