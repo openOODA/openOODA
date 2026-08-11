@@ -22,12 +22,12 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `c554319` — M169–M172 path A closed; **pure multi dual-green residual** (emit quality: untyped let → `long long` vs `OoStr`) |
+| Tip (board) | `ooda` `adeb3c9` — M169–M172 path A closed; **pure multi dual-green residual** (host free-name lag vs source table; cross-module String → `long long`) |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
 | Alpha bar | Product floors **done (alpha)**; moonshot free-names **path A refuse** (M153); library residuals **path A seal/stub** (M161); AGY language floors **path A** (M166–M169). Full DESIGN impl still residual-named. No fake full moonshot. |
-| Open residual | Pure multi self-host dual-green; `sec/net/dnssec.oo` + `ipsec.oo` line-pressure check; DESIGN residual list on SPRINT. Cap path-A forge refuse green; object-caps DESIGN residual. |
+| Open residual | Pure multi dual-green (rebuild host with free-name table); sec/net import-graph ambient quota; DESIGN residual list on SPRINT. Cap path-A forge refuse green; object-caps DESIGN residual. |
 
 ---
 
@@ -153,8 +153,8 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| R1 | Pure multi self-host dual-green | **residual** | tip `c554319`; product residual smokes green; pure `oodac_pure_build` gcc fails on untyped-let `long long` vs `OoStr` emit quality |
-| R2 | sec/net dnssec + ipsec check | **residual** | ambient List quota / line pressure (~840–882 lines); split or fix type patterns |
+| R1 | Pure multi self-host dual-green | **residual** | tip `adeb3c9` source free-name ahead of host; pure rebuild gcc fails until host rebuilt with String free-name table |
+| R2 | sec/net dnssec + ipsec check | **residual** | split + types fixed; green at ≥1GiB ambient; default quota may ERRcap on import graph |
 | — | Full DESIGN residual | **residual** | SMT, real GPU, unrestricted dlopen, `&str`, `&mut`, nested List[Struct], object-caps, Tier C — see SPRINT once |
 
 Living detail: **`SPRINT.md`**.
