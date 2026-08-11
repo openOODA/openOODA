@@ -258,8 +258,8 @@ Living detail: **`SPRINT.md`**.
 | M1 | outline / reflect | **PASS** | Pure path + `outline_reflect_smoke`; DESIGN 2.2 **done** |
 | M2 | ARC free reclaim | **PASS** | free on ref 0; `c_env_put_last` while-mut; nested/shadow; crypto headers; stage-2 fixed-point |
 | M3 | Contract fuzzer Int depth | **PASS** | `fuzz_int_depth_smoke` in `ci_product`; multi-type residual fail-closed |
-| M4 | WASM | **PASS** + toolenv | Emit + execute smoke; DESIGN 4.1.4 stays **smoke** (not floor) |
-| M5 | LLVM | **PASS** + toolenv | Emit + execute + multi-binop/`%`; DESIGN 4.1.2 **partial** product (M119 closed: proven surface + O3 CLI; residual self-host/full C-parity) |
+| M4 | WASM | **PASS** + toolenv | Emit + execute path A; later **done (alpha)** under M151 (residual browser/prod floor) |
+| M5 | LLVM | **PASS** + toolenv | Emit + execute + multi-binop/`%`; later **done (alpha)** under M151 (residual self-host/full C-parity) |
 | M6 | Bytecode VM surface | **PASS** | 14 fixtures incl. list/string/match/struct; not JIT; product run native |
 | M7 | Integration | **PASS** + toolenv | Local `ci_product` green (+toolenv); standing re-prove rail |
 | M8 | Caps depth (3.1) | **PASS** | product deny ×4; forge deny FS/Sys/Env/Net; `STATIC_CAPS.md` honest |
