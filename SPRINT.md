@@ -4,9 +4,9 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` (stay alpha) |
-| Focus | **M169 residual closeout path A** (open) |
-| Rails | pure rebuild / struct product / caret / untyped let / board hygiene |
-| Tip | `ooda` `1848e1a` (until M169 ship) |
+| Focus | M169 residual closeout path A **closed** |
+| Rails | m169_residual_closeout, cap_forge_path_a (+ prior) |
+| Tip | `ooda` `661466d` |
 | Beta | **Not claimed** |
 
 ## Closed
@@ -14,9 +14,24 @@
 **M165 residual leftovers path A** (compiler/runtime) — see below  
 **M166 Language Feature Backlog (AGY) path A** — tip `b6c996b`  
 **M167 residual deepen path A** — tip `1d44a91`  
-**M168 AGY library language blockers path A** — tip `1848e1a`
+**M168 AGY library language blockers path A** — tip `1848e1a`  
+**M169 residual closeout path A** — tip `661466d`
 
-## M169 residual closeout (path A) — **OPEN**
+## M169 residual closeout (path A) — **CLOSED** tip `661466d`
+
+**Status:** path A **shipped** tip `661466d`. Stay **alpha**. **Do not claim beta.**
+
+| Item | Path A finished | Still residual |
+|------|-----------------|----------------|
+| Pure multi rebuild tip oodac | Typed-let density (~3k) so tip emits 130+ modules; readiness smoke | Dual-green lag: tip emit-c main/llvm timeout; hybrid seed gcc ABI |
+| Struct typedef product | Source floor (M168) | Tip host lag until pure dual-green |
+| Untyped free-name let | Source short-circuit + typed density | Product untyped still may SEGV on tip binary |
+| Caret `^` product | Source floor | Tip host lag until pure dual-green |
+| Cap forgery path A | E_CAP bare dlopen; as-fn no soft-pass; STATIC_CAPS M169 | Object-caps / future cast surface |
+| Board hygiene | This closeout | — |
+
+**Smokes:** `m169_residual_closeout_smoke`, `cap_forge_path_a_smoke`.
+
 
 **Goal:** Close agent-actionable residuals left after M166–M168. Stay **alpha**. **Not** full DESIGN / beta.
 
@@ -106,7 +121,7 @@ Beta not claimed
 *   **Compiler Compliance**: Surmounted rigorous restrictions in `oodac` (including parameter literal environment collisions and sealed builtin type checking). All 359 library files correctly pass `check_all.sh` with 0 failures!
 
 ## M165 Language Feature Backlog (Discovered by Agents)
-*Path A delivery of this backlog is under **M166** (above). Discovery bullets retained for agent history; do not re-claim “missing” where M166 path A is finished.*
+*Path A under **M166–M169**. Do not re-claim missing for path-A finished items. Pure dual-green / &mut / List[Struct] / object-caps residual.*
 *   **Dynamic Memory Allocation (`malloc`/`free`)**: Currently missing. Blocking the instantiation of complex pointer-based trees (Radix, KD, Skip Lists) and dynamic reference counters (RC/ARC).
 *   **Bitwise Operators (`<<`, `>>`, `&`, `|`, `^`)**: Currently missing. Blocking Fast Fourier Transforms (bit-reversals), bit-packing for Bloom Filters, and high-performance cryptography.
 *   **Floating-Point Math & Trigonometry**: Lacking standard library support for `sin()`, `cos()`, and `ln()`. Forced the HyperLogLog agent to use fixed-point Taylor series approximations. Blocks complex roots of unity in FFT.

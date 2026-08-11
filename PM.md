@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `1848e1a` — **M168 closed; open M169 residual closeout path A** |
+| Tip (board) | `ooda` `661466d` — **M169 residual closeout path A** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -153,7 +153,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| M169 | Residual closeout path A | **OPEN** | Pure multi rebuild tip oodac; struct typedef product; untyped alloc let; caret `^` product; cap forgery path A; board hygiene. See `SPRINT.md` M169 table A–F. Stay alpha; beta not claimed. |
+| — | (none) | — | M169 closed tip `661466d`. Pure dual-green lag residual; beta not claimed |
 
 Living detail: **`SPRINT.md`**.
 
@@ -161,6 +161,7 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M169 | Residual closeout path A | **PASS** | tip `661466d`; typed-let rebuild readiness; cap forgery posture; pure dual-green residual |
 | M166 | Language Feature Backlog (AGY) path A | **PASS** | tip `b6c996b`; bitops/math/malloc/net/index/tensor/sys; smokes in `ci_product`; pure self-host residual; cap forgery residual; beta not claimed |
 | M165 | Honest leftovers path A | **PASS** | arith contracts; E_HITL autofix; verify_human; actors; GPU noop/cpu; system dlopen; str ops; dual-run green; beta not claimed |
 | M164 | Finish residual trio path A | **PASS** | real libssl TLS handshake; ThreadCap channels; List[Int] byte buffer; dual-run green; beta not claimed |
