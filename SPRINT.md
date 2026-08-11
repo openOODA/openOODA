@@ -4,30 +4,32 @@
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Product tip | `4194c77` — **M153 residual free-name path A** |
-| Rails | `residual_path_a_floor_smoke` PASSED |
-| Beta | **Not claimed** |
+| Product tip | living `ooda` main — beta eligibility re-proved (not beta tagged) |
+| Rails | B0–B5 + Part B.1 sample rails green — see `../ooda/bootstrap/BETA_PROOF_LOG.md` |
+| Beta | **Not claimed** (owner only). Gates **eligible** for owner consideration. |
 
 ## Open (0)
 *(none)*
 
-## Closed
-**M153 Residual free-name path A — all former residual PM leaves**
+## Closed this rotation
+**Beta eligibility re-prove (no tag)**
 
-What is production-ready (alpha):
-- Unshipped DESIGN free calls (`verify_human`, `hive_fuzz`, `emit_ptx`, …) are **refused at check**.
-- Machine-readable code **E_RESIDUAL** on `--json-errors`.
-- Every former residual PM leaf has a path A refuse floor + residual honesty for full DESIGN impl.
+What is true:
+- Purity B0/B1 green (no product `.rs`, no Cargo product path).
+- Fixed-point B2 green (stage digests matched).
+- Part B.1 product surface smokes green (CLI, check, diags, outline/reflect/patch, caps, emit-c, residual path A, Cap vs FFI, honesty).
+- Pin `v0.184.0-alpha` aligns CLI + `install/BOOTSTRAP_PIN`.
 
 What is still not claimed:
-- Full implementations of moonshots (real GPU backend, interactive HITL, native LSP, …).
-- Beta tag (owner only).
+- **Beta tag** (owner only).
+- Production.
+- Full DESIGN moonshot implementations (refuse path A remains for those free names).
 
-SWARM: solo Act (check_residual + drive + packs overlap).
+SWARM: solo Act (shared rails / fixed_point).
 
 ## Residual named (honest)
-- Full DESIGN moonshot *implementations* remain residual-named inside each pack
+- Full DESIGN moonshots residual-named in packs
 - Beta not claimed
 
 ## S
-`S: low — U=0 on residual path A F=0 W=0 O=0`
+`S: low — U=0 on beta eligibility sample F=0 W=0 O=0`
