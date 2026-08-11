@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `3c56f35` — M169–M172 path A closed; **pure multi dual-green residual** (emit quality: untyped let → `long long` vs `OoStr`) |
+| Tip (board) | `ooda` `c554319` — M169–M172 path A closed; **pure multi dual-green residual** (emit quality: untyped let → `long long` vs `OoStr`) |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -153,7 +153,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 
 | # | Name | Status | Notes |
 |---|------|--------|-------|
-| R1 | Pure multi self-host dual-green | **residual** | tip `3c56f35`; product residual smokes green; pure `oodac_pure_build` gcc fails on untyped-let `long long` vs `OoStr` emit quality |
+| R1 | Pure multi self-host dual-green | **residual** | tip `c554319`; product residual smokes green; pure `oodac_pure_build` gcc fails on untyped-let `long long` vs `OoStr` emit quality |
 | R2 | sec/net dnssec + ipsec check | **residual** | ambient List quota / line pressure (~840–882 lines); split or fix type patterns |
 | — | Full DESIGN residual | **residual** | SMT, real GPU, unrestricted dlopen, `&str`, `&mut`, nested List[Struct], object-caps, Tier C — see SPRINT once |
 

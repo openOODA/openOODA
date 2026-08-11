@@ -5,8 +5,8 @@
 |------|--------|
 | Release | `v0.184.0-alpha` (stay alpha) |
 | Focus | Pure multi self-host dual-green residual + board hygiene |
-| Tip (product `ooda`) | `3c56f35` (+ local host binary m174-class; pure rebuild not dual-green) |
-| Tip (monorepo boards) | `e160abe` |
+| Tip (product `ooda`) | `c554319` (+ local host binary m174-class; pure rebuild not dual-green) |
+| Tip (monorepo boards) | `3ebef74` |
 | Beta | **Not claimed** |
 
 ## Path A closed (do not re-open)
