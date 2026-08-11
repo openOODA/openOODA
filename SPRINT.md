@@ -3,9 +3,9 @@
 ## Pin
 | Item | Value |
 |------|--------|
-| Release |  |
-| Product tip |  — **PM 3.1 capability floor done (alpha)** |
-| Rails |  |
+| Release | `v0.184.0-alpha` |
+| Product tip | `bc8498b` — **PM 3.1 capability floor done (alpha)** |
+| Rails | `caps_product_floor_smoke: PASSED` |
 | Beta | **Not claimed** |
 
 ## Open (0)
@@ -35,4 +35,4 @@ SWARM: 2 explore mappers → solo Act.
 - Beta not claimed
 
 ## S
-
+`S: low — U=0 on 3.1 floor F=0 W=0 O=0`
