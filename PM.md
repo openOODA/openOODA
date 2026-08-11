@@ -22,7 +22,7 @@ Update status when work lands; deep residual detail stays in `../ooda/bootstrap/
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (board) | `ooda` `4194c77` — **M153 residual free-name path A (all residual leaves)** |
+| Tip (board) | `ooda` `5670be8` — **M154 AI-native agent loop floor** |
 | Rebuild default | `PURE_NO_ARC=0` (retain/release; **free on ref 0**) |
 | Toolenv | `source ~/.local/ooda-toolenv/env.sh` (wasmtime + clang for execute smokes) |
 | Beta | **Not claimed** — owner only (`../ooda/bootstrap/BETA.md`) |
@@ -158,6 +158,8 @@ Living detail: **`SPRINT.md`**.
 
 | # | Name | Closed as | Notes |
 |---|------|-----------|-------|
+| M154 | AI-native agent loop floor | **PASS** | outline+reflect+E_CAP suggested_fix+patch; `ai_native_product_floor_smoke` green; auto-apply residual |
+| M153 | Residual free-name path A (all moonshots) | **PASS** | check_residual default-deny; residual_path_a_floor_smoke green |
 | M152 | Cap vs FFI path A (6.3) | **PASS** | `&UnsafeFFICap` check seal for dlopen/host-FFI free names; emit residual; `cap_ffi_product_floor_smoke` green; full C TCB residual |
 | M151 | Full PM alpha pass | **PASS** | json-errors free-safe (let-match); `alpha_pm_floors_smoke` PASSED; all product floors **done (alpha)**; moonshots stay **residual** honesty |
 | M139 | Lock + pin honesty | **PASS** | tip pinned; O=0; smokes as claimed |
