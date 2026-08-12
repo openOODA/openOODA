@@ -1,0 +1,220 @@
+# t4_security.oot — Security Auditor (Supply Chain Hygiene)
+# Date: 2026-08-12T12:15:00Z
+# Role: Security Auditor — SPRINT T4 hygiene / supply-chain debris (IDs 8.1, 9.1–9.8)
+# Host: product tree `/home/jeryd/Projects/openOODA/ooda` + super-repo workspace pin
+# Surfaces: cap-gate strip scripts, host/bak binaries + secrets, minisign trust path, gitignore
+# Method: adversarial code review + live git/file probes + pin-forgery unit check
+# OWN fix: CRITICAL minisign pubkey-body pin + abs verifier + clean env in bootstrap_*.sh;
+#          gitignore secret/binary gaps (ooda + super-repo). No push.
+
+---
+
+## Claim under pressure
+
+SPRINT **T4** (IDs **8.1, 9.1–9.8**):
+
+| Slice | Path-A expectation |
+|-------|--------------------|
+| Cap-gate strip / debug scripts | No `patch_awk` / `boot_dbg*` / `*cap_strip*` in product tree |
+| Host / bak binaries | Not shipped; gitignored; no secret key material in tracked ELFs |
+| Minisign seed trust | Hardcoded pin binds verifier to published key; no PATH/`LD_PRELOAD` forgery |
+| gitignore | Patterns cover bak, seed, secret keys, host ELFs; index matches policy |
+
+Adversarial stance: treat docs that say “gitignored / fingerprint anchor” as **claims** until live git + code path prove them. Do **not** greenwash checklist absence as a crypto seal.
+
+---
+
+## Surfaces reviewed
+
+| Surface | Path | Role |
+|---------|------|------|
+| Product gitignore | `/home/jeryd/Projects/openOODA/ooda/.gitignore` | bak/seed/key ignore policy |
+| Super-repo gitignore | `/home/jeryd/Projects/openOODA/.gitignore` | workspace host ELF sludge |
+| Bootstrap trust | `ooda/scripts/bootstrap_no_cargo.sh`, `bootstrap_2stage.sh` | seed SHA + minisign gate |
+| Signing runbook | `ooda/bootstrap/seed/SIGNING.oot` | intended trust model |
+| Seed assets | `ooda/bootstrap/seed/oodac{,.pub,.sha256,.sha256.minisig}` | published integrity pack |
+| Hygiene gate | `ooda/scripts/hygiene_t4_smoke.sh` | T4 debris smoke |
+| Residual honesty | `ooda/bootstrap/AUDIT_RESIDUAL.md` T4 table | prior strip-script claim |
+| DEBUG claim | `ooda/oodac/tc_control_cond.oo` | SPRINT 8.1 |
+| Local bak debris | `ooda/oodac/oodac.bak*`, `ooda/oodac_new` | prior-tip rebuild leftovers |
+| Super-repo host ELFs | `oodac_bin`, `oodac_bin_new`, `test_pthread` | untracked workspace binaries |
+
+---
+
+## Explicit: sealed vs residual
+
+### Path-A **sealed** / **PASS** this pass
+
+| Gate | Evidence |
+|------|----------|
+| No `patch_awk.sh` / `boot_dbg*` / `*cap_strip*` in tree | Live `find` empty; `hygiene_t4_smoke` OK; AUDIT_RESIDUAL agrees |
+| No `DBG_`/`DEBUG` println leak in `tc_control_cond.oo` | Smoke OK; only product `ERR\ttype` diagnostics remain |
+| `oodac/oodac.bak*` present but gitignored | `git check-ignore` + smoke; patterns `/oodac/oodac.bak*` (WIP on tree) |
+| `oodac_new` gitignored | `/oodac_new` pattern |
+| Seed SHA field checked before use | both bootstrap scripts compare hash fields |
+| minisig required on product path | residual refuse without `.minisig` / pub / minisign unless loud `OODA_SEED_ALLOW_UNSIGNED=1` |
+| **OWN: pubkey body pin** | `SEED_PUBKEY_B64` must match line-2 of `SEED_PUB` before `-V` |
+| **OWN: abs minisign first** | `/usr/bin` → `/bin` → `tools/` → PATH last |
+| **OWN: clean verifier env** | `env -i PATH=/usr/bin:/bin` around minisign `-V` |
+| **OWN: secret-key globs** | ooda: `*.sec`, `*.secret.key`, `**/minisign.key`, `/tools/minisign` |
+| **OWN: super-repo host ELFs** | `/oodac_bin`, `/oodac_bin_new`, `/test_pthread` ignored |
+| Secret keys not in index | no `.sec` / `.keys-local` tracked; keys-local absent on host |
+| Cap-matrix / ecap smokes are **proves**, not strippers | they deny `no_cap_*` or autofix on **temp** copies — do not patch product sources |
+
+### Residual (**not** sealed — honesty)
+
+| Residual | Sev | Why still open |
+|----------|-----|----------------|
+| **`bootstrap/seed/oodac` is TRACKED** despite `/bootstrap/seed/oodac` in gitignore | **CRIT** | gitignore never untracks; `git ls-files` shows mode 100755 blob; SIGNING.oot says “No (gitignored)” — **policy lie vs index** |
+| Tracked seed embeds host paths | **MED** | strings: `/home/jeryd/Projects/openOODA/std`, `.../oodac_check_capture.sh` — path leak, not a private key |
+| Seed not stripped | **LOW** | ELF “not stripped” — symbols aid reverse engineering of seed TCB |
+| `OODA_SEED_ALLOW_UNSIGNED=1` loud skip | **MED** | intentional residual; SHA still checked when sidecar present; **not** product trust |
+| `tools/minisign` unsigned if ever dropped in tree | **HIGH** | now gitignored; if force-added becomes second TCB binary without pin |
+| PATH fallback minisign still exists | **LOW** | only after abs + tools miss; still runs under `env -i` |
+| Pubkey pin is script-local constant | **INFO** | attacker who rewrites bootstrap scripts can change pin — TCB is reviewed script + CI, not seed dir alone |
+| Super-repo `oodac_bin*` still on disk | **MED** | now ignored; operators can still `git add -f` |
+| Index vs ignore historical seed | **CRIT** | needs `git rm --cached bootstrap/seed/oodac` + release-asset/CI path — **not** done this pass (CI prefers local seed when present) |
+| `chs_rt_v2.c` / ID 9.1 alternate runtime | **—** | not present under `runtime/` this host; SPRINT backlog item not re-opened as live debris |
+| Pure-skip / check residual R4 | **MED** | many smokes set `PURE_SKIP_CHECK=1` — orthogonal typecheck cost residual, not cap-strip |
+
+---
+
+## Attack matrix
+
+Verdict key:
+- **BLOCK** = refused / sealed on live probe or hard fail-closed code path
+- **BYPASS** = attack succeeds (escape / gadget)
+- **FAIL-CLOSED** = operation denied for everyone (including legit)
+- **FN** = under-refuse (should block, didn’t)
+- **MITIGATED** = was FN; OWN fix this pass
+
+| # | Attack | Expected (path-A) | Actual / code path | FP/FN | Sev |
+|---|--------|-------------------|--------------------|-------|-----|
+| S1 | Commit `patch_awk.sh` / `boot_dbg` that strips `oo_cap_require` from emit C | absent or residual-doc | **BLOCK** — no such files in tree | — | — |
+| S2 | Cap-matrix smoke “bypass” by sed on product sources | must not | **BLOCK** — smokes use corpus/temp only | — | — |
+| S3 | `DBG_`/`DEBUG` println in `tc_control_cond.oo` leaks internal state | strip | **BLOCK** — only `ERR\ttype` | — | — |
+| B1 | Accidental `git add oodac/oodac.bak` | ignore | **BLOCK** — ignored (pattern live) | was FN pre-pattern | HIGH→mit |
+| B2 | Accidental `git add oodac_new` | ignore | **BLOCK** — `/oodac_new` | was FN | MED→mit |
+| B3 | Ship tracked seed ELF as “gitignored” | policy: no commit | **BYPASS / doc FN** — **tracked** 878392 B seed | **FN** | **CRIT** |
+| B4 | Secret minisign key next to seed as `oodac.sec` | ignore | **BLOCK** after OWN `*.sec` | was FN (only `.keys-local/`) | **CRIT→mit** |
+| B5 | Super-repo `git add oodac_bin` | ignore | **BLOCK** after OWN patterns | was FN | HIGH→mit |
+| B6 | Secrets inside bak/seed strings (`PRIVATE KEY`, AKIA…) | none | **BLOCK** — no key material found; host paths only | — | — |
+| M1 | Replace `oodac.pub` + re-sign with attacker key; leave `SEED_PUBKEY_FP` | refuse | **was BYPASS** (FP never compared; `-V -p attacker.pub` OK) → **OWN MITIGATED** via `SEED_PUBKEY_B64` body pin | was **FN** | **CRIT→mit** |
+| M2 | Forge untrusted-comment key id to match FP, different key body | refuse | **was BYPASS** if only comment checked → **OWN** pins body; live unit: evil.pub **REFUSE** | was **FN** | **CRIT→mit** |
+| M3 | PATH puts evil `minisign` first (always exit 0) | must not trust | **was BYPASS** (PATH first) → **OWN** abs `/usr/bin`/`/bin` first | was **FN** | **CRIT→mit** |
+| M4 | `LD_PRELOAD` interpose system minisign from parent shell | must not trust | **was BYPASS** → **OWN** `env -i PATH=...` | was **FN** | **CRIT→mit** |
+| M5 | Missing minisign + no tools/ | fail-closed | **BLOCK** residual refuse (or loud unsigned) | — | — |
+| M6 | `OODA_SEED_ALLOW_UNSIGNED=1` | loud skip only | **ALLOW residual** (WARN multi-line) + SHA when present | by-design | MED |
+| G1 | gitignore lists seed but index still has blob | untrack or force policy | **BYPASS** — ignore false sense of security | **FN** | **CRIT** |
+| G2 | `git add -f` still possible on ignored bins | process control | residual force-add always works | INFO | — |
+
+---
+
+## Live probes (this host)
+
+```text
+hygiene_t4_smoke.sh                          → PASSED
+  bak* gitignored                            → OK (2 files)
+  no patch_awk / boot_dbg / cap-strip        → OK
+  tc_control_cond no DBG_/DEBUG              → OK
+
+git ls-files bootstrap/seed/oodac            → TRACKED (CRIT residual)
+git check-ignore bootstrap/seed/oodac        → empty (ignored rule inert while tracked)
+
+seed strings /home/... paths                 → present (MED leak)
+seed/bak PRIVATE KEY / AKIA strings          → none
+
+pin unit:
+  real oodac.pub body == SEED_PUBKEY_B64     → ACCEPT
+  evil pub (same comment FP, bad body)       → REFUSE
+
+bash -n bootstrap_no_cargo.sh / _2stage.sh   → OK
+gitignore: *.sec, tools/minisign, oodac_bin* → ignore hit
+```
+
+---
+
+## OWN fix applied (CRITICAL only)
+
+### 1) Minisign trust-path — both bootstrap scripts
+
+**Files:**
+- `/home/jeryd/Projects/openOODA/ooda/scripts/bootstrap_no_cargo.sh`
+- `/home/jeryd/Projects/openOODA/ooda/scripts/bootstrap_2stage.sh`
+
+| Change | Why |
+|--------|-----|
+| `SEED_PUBKEY_B64=RWS3WGBOo2lQZGh3eFa0Gq0h6vDb9rCE5ZoaExEGdSko44OiPDdTVm8i` | pin **key material** (pub line 2), not untrusted comment |
+| Compare pub body to pin before `-V` | stop substitute-pub + re-sign forgery while FP string stays green |
+| Comment FP mismatch also refuse | defense-in-depth / log honesty |
+| Resolve minisign `/usr/bin` → `/bin` → `tools/` → PATH | stop PATH-first verifier hijack |
+| `env -i PATH=/usr/bin:/bin minisign -V ...` | stop `LD_PRELOAD` / gadget env interpose (T3 parity) |
+
+**Not fixed here:** untracking committed seed; CI release-asset-only bootstrap; signing tools/minisign if vendored later.
+
+### 2) gitignore — secret + host binary gaps
+
+**File:** `/home/jeryd/Projects/openOODA/ooda/.gitignore`
+- `*.sec`, `*.secret.key`, `**/minisign.key`
+- `/tools/minisign`
+
+**File:** `/home/jeryd/Projects/openOODA/.gitignore`
+- `/oodac_bin`, `/oodac_bin_new`, `/test_pthread`, `/test_pthread.c`
+- `*.sec`, `*.secret.key`
+
+**Already on tree (peer hygiene WIP, kept):** `/oodac/oodac.bak*`, `/oodac/oodac.new`, `/oodac_new`, tmp patterns.
+
+**No push.**
+
+---
+
+## Root-cause notes (for DE / SPRINT T4)
+
+1. **Cap-gate strip scripts (SPRINT names)** — `patch_awk` / `boot_dbg` are a **debris checklist**, not live files. Absence is PASS. Do not invent residual “present” status. Keep `hygiene_t4_smoke` as the absence gate.
+
+2. **8.1 DEBUG** — `tc_control_cond.oo` product `println("ERR\ttype\t...")` is fail-closed diagnostics, not a debug leak. Smoke correctly allows `ERR\ttype` and fails on `DBG_`/`DEBUG`.
+
+3. **Minisign “fingerprint” fiction (pre-OWN)** — comments claimed hardcoded FP was the trust root, but code only refused `TODO_PUBKEY_FP` and logged the string. Real gate was `minisign -V -p <tree pub>`. Tree-rewrite of pub+sig was a full trust forge. **Body pin closes the script-vs-seed-dir gap** under the threat model “attacker rewrites seed assets, not bootstrap scripts.”
+
+4. **gitignore ≠ untrack** — `/bootstrap/seed/oodac` in gitignore while blob remains in HEAD is the classic supply-chain footgun. SIGNING.oot “No (gitignored)” is currently **false**. Closing requires `git rm --cached` + documented CI seed from release asset / `SEED_OODAC` secret — coordinate with CI owner; not a silent untrack this pass.
+
+5. **Host path leak in seed** — rebuild seed in clean path or strip; low crypto impact, high opsec smell for a published trust root.
+
+6. **Bak binaries** — local rebuild workflow (`cp oodac oodac.bak`) is fine; shipping them is not. Ignore patterns + smoke are the control; delete local bak when done.
+
+---
+
+## Scorecard
+
+| Metric | Count |
+|--------|------:|
+| Attacks tabulated | 16 |
+| **BLOCK / sealed** | **11** |
+| **BYPASS still open** | **1** (B3/G1 tracked seed vs policy) |
+| **CRITICAL mitigated this pass** | **4** (M1, M2, M3, M4; plus B4 secret glob) |
+| **CRIT residual open** | **1** (tracked seed binary / policy contradiction) |
+| **HIGH residual** | tools/minisign if force-added; super-repo force-add discipline |
+| Cap-strip scripts present | **0** |
+| Product DEBUG leak in tc_control_cond | **0** |
+| Push | **none** |
+
+---
+
+## What T4 path-A is **not**
+
+> Ignoring bak files + pinning minisign pubkey body is **not** a full reproducible-build seal, **not** an attestation of seed provenance beyond the maintainer key, **not** a substitute for untracking the seed ELF, and **not** a guarantee against an attacker who can rewrite bootstrap scripts in the same PR as the seed.
+
+Re-open T4 security only if: (a) pubkey body pin or clean-env verifier regresses, (b) cap-strip scripts reappear without residual doc, (c) secret keys land in git history, (d) bak/host ELFs become tracked.
+
+---
+
+## Handoff
+
+| Owner | Action |
+|-------|--------|
+| Hygiene / DE | Land `.gitignore` bak + OWN secret/host patterns; keep `hygiene_t4_smoke` green |
+| Bootstrap / CI | Decide: untrack `bootstrap/seed/oodac` and fetch release seed, **or** rewrite SIGNING.oot to admit tracked seed + pin its hash in CI |
+| Security follow-up | Optional: pin expected seed SHA in bootstrap script next to pubkey (stronger than sidecar-only) |
+| Do not | Push from this auditor; greenwash tracked seed as “gitignored” |
+
+end of t4_security.oot

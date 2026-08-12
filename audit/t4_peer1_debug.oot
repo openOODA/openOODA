@@ -1,0 +1,201 @@
+# t4_peer1_debug.oot
+# QA Peer 1 — DEBUG/Trace Residual Scan (T4 ID 8.1)
+# Date: 2026-08-12T11:07:22Z
+# Role: QA Peer 1 — DEBUG/Trace Residual Scan (independent; do not trust implementers)
+# Tree: /home/jeryd/Projects/openOODA/ooda  (scan root: `oodac/**/*.oo`)
+# Audit path: /home/jeryd/Projects/openOODA/openOODA/audit/t4_peer1_debug.oot
+# OWN: write this audit only; no product edits; no push
+# Subject: ship-blocking DEBUG println residual after DE1 (SPRINT T4 / ID 8.1)
+# Policy: PASS only if no ship-blocking DEBUG println remains;
+#         ERR\ttype (and other ERR\t*) diagnostics are OK
+
+========================================================================
+SUMMARY
+========================================================================
+
+**ID 8.1 DEBUG println residual (oodac/**/*.oo): PASS**
+
+Independent live scan of all `oodac/*.oo` (158 files) finds **zero** occurrences
+of the token `DEBUG` (case-insensitive) and **zero** ship-blocking informal
+debug/trace printlns on the typecheck / check product path. Named residual
+target `oodac/tc_control_cond.oo` retains only proper `ERR\ttype\t…` diagnostics.
+
+| Scope | Verdict |
+|-------|---------|
+| Literal `DEBUG` / `debug` in `oodac/**/*.oo` | **0 hits — PASS** |
+| `tc_control_cond.oo` DEBUG println (SPRINT Where) | **absent; 5× ERR\ttype only — PASS** |
+| All `tc_*.oo` println payloads non-ERR | **0 — PASS** |
+| Ship-blocking DEBUG/trace residual | **none — PASS** |
+| ERR\ttype / ERR\* diagnostics | **allowed (OK by policy)** |
+| Peer product change | **none** |
+| Push | **none** |
+
+**OVERALL: PASS**
+
+========================================================================
+TIP / SURFACE
+========================================================================
+
+| Item | Value |
+|------|--------|
+| Cwd scanned | `/home/jeryd/Projects/openOODA/ooda` |
+| Tip (`git rev-parse --short HEAD`) | `344defe` |
+| Tip full | `344defe790838bba4b74129354a6dc0c67911c71` |
+| Tip subject | `fix(t3): runtime ZT — exec env filter, FFI mutex/nested refuse, FS writedir` |
+| Branch | `main...origin/main` **ahead 23** (no push) |
+| `oodac/**/*.oo` count | **158** |
+| SPRINT T4 IDs (context) | **8.1** (this peer), 9.1–9.8 (hygiene/debris — out of peer OWN) |
+| SPRINT Where (8.1) | `oodac/tc_control_cond.oo` DEBUG println |
+| Peer OWN | this audit matrix only |
+
+Working-tree dirt / bak hosts (`oodac.bak*`, emit churn) are **T4 supply-chain
+hygiene (9.x)**, not DEBUG println residual. This peer did not score 9.x.
+
+========================================================================
+HUNT MATRIX (DEBUG / TRACE LEAK CLASSES)
+========================================================================
+
+| # | Hunt item | Method | Live result | Verdict |
+|---|-----------|--------|-------------|---------|
+| H1 | Literal `DEBUG` token in any `oodac/**/*.oo` | `grep -rni DEBUG oodac --include='*.oo'` | **0 lines** | **PASS** |
+| H2 | `DEBUG\t` / `"DEBUG` / `'DEBUG` string forms | regex scan of string lits | **0** | **PASS** |
+| H3 | Named residual `tc_control_cond.oo` DEBUG println | full file read + payload extract | **no DEBUG**; 5 println all `ERR\ttype\t…` | **PASS** |
+| H4 | Informal debug println on typecheck path (`tc_*.oo`) | extract all `println(` payloads; require `ERR\t*` | **all ERR\t\*** (no bare dump) | **PASS** |
+| H5 | Multi-line `println(` assembling DEBUG via concat | AST-ish payload join of string lits | **no DEBUG fragment** | **PASS** |
+| H6 | `// DEBUG` comment + live println pair | case-insensitive DEBUG + nearby println | **no DEBUG comments** | **PASS** |
+| H7 | Git pickaxe residual (`DEBUG` ever in oodac `*.oo`) | `git log -S'DEBUG' -- oodac/*.oo` | **empty** (no committed DEBUG string in history under that pickaxe) | **PASS** (tree clean) |
+
+Matrix: **7/7 PASS**. Ship-blocking DEBUG println residual: **none**.
+
+========================================================================
+FOCAL FILE — `oodac/tc_control_cond.oo` (SPRINT 8.1 Where)
+========================================================================
+
+| Property | Live |
+|----------|------|
+| Path | `/home/jeryd/Projects/openOODA/ooda/oodac/tc_control_cond.oo` |
+| Lines | 217 |
+| `DEBUG` count (case-insensitive) | **0** |
+| `println(` count | **5** |
+| Payload class | **100% `ERR\ttype\tType error at …`** |
+
+### println inventory (post-DE1 live)
+
+| Line | Payload prefix (string lits joined) | Class | Ship-block? |
+|-----:|-------------------------------------|-------|:-----------:|
+| 28 | `ERR\ttype\tType error at …: while loop body must return Void, found …` | type diag | **NO** (OK) |
+| 66–75 | `ERR\ttype\tType error at …: 'if'/'while' condition must be Bool, found …` | type diag | **NO** (OK) |
+| 136–142 | `ERR\ttype\tType error at …: incompatible operand types for binary operator` | type diag | **NO** (OK) |
+| 158–167 | `ERR\ttype\tType error at …: 'if'/'while' condition must be Bool, found …` | type diag | **NO** (OK) |
+| 191–200 | `ERR\ttype\tType error at …: 'if'/'while' condition must be Bool, found …` | type diag | **NO** (OK) |
+
+Policy note (peer assignment): **ERR type diagnostics are OK**. These are
+fail-closed typecheck exits (`process_exit(1)`), not temporary DEBUG leaks.
+
+========================================================================
+BROADER `oodac/**/*.oo` PRINTLN CLASSIFICATION (CONTEXT)
+========================================================================
+
+Live classification of extracted `println(` payloads across 158 files
+(string-literal join; dynamic-only args counted under codegen/dyn):
+
+| Class | Count (approx) | Ship-block DEBUG? | Notes |
+|-------|---------------:|:-----------------:|-------|
+| `ERR\ttype\t…` | 62 | **NO** | typecheck diagnostics (policy-OK) |
+| Other `ERR\t…` (lex/parse/check/c_emit/llvm/import/capability/residual/secret/…) | 138 | **NO** | product diagnostics |
+| `OK` / `OK\tbuild\t…` / `OK_PURE_NATIVE` | 9 | **NO** | success rails |
+| C/LLVM/WASM/codegen emit body | ~614 | **NO** | emit-to-stdout backend |
+| Intentional AST dump mode (`parse_*_dump`, `ITEM[`, `EXPR …`, `STMT[`, `PROGRAM`) | ~32 | **NO** | CLI `ast`/dump stage-0 surface (not ad-hoc DEBUG) |
+| HITL pause banners | ~10 | **NO** | path-A HITL UX (`check_hitl.oo`) |
+| CLI usage / unknown command | ~4 | **NO** | `main.oo` help |
+| Local harness `Done!` (`test_parse_fn.oo`) | 1 | **NO** | test helper, not typecheck product path |
+| **Literal DEBUG / informal DEBUG\t leak** | **0** | — | **absent** |
+
+### Non-residual intentional surfaces (explicitly NOT scored as 8.1 fail)
+
+1. **Parse dump printers** (`parse_stmt_dump.oo`, `parse_expr.oo`,
+   `parse_primary*.oo`, `parse_item.oo`, `parse_drive.oo`, …) — stage-0 AST
+   dump for the `ast`/dump CLI; structured `EXPR`/`STMT`/`ITEM` lines, not
+   `DEBUG\t` leftovers.
+2. **Emit backends** (`c_emit_*.oo`, `llvm_emit_*.oo`, …) — `println` is the
+   code-generation channel to stdout.
+3. **ERR / OK rails** — product diagnostics and success markers.
+4. **HITL** — deliberate operator pause surface.
+
+None of the above match the SPRINT 8.1 residual class
+(`DEBUG println` leak in typecheck / informal debug).
+
+========================================================================
+`tc_*.oo` STRICT CHECK (TYPECHECK HOT PATH)
+========================================================================
+
+| Check | Result |
+|-------|--------|
+| `tc_*.oo` file count | 45 |
+| `println(` with payload **not** starting `ERR\t` | **0** |
+| `DEBUG` in any `tc_*.oo` | **0** |
+| `tc_control_cond.oo` non-ERR println | **0** |
+
+Typecheck units only emit fail-closed diagnostics. **No debug dump on hot path.**
+
+========================================================================
+COMMANDS REPRO (peer prove)
+========================================================================
+
+```
+cd /home/jeryd/Projects/openOODA/ooda
+
+# H1/H2 — zero DEBUG
+grep -rni 'DEBUG' oodac --include='*.oo' | wc -l
+# expect: 0
+
+# H3 — focal file println inventory
+grep -n 'println' oodac/tc_control_cond.oo
+# expect: only ERR\ttype payloads (lines 28, 66, 136, 158, 191)
+
+# H4 — typecheck path non-ERR println (manual: all payloads ERR\t)
+# peer used payload extractor; live: zero non-ERR in tc_*.oo
+
+# H7 — history pickaxe
+git log --all -S'DEBUG' --oneline -- 'oodac/*.oo'
+# expect: empty
+```
+
+Live at peer time:
+- `grep -rni DEBUG oodac --include='*.oo'` → **0**
+- `oodac/**/*.oo` → **158** files
+- tip → **344defe**
+
+========================================================================
+VERDICT vs SPRINT / DE1
+========================================================================
+
+| Claim | Peer judgment |
+|-------|----------------|
+| SPRINT still lists T4 / 8.1 open in board text | Board lag possible; **source residual is gone** |
+| DE1 strip of DEBUG leak | Live tree matches **stripped / never-present** state for `DEBUG` token; `tc_control_cond.oo` clean |
+| Ship-blocking residual remains? | **NO** |
+| Peer must patch product? | **NO** |
+| Overall ID 8.1 DEBUG residual | **PASS** |
+
+Out of scope for this peer (do not FAIL 8.1 on these):
+- Untracked `oodac.bak` / host binaries (9.x hygiene — peer3 / hygiene OWN)
+- `patch_awk.sh` / boot_dbg / minisign policy (9.x)
+- Floor smokes (peer3 regression OWN)
+
+========================================================================
+SIGN-OFF
+========================================================================
+
+| Field | Value |
+|-------|--------|
+| Role | QA Peer 1 — DEBUG/Trace Residual Scan |
+| ID | **8.1** |
+| Scan | `ooda/oodac/**/*.oo` (158 files) |
+| Ship-blocking DEBUG println | **0** |
+| ERR type diagnostics | present, **policy-OK** |
+| Product edits | none |
+| Push | none |
+| **OVERALL** | **PASS** |
+
+Evidence file: `/home/jeryd/Projects/openOODA/openOODA/audit/t4_peer1_debug.oot`
