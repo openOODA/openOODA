@@ -1,0 +1,24 @@
+# cap_g5_phalanx_rollup.oot — seccomp / OS isolation honesty
+# Decision: **FIXED residual path-A** (2026-08-12)
+
+## Claim
+
+Product isolation floor is **process-local capability tokens** + check refuse.
+There is **no** product `seccomp-bpf` / `SIGSYS` install path.
+
+## What was wrong
+
+`c_emit_preamble.oo` emitted a dead `oo_seccomp_init` BPF filter that:
+1. Was never called from `main`
+2. Lacked `#include` headers (`linux/seccomp.h`, `linux/filter.h`, …)
+3. Broke `gcc` of `emit-c` output (`sock_filter` incomplete type)
+
+## Fix
+
+- Removed dead filter body from preamble
+- Left residual comment in emitted C
+- Smoke: `scripts/cap_g5_seccomp_honesty_smoke.sh` asserts no `sock_filter`/`BPF_STMT`/`oo_seccomp_init` in emit-c
+
+## Residual research (not product)
+
+Optional OS filter (seccomp/landlock) with correct headers, opt-in env, and non-breaking default-off — future work only.
