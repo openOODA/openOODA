@@ -1,0 +1,191 @@
+# cap_g1_peer2_runtime.oot
+# QA Peer 2 — Runtime Token Probe (CAP-G1)
+# Date: 2026-08-12T11:40Z
+# Role: QA Peer Verifier 2 (Runtime Token Probe)
+# Tree: /home/jeryd/Projects/openOODA/ooda  (runtime/) + openOODA/audit
+# Tip (ooda HEAD): `01254d4` docs(caps): point CAPS_MATRIX at process CAPS.oot catalog
+# OWN: prove runtime wrong-granular fail-closed; NetCap supersedes; correct granular
+#      if product host can. Small runtime fixes only if DE3 missed unlock bugs.
+# WRITE: this audit + runtime CAP-G1 unlock (3 files). No push. No check/emit scope.
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Claim | Expected | Actual | VERDICT |
+|-------|----------|--------|---------|
+| Wrong granular token fails closed | Tcp/Udp/Bind ≠ Http require; cross-class exit(1)+`ERR\tcap` | 14/14 cross-granular DENY (C1–C14) | **PASS** |
+| NetCap supersedes soft granular | `g_tok_net` accepted by http/tcp/udp/bind requires | 5/5 supersede PASS (B1–B5) | **PASS** |
+| Correct granular works (C host) | grant_http→fetch, grant_tcp→tcp_*, grant_bind→bind, grant_udp→udp | 5/5 correct PASS (A1–A5) | **PASS** |
+| Correct granular works (product host) | `main(http: &HttpCap)` emit injects `oo_cap_grant_http` | emit lowers `oo_fetch(http,…)` but **no** `http` grant → undeclared | **FAIL residual** (emit host) |
+| Legacy NetCap product path | `main(net: &NetCap)` + fetch still works | emit grant_net; runtime require pass; forge deny | **PASS** |
+| sock_raw stays NetCap-only | soft granular cannot unlock sock_raw | NetCap OK; Http/Tcp/zero DENY (E1–E4) | **PASS** |
+| Forge / wrong class fail-closed | zero, classic `0x4F4F4E54`, FsCap | D1–D4 DENY | **PASS** |
+
+**OVERALL: PASS (runtime path-A CAP-G1 tokens)** — product emit grant for `HttpCap`/`UdpCap`/`BindCap` residual (not runtime).
+
+Runtime unlock this pass (DE3 gap closed):
+- **Before:** `chs_rt.h` declared `oo_cap_require_{http,tcp,udp,bind}` but **no impl**; all net ops used `oo_cap_require_net` only → correct granular tokens **could not** unlock; wrong granular was impossible to distinguish.
+- **After:** impl + wire-up; 32/32 C-host probe green.
+
+========================================================================
+METHOD
+========================================================================
+
+1. Static inventory: grants `g_tok_http/tcp/udp/bind` already minted in `chs_rt_sys.c`; requires declared in `chs_rt.h` but missing bodies; netfloor/tls/fetch all `require_net`.
+2. Small runtime fix (OWN scope): implement four requires (exact granular **OR** `g_tok_net`); rewire ops.
+3. C-host probe `/tmp/cap_g1_rt_probe2.c` linked against `runtime/chs_rt.c` — fork-per-case, expect `ERR\tcap` + non-zero for deny, exit 0 for require-pass (effect may still Err).
+4. Product-host emit-c via `oodac/oodac`: NetCap fetch, HttpCap fetch, TcpCap-for-fetch (wrong).
+5. Host-patch residual prove: inject `long long http = oo_cap_grant_http()` into emitted C → require pass.
+
+No check-layer edit. No push.
+
+========================================================================
+RUNTIME UNLOCK (this pass)
+========================================================================
+
+Files touched (WT vs `01254d4`):
+
+| File | Δ | Change |
+|------|---|--------|
+| `ooda/runtime/chs_rt_sys.c` | +31 | `oo_cap_require_{http,tcp,udp,bind}`; `oo_fetch` → `require_http` |
+| `ooda/runtime/chs_rt_netfloor.c` | +9/−8 | bind/tcp/udp requires; sock_raw stays `require_net` |
+| `ooda/runtime/chs_rt_tls.c` | +1/−1 | `tls_connect` → `require_tcp` |
+
+Op → require map (path-A):
+
+| Op | Require | Accepts |
+|----|---------|---------|
+| `fetch` | `oo_cap_require_http` | HttpCap **or** NetCap |
+| `tcp_connect` / `tcp_write` / `tcp_read` / `tcp_close` / `tls_connect` | `oo_cap_require_tcp` | TcpCap **or** NetCap |
+| `bind_udp` / `udp_recv` | `oo_cap_require_udp` | UdpCap **or** NetCap |
+| `tcp_bind` | `oo_cap_require_bind` | BindCap **or** NetCap |
+| `sock_raw` | `oo_cap_require_net` | **NetCap only** |
+
+Deny contract (verified):
+```
+stderr: ERR\tcap\t<op>: missing or forged capability\n
+exit: 1
+```
+
+Line residual (hygiene note, not closed this peer): `chs_rt_sys.c` **359** lines (soft 256 / pack 300) — CAP-G1 adds ~29 lines of requires; split deferred (DE/hygiene pack).
+
+========================================================================
+PROBE MATRIX (C host — 32/32)
+========================================================================
+
+Command:
+```
+gcc -O0 -Iruntime runtime/chs_rt.c /tmp/cap_g1_rt_probe2.c -o /tmp/cap_g1_rt_probe2 -lm -ldl -lpthread
+/tmp/cap_g1_rt_probe2   # exit 0; SUMMARY pass=32 fail=0
+```
+
+### A — Correct granular (require pass)
+
+| ID | Call | Token | Result |
+|----|------|-------|--------|
+| A1 | fetch | HttpCap | **PASS** |
+| A2 | tcp_connect | TcpCap | **PASS** |
+| A3 | tcp_bind | BindCap | **PASS** |
+| A4 | bind_udp | UdpCap | **PASS** |
+| A5 | tls_connect | TcpCap | **PASS** |
+
+### B — NetCap supersedes
+
+| ID | Call | Token | Result |
+|----|------|-------|--------|
+| B1 | fetch | NetCap | **PASS** |
+| B2 | tcp_connect | NetCap | **PASS** |
+| B3 | tcp_bind | NetCap | **PASS** |
+| B4 | bind_udp | NetCap | **PASS** |
+| B5 | tls_connect | NetCap | **PASS** |
+
+### C — Wrong granular fail-closed
+
+| ID | Call | Token | Result |
+|----|------|-------|--------|
+| C1–C3 | fetch | Tcp / Udp / Bind | **DENY** |
+| C4–C6 | tcp_connect | Http / Udp / Bind | **DENY** |
+| C7–C9 | tcp_bind | Http / Tcp / Udp | **DENY** |
+| C10–C12 | bind_udp | Http / Tcp / Bind | **DENY** |
+| C13–C14 | tls_connect | Http / Udp | **DENY** |
+
+### D — Forge / wrong class
+
+| ID | Call | Token | Result |
+|----|------|-------|--------|
+| D1 | fetch | `0` | **DENY** |
+| D2 | fetch | classic `0x4F4F4E54` | **DENY** |
+| D3 | fetch | FsCap | **DENY** |
+| D4 | tcp_connect | `0` | **DENY** |
+
+### E — sock_raw NetCap-only
+
+| ID | Token | Result |
+|----|-------|--------|
+| E1 | NetCap | **PASS** (require; residual Err product) |
+| E2 | HttpCap | **DENY** |
+| E3 | TcpCap | **DENY** |
+| E4 | zero | **DENY** |
+
+========================================================================
+PRODUCT HOST
+========================================================================
+
+Host: `ooda/oodac/oodac` (gate binary on tip tree).
+
+### NetCap supersede path — PASS
+
+```
+pub fn main(net: &NetCap) { let r = fetch(net, "http://127.0.0.1:1/"); … }
+```
+- emit: `long long net = oo_cap_grant_net();` + `oo_fetch(net, …)`
+- run: `net-fetch-err` (require **passed**; connect refused → Result Err honesty)
+- forge `net=0LL`: `ERR\tcap\tfetch: missing or forged capability` exit 1
+
+### Correct HttpCap path — product residual FAIL
+
+```
+pub fn main(http: &HttpCap) { let r = fetch(http, "http://127.0.0.1:1/"); … }
+```
+- emit: `oo_fetch(http, …)` **without** `long long http = oo_cap_grant_http();`
+- preamble declares `grant_tcp` / `grant_fsread` / `grant_process` but **not** `grant_http` / `grant_udp` / `grant_bind`
+- gcc: `'http' undeclared`
+- **Manual host patch** (decl + grant_http inject): run → `http-fetch-err` = require pass
+- Conclusion: **runtime can**; **product emit host cannot** until CAP-G1 emit grants wire
+
+### Wrong TcpCap for fetch — runtime DENY even if emit allows
+
+```
+pub fn main(tcp: &TcpCap) { let r = fetch(tcp, "http://127.0.0.1:1/"); … }
+```
+- emit-c: succeeds; injects `tcp = oo_cap_grant_tcp()`; lowers `oo_fetch(tcp, …)`
+- oodac check: **OK** (check-layer CAP-G1 exact preferred residual / not in this gate binary)
+- run: `ERR\tcap\tfetch: …` exit 1 → **runtime fail-closed holds** as last line of defense
+
+========================================================================
+HONESTY / RESIDUALS
+========================================================================
+
+| Residual | Owner | Note |
+|----------|-------|------|
+| Product emit `oo_cap_grant_http/udp/bind` for main params | CAP-G1 DE emit | blocks pure `main(http: &HttpCap)` product path |
+| Check-layer preferred kind enforce | CAP-G1 DE check | gate `oodac check` still OK on TcpCap→fetch; util helpers may exist in WIP stash, not this prove |
+| CAPS_MATRIX.md row updates | CAP-G1 docs | still legacy `&NetCap` rows until DE lands matrix |
+| `chs_rt_sys.c` line soft/pack | hygiene | 359 lines after CAP-G1 requires |
+| Process-local tokens ≠ unforgeable object-caps | DESIGN residual | path-A claim only; hostile binary rewrite out of scope |
+| SOCK_RAW product | residual | NetCap required then Err |
+
+========================================================================
+VERDICT
+========================================================================
+
+**Runtime CAP-G1 token seal: PROVED.**
+
+1. Wrong granular → fail-closed (`ERR\tcap` + exit 1).
+2. NetCap supersedes soft Http/Tcp/Udp/Bind requires.
+3. Correct granular works when host grants matching token (C host **yes**; product emit **HttpCap residual**).
+
+DE3 unlock gap closed in runtime (declared-but-unimplemented requires + netfloor/tls/fetch still on legacy `require_net`). No push.
+
+*Peer2 Runtime Token Probe — CAP-G1 path-A.*

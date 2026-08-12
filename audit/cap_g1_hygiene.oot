@@ -1,0 +1,257 @@
+# cap_g1_hygiene.oot — Hygiene Enforcer (CAP-G1 granular net)
+# Date: 2026-08-12T11:37:36Z
+# Role: Hygiene Enforcer — CAP-G1
+# Tree: /home/jeryd/Projects/openOODA  (ooda/ + openOODA/)
+# Tip (ooda): 01254d4 (working tree dirty — CAP-G1 WIP on check/runtime)
+# Tip (openOODA): 904ce3d
+# OWN: line-lock check_cap_util / check_caps / chs_rt_sys / chs_rt_netfloor;
+#      bash -n CAP-G1-related smokes; no /tmp secrets; no mass deletes; no push
+# WRITE: this audit only
+# POLICY: RULES §1.7 / PROBE MAX_LINES = 256 (soft); pack watch 300; hard ban >600
+#         No mass peels/deletes this pass (DE mid-flight on CAP-G1)
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Check | VERDICT | Notes |
+|-------|---------|-------|
+| Soft lock ≤256 (OWN four) | **FAIL residual** | 2/4 over: util **288**, sys **358**; caps 211 PASS; netfloor **256** on line |
+| Pack pressure ≤300 | **FAIL residual** | only `chs_rt_sys.c` **358** (>300); util has +12 headroom to 300 |
+| Hard ban >600 | **PASS** | 0 OWN files >600 |
+| Split this pass | **NOT done** | not trivial mass peel; DE-owned CAP-G1 WIP; no mass deletes |
+| `bash -n` CAP-G1 / net smokes | **PASS** | 8/8 syntax clean (no new `*_g1*.sh` yet) |
+| `/tmp` secrets in OWN + smokes | **PASS** | ZERO secrets; OWN free of `/tmp`; smokes use `$HOME/.cache/ooda-tmp` |
+| New fail fixtures present | **observe** | 2 untracked corpus fails (wrong granular) — DE prove surface |
+| Mass deletes | **none** | charter |
+| Push | **no** | charter |
+
+OVERALL: **HONEST RESIDUAL PASS** (hygiene measured; soft/pack line residual named; CAP-G1 not claimed closed)
+
+========================================================================
+SCOPE + METHOD
+========================================================================
+
+OWN units (CAP-G1 surface):
+
+  `ooda/oodac/check_cap_util.oo`
+  `ooda/oodac/check_caps.oo`
+  `ooda/runtime/chs_rt_sys.c`
+  `ooda/runtime/chs_rt_netfloor.c`
+
+Related (observe / bash -n only):
+
+  `scripts/caps_matrix_smoke.sh` (M dirty)
+  `scripts/libfloor_net_smoke.sh`
+  `scripts/tcp_io_smoke.sh`
+  `scripts/cap_forge_path_a_smoke.sh`
+  `scripts/caps_product_floor_smoke.sh`
+  `scripts/ffi_dlopen_path_a_smoke.sh`
+  `scripts/fs_writedir_smoke.sh`
+  `scripts/runtime_zt_t3_smoke.sh`
+  `bootstrap/corpus/check/fail/wrong_granular_http_for_tcp.oo` (??)
+  `bootstrap/corpus/check/fail/wrong_granular_tcp_for_fetch.oo` (??)
+
+Commands:
+
+  `wc -l` on OWN four
+  `bash scripts/check_file_lines.sh` (repo MAX_LINES=256; O=18 whole tree)
+  `bash -n` on CAP-G1-related smokes
+  `grep /tmp` + secret-pattern scan on OWN / fixtures / smokes
+  observe `/tmp/cap_g1_*` probe debris (not committed)
+
+Thresholds:
+
+| Threshold | Meaning |
+|-----------|---------|
+| **256** | RULES §1.7 / PROBE MAX_LINES — soft lock |
+| **300** | Pack monofile pressure (flag for DE peel) |
+| **600** | Path-A hard ban — still green for OWN |
+
+========================================================================
+LINE LOCK — OWN FOUR (live)
+========================================================================
+
+Measured under `ooda/` at tip `01254d4` + dirty CAP-G1 WIP (2026-08-12T11:37Z).
+
+| File | Lines | ≤256 | ≤300 | ≤600 | Headroom 256 | Headroom 300 | Split? |
+|------|------:|:----:|:----:|:----:|-------------:|-------------:|:------:|
+| `oodac/check_cap_util.oo` | **288** | FAIL | PASS | PASS | −32 | +12 | DE later |
+| `oodac/check_caps.oo` | **211** | PASS | PASS | PASS | +45 | +89 | NO |
+| `runtime/chs_rt_sys.c` | **358** | FAIL | FAIL | PASS | −102 | −58 | DE later |
+| `runtime/chs_rt_netfloor.c` | **256** | PASS | PASS | PASS | **0** | +44 | freeze growth |
+| **OWN total** | **1113** | — | — | — | — | — | — |
+
+Committed baselines (HEAD only, for delta):
+
+| File | HEAD lines | Working | Δ |
+|------|----------:|--------:|--:|
+| `check_cap_util.oo` | 205 | 288 | +83 |
+| `check_caps.oo` | 174 | 211 | +37 |
+| `chs_rt_sys.c` | 329 | 358 | +29 |
+| `chs_rt_netfloor.c` | 255 | 256 | +1 |
+
+Delta notes (CAP-G1 land pressure):
+
+- **util +83**: `sealed_net_kind_of`, soft-net helpers (`is_soft_net_kind`,
+  `cap_net_legacy_ok`, `cap_net_granted_ok`, `cap_net_argflow_ok`), 27-cap
+  `is_cap_type`, alias resolve — pushes past soft 256; still under pack 300.
+- **caps +37**: precise grant + arg-flow for Http/Tcp/Udp/Bind (+ Fs residual
+  lines also present in same unit).
+- **sys +29**: `oo_cap_require_{http,tcp,udp,bind}` + grant/token bulk already
+  large; file was already over soft lock at HEAD (329).
+- **netfloor +1**: header CAP-G1 comment; requires swapped net→tcp/udp/bind
+  in place (no size blow-up). On soft lock **exactly 256** — freeze growth.
+
+Repo-wide `check_file_lines.sh` (MAX=256): **O=18** violators; OWN contributors
+are `check_cap_util.oo` (288) and `chs_rt_sys.c` (358). `chs_rt_netfloor.c`
+not listed (n=256 is not >256).
+
+========================================================================
+SPLIT GATE (not exercised this pass)
+========================================================================
+
+Rule: if OWN unit over soft lock and peel is **trivial + DE-authorized**,
+split at functional seams. Charter this pass: **no mass deletes / no mass peel**.
+
+| Unit | Over? | Trivial peel? | Action |
+|------|:-----:|:-------------:|--------|
+| `check_cap_util.oo` 288 | soft | semi — CAP-G1 helpers L63–125 could peel to `check_cap_net.oo` | **defer** DE (agy/meta) |
+| `check_caps.oo` 211 | no | n/a | none |
+| `chs_rt_sys.c` 358 | soft+pack | no — grant/token table + require_* + fetch/sys_exec co-located | **defer** DE |
+| `chs_rt_netfloor.c` 256 | on line | n/a | **freeze**; do not grow |
+
+Suggested DE peel (when authorized, not this hygiene pass):
+
+1. `check_cap_util.oo` → keep seals/is_cap_type; move `sealed_net_kind_of` +
+   `cap_net_*` helpers to `oodac/check_cap_net.oo`; import from check_caps.
+2. Wire check_caps to call helpers (today helpers exist but **check_caps inlines**
+   the NetCap supersede logic — residual cohesion debt, not a hygiene fail).
+3. `chs_rt_sys.c` → peel granular grant/require net block to `chs_rt_cap_net.c`
+   only if DE wants pack ≤300; not blocking CAP-G1 prove.
+
+========================================================================
+CAP-G1 SURFACE SNAPSHOT (hygiene observe — not prove)
+========================================================================
+
+Check (working tree):
+
+- `sealed_kind_of` → prefers `HttpCap`/`TcpCap`/`UdpCap`/`BindCap`/`NetCap`
+  via `sealed_net_kind_of` (fetch→Http, tcp_*→Tcp, tcp_bind→Bind,
+  bind_udp/udp_recv→Udp, sock_raw→NetCap only).
+- `check_caps.oo`: exact preferred bag hit OR legacy `NetCap` supersede for
+  soft granular kinds; **rejects wrong granular** (HttpCap ⇏ tcp_bind).
+- Helpers `cap_net_granted_ok` / `cap_net_argflow_ok` defined in util but
+  **not yet called** from check_caps (inline twin logic) — DE cleanup residual.
+
+Runtime (working tree):
+
+- `oo_cap_require_http/tcp/udp/bind` accept granular token **or** full NetCap.
+- netfloor: bind→require_bind; connect/read/write/close→require_tcp;
+  bind_udp/udp_recv→require_udp; sock_raw→require_net only.
+- fetch → `oo_cap_require_http`.
+- Grants: `oo_cap_grant_{http,tcp,udp,bind}` present in sys.c + chs_rt.h.
+
+Fixtures (untracked observe):
+
+| Path | Intent |
+|------|--------|
+| `bootstrap/corpus/check/fail/wrong_granular_http_for_tcp.oo` | HttpCap must not authorize tcp_bind |
+| `bootstrap/corpus/check/fail/wrong_granular_tcp_for_fetch.oo` | TcpCap must not authorize fetch |
+
+No dedicated `scripts/cap_g1_*_smoke.sh` in tree yet — prove likely via corpus
++ caps_matrix / libfloor_net / tcp_io until DE adds one.
+
+========================================================================
+bash -n (CAP-G1-related smokes)
+========================================================================
+
+```
+bash -n scripts/caps_matrix_smoke.sh          # OK  244 lines
+bash -n scripts/libfloor_net_smoke.sh         # OK  181
+bash -n scripts/tcp_io_smoke.sh               # OK   65
+bash -n scripts/cap_forge_path_a_smoke.sh     # OK   80
+bash -n scripts/caps_product_floor_smoke.sh   # OK   29
+bash -n scripts/ffi_dlopen_path_a_smoke.sh    # OK  137
+bash -n scripts/fs_writedir_smoke.sh          # OK
+bash -n scripts/runtime_zt_t3_smoke.sh        # OK
+# all: exit 0
+```
+
+ALL_BASHN_OK = true
+NEW_CAP_G1_SMOKE_SH = none (fixtures are .oo corpus; no new .sh this wave)
+
+========================================================================
+/tmp + SECRETS
+========================================================================
+
+### OWN units + new corpus fixtures
+
+Scan `grep /tmp` + secret-like patterns (`password`, `BEGIN *PRIVATE`, api keys):
+
+  - `oodac/check_cap_util.oo` — **clean**
+  - `oodac/check_caps.oo` — **clean**
+  - `runtime/chs_rt_sys.c` — **clean**
+  - `runtime/chs_rt_netfloor.c` — **clean**
+  - `wrong_granular_*.oo` — **clean**
+
+### Smokes
+
+`scripts/caps_matrix_smoke.sh` prefers non-/tmp temps:
+
+  `export TMPDIR="${TMPDIR:-$HOME/.cache/ooda-tmp}"`
+  `mkdir -p "$TMPDIR"`
+
+Embedded `/tmp` strings (product rails / forge oracles — **not** script sludge,
+same policy as t1/t2 secret pack hygiene):
+
+  - L~170: fixture body `path_exists(fs, "/tmp")` pe-ok probe
+  - L~214: forge write target `"/tmp/ooda_cm_forge.txt"` (must deny)
+
+`libfloor_net_smoke.sh` / `tcp_io_smoke.sh`: no `/tmp` script sludge.
+
+### Host `/tmp` CAP-G1 probe debris (not committed)
+
+Observed under `/tmp/cap_g1_probe/` and `/tmp/cap_g1_*.oo` — tiny synthetic
+fixtures for manual prove. **No secret material** (no keys/passwords/tokens).
+Hygiene does **not** mass-delete host `/tmp` (charter: no mass deletes);
+operator may `rm -rf /tmp/cap_g1*` when done.
+
+VERDICT `/tmp` secrets: **PASS**
+
+========================================================================
+ACTIONS / NON-ACTIONS THIS PASS
+========================================================================
+
+| Action | Result |
+|--------|--------|
+| Measure OWN four line locks | **done** — util 288, caps 211, sys 358, netfloor 256 |
+| Flag soft/pack residual | **ledger above** |
+| Split oversize units | **none** (not trivial; DE-owned; no mass peel) |
+| Mass deletes (bak, /tmp probes, WIP) | **none** |
+| `bash -n` CAP-G1-related smokes | **8/8 OK** |
+| Purge `/tmp` secrets from committed surface | already clean; no edit |
+| Product / runtime / check source edits | **none** (hygiene audit only) |
+| Mark SPRINT CAP-G1 closed | **no** |
+| Push | **no** |
+| Audit write | **this file only** |
+
+========================================================================
+RETURN — COMPACT
+========================================================================
+
+```
+SCOPE   CAP-G1 OWN four  tip ooda=01254d4+WIP  openOODA=904ce3d
+OWN     util=288  caps=211  sys=358  netfloor=256  total=1113
+>600    0   PASS hard ban
+>300    1   FAIL residual  (chs_rt_sys.c 358)
+>256    2   FAIL residual  (util 288, sys 358); netfloor on-line 256
+BASHN   8/8 OK  (no new cap_g1_*.sh)
+/tmp    PASS  no secrets; smokes use ~/.cache/ooda-tmp; probe debris host-only
+SPLIT   none this pass (DE; no mass peel/delete)
+PUSH    no
+CAP-G1  residual — hygiene measure only; not closed
+OVERALL HONEST RESIDUAL PASS
+```
+
+end of cap_g1_hygiene.oot

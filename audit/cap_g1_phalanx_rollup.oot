@@ -7,10 +7,10 @@
 
 | # | Criterion | Result | Evidence |
 |---|-----------|--------|----------|
-| 1 | peer1 + peer2 + security + integration **green** | **FAIL** | Only `cap_g1_peer3_regression.oot` (**FAIL**) + `cap_g1_hygiene.oot` (honest residual). **Missing:** peer1, peer2, security, integration audits |
-| 2 | `cap_g1` smoke exit **0** | **FAIL** | `scripts/cap_g1_net_granular_smoke.sh` exit **1** (live + pin) |
+| 1 | peer1 + peer2 + security + integration **green** | **FAIL** | peer2 runtime **PASS** (C-host tokens); peer3 floors **FAIL**; hygiene residual. **Missing green:** peer1, security, integration |
+| 2 | `cap_g1` smoke exit **0** | **FAIL** | `scripts/cap_g1_net_granular_smoke.sh` exit **1** — check **accepts** wrong-granular deny fixtures |
 | 3 | T1–T4 floors green | **FAIL** (live host) | Live tip host T2 **exit 1**; T1/T3/T4 exit 0. Pin host `oodac_new` md5 `0208bab4…` T1–T4 all exit 0 |
-| 4 | Least-privilege: **HttpCap does not tcp_bind** | **FAIL** (live host) | Live `oodac check` of HttpCap+`tcp_bind` → **OK rc=0** (must refuse). Pin host correctly denys (requires NetCap) |
+| 4 | Least-privilege: **HttpCap does not tcp_bind** | **FAIL** (live host) | Live `oodac check` of HttpCap+`tcp_bind` → **OK rc=0** (must refuse). Smoke: `FAIL check accepted deny HttpCap+tcp_bind` |
 | 5 | No remote push | **PASS** | Coordinator did not push |
 
 **Close note:** CAP-G1 is **not** FIXED. Catalog/docs WIP over-claims path-A check map; live product host fails least-privilege + T2 floor. Residual named below — do **not** ship as closed.
@@ -21,14 +21,14 @@
 
 | Peer audit | Role | Verdict (self) | Notes |
 |------------|------|----------------|-------|
-| `audit/cap_g1_peer1_*.oot` | Peer 1 | **ABSENT** | required for close |
-| `audit/cap_g1_peer2_*.oot` | Peer 2 | **ABSENT** | required for close |
+| `audit/cap_g1_peer1_*.oot` | Peer 1 (check map) | **ABSENT** | required for close |
+| `audit/cap_g1_peer2_runtime.oot` | Peer 2 runtime tokens | **PASS** (runtime C-host) | 32/32 require wrong-granular DENY; NetCap supersede; emit grant Http/Udp/Bind residual |
 | `audit/cap_g1_peer3_regression.oot` | Peer 3 floors | **FAIL** | T2 exit 1 on live host `96da54c6…`; caps_matrix also red |
 | `audit/cap_g1_security.oot` | Security | **ABSENT** | required for close |
 | `audit/cap_g1_integration.oot` | Integration | **ABSENT** | required for close |
 | `audit/cap_g1_hygiene.oot` | Hygiene | **HONEST RESIDUAL PASS** | soft/pack line residual; hard >600 = 0; not a close gate alone |
 
-Coordinator does **not** invent missing peer/security/integration PASS papers.
+Coordinator does **not** invent missing peer1/security/integration PASS papers. Runtime peer green **does not** close check-layer least privilege.
 
 ---
 
@@ -60,11 +60,11 @@ FAIL secret_field_assign_fail missing ERR secret out=… (partial C)
 … BPF_JUMP(BPF_JMPmalloc(): unaligned tcache chunk detected
 ```
 
-CAP-G1 smoke (live) transcript:
+CAP-G1 smoke (live, post-fixture restore) transcript:
 
 ```
-FAIL missing fixture wrong_granular_http_for_tcp.oo
-FAIL missing fixture wrong_granular_tcp_for_fetch.oo
+FAIL check accepted deny HttpCap+tcp_bind (wrong_granular_http_for_tcp.oo)
+FAIL check accepted deny TcpCap+fetch (wrong_granular_tcp_for_fetch.oo)
 OK check allow NetCap+fetch+tcp_connect
 OK check allow TcpCap+tcp_connect
 OK check allow HttpCap+fetch
@@ -72,7 +72,7 @@ OK check allow NetCap+fetch (legacy)
 cap_g1_net_granular_smoke: FAILED
 ```
 
-CAP-G1 smoke (pin) additionally rejects preferred granular pass fixtures (host still NetCap-only for sealed kind) while still missing deny fixtures.
+Deny fixtures **present** but check **accepts** them → least-privilege fail at check layer (not missing-file soft fail).
 
 ### Least-privilege probe (coordinator, not greenwashed)
 
@@ -97,9 +97,10 @@ Ad-hoc fixtures (corpus fail files **absent** from tree at close):
 | `check_caps.oo` WIP | dirty: NetCap **supersede** for granular kinds *if* kind were preferred | cannot least-privilege while kind stays NetCap; live host body ≠ this WIP (accepts wrong granular) |
 | `runtime/chs_rt_sys.c` WIP | dirty: `oo_cap_require_{http,tcp,udp,bind}` + fetch→require_http | source-level runtime least-priv **aspirational** until rebuilt + proved |
 | `runtime/chs_rt_netfloor.c` WIP | dirty: bind/tcp/udp per-op require | same |
-| Corpus fail fixtures | **missing** `wrong_granular_http_for_tcp.oo` / `wrong_granular_tcp_for_fetch.oo` | smoke hard-requires them → exit 1 |
+| Corpus fail fixtures | present `wrong_granular_*` | check **accepts** (must deny) → smoke FAIL |
 | Corpus pass fixtures | untracked `ok_http_cap_fetch` / `ok_tcp_cap_connect` / `ok_net_cap_fetch_tcp` | present; not a close alone |
 | `scripts/cap_g1_net_granular_smoke.sh` | untracked | **FAILED** exit 1 |
+| Peer2 runtime | **PASS** C-host require map | emit grant Http/Udp/Bind residual named |
 | `CAPS.oot` / `CAPS_MATRIX.md` | claim CAP-G1 check path-A map | **greenwash vs live prove** — coordinator reverts catalog honesty |
 
 **Do not land** dirty check/runtime as FIXED. **Do not** treat matrix prose as smoke green.
@@ -110,16 +111,16 @@ Ad-hoc fixtures (corpus fail files **absent** from tree at close):
 
 | # | Agent / input | Outcome | Notes |
 |---|----------------|---------|-------|
-| 1 | Peer1 | **ABSENT** | block close |
-| 2 | Peer2 | **ABSENT** | block close |
+| 1 | Peer1 check | **ABSENT** | block close |
+| 2 | Peer2 runtime | **PASS** | C-host tokens; emit residual |
 | 3 | Peer3 regression | **FAIL** | T2 red live |
 | 4 | Security | **ABSENT** | block close |
 | 5 | Integration | **ABSENT** | block close |
 | 6 | Hygiene | residual PASS | not sufficient |
-| 7 | CAP-G1 smoke | **FAIL** | missing deny fixtures + incomplete map |
+| 7 | CAP-G1 smoke | **FAIL** | check accepts wrong granular |
 | 8 | Close Coordinator | **FAIL leave open** | this rollup |
 
-**Cohort summary:** Adversarial incomplete · Floors live T2 red · Smoke red · Least-privilege live red · Command **FAIL leave open**.
+**Cohort summary:** Runtime peer green · Check/smoke red · Floors live T2 red · Least-privilege live red · Command **FAIL leave open**.
 
 ---
 
