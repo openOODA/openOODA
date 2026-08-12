@@ -4,7 +4,7 @@
 **Scope:** V2 capability catalog for product and `std/src/ooda/`  
 **Purpose:** Single list agents must read when gating code. Mirrors `DESIGN.oot` §3.1 + V2 Architecture. Status lives in `PM.oot` §3.
 
-**In plain English:** Before, one network token gave full access. Now we split it into small tokens. You give only what the code needs from `main()`. Each token is checked when you compile. At run time the process re-checks a process-local seal before the effect runs; forged or missing tokens fail closed. **[STATUS: path-A process-local token re-check. CAP-G1 net op→preferred granular map is OPEN residual — not FIXED (see `audit/cap_g1_phalanx_rollup.oot`). Full `seccomp-bpf` / `SIGSYS` OS isolation, unforgeable object-caps, and non-net granular families (fs/sys/…) are residual — do **not** claim full OS isolation. 8-byte token randomness residual; see DESIGN §3.1]**
+**In plain English:** Before, one network token gave full access. Now we split it into small tokens. You give only what the code needs from `main()`. Each token is checked when you compile. At run time the process re-checks a process-local seal before the effect runs; forged or missing tokens fail closed. **[STATUS: path-A process-local token re-check. CAP-G1 net op→preferred granular map is FIXED path-A (Http/Tcp/Udp/Bind + NetCap supersede; see SPRINT CAP-G1). Full `seccomp-bpf` / `SIGSYS` OS isolation, unforgeable object-caps, and non-net granular families (fs/sys/…) are residual — do **not** claim full OS isolation. 8-byte token randomness residual; see DESIGN §3.1]**
 
 The core principle is **least privilege at the compiler**. Every capability is checked at compile time and enforced at run time.
 
@@ -15,9 +15,9 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 | Layer | What is true today |
 |-------|--------------------|
 | **Type accept** | All 27 names below are valid `&Cap` types in check (`oodac/check_cap_util.oo`). |
-| **Sealed ops (net / CAP-G1)** | **OPEN residual (not FIXED):** sealed net free-calls still map to legacy **`NetCap`** via `sealed_kind_of` on tip prove path. Preferred granular map (`HttpCap`/`TcpCap`/`UdpCap`/`BindCap`) + wrong-granular refuse is **WIP** — live tip host was observed accepting `HttpCap`+`tcp_bind` (least-privilege fail). Do **not** claim CAP-G1 closed. Evidence: `audit/cap_g1_phalanx_rollup.oot`. |
+| **Sealed ops (net / CAP-G1)** | **FIXED path-A:** `sealed_net_kind_of` returns preferred Http/Tcp/Udp/Bind/NetCap; check accepts exact preferred **or** legacy NetCap; wrong granular denied (HttpCap↛`tcp_bind`). Smoke: `cap_g1_net_granular_smoke.sh`. |
 | **Sealed ops (non-net)** | Still mostly **legacy** kinds: `FsCap`, `SysCap`, `EnvCap`, plus `TimeCap` / `RandCap` / `AllocCap` / `UnsafeFFICap` / `ThreadCap` / `GpuCap`. `FsReadCap`/`FsWriteCap` have partial check dual-accept; full fs/sys granular enforce residual (**CAP-G2+**). |
-| **Runtime require (net)** | Header declares granular grant/require symbols; dirty WT may wire per-op `oo_cap_require_{http,tcp,udp,bind}` — **not** proved as CAP-G1 close (host rebuild + smoke residual). `sock_raw` stays NetCap-only residual. **Not** OS seccomp isolation of sockets. |
+| **Runtime require (net)** | **FIXED path-A:** `oo_cap_require_{http,tcp,udp,bind}` accept granular **or** `g_tok_net`; `sock_raw` NetCap-only. **Not** OS seccomp isolation of sockets. |
 | **Runtime grants** | Header declares many `oo_cap_grant_*` (incl. granular). Emit injects legacy set + partial granular (`tcp` / `fsread` / `process` today); full main-param grant matrix for every V2 name residual (**CAP-G3**). |
 | **Policy overlays (not Cap types)** | `OODA_FS_WRITEDIR` on writes; `sys_exec` child env filter (`OODA_`/`OO_` + minimal PATH); FFI nested-`dlopen` refuse — see residual links. |
 | **Not a Cap** | `// SECRET:` taint / sink refuse is **IFC**, not a capability token. Do not add SECRET to this list. |
