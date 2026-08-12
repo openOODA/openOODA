@@ -1,0 +1,52 @@
+# product_depth_path_a.oot — honest path-A product depth (not full DESIGN)
+# Date: 2026-08-11
+# Scope: /home/jeryd/Projects/openOODA/ooda only (runtime + oodac)
+
+## Shipped (path A)
+
+### 1. chs_rt_alloc.c — per-raise n cap
+- File: ooda/runtime/chs_rt_alloc.c
+- OO_ALLOC_BYTES_MAX = 1LL << 30 (1 GiB per alloc_bytes raise)
+- n < 0 → clamp 0 (kept)
+- n > OO_ALLOC_BYTES_MAX → clamp 0 (no-op raise; reject oversize)
+- free_bytes: negative p still clamps to 0 (kept); no inflate ambient
+- Header note: ooda/runtime/chs_rt.h ambient helpers comment updated
+- Compile: gcc -Wall -Wextra -Werror -c chs_rt_alloc.c → EXIT 0
+  object: /tmp/chs_rt_alloc_path_a.o
+
+### 2. load_import.oo — std resolve honesty
+- File: ooda/oodac/load_import.oo
+- residual documented: OODA_STD_PATH not read (FsCap-only load; no env_get;
+  process-policy getenv is C-runtime, not exposed here)
+- No absolute /home probes reintroduced
+- Relative-only probes: dir/imp, std/, ../std/, ../../std/, + ../../../std/
+- Fail-closed message when import not found after those probes:
+  ERR import not found after relative probes (dir/std/../std/../../std/../../../std): <name>
+
+### 3. check_residual.oo — FFI_GEN honesty
+- File: ooda/oodac/check_residual.oo
+- Header comment: import_c / ffi_gen remain residual free-names (FFI_GEN)
+- residual_feature_of still maps import_c + ffi_gen → "FFI_GEN" (unchanged logic)
+- Path A = default-deny at check, not stub C-import codegen
+
+## Residual (still open / DESIGN)
+
+- C-import full codegen (import_c / ffi_gen product implementations)
+- OS rlimit / setrlimit / cgroup / ASAN heap isolation for AllocCap
+- OODA_STD_PATH env-driven std root (would need EnvCap or C policy hook)
+- unrestricted dlopen (prior product residual; not touched this pass)
+- full new/malloc ergonomics beyond process-local ambient raise
+
+## Prove commands (local)
+
+```
+cd ooda/runtime && gcc -Wall -Wextra -Werror -c chs_rt_alloc.c -o /tmp/chs_rt_alloc_path_a.o
+# expected: EXIT 0
+```
+
+## Honesty
+
+Path A only. Not DESIGN moonshots. Caps and refuse rails; no pretend OS heap
+or full FFI header codegen.
+
+end of product_depth_path_a.oot
