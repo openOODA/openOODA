@@ -1,0 +1,230 @@
+# cap_process_peer2_async.oot
+# QA Peer 2 — Async Process/Sys split
+# Date: 2026-08-12T14:05Z
+# Role: QA Peer Verifier 2 (Async ProcessCap / SysCap split)
+# Tree: ooda/std/os/async.oo + std/async.oo + oodac sealed map + runtime
+# OWN: prove spawn_task prefers ProcessCap; join_task hard SysCap;
+#      ProcessCap alone cannot join if kind is SysCap.
+#      Write this audit only. No product/std edits. No push.
+# Mandate: CAP-G4 sealed map + CAP-G6 process residual honesty on async facades.
+
+========================================================================
+SUMMARY
+========================================================================
+
+| # | Claim | Expected | Actual | VERDICT |
+|---|--------|----------|--------|---------|
+| 1 | **spawn_task prefers ProcessCap** | facade + sealed map + live allow ProcessCap; deny missing/wrong | `spawn_task(proc: &ProcessCap)` both trees; `sealed_sys_kind_of("async_spawn_internal")→ProcessCap`; check ALLOW ProcessCap (+ SysCap supersede); DENY no-cap/SyncCap prefer **ProcessCap** | **PASS** |
+| 2 | **join_task hard SysCap** | facade + sealed map + live SysCap allow | `join_task(sys: &SysCap)`; `sealed_sys_kind_of("async_join*" )→SysCap`; runtime `oo_cap_require_sys`; check ALLOW SysCap only | **PASS** |
+| 3 | **ProcessCap alone cannot join** | ProcessCap↛`async_join_internal` | check DENY ProcessCap + join (sealed + facade shapes); dual-repro rc=1 prefer **SysCap**; multi ProcessCap-only spawn+join fails on join | **PASS** |
+| 4 | CAP-G4 floor still green | smoke exit 0 | `cap_g4_process_smoke.sh` **PASSED** | **PASS** |
+| 5 | Product multi-cap honesty probe | ProcessCap spawn + SysCap join | `main(proc: &ProcessCap, sys: &SysCap)` check **OK**; mirrored dual-repro allow | **PASS** |
+
+**OVERALL: PASS** — Async Process/Sys split is path-A honest: spawn least-privilege ProcessCap, join residual hard SysCap, no ProcessCap join unlock.
+
+**No peer code fix required. No push.**
+
+CRIT dual-repro: ProcessCap↛join (prefer SysCap) rc=1 ×2 on sealed, facade, and ProcessCap-only spawn+join fixtures.
+
+========================================================================
+METHOD
+========================================================================
+
+1. Static read of WT facades:
+   - `/home/jeryd/Projects/openOODA/ooda/std/os/async.oo` (dirty vs tip)
+   - `/home/jeryd/Projects/openOODA/std/async.oo` (dirty vs tip)
+2. Static sealed map: `ooda/oodac/check_cap_util.oo` `sealed_sys_kind_of` + `cap_sys_*`.
+3. Static runtime: `chs_rt_crypto.c` async_spawn/join requires; `chs_rt_sys.c` require bodies.
+4. Live `oodac check` matrix under `/tmp/cap_process_peer2_async/` (product host).
+5. Dual-repro deny/allow fixtures (two runs each).
+6. Regression: `OODAC_BIN=./oodac/oodac bash scripts/cap_g4_process_smoke.sh`.
+7. Direct `oodac check std/os/async.oo` on product facade file.
+
+No ooda/std/openOODA product edits by this peer. No push.
+
+========================================================================
+HOST / TIP / WT CONTEXT
+========================================================================
+
+| Item | Value |
+|------|--------|
+| ooda tip | `2c7ce49` `docs(caps): CAP-G6 std facade notes in matrix/static caps` |
+| ooda WT | dirty: `std/os/async.oo` CAP-G4 async Process/Sys split |
+| std tip | `b99aa66` (WT dirty: `async.oo` twin split) |
+| openOODA tip | `70d1e10` |
+| Product host | `ooda/oodac/oodac` **962680** B @ 2026-08-12 06:41:59 -0700 |
+| Host md5 | `7e1ce7df9bd366b607f35724e0efe80b` |
+| Prove fixtures | `/tmp/cap_process_peer2_async/*.oo` (ephemeral) |
+| CAP-G4 map baseline | `audit/cap_g4_phalanx_rollup.oot` + `scripts/cap_g4_process_smoke.sh` |
+| Peer OWN | audit only |
+
+### WT facade delta (observed — DE/other, not this peer)
+
+**ooda/std/os/async.oo** + **std/async.oo** (identical twin dirty):
+- `spawn_task`: `&SysCap` → **`&ProcessCap`**; body `async_spawn_internal(proc, …)`
+- `join_task`: remains **`&SysCap`**; body `async_join_internal(sys, …)`
+- `main`: single SysCap → **`main(proc: &ProcessCap, sys: &SysCap)`** honesty multi-cap probe
+- Comments name CAP-G4 split + "ProcessCap alone must not unlock join"
+
+========================================================================
+1) STATIC — facades: spawn=ProcessCap, join=SysCap
+========================================================================
+
+### ooda/std/os/async.oo + std/async.oo (product + external twin)
+
+```
+// CAP-G4 split (honest, no greenwash):
+//   spawn → async_spawn_internal prefers &ProcessCap (SysCap supersedes).
+//   join  → async_join_internal is hard SysCap-only residual by design.
+// ProcessCap alone must not unlock join.
+
+pub fn spawn_task(proc: &ProcessCap, task_name: String) -> String
+    → async_spawn_internal(proc, task_name)
+
+pub fn join_task(sys: &SysCap, handle: String) -> Result[String, String]
+    → async_join_internal(sys, handle)
+
+pub fn main(proc: &ProcessCap, sys: &SysCap) { … }
+```
+
+Static prove:
+- **Claim 1 (sig):** PASS — `spawn_task` param is `&ProcessCap` only (not SysCap).
+- **Claim 2 (sig):** PASS — `join_task` param is `&SysCap` only (not ProcessCap).
+- **Claim 3 (sig):** PASS — no join facade accepts `&ProcessCap`; ProcessCap-only main cannot type-call product `join_task`.
+
+========================================================================
+2) STATIC — sealed map + runtime (CAP-G4 contract facades thread)
+========================================================================
+
+### check: sealed_sys_kind_of (`oodac/check_cap_util.oo`)
+
+| Sealed name | Preferred kind | Soft? |
+|-------------|----------------|-------|
+| `async_spawn_internal` | **ProcessCap** | yes (SysCap supersede via `is_soft_sys_kind`) |
+| `async_join` | **SysCap** | hard — ProcessCap must NOT unlock |
+| `async_join_internal` | **SysCap** | hard — ProcessCap must NOT unlock |
+
+Helpers:
+- `cap_sys_granted_ok` / `cap_sys_argflow_ok`: exact preferred **OR** SysCap when preferred is ProcessCap.
+- Hard SysCap preferred: **no** ProcessCap bag accept.
+- Comment at map: "SysCap: residual OS (… async_join) — hard SysCap only."
+
+### runtime
+
+| Op | File | Require | Accepts |
+|----|------|---------|---------|
+| `async_spawn_internal` | `chs_rt_crypto.c` | `oo_cap_require_process` | `g_tok_process` **or** `g_tok_sys` |
+| `async_join_internal` | `chs_rt_crypto.c` | `oo_cap_require_sys` | **`g_tok_sys` only** |
+
+```
+/* CAP-G4: spawn prefers ProcessCap (or SysCap supersede). */
+OoStr async_spawn_internal(...) { oo_cap_require_process(sys, "async_spawn"); … }
+OoResS async_join_internal(...) { oo_cap_require_sys(sys, "async_join"); … }
+```
+
+`oo_cap_require_process` (chs_rt_sys.c): ProcessCap **or** SysCap.
+`oo_cap_require_sys`: exact SysCap only — ProcessCap token fails closed at run time too.
+
+**Claim 1 (map/runtime):** PASS — spawn preferred ProcessCap; SysCap supersedes.
+**Claim 2 (map/runtime):** PASS — join hard SysCap require.
+**Claim 3 (runtime):** PASS — join never calls `require_process`.
+
+========================================================================
+3) LIVE CHECK MATRIX (product host `oodac/oodac`)
+========================================================================
+
+Command pattern:
+```
+cd /home/jeryd/Projects/openOODA/ooda
+OODAC=./oodac/oodac
+$OODAC check /tmp/cap_process_peer2_async/<fixture>.oo
+```
+
+| Fixture | Intent | rc | Prefer-kind / note | Verdict |
+|---------|--------|---:|--------------------|---------|
+| `spawn_process_ok` | ProcessCap + `async_spawn_internal` | 0 | — | **PASS** (×2) |
+| `spawn_sys_ok` | SysCap supersede spawn | 0 | — | **PASS** (×2) |
+| `join_sys_ok` | SysCap + `async_join_internal` | 0 | — | **PASS** (×2) |
+| `join_process_deny` | ProcessCap + join sealed | 1 | **SysCap** | **PASS DENY** (×2) |
+| `process_only_spawn_join` | ProcessCap spawn then join | 1 | **SysCap** on join | **PASS DENY** (×2) |
+| `spawn_no_cap` | no cap + spawn | 1 | **ProcessCap** | **PASS DENY** (×2) |
+| `spawn_sync_deny` | SyncCap ↛ spawn | 1 | **ProcessCap** | **PASS DENY** (×2) |
+| `prod_spawn_process` | facade shape spawn ProcessCap | 0 | — | **PASS** (×2) |
+| `prod_join_sys` | facade shape join SysCap | 0 | — | **PASS** (×2) |
+| `prod_join_process_deny` | facade join typed ProcessCap | 1 | **SysCap** | **PASS DENY** (×2) |
+| `prod_multi_main` | ProcessCap+SysCap multi main | 0 | — | **PASS** (×2) |
+| `prod_process_only_both` | ProcessCap-only spawn+join facade | 1 | **SysCap** | **PASS DENY** (×2) |
+| `prod_spawn_sys_super` | SysCap-typed spawn wrapper | 0 | supersede | **PASS** (×2) |
+| product `std/os/async.oo` | WT facade file check | 0 | multi-cap main | **PASS** |
+
+### Representative deny text (join / ProcessCap)
+
+```
+Capability Violation: Function 'main' calls sealed effectful builtin
+'async_join_internal' which requires a &SysCap parameter, but none was declared
+```
+
+### Representative deny text (spawn / missing ProcessCap)
+
+```
+Capability Violation: Function 'main' calls sealed effectful builtin
+'async_spawn_internal' which requires a &ProcessCap parameter, but none was declared
+```
+
+**Claim 1 live:** PASS — check message names preferred **ProcessCap** for spawn; ProcessCap and SysCap allow.
+**Claim 2 live:** PASS — join requires **SysCap**.
+**Claim 3 live:** PASS — ProcessCap alone never authorizes join (sealed, facade, multi-op).
+
+========================================================================
+4) REGRESSION — CAP-G4 floor
+========================================================================
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/cap_g4_process_smoke.sh
+→ cap_g4_process_smoke: PASSED
+```
+
+Also green: ProcessCap↛sys_prctl corpus; ProcessCap/SysCap sys_exec allow; ci soft-wire present.
+
+**Claim 4:** PASS — async split does not regress CAP-G4 process map.
+
+========================================================================
+5) HONESTY / RESIDUAL
+========================================================================
+
+| Item | Honesty |
+|------|---------|
+| Spawn least privilege | **TRUE** — facade + sealed + runtime ProcessCap preferred |
+| Join hard Sys residual | **TRUE** — by CAP-G4 design (not a bug) |
+| ProcessCap alone full async roundtrip | **FALSE by design** — need SysCap for join |
+| SysCap supersede spawn | **TRUE** — one-wave compat |
+| Full OS isolation / real OS threads product depth | **not claimed** — async_spawn path returns handle string under require; CAP-G4 path-A process-local seal |
+| Other process facades (`process.oo` spawn/exec/wait/kill) | **out of this peer OWN** — still SysCap residual wave if unsplit |
+| python_embed / prctl / epoll | still hard SysCap (orthogonal residual) |
+
+Do **not** greenwash: "ProcessCap alone runs full spawn+join pipeline."
+
+========================================================================
+VERDICT
+========================================================================
+
+| Claim | VERDICT |
+|-------|---------|
+| 1. spawn_task prefers ProcessCap | **PASS** |
+| 2. join_task hard SysCap | **PASS** |
+| 3. ProcessCap alone cannot join (kind SysCap) | **PASS** |
+| 4. CAP-G4 smoke regression | **PASS** |
+| 5. multi-cap honesty probe check | **PASS** |
+
+**OVERALL: PASS**
+
+Evidence roots:
+- Static facades: `ooda/std/os/async.oo`, `std/async.oo`
+- Sealed map: `ooda/oodac/check_cap_util.oo` `sealed_sys_kind_of`
+- Runtime: `ooda/runtime/chs_rt_crypto.c`, `chs_rt_sys.c`
+- Live matrix: `/tmp/cap_process_peer2_async/`
+- Smoke: `ooda/scripts/cap_g4_process_smoke.sh`
+- Catalog: `openOODA/CAPS.oot` Path-A sealed sys row; `audit/cap_g4_phalanx_rollup.oot`
+
+**No peer code fix required. No push.**
+)

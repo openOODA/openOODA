@@ -1,0 +1,213 @@
+# cap_process_integration.oot — Integration 2 Dual Tree Sync + Check
+# Date: 2026-08-12T14:05:45Z
+# Worker: Grok Build (Integration 2 — Dual tree sync + check)
+# Scope: ooda/std/os/{process,async,python}.oo ↔ std/{async,python}.oo cap policy agreement
+# Policy: no push; live oodac check + CAP-G4 smoke; dual-tree byte identity for async/python
+
+## Verdict (honest)
+
+| Layer | Result | Notes |
+|-------|--------|-------|
+| **Dual-tree cap policy agreement** | **PASS** | async + python byte-identical across trees; process product-only (no std twin) |
+| **Facade vs `sealed_sys_kind_of` map** | **PASS** 13/13 | ProcessCap for spawn/exec family; SysCap hard residual kept |
+| **`oodac check` `process.oo`** | **PASS** rc=0 | product host tip |
+| **`oodac check` async/python (both trees)** | **PASS** rc=0 | ooda + external std paths |
+| **CAP-G4 process smoke** | **PASS** exit 0 | ProcessCap↛prctl deny; ProcessCap/SysCap sys_exec allow |
+| **G1/G2 floors (regression sample)** | **PASS** | net + fs granular smokes exit 0 |
+| **Push** | **NOT DONE** | human-gated (this agent: no push) |
+
+**Integration claim:** Product process/async/python facades now match CAP-G4 sealed preferred kinds. Dual trees `ooda/std/os/{async,python}.oo` and `std/{async,python}.oo` are **byte-identical** on cap policy. Do **not** greenwash: domain `std/src` SysCap bulk (~570+), OS isolation, or python_embed product remain residual.
+
+---
+
+## TIP / host
+
+| Item | Value |
+|------|--------|
+| When (UTC) | 2026-08-12T14:05:45Z |
+| ooda tip | `2c7ce49` (`2c7ce496db32fed9…`) — `docs(caps): CAP-G6 std facade notes in matrix/static caps` |
+| std tip | `b99aa66` |
+| openOODA tip | `70d1e10` |
+| Product host | `ooda/oodac/oodac` **962680** B @ 2026-08-12 06:41 local |
+| md5 | `7e1ce7df9bd366b607f35724e0efe80b` |
+| BuildID | `78d775e7817c08f55e7376aa7f0358d15e27da98` |
+| WT DE (this wave) | **dirty** — `ooda/std/os/{process,async,python}.oo`; `std/{async,python}.oo` (uncommitted facade migrate) |
+
+---
+
+## 0) Dual-tree inventory
+
+| Surface | Path | Role | Twin? |
+|---------|------|------|-------|
+| Product process | `ooda/std/os/process.oo` | spawn/wait/kill/exec + hard Sys residual | **none** under external `std/` (no `std/process.oo`, no `std/src/process.oo`) |
+| Product async | `ooda/std/os/async.oo` | spawn_task / join_task | twin → `std/async.oo` |
+| Product python | `ooda/std/os/python.oo` | load_model → python_embed | twin → `std/python.oo` |
+| External async | `std/async.oo` | monorepo domain copy | identical to product |
+| External python | `std/python.oo` | monorepo domain copy | identical to product |
+
+### Byte identity
+
+| Pair | md5 | Result |
+|------|-----|--------|
+| `ooda/std/os/async.oo` ↔ `std/async.oo` | `c395e6bdb4606d4dcd6c3e591c6251a3` | **IDENTICAL** (`diff` rc=0) |
+| `ooda/std/os/python.oo` ↔ `std/python.oo` | `4977cf22722ad229e3df811ed697e873` | **IDENTICAL** (`diff` rc=0) |
+| `ooda/std/os/process.oo` | `ea7a33a4c2c960db43f667a002b2900d` | product-only (55 lines) |
+
+---
+
+## 1) Cap policy matrix (facade formal ↔ sealed preferred)
+
+Policy source: `ooda/oodac/check_cap_util.oo` `sealed_sys_kind_of` (CAP-G4 path-A).
+
+| File | Facade | Formal | Sealed free name | Preferred kind | Match |
+|------|--------|--------|------------------|----------------|-------|
+| `ooda/std/os/process.oo` | `process_spawn` | `&ProcessCap` | `sys_spawn` | ProcessCap | **PASS** |
+| `ooda/std/os/process.oo` | `process_wait` | `&ProcessCap` | `sys_wait` | ProcessCap | **PASS** |
+| `ooda/std/os/process.oo` | `process_kill` | `&ProcessCap` | `sys_kill` | ProcessCap | **PASS** |
+| `ooda/std/os/process.oo` | `process_exec` | `&ProcessCap` | `sys_exec` | ProcessCap | **PASS** |
+| `ooda/std/os/process.oo` | `process_epoll_create` | `&SysCap` | `sys_epoll_create` | SysCap | **PASS** |
+| `ooda/std/os/process.oo` | `process_inotify_init` | `&SysCap` | `sys_inotify_init` | SysCap | **PASS** |
+| `ooda/std/os/process.oo` | `process_prctl` | `&SysCap` | `sys_prctl` | SysCap | **PASS** |
+| `ooda/std/os/async.oo` | `spawn_task` | `&ProcessCap` | `async_spawn_internal` | ProcessCap | **PASS** |
+| `ooda/std/os/async.oo` | `join_task` | `&SysCap` | `async_join_internal` | SysCap | **PASS** |
+| `ooda/std/os/python.oo` | `load_model` | `&SysCap` | `python_embed_internal` | SysCap | **PASS** |
+| `std/async.oo` | `spawn_task` | `&ProcessCap` | `async_spawn_internal` | ProcessCap | **PASS** |
+| `std/async.oo` | `join_task` | `&SysCap` | `async_join_internal` | SysCap | **PASS** |
+| `std/python.oo` | `load_model` | `&SysCap` | `python_embed_internal` | SysCap | **PASS** |
+
+**13/13 PASS.** Honesty probe mains:
+
+| File | `main` formals | Intent |
+|------|----------------|--------|
+| `process.oo` | `&ProcessCap, &SysCap` | ProcessCap for spawn/exec; SysCap for epoll residual |
+| `async.oo` (both) | `&ProcessCap, &SysCap` | ProcessCap spawn; SysCap join residual |
+| `python.oo` (both) | `&SysCap` | hard Sys only — ProcessCap must not unlock embed |
+
+---
+
+## 2) Landed DE (observed WT — not committed this agent)
+
+### 2a) `ooda/std/os/process.oo` (CAP-G4 product facade)
+
+- `process_spawn` / `process_wait` / `process_kill` / `process_exec` → **`&ProcessCap`**
+- `process_epoll_create` / `process_inotify_init` / `process_prctl` → **`&SysCap`** (hard residual)
+- Header documents SysCap supersede soft-granular + ProcessCap↛hard Sys
+- Residual honesty: spawn/wait/kill still **Err residual** after cap re-check; real path = `process_exec` → `sys_exec`
+
+### 2b) Dual-tree async split
+
+- `spawn_task(proc: &ProcessCap, …)` → `async_spawn_internal`
+- `join_task(sys: &SysCap, …)` → `async_join_internal` (**hard SysCap-only**)
+- Product + external **byte-identical**
+
+### 2c) Dual-tree python hard residual
+
+- `load_model(sys: &SysCap, …)` stays SysCap (CAP-G4: `python_embed*` hard Sys)
+- Comments forbid ProcessCap migrate of embed path
+- Product + external **byte-identical**
+
+---
+
+## 3) Prove (Integration 2 host)
+
+### 3a) `oodac check` on process (required)
+
+```
+cd ooda
+./oodac/oodac check std/os/process.oo
+# → OK  rc=0
+```
+
+### 3b) Dual-tree checks
+
+```
+./oodac/oodac check std/os/async.oo          # OK rc=0
+./oodac/oodac check std/os/python.oo         # OK rc=0
+./oodac/oodac check ../std/async.oo          # OK rc=0
+./oodac/oodac check ../std/python.oo         # OK rc=0
+```
+
+### 3c) CAP-G4 smoke (sealed map live)
+
+```
+bash scripts/cap_g4_process_smoke.sh
+# exit 0
+OK static CAP-G4 markers
+OK deny process_prctl (rc=1)          # ProcessCap ↛ sys_prctl
+OK allow process_exec                 # ProcessCap + sys_exec
+OK allow sys_exec                     # SysCap supersede
+OK allow sys_prctl                    # SysCap hard residual
+OK corpus ok_process_cap_sys_exec.oo
+OK corpus ok_sys_cap_sys_exec.oo
+OK corpus deny wrong_granular_process_for_prctl.oo
+OK ci_product soft-wire present
+cap_g4_process_smoke: PASSED
+```
+
+### 3d) Prior-wave floors (sample, no reopen)
+
+| Gate | Result |
+|------|--------|
+| `cap_g1_net_granular_smoke.sh` | exit **0** |
+| `cap_g2_fs_granular_smoke.sh` | exit **0** |
+
+---
+
+## 4) Soft-lock / hygiene (OWN surfaces)
+
+| File | Lines | Soft-lock ≤256 | Note |
+|------|------:|----------------|------|
+| `ooda/std/os/process.oo` | 55 | **PASS** | dual-cap single file |
+| `ooda/std/os/async.oo` | 30 | **PASS** | identical to `std/async.oo` |
+| `ooda/std/os/python.oo` | 24 | **PASS** | identical to `std/python.oo` |
+
+No monofile split required.
+
+---
+
+## 5) Residual (named — not this integration fail)
+
+| Item | Status |
+|------|--------|
+| External `std/src/**` SysCap bulk (~570+ lines) | still residual (CAP-G6 inventory) — **not** ProcessCap-migrated en masse |
+| No `std/process.oo` twin | product-only surface; domain std does not re-export process facades |
+| `sys_spawn` / `sys_wait` / `sys_kill` product body | **Err residual** after seal (real spawn = `sys_exec` / `process_exec`) |
+| `python_embed` CPython | still fail-closed Err alpha |
+| OS isolation / landlock / product seccomp | CAP-G5 residual honesty |
+| CAPS.oot / CAPS_MATRIX / STATIC_CAPS prose | may still say “process.oo still SysCap” until docs wave — **code facades ahead of some docs** |
+| WT uncommitted | facade DE dirty on ooda+std; Integration 2 does **not** commit or push |
+
+---
+
+## 6) Docs drift note (honesty)
+
+At prove time, some CAP-G6 residual docs still claim `process.oo`/`async.oo` are all-SysCap (`cap_g6_syscap_inventory.oot`, CAPS.oot ProcessCap residual row). **Code on disk is the integration source of truth for this audit:** ProcessCap facades landed on process spawn/exec + async spawn. Docs cartography should refresh residual language in a follow-on hygiene pass — do not treat stale inventory as a code fail.
+
+---
+
+## 7) Close criteria
+
+| # | Criterion | Result |
+|---|-----------|--------|
+| 1 | Dual trees agree on cap policy (async/python) | **PASS** — byte-identical |
+| 2 | process facades match CAP-G4 preferred kinds | **PASS** — ProcessCap + hard Sys residual |
+| 3 | `oodac check` process.oo | **PASS** rc=0 |
+| 4 | CAP-G4 smoke still green | **PASS** exit 0 |
+| 5 | No push | **PASS** (not done) |
+
+---
+
+## Cross-links
+
+| Artifact | Role |
+|----------|------|
+| `../ooda/oodac/check_cap_util.oo` `sealed_sys_kind_of` | CAP-G4 preferred map |
+| `../ooda/scripts/cap_g4_process_smoke.sh` | ProcessCap path-A smoke |
+| `audit/cap_g4_phalanx_rollup.oot` | CAP-G4 FIXED evidence |
+| `audit/cap_g6_syscap_inventory.oot` | prior residual inventory (docs may lag) |
+| `audit/cap_g6_phalanx_rollup.oot` | CAP-G6 net+fs wave (ProcessCap facades named next) |
+| `CAPS.oot` §OS & Execution | ProcessCap / SysCap catalog |
+
+---
+
+**Integration 2 status: DUAL-TREE CAP POLICY SYNC GREEN for process/async/python facades; oodac check process.oo OK; CAP-G4 smoke PASS; no push.**

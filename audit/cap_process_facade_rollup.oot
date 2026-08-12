@@ -1,0 +1,92 @@
+# cap_process_facade_rollup.oot — ProcessCap product facades residual
+# Date: 2026-08-12
+# Role: Close Coordinator (ProcessCap facades residual)
+# Decision: **FIXED** path-A for product process facades
+
+## Close criteria
+
+| # | Criterion | Result |
+|---|-----------|--------|
+| 1 | `process_exec` / spawn/wait/kill take **`&ProcessCap`** | **PASS** — `ooda/std/os/process.oo` |
+| 2 | `process_prctl` / epoll / inotify stay **`&SysCap`** | **PASS** — ProcessCap↛hard Sys |
+| 3 | `python` facade stays **`&SysCap`** (no greenwash) | **PASS** — `ooda/std/os/python.oo` + `std/python.oo` |
+| 4 | async split: spawn **ProcessCap** / join **SysCap** | **PASS** — `ooda/std/os/async.oo` + `std/async.oo` |
+| 5 | Peer least-privilege (preferred token on call sites) | **PASS** — integration + peer2 async + hygiene |
+| 6 | Floors G1–G6 green | **PASS** — peer3 + Close Coordinator re-prove exit 0 |
+| 7 | Process facade smoke | **PASS** — `cap_process_facade_smoke.sh` exit 0 |
+| 8 | Push after green | **YES** (user authorized) |
+
+## Peer / support audits
+
+| Audit | Role | Verdict |
+|-------|------|---------|
+| `cap_process_integration.oot` | dual-tree sync + check | **PASS** |
+| `cap_process_peer2_async.oot` | async Process/Sys split | **PASS** |
+| `cap_process_peer3_regression.oot` | G1–G6 floor regression | **PASS** |
+| `cap_process_hygiene.oot` | line lock + bash -n smoke | **PASS** |
+| `cap_process_facade_ideas.oot` | Darwin ideas (DE dual-cap WIN) | support |
+
+## Decision honesty
+
+**FIXED path-A for ProcessCap product facades** (spawn/exec/wait/kill + async spawn).
+
+**Not claimed:**
+- Full std SysCap purge (~571 hits under `std/src` remain; inventory `cap_g6_syscap_inventory.oot`)
+- python as ProcessCap — **hard Sys residual** by design (`python_embed` require_sys only)
+- async join as ProcessCap — **hard Sys residual** (`async_join` SysCap-only)
+- OS isolation / seccomp product (CAP-G5 residual)
+- Pre-existing `libfloor_process_smoke` runtime residual / emit `oo_st_lit` flake — **orthogonal** (reproduced without process facade diffs; not a facade regression)
+
+## Product land
+
+| Repo | Surface | What |
+|------|---------|------|
+| **ooda** | `std/os/process.oo` | spawn/wait/kill/exec → `&ProcessCap`; epoll/inotify/prctl → `&SysCap`; dual-cap `main` |
+| **ooda** | `std/os/async.oo` | `spawn_task` → ProcessCap; `join_task` → SysCap |
+| **ooda** | `std/os/python.oo` | `load_model` stays SysCap + honesty header |
+| **ooda** | `scripts/cap_process_facade_smoke.sh` | static + check gate (exec/prctl/python/async) |
+| **ooda** | `scripts/ci_product.sh` | soft-wire after `cap_g6_std_migrate_smoke` |
+| **ooda** | `bootstrap/CAPS_MATRIX.md` + `STATIC_CAPS.md` | process/async/python facade notes |
+| **std** | `async.oo` / `python.oo` | twin honesty (spawn ProcessCap; python SysCap) |
+| **openOODA** | `CAPS.oot` / `SPRINT.oot` | CAP-G6 residual ProcessCap facades **FIXED** |
+| **openOODA** | this rollup | close evidence |
+
+## Prove (Close Coordinator host)
+
+| Gate | Result |
+|------|--------|
+| `cap_g1_net_granular_smoke.sh` | exit **0** |
+| `cap_g2_fs_granular_smoke.sh` | exit **0** |
+| `cap_g3_grant_inject_smoke.sh` | exit **0** |
+| `cap_g4_process_smoke.sh` | exit **0** (ProcessCap+sys_exec allow; ProcessCap+prctl deny) |
+| `cap_g5_seccomp_honesty_smoke.sh` | exit **0** |
+| `cap_g6_std_migrate_smoke.sh` | exit **0** |
+| `cap_process_facade_smoke.sh` | exit **0** |
+| `oodac check std/os/{process,async,python}.oo` | **OK** |
+
+## Cap map (facade truth)
+
+| Facade | Token | Sealed op | Note |
+|--------|-------|-----------|------|
+| `process_spawn` / `wait` / `kill` | **ProcessCap** | `sys_spawn` / `sys_wait` / `sys_kill` | residual Err after seal |
+| `process_exec` | **ProcessCap** | `sys_exec` | real fork+execvp+waitpid |
+| `process_prctl` / epoll / inotify | **SysCap** | hard Sys residual | ProcessCap alone deny |
+| `spawn_task` | **ProcessCap** | `async_spawn_internal` | SysCap supersede |
+| `join_task` | **SysCap** | `async_join_internal` | hard residual |
+| `load_model` | **SysCap** | `python_embed_internal` | **not** ProcessCap |
+
+Legacy: `&SysCap` still supersedes ProcessCap preferred ops at check+runtime (one-wave compat).
+
+## Residual (not this close fail)
+
+| Item | Status |
+|------|--------|
+| Domain `std/src` SysCap bulk (~571) | inventory — next domain waves |
+| Domain stubs default-deny SysCap | honesty — not invent ProcessCap for pure stubs |
+| `libfloor_process_smoke` runtime residual string / emit `oo_st_lit` | pre-existing; not facade-owned |
+| CAP-G7 CAPS_MATRIX → .oot format | optional |
+| OS landlock / seccomp product | CAP-G5 residual research |
+
+## Probe note
+
+CAP-G4 already preferred ProcessCap at sealed process ops. This residual moves **std call-site contracts** onto ProcessCap so callers can least-privilege without broad SysCap. Hard Sys residual (prctl/python_embed/join/epoll) stays SysCap-only — fail-closed if ProcessCap-only main tries them.
