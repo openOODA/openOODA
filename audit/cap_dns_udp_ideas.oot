@@ -1,0 +1,150 @@
+# cap_dns_udp_ideas.oot — Good Idea Fairy 🧚 DNS residual (Darwin 1.11)
+# Date: 2026-08-12
+# Role: ideas only — **no product code** in this pass
+# Audience: DE1 (implement winner) · peers (smoke shapes)
+
+## Problem (tree truth)
+
+| Fact | Evidence |
+|------|----------|
+| Soft leftover | `ooda/std/src/net/dns.oo` `resolve_ipv4` was **SOFT_LEGACY** `&NetCap` on a UDP residual path (not raw/L2) — `audit/cap_g6_peer1_net.oot` |
+| Residual behavior | localhost → `Ok("127.0.0.1")`; else `Err("Residual: UDP socket DNS not implemented")` — honest, **no wire DNS** |
+| Preferred cap | CAPS §2 / CAP-G1: UDP bind/recv path → **`&UdpCap`**; NetCap supersedes soft-granular one-wave only |
+| NetCap hard residual | Keep **only** for raw/L2 (`sock_raw`, GOOSE L2, AF_PACKET/scada) — **not** DNS soft residual |
+| Phantom batch_2 | `audit/std_caps_batch_2.oot` claimed `dns_server.oo` (+ http_server/mqtt/websocket/quic) migrated — **paths absent** under `std/src/net/` (live: `wireguard.oo` only in monorepo net/) |
+| Do not invent | Real UDP DNS resolver product · DNSSEC crypto product · `dns_server.oo` greenwash as land |
+
+**Dirty note (observe only):** working tree may already show a partial UdpCap sig swap on `dns.oo`. Fairy does not certify land; DE1 owns prove + smoke.
+
+## Constraints (hard)
+
+1. **UdpCap preferred** for DNS residual (UDP query path) — winner class almost certainly lives here.
+2. **NetCap residual only** where hard raw/L2 — do **not** re-label DNS as NetCap residual.
+3. **`dns_server.oo` phantom honesty** — batch_2 five-file claim is **not tree-backed**; do not create the file to retro-greenwash.
+4. **No real UDP DNS crypto as product** — no resolver, no DoH/DoT product, no DNSSEC evaluate path in this residual close.
+5. **Smoke shapes** — pass + fail fixtures (immune axiom); check allow/deny, not marketing.
+6. **No product code from Fairy** — this file is Decide input only.
+
+## Darwin 1.11 scorecard
+
+Score each idea **0–10** (higher = survives compile cycle). Axes (sum /5 ≈ Darwin rank):
+
+| Axis | Meaning |
+|------|---------|
+| **Cap** | Matches preferred granular (UdpCap) / keeps hard NetCap only for raw |
+| **Honest** | Residual named; no crypto/product greenwash; batch_2 phantom not reanimated |
+| **Smoke** | Cheap pass+fail shapes; hooks existing cap_g1 / cap_g6 rails |
+| **Entropy** | Lowers \(S = U+F+W+O\) (untested claims, fail-open, hand-waves, oversize) |
+| **Ship** | ≤ one small file + smoke; line pressure; orthogonal to DE emit inject |
+
+**Rule:** loser ideas pruned (do not implement). Winner only advances to DE1.
+
+---
+
+## Ideas (≥5)
+
+### I1 — UdpCap sig + residual honesty (mirror wireguard tone)
+**Shape:** `resolve_ipv4(udp: &UdpCap, hostname: String)` · keep localhost hardcode + residual `Err` · header: preferred UdpCap, not raw, UDP DNS not product.  
+**Smoke:** allow UdpCap caller shape; wrong-granular (HttpCap/TcpCap/BindCap only) deny if typed through sealed path later; check module types.  
+**Darwin:** Cap 10 · Honest 10 · Smoke 9 · Entropy 10 · Ship 10 → **avg 9.8**  
+**Why strong:** Closes SOFT_LEGACY with one formal change; zero new surface; matches CAPS + CAP-G6 peer residual note.
+
+### I2 — Dual-sig transition (UdpCap preferred + NetCap overload)
+**Shape:** keep `resolve_ipv4(net: &NetCap, …)` and add UdpCap twin for “compat”.  
+**Smoke:** both allow.  
+**Darwin:** Cap 4 · Honest 5 · Smoke 6 · Entropy 2 · Ship 4 → **avg 4.2**  
+**Why dies:** Two namespaces for one residual; raises \(O\) and \(U\); supersede already gives NetCap callers check/runtime soft allow when they call **sealed UDP ops** — std residual need not dual-export. Darwin prune.
+
+### I3 — Keep NetCap + document SOFT_LEGACY forever
+**Shape:** no code change; audit note only.  
+**Smoke:** status quo.  
+**Darwin:** Cap 1 · Honest 6 · Smoke 3 · Entropy 1 · Ship 8 → **avg 3.8**  
+**Why dies:** Peer already classified as next-wave migrate; leaves soft leftover counter at 1; does not reverse entropy on net surface.
+
+### I4 — Real UDP DNS product (socket query A records)
+**Shape:** bind_udp / send / parse wire format under UdpCap.  
+**Smoke:** live network tests.  
+**Darwin:** Cap 7 · Honest 0 · Smoke 2 · Entropy 0 · Ship 0 → **avg 1.8 — DISQUALIFIED**  
+**Why dies:** Violates “do not invent real UDP DNS crypto/product”; huge \(U/F/W\); out of residual close scope. Fairy forbids.
+
+### I5 — Mint `dns_server.oo` (batch_2 retro-land) under Bind/Udp
+**Shape:** create phantom path claimed by batch_2; process_exit residual server.  
+**Smoke:** file exists.  
+**Darwin:** Cap 3 · Honest 0 · Smoke 2 · Entropy 0 · Ship 1 → **avg 1.2 — DISQUALIFIED**  
+**Why dies:** Greenwashes batch_2; invents file to match a **false prior claim**. Honesty = retire claim, not spawn theater.
+
+### I6 — WireGuard-style `process_exit(1)` on all effectful DNS
+**Shape:** UdpCap formal + `process_exit(1)` even for non-localhost residual (or always).  
+**Smoke:** run would abort; check may still type.  
+**Darwin:** Cap 9 · Honest 7 · Smoke 4 · Entropy 6 · Ship 7 → **avg 6.6**  
+**Why weak vs I1:** Current residual `Err` is already fail-closed for callers using Result; process_exit is harsher and breaks verify blocks that assert Err. DNS residual is a pure function stub today — exit is wrong tool. Partial credit only if verify removed (raises \(U\)).
+
+### I7 — HttpCap / DoH residual facade
+**Shape:** `resolve_ipv4(http: &HttpCap, …)` “DNS over HTTPS residual”.  
+**Smoke:** HttpCap allow.  
+**Darwin:** Cap 2 · Honest 1 · Smoke 5 · Entropy 2 · Ship 5 → **avg 3.0**  
+**Why dies:** Wrong preferred token for residual message (UDP path honesty); invents DoH product story; confuses fetch seal with name resolution residual.
+
+### I8 — UdpCap residual + dedicated smoke shapes (Fairy recommended bundle)
+**Shape:** I1 code shape **plus** explicit fixtures (not product libs):  
+- **ALLOW:** `dns_udp_shape.oo` — `main(udp: &UdpCap)` calls `resolve_ipv4(udp, "localhost")` (or check-only typed call)  
+- **ALLOW residual Err path (optional verify):** non-localhost stays Err string  
+- **DENY (if call is sealed later):** wrong granular only when DNS is wired through sealed free names — **today residual is std fn**, so primary smoke is **check types + cap_g6 leftover count**  
+- **Static honesty:** grep `dns.oo` for `&UdpCap`; assert **no** `&NetCap` param on `resolve_ipv4`  
+- **Phantom:** smoke/doc note — `std/src/net/dns_server.oo` **must not exist**; batch_2 not evidence  
+**Darwin:** Cap 10 · Honest 10 · Smoke 10 · Entropy 10 · Ship 9 → **avg 9.8** (ties I1; wins on immune completeness)
+
+### I9 — Cap-free pure map (no token)
+**Shape:** `resolve_ipv4(hostname: String)` only.  
+**Darwin:** Cap 0 · Honest 4 · Smoke 5 · Entropy 3 · Ship 7 → **avg 3.8**  
+**Why dies:** When real UDP lands later, ambient privilege; violates default-deny for network residual surface.
+
+---
+
+## Rank (Darwin survivors)
+
+| Rank | ID | Avg | Verdict |
+|-----:|----|----:|---------|
+| 1 | **I8** | 9.8 | **WINNER** — UdpCap residual + smoke shapes + phantom honesty |
+| 1b | I1 | 9.8 | Subset of I8; ship if smoke deferred one wave (not preferred) |
+| 3 | I6 | 6.6 | Runner-up only if Err residual rejected by policy (unlikely) |
+| — | I2 I3 I7 I9 | ≤4.2 | Prune |
+| — | I4 I5 | ≤1.8 | Disqualified |
+
+## DE1 winner advice
+
+**Implement I8 (I1 core + smoke honesty).** Plain English:
+
+1. **Change only** `ooda/std/src/net/dns.oo`: first param `&UdpCap`; comments say preferred UDP residual, not raw, not product DNS.
+2. **Keep** localhost + residual Err string. **Do not** open sockets, parse DNS wire, or claim DNSSEC.
+3. **Do not** create `dns_server.oo` / mqtt / quic phantoms. If docs still cite batch_2 five-file land, fix docs later (orthogonal; note residual).
+4. **NetCap stays** only on hard residual surfaces already classified RAW (sock_raw, goose L2, scada capture) — untouched this wave.
+5. **Smoke shapes (minimum):**
+   - Static: `resolve_ipv4` signature contains `UdpCap`, not `NetCap`.
+   - `oodac check ooda/std/src/net/dns.oo` → OK.
+   - Optional fixture dir `/tmp/cap_dns_udp/` or corpus: UdpCap-typed main that typechecks; document that NetCap soft supersede remains for **sealed** UDP free names only (not a reason to keep NetCap on dns.oo).
+   - Re-run `cap_g1_net_granular_smoke.sh` (floor intact) + `cap_g6_std_migrate_smoke.sh` (residual counts report).
+6. **Done bar:** SOFT_LEGACY count for dns → 0; residual behavior unchanged; no new product crypto; batch_2 phantom not reanimated.
+7. **Out of scope:** emit type→`grant_udp` DE inject residual (CAPS DE1 inject) — orthogonal; dns residual does not require new grant path if callers use sealed bind_udp separately.
+
+### Explicit non-winners (do not build)
+
+- Real UDP resolver / DoH / DNSSEC product  
+- Dual NetCap+UdpCap exports  
+- `dns_server.oo` theater  
+- process_exit-only DNS (prefer Result residual)  
+- Cap-free resolve  
+
+## Entropy report (expected after I8)
+
+`S: ↓ (Δ −SOFT_LEGACY dns) — U=0 F=0 W=0 O≈0`  
+Untested product DNS claims stay **named residual** (good \(U\) hold).  
+batch_2 phantom remains **doc debt**, not code debt.
+
+## Leave-off
+
+- Fairy wrote ideas only; DE1 owns land + prove.  
+- Peers: verify no Http/Tcp/Bind on dns residual; no phantom files added.  
+- Security: wrong-granular on **sealed** UDP free names already CAP-G1; dns.oo is std residual fn, not a new seal.
+
+end of cap_dns_udp_ideas.oot

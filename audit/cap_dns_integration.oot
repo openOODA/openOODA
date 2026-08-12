@@ -1,0 +1,183 @@
+# cap_dns_integration.oot — Integration 2 product oodac check (dns.oo after migrate)
+# Date: 2026-08-12T14:17:13Z
+# Worker: Grok Build (Integration 2 — oodac check dns.oo)
+# Scope: migrate + prove `ooda/std/src/net/dns.oo` SOFT_LEGACY NetCap → preferred UdpCap
+# Policy: no push; product host check only; residual DNS implementation stays honest
+
+## Verdict (honest)
+
+| Layer | Result | Notes |
+|-------|--------|-------|
+| **Migrate formal** | **PASS** | `resolve_ipv4(udp: &UdpCap, …)` — was `&NetCap` SOFT_LEGACY |
+| **Not raw/L2** | **PASS** | DNS residual is UDP query path; NetCap-only reserved for sock_raw/L2 |
+| **`oodac check` dns.oo** | **PASS** rc=0 | product host tip after migrate |
+| **`oodac reflect` signature** | **PASS** | params show `"type":"&UdpCap"` |
+| **UDP residual honesty** | **PASS** | localhost hardcode + `Err("Residual: UDP socket DNS not implemented")` |
+| **CAP-G1 net floor** | **PASS** exit 0 | `cap_g1_net_granular_smoke.sh` |
+| **CAP-G6 std migrate smoke** | **PASS** exit 0 | path-A wave criteria met |
+| **Product net facade** | **PASS** | `std/os/net.oo` check OK (unchanged) |
+| **Push** | **NOT DONE** | human-gated (this agent: no push) |
+
+**Integration claim:** Product `ooda/std/src/net/dns.oo` is no longer SOFT_LEGACY NetCap on a soft-granular UDP residual. Preferred formal is **`&UdpCap`**. Real UDP socket DNS remains **unimplemented residual** (not greenwashed as live resolver). Do **not** claim full std NetCap purge or real DNS wire path.
+
+---
+
+## TIP / host
+
+| Item | Value |
+|------|--------|
+| When (UTC) | 2026-08-12T14:17:13Z |
+| ooda tip | `2a0d10f` (`2a0d10fd3e3eaf91d2047b72b6f11a2752c076b5`) — `feat(caps): ProcessCap product facades for process/async` |
+| std tip | `77fb876` |
+| openOODA tip | `a5643ea` |
+| Product host | `ooda/oodac/oodac` **962680** B @ 2026-08-12 06:41 local |
+| md5 | `7e1ce7df9bd366b607f35724e0efe80b` |
+| WT DE (this wave) | **dirty** — `ooda/std/src/net/dns.oo` (uncommitted UdpCap migrate) |
+| Prior residual note | `audit/cap_g6_peer1_net.oot` classed dns as **SOFT_LEGACY** → prefer UdpCap next DE wave |
+
+---
+
+## 0) Surface inventory
+
+| Surface | Path | Role | Twin? |
+|---------|------|------|-------|
+| Product DNS residual | `ooda/std/src/net/dns.oo` | `resolve_ipv4` localhost + Err residual | **none** under external `std/` (no `std/src/net/dns.oo`) |
+| Product net facades | `ooda/std/os/net.oo` | Http/Tcp/Udp/Bind + NetCap raw | CAP-G6 FIXED (not this edit) |
+
+md5 after migrate: `94ab8145ec2f45f5c85079b431e2487c` (20 lines).
+
+---
+
+## 1) Migrate (CAP-G6 soft leftover close)
+
+### Before (SOFT_LEGACY — peer1)
+
+```
+fn resolve_ipv4(net: &NetCap, hostname: String) -> Result[String, String]
+```
+
+Class: **SOFT_LEGACY** — NetCap on soft-granular UDP residual string; **not** raw. Prefer UdpCap.
+
+### After (this integration)
+
+```
+fn resolve_ipv4(udp: &UdpCap, hostname: String) -> Result[String, String]
+    requires hostname != ""
+{
+    if hostname == "localhost" {
+        return Ok("127.0.0.1");
+    }
+    return Err("Residual: UDP socket DNS not implemented");
+}
+```
+
+| Field | Value |
+|-------|--------|
+| Preferred formal | **`&UdpCap`** |
+| Param name | `udp` (was `net`) |
+| Sealed ops used | **none** (no `bind_udp` / `udp_recv` call yet) |
+| Body honesty | localhost → `Ok("127.0.0.1")`; else residual Err |
+| Header honesty | CAP-G6 UdpCap preferred; not raw/L2; residual UDP DNS not implemented |
+
+### verify block note
+
+Product has **no `UdpCap(0)` ctor** for verify harnesses (`oodac check` → `undefined variable 'UdpCap'`). Verify keeps **`NetCap(0)`** call sites so residual behavior stays asserted under **soft-granular supersede** (legacy NetCap still supersedes UdpCap at check — CAP-G1 one-wave). Formal remains preferred **`&UdpCap`**.
+
+---
+
+## 2) Prove (Integration 2 host)
+
+### 2a) Product `oodac check` on dns.oo (required)
+
+```
+cd ooda
+./oodac/oodac check std/src/net/dns.oo
+# → OK  rc=0
+```
+
+### 2b) Reflect signature (cap formal)
+
+```
+./oodac/oodac reflect std/src/net/dns.oo
+# {"kind":"fn","name":"resolve_ipv4",...,"params":[{"name":"udp","type":"&UdpCap"},...]}
+# {"kind":"verify","name":"resolve_ipv4"}
+# rc=0
+```
+
+### 2c) Facade + floor smokes (sample, no reopen)
+
+```
+./oodac/oodac check std/os/net.oo
+# → OK rc=0
+
+OODAC_BIN=./oodac/oodac bash scripts/cap_g1_net_granular_smoke.sh
+# cap_g1_net_granular_smoke: PASSED  (exit 0)
+
+OODAC_BIN=./oodac/oodac bash scripts/cap_g6_std_migrate_smoke.sh
+# cap_g6_std_migrate_smoke: PASSED (path-A wave criteria met)  (exit 0)
+```
+
+---
+
+## 3) Cap policy matrix (dns only)
+
+Policy sources: CAPS.oot CAP-G1 (`&UdpCap` preferred for UDP bind/recv); `check_cap_util.oo` `sealed_net_kind_of` (`bind_udp`/`udp_recv` → UdpCap); peer1 leftover row for dns.
+
+| File | Facade | Formal (before) | Formal (after) | Preferred kind | Match |
+|------|--------|-----------------|----------------|----------------|-------|
+| `ooda/std/src/net/dns.oo` | `resolve_ipv4` | `&NetCap` | **`&UdpCap`** | UdpCap (UDP residual) | **PASS** |
+
+Honesty: function does **not** call sealed UDP ops yet — formal is **capability intent** for future wire path + closes SOFT_LEGACY NetCap on a non-raw surface. Residual Err string still names UDP DNS.
+
+---
+
+## 4) Soft-lock / hygiene
+
+| File | Lines | Soft-lock ≤256 | Note |
+|------|------:|----------------|------|
+| `ooda/std/src/net/dns.oo` | 20 | **PASS** | monofile residual + verify |
+
+No monofile split required. No dual-tree twin to sync.
+
+---
+
+## 5) Residual (named — not this integration fail)
+
+| Item | Status |
+|------|--------|
+| Real UDP socket DNS / dig path | **unimplemented** — Err residual only |
+| Product `UdpCap(n)` verify ctor | **absent** — verify uses NetCap supersede token |
+| External `std/src/net/dns.oo` twin | **none** — product-only surface |
+| Domain std NetCap / SysCap bulk | still residual (CAP-G6 inventory; G6 smoke notes SysCap=571) |
+| sock_raw / L2 GOOSE / pcap | stay **NetCap-only** hard residual (not this file) |
+| WT uncommitted | dns DE dirty on ooda; Integration 2 does **not** commit or push |
+
+---
+
+## 6) Close criteria
+
+| # | Criterion | Result |
+|---|-----------|--------|
+| 1 | dns.oo formal migrates NetCap → UdpCap | **PASS** |
+| 2 | `oodac check` product host on dns.oo | **PASS** rc=0 |
+| 3 | Residual honesty retained (no fake resolver) | **PASS** |
+| 4 | CAP-G1 / CAP-G6 floors still green | **PASS** exit 0 |
+| 5 | No push | **PASS** (not done) |
+
+---
+
+## Cross-links
+
+| Artifact | Role |
+|----------|------|
+| `../ooda/std/src/net/dns.oo` | migrated surface |
+| `../ooda/std/os/net.oo` | product granular net facades (UdpCap bind/recv) |
+| `../ooda/oodac/check_cap_util.oo` `sealed_net_kind_of` | CAP-G1 preferred map |
+| `../ooda/scripts/cap_g1_net_granular_smoke.sh` | net floor |
+| `../ooda/scripts/cap_g6_std_migrate_smoke.sh` | std migrate path-A smoke |
+| `audit/cap_g6_peer1_net.oot` | prior SOFT_LEGACY classification of dns |
+| `CAPS.oot` §CAP-G1 / CAP-G6 | UdpCap preferred; std migration honesty |
+
+---
+
+**Integration 2 status: dns.oo UdpCap migrate GREEN; product oodac check OK; G1/G6 floors PASS; residual DNS unimplemented honesty retained; no push.**

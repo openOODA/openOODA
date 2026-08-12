@@ -27,7 +27,7 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 | **Policy overlays (not Cap types)** | `OODA_FS_WRITEDIR` on writes; `sys_exec` child env filter (`OODA_`/`OO_` + minimal PATH); FFI nested-`dlopen` refuse — see residual links. |
 | **Not a Cap** | `// SECRET:` taint / sink refuse is **IFC**, not a capability token. Do not add SECRET to this list. |
 | **Isolation ceiling** | Process-local tokens + check refuse. **Do not claim** full OS isolation, complete `seccomp-bpf`/`SIGSYS` coverage, or unforgeable object-caps across hostile rewrite. |
-| **Std migration (CAP-G6)** | **FIXED path-A for net+fs product facade wave** (2026-08-12). Product: `ooda/std/os/fs.oo` → FsRead/FsWrite; `ooda/std/os/net.oo` → Http/Tcp/Udp/Bind (`sock_raw` NetCap-only). External: `std/src/fs.oo` + `std/src/net.oo` twins + domain honesty (wireguard UdpCap residual, mTLS TcpCap, select cps/ai). Smoke: `scripts/cap_g6_std_migrate_smoke.sh` exit 0. **ProcessCap product facades FIXED** residual same day: `ooda/std/os/process.oo` spawn/wait/kill/exec → `&ProcessCap` (epoll/inotify/prctl stay SysCap); `async.oo` spawn → ProcessCap, join → SysCap; external `std/async.oo` twin. **Honesty — python stays SysCap** (`python.oo` / `python_embed` hard Sys only — not ProcessCap). Smoke: `cap_process_facade_smoke.sh`. **Not claimed:** full std SysCap/NetCap/FsCap purge. **SysCap bulk residual** (~571 lines under `std/src`; inventory `audit/cap_g6_syscap_inventory.oot`). Evidence: `audit/cap_g6_phalanx_rollup.oot` + `audit/cap_process_facade_rollup.oot` + peers. |
+| **Std migration (CAP-G6)** | **FIXED path-A for net+fs product facade wave** (2026-08-12). Product: `ooda/std/os/fs.oo` → FsRead/FsWrite; `ooda/std/os/net.oo` → Http/Tcp/Udp/Bind (`sock_raw` NetCap-only). External: `std/src/fs.oo` + `std/src/net.oo` twins + domain honesty (wireguard UdpCap residual, mTLS TcpCap, select cps/ai). Smoke: `scripts/cap_g6_std_migrate_smoke.sh` exit 0. **ProcessCap product facades FIXED** residual same day: `ooda/std/os/process.oo` spawn/wait/kill/exec → `&ProcessCap` (epoll/inotify/prctl stay SysCap); `async.oo` spawn → ProcessCap, join → SysCap; external `std/async.oo` twin. **Honesty — python stays SysCap** (`python.oo` / `python_embed` hard Sys only — not ProcessCap). Smoke: `cap_process_facade_smoke.sh`. **DNS residual FIXED (UdpCap preferred):** `ooda/std/src/net/dns.oo` `resolve_ipv4` takes **`&UdpCap`** (was SOFT_LEGACY NetCap). Smoke: `cap_dns_udp_smoke.sh` exit 0. Close: `audit/cap_dns_udp_rollup.oot`. **Honesty — still no real UDP DNS product** (localhost hardcode + Err residual) — cap preferred ≠ resolver product. **batch_2 phantom honesty:** prior `audit/std_caps_batch_2.oot` claimed `http_server` / `dns_server` / `mqtt` / `websocket` / `quic` migrated under `std/src/net/` — those five paths **do not exist** on disk (live net domain = `wireguard.oo` + product facades + `ooda/std/src/net/dns.oo`). Do **not** cite batch_2 five as CAP-G6 land evidence. **Not claimed:** full std SysCap/NetCap/FsCap purge. **SysCap bulk residual** (~571 lines under `std/src`; inventory `audit/cap_g6_syscap_inventory.oot`). Evidence: `audit/cap_g6_phalanx_rollup.oot` + `audit/cap_process_facade_rollup.oot` + `audit/cap_dns_udp_rollup.oot` + peers. |
 
 ### CAP-G1 path-A map (net)
 
@@ -65,7 +65,7 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 * **`&NetCap`**: Broad network access **(legacy — supersedes soft-granular Http/Tcp/Udp/Bind for one-wave compat; required for `sock_raw` / `raw_socket`). Prefer granular below for new APIs.**
 * **`&HttpCap`**: Preferred for HTTP-ish sealed ops (`fetch` product; other names residual emit). **Must not** authorize raw bind/connect alone. Emit type→`grant_http` residual (**DE1**).
 * **`&TcpCap`**: Preferred for client TCP slot IO + `tls_connect` (TLS product only when OpenSSL linked). Emit type→`grant_tcp` residual (**DE1**).
-* **`&UdpCap`**: Preferred for UDP bind/recv. Emit type→`grant_udp` residual (**DE1**).
+* **`&UdpCap`**: Preferred for UDP bind/recv **and** DNS residual (`ooda/std/src/net/dns.oo` `resolve_ipv4` — UDP query path; real socket DNS still residual Err). Emit type→`grant_udp` residual (**DE1**). **Not** a claim that product DNS is implemented.
 * **`&BindCap`**: Preferred for TCP listen/bind (`tcp_bind`). Emit type→`grant_bind` residual (**DE1**).
 
 ### 3. OS & Execution
@@ -98,12 +98,12 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 
 | Doc | Role |
 |-----|------|
-| `../ooda/bootstrap/CAPS_MATRIX.md` | Op → Cap → check/emit/runtime matrix (path-A) |
-| `../ooda/bootstrap/STATIC_CAPS.md` | Process-local seal semantics |
-| `../ooda/bootstrap/CAP_FFI.md` | FFI allowdir, handle mutex, nested dlopen refuse |
-| `../ooda/bootstrap/SECRET_TAINT.md` | SECRET IFC (orthogonal to this list) |
+| `../ooda/bootstrap/CAPS_MATRIX.oot` | Op → Cap → check/emit/runtime matrix (path-A) |
+| `../ooda/bootstrap/STATIC_CAPS.oot` | Process-local seal semantics |
+| `../ooda/bootstrap/CAP_FFI.oot` | FFI allowdir, handle mutex, nested dlopen refuse |
+| `../ooda/bootstrap/SECRET_TAINT.oot` | SECRET IFC (orthogonal to this list) |
 | `SPRINT.oot` §Runtime/caps + **CAP-G*** | Meta: CAP-G1–G6 path-A FIXED (net+fs + ProcessCap product facades); python stays SysCap; domain SysCap bulk residual |
-| `../ooda/bootstrap/AUDIT_RESIDUAL.md` | CAP-G3 residual ledger + monofile honesty |
+| `../ooda/bootstrap/AUDIT_RESIDUAL.oot` | CAP-G3 residual ledger + monofile honesty |
 | `audit/cap_g1_phalanx_rollup.oot` | CAP-G1 close evidence — FIXED path-A |
 | `audit/cap_g2_phalanx_rollup.oot` | CAP-G2 close evidence — FIXED path-A |
 | `audit/cap_g3_residual.oot` | CAP-G3 unused-grant residual-only evidence |
@@ -113,10 +113,12 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 | `audit/cap_g6_syscap_inventory.oot` | **SysCap bulk residual** inventory (not full purge claim) |
 | `audit/cap_g6_peer1_facades.oot` | Product facade signature peer |
 | `audit/cap_g6_peer3_regression.oot` | G1–G5 floors green under CAP-G6 wave |
-| `audit/cap_g6_std_honesty.oot` | Docs Cartographer CAP-G6 residual ledger |
+| `audit/cap_g6_std_honesty.oot` | Docs Cartographer CAP-G6 residual ledger (may lag; see dns/batch_2 pass) |
 | `audit/cap_process_facade_rollup.oot` | ProcessCap product facades residual **FIXED** (close evidence) |
+| `audit/cap_g6_process_facades.oot` | Docs Cartographer residual — plain English; python stays SysCap; no push |
+| `audit/cap_dns_udp_rollup.oot` | DNS residual **FIXED** — UdpCap preferred; **no** real UDP DNS product |
 | `PM.oot` §3 | Milestone status for capability sandboxing |
 
 **When to read this file:** When you add or gate code that touches files, network, OS, hardware, UI, or security — and always when you edit `std/src/ooda/` (see `BOOTSTRAP.oot` tier *Security, sandboxing, capability gating* + `DESIGN.oot` §3).
 
-*Update this list when a token is added or fractured. Keep count note in sync with DESIGN. Prefer granular tokens in new APIs. CAP-G1/G2 preferred maps are path-A process-local seal contracts. CAP-G3 is residual-only honesty (exact require stubs; **no** HW/UI product ops). CAP-G3 inject path-A landed. CAP-G4 ProcessCap path-A FIXED. CAP-G5: process-local only (no product seccomp). **CAP-G6 FIXED net+fs product facades + ProcessCap product facades** (spawn/exec/wait/kill + async spawn); **python stays SysCap**; **SysCap bulk residual** named in `audit/cap_g6_syscap_inventory.oot` — do not greenwash full std least-privilege. Close: `audit/cap_process_facade_rollup.oot`.*
+*Update this list when a token is added or fractured. Keep count note in sync with DESIGN. Prefer granular tokens in new APIs. CAP-G1/G2 preferred maps are path-A process-local seal contracts. CAP-G3 is residual-only honesty (exact require stubs; **no** HW/UI product ops). CAP-G3 inject path-A landed. CAP-G4 ProcessCap path-A FIXED. CAP-G5: process-local only (no product seccomp). **CAP-G6 FIXED net+fs product facades + ProcessCap product facades** (spawn/exec/wait/kill + async spawn); **python stays SysCap**; **DNS residual FIXED** (`resolve_ipv4` → UdpCap; socket DNS still residual Err); **batch_2 five-file net claim is phantom** (no `dns_server` et al. on disk); **SysCap bulk residual** named in `audit/cap_g6_syscap_inventory.oot` — do not greenwash full std least-privilege. Close: `audit/cap_process_facade_rollup.oot` + `audit/cap_dns_udp_rollup.oot`.*
