@@ -1,0 +1,225 @@
+# cap_g1_integration.oot — Integration 2 Rebuild & Live Prove (CAP-G1)
+# Date: 2026-08-12T11:50:36Z
+# Worker: Grok Build (Integration 2 — Rebuild & Live Prove) CAP-G1
+# Cwd: /home/jeryd/Projects/openOODA/ooda
+# Scope: pure multi or tip rebuild as repo allows; re-prove G1 smoke + floors; this audit only
+# Policy: no push; avoid concurrent pure multi tip fights (side path OK)
+
+## Verdict (honest)
+
+| Layer | Result | Notes |
+|-------|--------|-------|
+| **CAP-G1 check smoke** (`cap_g1_net_granular_smoke`) | **PASS** exit 0 | live tip host |
+| **Least-privilege** (HttpCap ⊭ tcp_bind; TcpCap ⊭ fetch) | **PASS** | deny fixtures refuse with `ERR capability` |
+| **Legacy NetCap supersede** | **PASS** | fetch + tcp_connect + multi-op allow |
+| **Runtime granular require** (C host) | **PASS** | require_http/tcp/udp/bind + NetCap OR; wrong-token DENY |
+| **T1–T4 floors** | **PASS** | secret_t1/t2, runtime_zt_t3, hygiene_t4 all exit 0 |
+| **caps_matrix full** | **FAIL** (emit/gcc) | check half **green** incl. G1 fixtures; runtime half dies on **seccomp incomplete headers** in concurrent emit preamble WIP — not a check-layer G1 regression |
+| **Emit grant Http/Udp/Bind idents** | **RESIDUAL** | main injects `net`/`tcp`/`fsread`/`process`; `http`/`udp`/`bind` not auto-granted → product `main(http: &HttpCap)` emit uses undeclared `http` |
+| **Full product emit→gcc link** | **RESIDUAL** | tip emit-c produces seccomp BPF without full includes (`struct sock_filter` incomplete) — concurrent emit WIP |
+| **Push** | **NOT DONE** | human-gated |
+
+**Integration claim:** CAP-G1 **check path-A + runtime require path-A are live-proved green** on tip host below. Do **not** greenwash full product emit/runtime matrix or emit grant matrix as FIXED (CAPS_MATRIX residual honesty still applies for emit inject).
+
+Earlier coordinator rollup (`audit/cap_g1_phalanx_rollup.oot` @ 11:41Z) correctly **FAIL/OPEN** on pre-rebuild host `96da54c6…` (HttpCap+tcp_bind accepted). **This integration re-prove supersedes that live host state** for check smoke + T1–T4 after tip DE rebuild to **949088** B.
+
+---
+
+## TIP SHA / binary
+
+```
+git rev-parse --short HEAD → 52ac564
+git log -1 --oneline       → 52ac564 docs(caps): CAP-G1 residual honesty — not path-A FIXED
+# CAP-G1 product sources are DIRTY WIP on tip tree (check_cap_util / check_caps / runtime netfloor+sys)
+```
+
+| Item | Value |
+|------|--------|
+| Product tip | `ooda/oodac/oodac` **949088** bytes @ 2026-08-12 04:49 local |
+| md5 | `2b7739d45e104dff2cd45ddd314ef89f` |
+| BuildID | `85fefe0c91ba116854464bcffc8d7b7d6a08c7bd` |
+| Side pure multi (seed, earlier) | `~/.cache/ooda-tmp/oodac_from_seed_capg1` **944736** B — **lagging / pre-precise-map** (HttpCap checks failed) |
+| Side pure multi (later) | `~/.cache/ooda-tmp/oodac_from_seed_capg1c` **949088** B — matches tip size/BuildID class |
+| Prior rollup host | `96da54c682e3349b52ed40d10fcf10c4` **956688** B (pre-G1-precise; rollup FAIL host) |
+| Seed | `bootstrap/seed/oodac` |
+| Concurrent pure multi observed | `my_pure_build.sh → oodac/oodac_g1`; `oodac_pure_build.sh → oodac_new` / `oodac_from_seed_capg1c` — **did not tip-clobber-fight** |
+
+---
+
+## 0) DE landing observed
+
+| Path | Role |
+|------|------|
+| `oodac/check_cap_util.oo` | `sealed_net_kind_of` preferred map (Http/Tcp/Udp/Bind/Net); `is_cap_type` 27; helpers `cap_net_granted_ok` / `cap_net_argflow_ok` / `cap_net_legacy_ok` / `is_soft_net_kind` |
+| `oodac/check_caps.oo` | grant bag: exact preferred **or** NetCap supersede for soft-granular; arg-flow `preferred:id` **or** `NetCap:id`; **no** "any granular satisfies any net op" fail-open |
+| `runtime/chs_rt_sys.c` | `oo_cap_require_{http,tcp,udp,bind}` accept granular **or** `g_tok_net`; `oo_fetch` → require_http |
+| `runtime/chs_rt_netfloor.c` | per-op require_bind/tcp/udp (CAP-G1); sock_raw NetCap-only |
+| `runtime/chs_rt_tls.c` | `tls_connect` → require_tcp |
+| `bootstrap/corpus/check/pass/ok_http_cap_fetch.oo` | HttpCap + fetch allow |
+| `bootstrap/corpus/check/pass/ok_tcp_cap_connect.oo` | TcpCap + tcp_connect allow |
+| `bootstrap/corpus/check/pass/ok_net_cap_fetch_tcp.oo` | NetCap multi-op supersede |
+| `bootstrap/corpus/check/fail/wrong_granular_http_for_tcp.oo` | HttpCap + tcp_bind **must deny** |
+| `bootstrap/corpus/check/fail/wrong_granular_tcp_for_fetch.oo` | TcpCap + fetch **must deny** |
+| `scripts/cap_g1_net_granular_smoke.sh` | dedicated G1 harness; wired in `scripts/ci_product.sh` |
+| `bootstrap/CAPS_MATRIX.md` | row updates for preferred caps + CAP-G1 notes (docs commit `52ac564` honesty residual) |
+
+---
+
+## 1) Rebuild path — concurrent-safe
+
+### 1a) First side pure multi (seed) — GREEN link, **G1 check lag**
+
+```
+env -u OODA OODAC_BIN=bootstrap/seed/oodac PURE_NO_ARC=0 PURE_SKIP_CHECK=1 \
+  bash scripts/oodac_pure_build.sh oodac/main.oo ~/.cache/ooda-tmp/oodac_from_seed_capg1
+# pure_rc=0  unique_fns=424 from_modules=149  OK_PURE_MULTI
+# side 944736 B md5 53b6b776…
+```
+
+Log: `/home/jeryd/.cache/ooda-tmp/seed_pure_multi_capg1b.log`
+
+**Prove on this side:** HttpCap/TcpCap/UdpCap/BindCap preferred checks **FAILED** (still NetCap-only grant logic or mid-DE race). Emit aborted with `ERRc_emitunknown free call needs annotationOO_FLIGHT_RECORDER_LOG` (concurrent emit WIP). **Not used as prove host.**
+
+Earlier attempt A hit `chs_rt.h` vs `chs_rt_hitl.c` `oo_verify_human` arity conflict (concurrent HITL WIP) → pure_rc=1; settled then retry green.
+
+### 1b) Tip host — DE-installed CAP-G1 product binary (used for prove)
+
+Avoided installing over tip while concurrent agents wrote `oodac_g1` / `oodac_new`. Tip `oodac/oodac` advanced to **949088** B (md5 `2b7739d4…`, BuildID `85fefe0c…`) with live precise check map.
+
+Tip-host pure multi (`OODAC_BIN=./oodac/oodac` → side) hit `ERR_EMIT …/tc_call_let.oo` mid-flight (dirty tree race) — abandoned; no tip clobber.
+
+### 1c) Later side mirror
+
+`~/.cache/ooda-tmp/oodac_from_seed_capg1c` **949088** B observed matching tip class (concurrent agent / settle). Integration proves on **tip** path.
+
+---
+
+## 2) CAP-G1 smoke — PASS
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/cap_g1_net_granular_smoke.sh
+# exit 0
+OK check deny HttpCap+tcp_bind
+OK check deny TcpCap+fetch
+OK check allow NetCap+fetch+tcp_connect
+OK check allow TcpCap+tcp_connect
+OK check allow HttpCap+fetch
+OK check allow NetCap+fetch (legacy)
+cap_g1_net_granular_smoke: PASSED
+```
+
+Log: `/home/jeryd/.cache/ooda-tmp/cap_g1_smoke_tip.log` + floors re-run transcript.
+
+### Check corpus scan (pass+fail) — green
+
+All `bootstrap/corpus/check/pass/*.oo` → OK; all `check/fail/*.oo` → non-zero + capability ERR (includes both wrong-granular fixtures). `corpus_check_scan fail=0`.
+
+---
+
+## 3) Floor matrix (live tip `2b7739d4…`)
+
+| Gate | Result | Notes |
+|------|--------|-------|
+| `cap_g1_net_granular_smoke` | **PASS** exit 0 | §2 |
+| `secret_t1_return_smoke` | **PASS** exit 0 | T1 regression |
+| `secret_t2_depth_smoke` | **PASS** exit 0 | T2 regression (rollup FAIL host fixed on this tip) |
+| `runtime_zt_t3_smoke` | **PASS** exit 0 | soft ffi residual unchanged |
+| `hygiene_t4_smoke` | **PASS** exit 0 | bak ignore OK |
+| `caps_matrix_smoke` | **FAIL** exit 1 | **check** portion OK (incl. G1 deny/allow); **emit/gcc runtime** fails on seccomp BPF incomplete types + related emit WIP |
+| product `emit-c` NetCap fetch → gcc | **FAIL** link | same seccomp header gap in emitted preamble |
+| `std_honesty_t5_smoke` | **N/A** this run | path not re-gated; not CAP-G1 hard gate |
+
+Floor logs: `/home/jeryd/.cache/ooda-tmp/capg1_floors_tip/`
+
+---
+
+## 4) Runtime CAP-G1 (C host — independent of oodac emit)
+
+```
+gcc -c -Werror -O0 -I runtime runtime/chs_rt_sys.c     → rc=0
+gcc -c -Werror -O0 -I runtime runtime/chs_rt_netfloor.c → rc=0
+gcc -c -Werror -O0 -I runtime runtime/chs_rt_tls.c      → rc=0
+gcc -c -Werror -O0 -I runtime runtime/chs_rt.c          → rc=0  (amalg)
+```
+
+Symbols: `oo_cap_require_{http,tcp,udp,bind}`, `oo_cap_grant_{http,tcp,udp,bind}`.
+
+### Require harness — PASS
+
+Binary: `/home/jeryd/.cache/ooda-tmp/capg1_rt_harness.bin`
+
+| Case | Result |
+|------|--------|
+| require_http(http) / require_http(net) | OK |
+| require_tcp(tcp) / require_tcp(net) | OK |
+| require_udp(udp) / require_udp(net) | OK |
+| require_bind(bind) / require_bind(net) | OK |
+| require_http(tcp_token) | **DENY** ERR cap |
+| require_tcp(http_token) | **DENY** ERR cap |
+| require_http(0) / require_tcp(0x4F4F4E54) | **DENY** ERR cap |
+
+Stdout: `g1-require-ok`.
+
+---
+
+## 5) Emit residual (honest — not G1 check close)
+
+1. **Main grant inject** (`c_emit_fn.oo`): hardcodes `fs/sys/env/net/time/rand/alloc/ffi/thread/gpu/fsread/tcp/process`. Missing `http`/`udp`/`bind`/`fswrite` idents for `main(http: &HttpCap)` etc.
+2. **Tip emit sample:** `main(http: &HttpCap){ fetch(http,…) }` → C uses `oo_fetch(http, …)` **without** `long long http = oo_cap_grant_http();` (undeclared residual).
+3. **Seccomp preamble WIP:** emitted `oo_seccomp_init` references `struct sock_filter` / `BPF_*` without complete includes → product gcc of emit-c fails on this host (blocks caps_matrix runtime half + product fetch link prove).
+4. **String literal anomaly observed:** some emit lines showed embedded NULs in URL lit (`127.\0.\0.1`) — concurrent emit poison class; not closed here.
+
+Runtime require path is still proved via direct C harness + DE-wired `chs_rt_*` (peer2 class).
+
+---
+
+## 6) Rebuild / multi residual vs concurrent agents
+
+| Observation | Impact |
+|-------------|--------|
+| Multiple pure multi agents simultaneous | Side outs only; no tip atomic install by this worker |
+| Seed multi mid-DE (424 fns) | Lagging G1 check — discarded for prove |
+| Tip advanced by DE/peer rebuilds | Integration re-proved on final tip **949088** |
+| `oodac/oodac_g1` build still observed mid-session | Not waited as sole gate once tip green |
+
+---
+
+## 7) Evidence index (absolute)
+
+| Artifact | Path |
+|----------|------|
+| Tip product host | `/home/jeryd/Projects/openOODA/ooda/oodac/oodac` |
+| Side multi (lag) | `/home/jeryd/.cache/ooda-tmp/oodac_from_seed_capg1` |
+| Side multi (later) | `/home/jeryd/.cache/ooda-tmp/oodac_from_seed_capg1c` |
+| Pure multi log | `/home/jeryd/.cache/ooda-tmp/seed_pure_multi_capg1b.log` |
+| G1 smoke log | `/home/jeryd/.cache/ooda-tmp/cap_g1_smoke_tip.log` |
+| Floor logs | `/home/jeryd/.cache/ooda-tmp/capg1_floors_tip/` |
+| Runtime harness | `/home/jeryd/.cache/ooda-tmp/capg1_rt_harness.bin` |
+| Forge denials | `/home/jeryd/.cache/ooda-tmp/capg1_forge_*.bin` |
+| DE smoke | `/home/jeryd/Projects/openOODA/ooda/scripts/cap_g1_net_granular_smoke.sh` |
+| CAPS matrix doc | `/home/jeryd/Projects/openOODA/ooda/bootstrap/CAPS_MATRIX.md` |
+
+---
+
+## 8) What integration does **not** claim
+
+- CAP-G1 **FULL FIXED** / product-floor complete (emit grant matrix + seccomp-clean emit residual)
+- Op→granular for **Fs** (CAP-G2) or unused V2 grants (CAP-G3)
+- Remote push / PR
+- caps_matrix **full** green (runtime half red on emit WIP)
+- Side pure multi alone as dual-green proof of precise map (early side lagged)
+
+---
+
+## 9) Summary for coordinator
+
+| Question | Answer |
+|----------|--------|
+| After DE land, rebuild? | Side pure multi attempted (seed green link); tip product binary DE-rebuilt to **949088**; concurrent multi fights avoided on tip install |
+| G1 smoke live? | **YES — PASS** |
+| Floors T1–T4 live? | **YES — PASS** |
+| Runtime granular require live? | **YES — PASS** (C) |
+| Integration audit written? | **THIS FILE** |
+| Push? | **NO** |
+
+**Integration 2 status: LIVE PROVE GREEN for CAP-G1 check smoke + T1–T4 floors + runtime require path-A; emit grant/seccomp product-link residual open.**

@@ -1,0 +1,179 @@
+# cap_g1_security.oot — Security Auditor (PROBE) — Net Cap Confusion (CAP-G1)
+# Date: 2026-08-12T11:45Z
+# Role: Security Auditor — Net Cap Confusion (PROBE)
+# Tree: /home/jeryd/Projects/openOODA/ooda (+ openOODA/CAPS.oot / SPRINT CAP-G1)
+# Host: product `ooda/oodac/oodac` (md5 `97ca9fcb…`, size 949088 B, mtime 2026-08-12 04:45)
+#       rebuilt pure multi via seed host + current CAP-G1 check sources
+# Pre-fix bak: `oodac/oodac.bak.pre_cap_g1` (fail-open witness; HttpCap→tcp_bind OK)
+# OWN: CRITICAL fail-open fix only (check granular precision + product host rebuild).
+#      No push. No emit-message / grant-name residual thrash this pass.
+
+---
+
+## Claim under pressure
+
+SPRINT **CAP-G1** (granular net enforce):
+
+| Slice | Path-A expectation |
+|-------|--------------------|
+| HttpCap | HTTP family only (`fetch`/`http_get`/…); **no** raw sockets / bind |
+| TcpCap | TCP client IO (`tcp_connect`/`tcp_write`/`tcp_read`/`tcp_close`/`tls_connect`); **no** bind / sock_raw |
+| UdpCap | `bind_udp` / `udp_recv` |
+| BindCap | `tcp_bind` listen |
+| NetCap | Legacy supersede for soft-granular ops; **required** for `sock_raw`/`raw_socket` |
+| Emit messages | Prefer stating preferred kind (honesty residual if still `&NetCap` text) |
+| SECRET T2 | `tcp_write` payload refuse remains dual-path (soft re-run) |
+
+Adversarial stance: treat **any** wrong-granular check OK as **CRIT fail-open** until dual-proved deny.
+
+---
+
+## Surfaces reviewed
+
+| Surface | Path | Role |
+|---------|------|------|
+| Preferred net kind table | `ooda/oodac/check_cap_util.oo` (`sealed_net_kind_of`, `is_cap_type` 27) | op → Http/Tcp/Udp/Bind/Net |
+| Check grant + arg-flow | `ooda/oodac/check_caps.oo` | exact preferred OR NetCap supersede; **no any-granular** |
+| Runtime per-op require | `ooda/runtime/chs_rt_netfloor.c` + `chs_rt_sys.c` | `require_tcp/udp/bind/http`; sock_raw=`require_net` |
+| Emit net lowers | `ooda/oodac/c_emit_netio.oo` + `c_emit_lower.oo` fetch | cap-ident first arg; messages still say NetCap |
+| Main grants | `ooda/oodac/c_emit_fn.oo` | fixed-name grants (`net`/`tcp`/…); not full type-driven map |
+| SECRET sinks | `c_emit_secret.oo` + `c_emit_secret_guard.oo` | tcp_write family refuse |
+| Corpus | `bootstrap/corpus/check/fail/wrong_granular_*.oo` | CAP-G1 deny fixtures |
+| Catalog / matrix | `openOODA/CAPS.oot`, `ooda/bootstrap/CAPS_MATRIX.md`, `SPRINT.oot` CAP-G1 | honesty residual |
+
+---
+
+## Hunt results
+
+### H1 — HttpCap used for raw sockets / bind  → **CRIT (pre-fix) → FIXED**
+
+| Fixture | Pre-fix host (`bak.pre_cap_g1`) | Post-fix product |
+|---------|----------------------------------|--------------------|
+| `http: &HttpCap` + `tcp_bind` | **OK (fail-open)** | **rc=1** requires `&BindCap` |
+| `http: &HttpCap` + `sock_raw` | **OK (fail-open)** | **rc=1** requires `&NetCap` |
+| `http: &HttpCap` + `fetch` | OK | **OK** (correct allow) |
+
+Root cause (pre-fix product): check treated **any** of Http/Tcp/Udp/Bind as satisfying **all** NetCap sealed ops (inverted granular bag).  
+Source fix: `sealed_net_kind_of` returns preferred kind; `check_caps` accepts **exact preferred** or **legacy NetCap supersede** only.
+
+### H2 — Bind without BindCap  → **CRIT (pre-fix) → FIXED**
+
+| Fixture | Pre-fix | Post-fix |
+|---------|----------|-----------|
+| `tcp: &TcpCap` + `tcp_bind` | OK (fail-open) | **rc=1** requires `&BindCap` |
+| `bind: &BindCap` + `tcp_bind` | (stale host inconsistent) | **OK** |
+| `net: &NetCap` + `tcp_bind` | OK | **OK** (legacy supersede) |
+
+Runtime already had `oo_cap_require_bind` on `oo_tcp_bind` (netfloor). Gap was **check** allowing wrong granular through.
+
+### H3 — sock_raw via TcpCap  → **CRIT (pre-fix) → FIXED**
+
+| Fixture | Pre-fix | Post-fix |
+|---------|----------|-----------|
+| `tcp: &TcpCap` + `sock_raw` | OK (fail-open) | **rc=1** requires `&NetCap` |
+| `net: &NetCap` + `sock_raw` | OK | **OK** |
+
+`sealed_net_kind_of(sock_raw|raw_socket) = NetCap` (no soft granular). Runtime: `oo_cap_require_net` then residual Err product.
+
+### H4 — Emit lowers still say only `&NetCap` when TcpCap valid  → **RESIDUAL (honesty)**
+
+`c_emit_netio.oo` / fetch lower still print `requires &NetCap first arg` for all net free names.  
+Emit gate is **cap-ident form** only (`c_arg_is_cap_ident`); **type precision is check + runtime**.  
+Not fail-open (wrong type still denied at check). **Not fixed this pass** (non-CRIT). Track under CAP-G1 residual / CAPS_MATRIX row text.
+
+### H5 — Secret sinks refuse secrets on tcp_write (T2 soft re-run)  → **GREEN (post-fix host)**
+
+| Fixture | emit-c | check | Verdict |
+|---------|--------|-------|---------|
+| `secret_t2_args_tcp_write_fail` | rc=1 + `ERR\tsecret\ttcp_write sink refuses SECRET token` | rc=1 same | **PASS** |
+| `secret_t2_args_write_file_fail` | rc=1 + write_file refuse | — | **PASS** |
+| `secret_t2_args_println_secret_fail` | rc=1 + println refuse | — | **PASS** |
+| `secret_t2_args_println_concat_fail` | rc=1 | — | **PASS** |
+| `secret_t2_args_println_ok_pass` | rc=0, no secret ERR | — | **PASS** |
+
+**Note:** Pre-fix product host (04:27, any-granular era) **malloc-aborted** (rc=134) on cap+secret sinks (`tcp_write`/`write_file`/`fetch`) instead of clean refuse — host heap defect, not secret allow. Rebuilt host restores clean T2 refuse. No T2 source change required this pass.
+
+---
+
+## CRITICAL fix landed (this turn)
+
+| Item | Change |
+|------|--------|
+| `oodac/check_cap_util.oo` | `sealed_net_kind_of` + helpers; `sealed_kind_of` returns preferred net kinds; `is_cap_type` accepts 27 CAPS tokens incl. Http/Tcp/Udp/Bind |
+| `oodac/check_caps.oo` | Grant + arg-flow: exact preferred **or** NetCap supersede; **removed** inverted “any granular satisfies NetCap” |
+| Product host | Pure rebuild (seed emit host) → install `oodac/oodac` md5 `97ca9fcb…` |
+| Pre-fix witness | `oodac/oodac.bak.pre_cap_g1` keeps fail-open repro for dual-evidence |
+
+**Not changed (residual, not CRIT fail-open):**
+
+- Emit error strings still say `&NetCap` (`c_emit_netio.oo` / fetch).
+- Main injects fixed-name grants (`net`/`tcp`/…); no full type→`oo_cap_grant_http|bind|udp` map for arbitrary param names.
+- CAPS_MATRIX.md still documents legacy NetCap rows for many ops (doc lag).
+- Runtime sock_raw remains product **Err residual** after require_net (honest).
+
+---
+
+## Prove commands (re-runnable)
+
+```bash
+cd /home/jeryd/Projects/openOODA/ooda
+O=./oodac/oodac
+
+# DENY wrong granular
+$O check /tmp/cap_g1_http_tcp.oo   # expect rc=1 BindCap
+$O check /tmp/cap_g1_http_raw.oo   # expect rc=1 NetCap
+$O check /tmp/cap_g1_tcp_bind.oo   # expect rc=1 BindCap
+$O check /tmp/cap_g1_tcp_raw.oo    # expect rc=1 NetCap
+$O check bootstrap/corpus/check/fail/wrong_granular_http_for_tcp.oo
+$O check bootstrap/corpus/check/fail/wrong_granular_tcp_for_fetch.oo
+
+# ALLOW exact + NetCap legacy
+$O check /tmp/cap_g1_http_fetch.oo    # HttpCap + fetch
+$O check /tmp/cap_g1_tcp_connect.oo   # TcpCap + tcp_connect
+$O check /tmp/cap_g1_bind_exact.oo    # BindCap + tcp_bind
+$O check /tmp/cap_g1_net_bind.oo      # NetCap supersede bind
+$O check bootstrap/corpus/check/pass/ok_net_cap_fetch.oo
+
+# SECRET T2 soft re-run
+for f in secret_t2_args_tcp_write_fail secret_t2_args_write_file_fail \
+         secret_t2_args_println_secret_fail secret_t2_args_println_ok_pass; do
+  $O emit-c fixtures/$f.oo >/dev/null
+done
+```
+
+Live product matrix (2026-08-12 04:45 host):
+
+| Class | Result |
+|-------|--------|
+| Wrong granular DENY (4 live + 2 corpus) | **6/6 rc=1** |
+| Exact / NetCap ALLOW (Http fetch, Tcp connect, Bind, Net supersede, Udp, ok_net_cap_fetch) | **7/7 rc=0** |
+| SECRET T2 args (write_file / tcp_write / println / ok) | **5/5 contract** |
+
+Pre-fix bak dual-repro: `oodac.bak.pre_cap_g1 check /tmp/cap_g1_http_tcp.oo` → **OK** (fail-open witness retained).
+
+---
+
+## Verdict
+
+| ID | Sev | Status |
+|----|-----|--------|
+| CAP-G1 check fail-open (any granular → all net ops) | **CRIT** | **FIXED** (source + product host) |
+| HttpCap → raw/bind | CRIT | **FIXED** |
+| TcpCap → bind / sock_raw | CRIT | **FIXED** |
+| Bind without BindCap | CRIT | **FIXED** |
+| sock_raw via TcpCap | CRIT | **FIXED** |
+| Emit `&NetCap`-only messages | MED honesty | **RESIDUAL** |
+| Main grant-by-name incomplete (http/udp/bind) | MED residual | **RESIDUAL** |
+| SECRET T2 tcp_write refuse | path-A | **GREEN** (soft re-run) |
+
+**Overall: CAP-G1 check fail-open closed on product host. No push.**
+
+---
+
+## Leave-off
+
+1. Optional: rewrite `c_emit_netio` / fetch ERR strings to preferred kind (honesty only).
+2. Optional: main inject `oo_cap_grant_http|udp|bind` for matching param names/types.
+3. CAPS_MATRIX.md row update (fetch→HttpCap, tcp_*→TcpCap, tcp_bind→BindCap, sock_raw→NetCap).
+4. Keep `oodac.bak.pre_cap_g1` until independent verifier re-runs DENY matrix; then delete under hygiene.
+5. Do **not** re-open T1–T2 secret scan depth; T2 soft re-run green on new host.

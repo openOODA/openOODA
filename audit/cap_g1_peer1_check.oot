@@ -1,0 +1,213 @@
+# cap_g1_peer1_check.oot
+# QA Peer 1 — Least Privilege Probe (CAP-G1 / PROBE adversarial)
+# Date: 2026-08-12
+# Role: Peer Verifier 1 (QA) — independent least-privilege prove
+# Tree: /home/jeryd/Projects/openOODA/ooda
+# OWN: this audit; fix only critical DE1/DE2 check bugs if red+clear
+# No push.
+# Prove binary: /tmp/oodac_cap_g1 (seed pure-build of tip sources @ 2026-08-12 04:44)
+# Tip oodac/oodac @ 04:27 remains PRE-G1 stale until DE rebuilds into tree.
+
+========================================================================
+SUMMARY
+========================================================================
+CAP-G1 least-privilege net grant (check path): **GREEN after DE1 critical fix**
+
+| # | Claim | Expected | Actual | Verdict |
+|---|--------|----------|--------|---------|
+| 1 | HttpCap alone **denies** `tcp_bind` / `tcp_connect` | rc≠0 + ERR capability | rc=1 + requires `&BindCap` / `&TcpCap` | **PASS** |
+| 2 | TcpCap alone **denies** `fetch` (HttpCap preferred) | rc≠0 + ERR capability | rc=1 + requires `&HttpCap` | **PASS** |
+| 3 | NetCap alone **allows** all soft net sealed ops (legacy) | rc=0 | rc=0 (fetch+tcp_connect+tcp_bind+bind_udp+udp_recv) | **PASS** |
+| 4 | BindCap allows `tcp_bind`; UdpCap allows `bind_udp`/`udp_recv` | rc=0 | rc=0 | **PASS** |
+
+**Primary matrix: 13/13 PASS** (4 required + positive controls + cross-deny extras).
+**CRIT dual-repro:** deny fixtures re-run twice → both rc=1.
+
+**Peer code fix:** YES — critical DE1 hole (see FIX). DE2 grant shape already correct.
+
+========================================================================
+COMMAND (as assigned / live prove)
+========================================================================
+```
+cd /home/jeryd/Projects/openOODA/ooda
+# Prove binary rebuilt from tip sources with seed as emit host:
+PURE_SKIP_CHECK=1 OODAC_BIN=./bootstrap/seed/oodac \
+  ./scripts/oodac_pure_build.sh oodac/main.oo /tmp/oodac_cap_g1
+
+OODAC=/tmp/oodac_cap_g1
+# Deny (must fail-closed)
+$OODAC check /tmp/cap_g1_peer1/1_http_tcp_bind_deny.oo     # HttpCap + tcp_bind
+$OODAC check /tmp/cap_g1_peer1/1b_http_tcp_connect_deny.oo # HttpCap + tcp_connect
+$OODAC check /tmp/cap_g1_peer1/2_tcp_fetch_deny.oo         # TcpCap + fetch
+# Legacy allow
+$OODAC check /tmp/cap_g1_peer1/3c_net_all_allow.oo         # NetCap + all soft ops
+# Exact granular allow
+$OODAC check /tmp/cap_g1_peer1/4_bind_tcp_bind_allow.oo
+$OODAC check /tmp/cap_g1_peer1/4b_udp_bind_udp_allow.oo
+$OODAC check /tmp/cap_g1_peer1/4c_udp_udp_recv_allow.oo
+# Corpus
+$OODAC check bootstrap/corpus/check/fail/wrong_granular_http_for_tcp.oo
+$OODAC check bootstrap/corpus/check/fail/wrong_granular_tcp_for_fetch.oo
+$OODAC check bootstrap/corpus/check/pass/ok_net_cap_fetch.oo
+```
+
+Probe fixtures (ephemeral): `/tmp/cap_g1_peer1/*.oo`
+Corpus fixtures (in-tree):
+- `ooda/bootstrap/corpus/check/fail/wrong_granular_http_for_tcp.oo`
+- `ooda/bootstrap/corpus/check/fail/wrong_granular_tcp_for_fetch.oo`
+
+========================================================================
+LIVE MATRIX (post-fix prove binary)
+========================================================================
+
+| Fixture | Expect | rc | Prefer-kind in ERR | Verdict |
+|---------|--------|----|--------------------|---------|
+| `1_http_tcp_bind_deny` | DENY | 1 | `&BindCap` | **PASS** |
+| `1b_http_tcp_connect_deny` | DENY | 1 | `&TcpCap` | **PASS** |
+| `2_tcp_fetch_deny` | DENY | 1 | `&HttpCap` | **PASS** |
+| `3_net_fetch_allow` | ALLOW | 0 | — | **PASS** |
+| `3b_net_tcp_bind_allow` | ALLOW | 0 | — | **PASS** |
+| `3c_net_all_allow` | ALLOW | 0 | — | **PASS** |
+| `4_bind_tcp_bind_allow` | ALLOW | 0 | — | **PASS** |
+| `4b_udp_bind_udp_allow` | ALLOW | 0 | — | **PASS** |
+| `4c_udp_udp_recv_allow` | ALLOW | 0 | — | **PASS** |
+| `4d_http_fetch_allow` | ALLOW | 0 | — | **PASS** (pos control) |
+| `4e_tcp_connect_allow` | ALLOW | 0 | — | **PASS** (pos control) |
+| `x_bind_fetch_deny` | DENY | 1 | `&HttpCap` | **PASS** (extra) |
+| `x_udp_tcp_bind_deny` | DENY | 1 | `&BindCap` | **PASS** (extra) |
+
+Deny message sample (claim 1):
+```
+ERR capability Security Capability Violation: Function 'bad' calls sealed
+effectful builtin 'tcp_bind' which requires a &BindCap parameter, but none
+was declared at line 3, col 13. Default-deny: grant the capability token
+explicitly.
+```
+
+Deny message sample (claim 2):
+```
+… sealed effectful builtin 'fetch' which requires a &HttpCap parameter …
+```
+
+========================================================================
+SOURCE REVIEW (DE1 / DE2)
+========================================================================
+
+## DE1 — `oodac/check_cap_util.oo` (OWN critical fix)
+
+### RED found (pre-fix)
+At peer start of second read wave, DE1 had **regressed**:
+1. `sealed_kind_of` returned **always `NetCap`** for all net ops (no granular prefer).
+2. `is_cap_type` **dropped** `HttpCap`/`TcpCap`/`UdpCap`/`BindCap` (and other V2 tokens).
+3. No `sealed_net_kind_of` / `cap_net_granted_ok` helpers.
+
+Effect with DE2's least-privilege gate (which only supersedes soft-granular with **NetCap**):
+- Wrong-granular denials (1)(2) **accidentally** green (kind stayed NetCap; HttpCap≠NetCap → deny).
+- Exact-granular allows (4) **RED**: BindCap/UdpCap/HttpCap/TcpCap never granted → deny.
+- NetCap legacy (3) green (kind=NetCap matched bag).
+
+Stale tip binary `oodac/oodac` @ 04:27 also **fail-open** under pre-CAP-G1 inverted
+"any of Http/Tcp/Udp/Bind satisfies all NetCap ops" if that binary still had the
+old any-granular branch — peer used seed rebuild of tip sources for prove.
+
+### FIX applied (critical, clear)
+Restored CAP-G1 DE1 map + 27-type accept:
+
+| Symbol | Role |
+|--------|------|
+| `sealed_net_kind_of` | op → preferred: HttpCap / TcpCap / BindCap / UdpCap / NetCap |
+| `is_sealed_net` | `sealed_net_kind_of(name) != ""` |
+| `is_soft_net_kind` | Http/Tcp/Udp/Bind (NetCap may supersede) |
+| `cap_net_legacy_ok` | NetCap supersedes soft preferred only |
+| `cap_net_granted_ok` | exact preferred OR NetCap supersede |
+| `cap_net_argflow_ok` | `K:id` OR `NetCap:id` |
+| `is_cap_type` | CAPS 27 incl. Http/Tcp/Udp/Bind + FsRead/FsWrite… |
+| `sealed_kind_of` | **first** `sealed_net_kind_of`, else legacy kinds |
+
+Preferred map (anchors):
+```
+fetch|http_get|net_get|downloadData|query_remote_api|net_connect → HttpCap
+tcp_connect|tcp_write|tcp_read|tcp_close|tls_connect             → TcpCap
+tcp_bind                                                          → BindCap
+bind_udp|udp_recv                                                 → UdpCap
+sock_raw|raw_socket                                               → NetCap
+```
+
+## DE2 — `oodac/check_caps.oo` (no peer edit)
+
+Grant path already least-privilege shaped (CAP-G1 path-A comments L107–L110):
+
+```
+if !cap_bag_has(granted, kind) {
+  grant_ok = false
+  if kind in {HttpCap,TcpCap,UdpCap,BindCap}:
+    grant_ok |= bag has NetCap     // legacy supersede only
+  // NOT: any granular → all NetCap  (fail-open removed)
+  if !grant_ok: cap_deny(...)
+}
+// arg-flow: K:cap_id OR NetCap:cap_id for soft-granular kinds
+```
+
+This is correct **given** DE1 returns preferred K. No DE2 critical bug after DE1 restore.
+Optional residual: wire `cap_net_granted_ok` / `cap_net_argflow_ok` helpers (logic
+already inlined equivalently) — not required for green prove.
+
+========================================================================
+PROPERTY PROOFS (adversarial)
+========================================================================
+
+### P1 — HttpCap alone denies tcp_bind / tcp_connect (check path)
+- `sealed_kind_of("tcp_bind")` = `BindCap`; granted = `{HttpCap}` → no exact, no NetCap supersede → deny.
+- `sealed_kind_of("tcp_connect")` = `TcpCap`; same → deny.
+- Dual-repro: 2× rc=1 each.
+
+### P2 — TcpCap alone denies fetch
+- `sealed_kind_of("fetch")` = `HttpCap`; granted = `{TcpCap}` → deny with message `&HttpCap`.
+- Dual-repro: 2× rc=1.
+- Corpus: `wrong_granular_tcp_for_fetch.oo` rc=1.
+
+### P3 — NetCap alone still allows all soft net sealed ops (legacy)
+- Preferred soft kinds accept bag `NetCap` via DE2 supersede branch.
+- Fixture `3c_net_all_allow`: fetch + tcp_connect + tcp_bind + bind_udp + udp_recv under single `&NetCap` → rc=0.
+- Corpus `ok_net_cap_fetch.oo` rc=0.
+- Note: `sock_raw`/`raw_socket` prefer hard `NetCap` only (not soft) — legacy full bag still holds them.
+
+### P4 — BindCap allows tcp_bind; UdpCap allows bind_udp / udp_recv
+- Exact preferred match: `cap_bag_has(granted, kind)` short-circuits before supersede.
+- `4_bind_tcp_bind_allow`, `4b_udp_bind_udp_allow`, `4c_udp_udp_recv_allow` → rc=0.
+- Cross: BindCap↛fetch, UdpCap↛tcp_bind (extras PASS).
+
+========================================================================
+RESIDUAL / HONESTY
+========================================================================
+1. **Tip binary stale:** `ooda/oodac/oodac` mtime 04:27 is pre this peer fix rebuild.
+   Prove used `/tmp/oodac_cap_g1` (seed pure multi @ 04:44). DE/integration must
+   install tip binary for product path; peer does **not** auto-install/push.
+2. **Emit path residual:** `c_emit_netio.oo` still prints `requires &NetCap` for
+   tcp_*/bind_udp/udp_recv — check-path least privilege is CAP-G1 gate; emit
+   grant/require granular naming is residual (SPRINT CAP-G1 emit half).
+3. **Runtime seal residual:** process-local tokens still net-class (not four
+   distinct runtime magics) — check least-privilege only claimed here.
+4. **CAP-G2 fs granular** not in this peer scope (FsRead/FsWrite branches present
+   in DE2 but not adversarial-proved here).
+5. **Race note:** during peer window, DE1 was observed mid-revert (granular map
+   disappeared). Peer re-landed map; re-prove green. Coordinators: serialize
+   DE1 `check_cap_util.oo` writes.
+
+========================================================================
+VERDICT
+========================================================================
+| Gate | Result |
+|------|--------|
+| HttpCap ⊬ tcp_bind/tcp_connect | **PASS** (dual-repro) |
+| TcpCap ⊬ fetch | **PASS** (dual-repro) |
+| NetCap ⊨ all soft net ops | **PASS** |
+| BindCap ⊨ tcp_bind; UdpCap ⊨ bind_udp/udp_recv | **PASS** |
+| DE1 critical fix | **SHIPPED in working tree** (`check_cap_util.oo`) |
+| DE2 critical fix | **none required** |
+| Push | **none** (per assignment) |
+
+**Overall: PASS** — CAP-G1 check-path least privilege independently proved after
+one critical DE1 restore.
+
+end of cap_g1_peer1_check.oot

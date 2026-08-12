@@ -1,0 +1,240 @@
+# cap_g2_security.oot — Security Auditor (PROBE) — FS Cap Confusion (CAP-G2)
+# Date: 2026-08-12T11:59Z
+# Role: Security Auditor — FS Cap Confusion (PROBE)
+# Tree: /home/jeryd/Projects/openOODA/ooda (+ openOODA/CAPS.oot / SPRINT CAP-G2)
+# Host: product `ooda/oodac/oodac` (md5 `0de4edd3…`, size 949456 B, mtime 2026-08-12 04:55)
+#       embeds `sealed_fs_kind_of` + `cap_fs_granted_ok` (CAP-G2 check map live)
+# Land: tip `0cbc4aa` fix(cap-g2): granular fs enforce — preferred FsRead/FsWrite + runtime require
+# OWN: CRITICAL fail-open hunt only this pass. **No CRIT FN found on check/runtime path-A.**
+#      No push. Hardlink writedir residual = T3 honesty (not thrash this pass).
+
+---
+
+## Claim under pressure
+
+SPRINT **CAP-G2** (granular **fs** enforce):
+
+| Slice | Path-A expectation |
+|-------|--------------------|
+| FsReadCap | `read_file` / `fs_read` / `path_exists` / `file_size` only; **no** write |
+| FsWriteCap | `write_file` / `fs_write` only; **no** read / path_exists / file_size |
+| FsCap | Legacy supersede for soft-granular preferred ops (one-wave compat) |
+| Runtime | `oo_cap_require_fsread` / `oo_cap_require_fswrite` accept exact granular **or** `g_tok_fs`; wrong granular exit fail-closed |
+| Overlay | Keep `OODA_FS_WRITEDIR` fail-closed write allowlist (T3 **6.4**); do not weaken |
+| Symlink | Leaf / parent symlink escape under writedir → deny (realpath + `openat` `O_NOFOLLOW`) |
+| Hardlink | **T3 residual honesty** — not claimed sealed (see residual ledger) |
+
+Adversarial stance: treat **any** FsReadCap→write_file check OK or runtime write with `g_tok_fsread` as **CRIT fail-open** until dual-proved deny.
+
+---
+
+## Surfaces reviewed
+
+| Surface | Path | Role |
+|---------|------|------|
+| Preferred fs kind table | `ooda/oodac/check_cap_util.oo` (`sealed_fs_kind_of`, `cap_fs_granted_ok`, `cap_fs_argflow_ok`) | op → FsRead/FsWrite |
+| Check grant + arg-flow | `ooda/oodac/check_caps.oo` | exact preferred **or** FsCap supersede; **no any-granular** |
+| Runtime per-op require | `ooda/runtime/chs_rt_sys.c` + `chs_rt_fs.c` | `require_fsread` / `require_fswrite` (granular **or** FsCap) |
+| Write allow overlay | `chs_rt_fs.c` `path_under_writedir` + `writedir_open_trunc` | `OODA_FS_WRITEDIR` + realpath + `openat(O_NOFOLLOW)` |
+| Emit lowers | `oodac/c_emit_lower.oo` | cap-ident form only; messages still often say `&FsCap` |
+| Main grants | `oodac/c_emit_fn.oo` | fixed-name `oo_cap_grant_fs()` inject; **not** type-driven (CAP-G3 residual) |
+| Build path | `oodac/cli_build.oo` | emit + gcc; **does not** re-run `check` (product residual) |
+| Smokes | `scripts/fs_writedir_smoke.sh`, `scripts/cap_g1_net_granular_smoke.sh` | writedir matrix + CAP-G1 soft re-run |
+| Catalog | `openOODA/CAPS.oot`, `SPRINT.oot` CAP-G2 | honesty residual links |
+
+---
+
+## Hunt results
+
+### H1 — FsReadCap used for write_file  → **BLOCK (path-A check + runtime)**
+
+| Fixture / probe | Product check | Runtime (WIP/tip `chs_rt`) |
+|-----------------|---------------|----------------------------|
+| `fs: &FsReadCap` + `write_file` | **rc=1** requires `&FsWriteCap` | `g_tok_fsread` → **ERR cap write_file** (exit 1) |
+| method `fs.write_file` with only FsReadCap | **rc=1** requires `&FsWriteCap` | — |
+| arg-flow: `FsReadCap` id for write while `FsWriteCap` also present | **rc=1** arg-flow deny | — |
+
+Root cause of prior dual-accept era: `sealed_kind_of` returned `FsCap` for all fs ops; reverse dual allowed granular grants. **Tip** prefers `FsReadCap`/`FsWriteCap` via `sealed_fs_kind_of`; check accepts **exact preferred** or **legacy FsCap supersede** only (`cap_fs_granted_ok`). **No inverted bag** (FsReadCap does not authorize write).
+
+### H2 — FsWriteCap used for read / path_exists / file_size  → **BLOCK**
+
+| Fixture | Product check |
+|---------|---------------|
+| `fs: &FsWriteCap` + `read_file` | **rc=1** requires `&FsReadCap` |
+| `fs: &FsWriteCap` + `path_exists` | **rc=1** requires `&FsReadCap` |
+| `fw` for `read_file` while `fs: &FsReadCap` present | **rc=1** arg-flow |
+
+Runtime: `g_tok_fswrite` on `oo_read_file` → **ERR cap read_file**.
+
+### H3 — Exact preferred + FsCap legacy ALLOW  → **GREEN**
+
+| Fixture | Check |
+|---------|-------|
+| `FsReadCap` + `read_file` / `file_size` | **rc=0 OK** |
+| `FsWriteCap` + `write_file` | **rc=0 OK** |
+| `FsCap` + read + write | **rc=0 OK** |
+| Corpus `ok_fs_read` / `ok_fs_write` / `ok_method_fs_read` | **rc=0** |
+| Corpus `no_cap_write_file` / `no_cap_read_file` | **rc=1** |
+
+Runtime: `g_tok_fs` and matching granular tokens allow correct ops.
+
+### H4 — Writedir overlay (T3 6.4 soft re-run)  → **GREEN path-A (except hardlink residual)**
+
+Live probe matrix (linked tip `chs_rt` + `oo_cap_grant_fs`):
+
+| # | Attack | Expected | Actual | Sev |
+|---|--------|----------|--------|-----|
+| W1 | Write without `OODA_FS_WRITEDIR` | deny | **BLOCK** | — |
+| W2 | Empty / root `/` WRITEDIR | deny | **BLOCK** | — |
+| W3 | `..` escape outside writedir | deny | **BLOCK** | — |
+| W4 | Relative path | deny | **BLOCK** | — |
+| W5 | Existing leaf symlink → outside | deny | **BLOCK** (realpath leaves dir) | — |
+| W6 | Create via parent symlink escape | deny | **BLOCK** | — |
+| W7 | Create / overwrite under writedir | allow | **ALLOW** | — |
+| W8 | **Hardlink** of outside file into writedir, then write | deny **or residual** | **BYPASS** — `ok=1`, outside content overwritten | **HIGH residual** |
+| W9 | WRITEDIR itself is symlink to real dir | allow realpath | **ALLOW** (realpath of policy dir) | INFO |
+
+`scripts/fs_writedir_smoke.sh`: **PASSED** (does not assert hardlink — honesty gap, not FN of smoke claim).
+
+### H5 — Symlink residual  → **path-A sealed (leaf + parent)**
+
+| Attack | Result |
+|--------|--------|
+| Leaf symlink under writedir targeting outside | deny; outside content intact |
+| Parent dir symlink hop out of writedir | deny; no create outside |
+| `O_NOFOLLOW` on leaf open after allow | fail-closed on race swap to symlink |
+
+**Not sealed:** intermediate-component rename races / no landlock (MED residual — same class as T3 W8).
+
+### H6 — Hardlink residual (T3 residual honesty)  → **OPEN HIGH (not fixed this pass)**
+
+Live:
+
+```text
+hardlink outside → writedir leaf; write under OODA_FS_WRITEDIR
+→ write ok=1; outside file content becomes write payload (PWNED_HARD class)
+```
+
+Why path-A does not block: hardlink is a regular directory entry; `realpath` stays under writedir; `openat(O_NOFOLLOW)` follows hardlinks (not symlinks). Optional harden residual: refuse `st_nlink > 1` after open (FP risk on intentional multi-link files) or landlock/pathfd seal.
+
+**OWN this pass:** document residual honesty only. **Not** CRIT fail-open of FsReadCap/FsWriteCap map. Same residual as `audit/t3_security.oot` W7.
+
+### H7 — Emit / build honesty residual (CAP-G3 class)  → **RESIDUAL (not CRIT check fail-open)**
+
+| Observation | Impact |
+|-------------|--------|
+| `main(fs: &FsReadCap)` emit injects `long long fs = oo_cap_grant_fs()` | Type says read-only; token is **full FsCap** (runtime supersede can write if check skipped) |
+| `emit-c` does **not** run `check` | Can emit `write_file(fs, …)` for FsReadCap source; check would have denied |
+| `build` does **not** re-run `check` | Same class as product residual (pre-CAP-G2) |
+| Param names `fsread` / `fswrite` | Not in fixed main inject set → uninitialized at runtime (fail-closed / UB class) |
+
+**Not fixed this pass** (non-CRIT relative to check dual-path; CAP-G3 type→`oo_cap_grant_fsread|fswrite` map). Dual-path product seal remains: **`oodac check` refuse + runtime wrong-token refuse**.
+
+### H8 — CAP-G1 soft re-run  → **GREEN**
+
+`scripts/cap_g1_net_granular_smoke.sh` exit **0** on post-CAP-G2 host (no net regression).
+
+---
+
+## CRITICAL fix landed (this turn)
+
+| Item | Change |
+|------|--------|
+| **None** | No new CRIT fail-open on FsReadCap write escape / wrong granular check / runtime token class. CAP-G2 path-A already on tip `0cbc4aa` (check preferred map + runtime require + host rebuild). |
+
+**Pre-existing land (tip, not OWN this audit):**
+
+| Item | Role |
+|------|------|
+| `oodac/check_cap_util.oo` | `sealed_fs_kind_of` → FsReadCap/FsWriteCap; `cap_fs_granted_ok` / `cap_fs_argflow_ok` |
+| `oodac/check_caps.oo` | preferred exact **or** FsCap supersede via helpers (no any-granular) |
+| `runtime/chs_rt_sys.c` | `oo_cap_require_fsread` / `oo_cap_require_fswrite` (granular **or** `g_tok_fs`) |
+| `runtime/chs_rt_fs.c` | read/path/size → require_fsread; write → require_fswrite |
+| Product host | md5 `0de4edd3…` embeds CAP-G2 check symbols |
+
+**Not changed (residual, not CRIT fail-open):**
+
+- Write **hardlink** escape under `OODA_FS_WRITEDIR` (**HIGH**, T3 honesty)
+- Parent-dentry rename race / no landlock (**MED**)
+- Emit main fixed-name `grant_fs` vs declared `FsReadCap` type (**CAP-G3**)
+- `emit-c` / `build` without mandatory check re-gate (**product residual**)
+- Emit error strings often still say `&FsCap` on lower path
+- `read_file` / `path_exists` / `file_size` any-path (no read allowdir) — intentional vs write overlay
+- No dedicated `wrong_granular_fsread_for_write.oo` corpus fail fixture yet (live probes used)
+- No `cap_g2_fs_granular_smoke.sh` rail yet (CAP-G1 has net smoke)
+
+---
+
+## Live product matrix (2026-08-12 04:55 host)
+
+| Class | Result |
+|-------|--------|
+| Wrong granular DENY (FsRead→write, FsWrite→read, path_exists, method write, arg-flow cross) | **6/6 rc=1** |
+| Exact / FsCap ALLOW (FsRead read/size, FsWrite write, FsCap both, corpus ok_*) | **7/7 rc=0** |
+| Runtime wrong token (fsread→write, fswrite→read, zero, classic forge) | **DENY exit 1** |
+| Runtime correct token (fs/fsread read; fs/fswrite write under WRITEDIR) | **ALLOW** |
+| Writedir smoke script | **PASSED** |
+| Hardlink outside→writedir write | **BYPASS residual** |
+| CAP-G1 net smoke soft re-run | **PASSED** |
+
+---
+
+## Prove commands (re-runnable)
+
+```bash
+cd /home/jeryd/Projects/openOODA/ooda
+O=./oodac/oodac
+TMP=${TMPDIR:-$HOME/.cache/ooda-tmp}/cap_g2_probe
+
+# DENY wrong granular (create fixtures as in this audit)
+$O check $TMP/fsread_write.oo      # expect rc=1 FsWriteCap
+$O check $TMP/fswrite_read.oo      # expect rc=1 FsReadCap
+$O check $TMP/fswrite_path_exists.oo
+$O check $TMP/argflow_wrong.oo
+$O check $TMP/method_write_readcap.oo
+
+# ALLOW exact + FsCap legacy
+$O check $TMP/fsread_read.oo
+$O check $TMP/fswrite_write.oo
+$O check $TMP/fscap_both.oo
+$O check bootstrap/corpus/check/pass/ok_fs_read.oo
+$O check bootstrap/corpus/check/pass/ok_fs_write.oo
+
+# Writedir + CAP-G1 soft
+bash scripts/fs_writedir_smoke.sh
+bash scripts/cap_g1_net_granular_smoke.sh
+
+# Runtime hardlink residual (expect BYPASS until landlock/nlink harden)
+# See live probe pattern in H4/H6 — link outside file into WRITEDIR then oo_write_file.
+```
+
+---
+
+## Root-cause notes (for DE / SPRINT CAP-G2)
+
+1. **Check preferred map** — tip mirrors CAP-G1: `sealed_fs_kind_of` + exact/supersede only. Do not re-introduce inverted “any fs granular satisfies all fs ops.”
+
+2. **Runtime** — `require_fsread`/`require_fswrite` must stay exact granular **or** full `g_tok_fs`. Do not accept cross-granular (fsread for write).
+
+3. **Writedir overlay** — keep fail-closed unset/empty/root; realpath prefix; `openat(O_NOFOLLOW)`. **Hardlink FN remains** — document, optional later harden.
+
+4. **CAP-G3** — type-driven main inject (`FsReadCap`→`oo_cap_grant_fsread`, etc.) closes emit honesty when param named `fs` declares read-only type. Out of CRITICAL CAP-G2 check scope.
+
+5. **Fixtures / smoke** — recommend `wrong_granular_fsread_for_write.oo` + `cap_g2_fs_granular_smoke.sh` (integration/hygiene lane), not security thrash.
+
+---
+
+## Verdict
+
+| Gate | Status |
+|------|--------|
+| FsReadCap write escape (check) | **BLOCK path-A** |
+| FsReadCap write escape (runtime token) | **BLOCK path-A** |
+| Wrong granular read via FsWriteCap | **BLOCK path-A** |
+| FsCap legacy supersede | **ALLOW path-A** |
+| Symlink writedir escape | **BLOCK path-A** |
+| Hardlink writedir escape | **RESIDUAL HIGH (T3 honesty)** |
+| CRITICAL OWN fix this pass | **none required** |
+| Push | **none** |
+
+**Security Auditor CAP-G2:** path-A granular fs check+runtime **green** on tip host; writedir symlink sealed; **hardlink residual honest**. No CRIT patch this turn.
