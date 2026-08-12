@@ -17,7 +17,7 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 | **Type accept** | All 27 names below are valid `&Cap` types in check (`oodac/check_cap_util.oo`). |
 | **Sealed ops (net / CAP-G1)** | **path-A:** `sealed_net_kind_of` returns preferred Http/Tcp/Udp/Bind/NetCap; check accepts exact preferred **or** legacy NetCap; wrong granular denied (HttpCap↛`tcp_bind`). Smoke: `cap_g1_net_granular_smoke.sh`. |
 | **Sealed ops (fs / CAP-G2)** | **path-A:** `sealed_fs_kind_of` returns preferred FsReadCap/FsWriteCap; check accepts exact preferred **or** legacy FsCap supersede; wrong granular denied (FsWriteCap↛`read_file`; FsReadCap↛`write_file`). Helpers: `cap_fs_granted_ok` / `cap_fs_argflow_ok`. |
-| **Sealed ops (legacy non-net)** | Still **legacy** sealed kinds: `SysCap`, `EnvCap`, plus `TimeCap` / `RandCap` / `AllocCap` / `UnsafeFFICap` / `ThreadCap` / `GpuCap`. `ProcessCap`/`SyncCap`/`MemCap` have **no** preferred sealed-op map (ProcessCap vs `sys_exec` = **CAP-G4**). |
+| **Sealed ops (sys / CAP-G4)** | **FIXED path-A:** `sys_exec`/`sys_spawn`/`sys_wait`/`sys_kill` prefer **ProcessCap**; SysCap supersede. Hard **SysCap only:** `python_embed`, `async_join`, `sys_epoll_create`/`sys_inotify_init`/`sys_prctl`. |
 | **Sealed ops (HW / UI — CAP-G3 residual-only)** | **`UsbCap` / `AudioCap` / `CameraCap` / `HidCap` / `WindowCap` / `FrameCap`:** residual-only — type accept + grant + **exact-token** `oo_cap_require_*` stubs; **no** check sealed ops, **no** product emit lower, **no** product free-call API. Do **not** claim HW/UI product enforce. (`GpuCap` remains legacy sealed for `gpu_launch` only.) |
 | **Runtime require (net)** | **path-A:** `oo_cap_require_{http,tcp,udp,bind}` accept granular **or** `g_tok_net`; `sock_raw` NetCap-only. **Not** OS seccomp isolation of sockets. |
 | **Runtime require (fs)** | **path-A:** `oo_cap_require_fsread` / `oo_cap_require_fswrite` accept granular **or** `g_tok_fs` (FsCap supersede). Wrong granular fails closed. Write still gated by **`OODA_FS_WRITEDIR`** policy overlay. **Not** OS path sandbox / landlock / full FS isolation. |
@@ -69,7 +69,7 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 
 ### 3. OS & Execution
 * **`&SysCap`**: Broad OS execution **(legacy — prefer granular below; kept for compat).** Product sealed for `sys_exec` et al.
-* **`&ProcessCap`**: Spawn subprocesses (`fork`/`exec`) only. **Residual-only (CAP-G3):** type accept + grant + exact `oo_cap_require_process` stub; product exec still `&SysCap` (**CAP-G4**).
+* **`&ProcessCap`**: Spawn/exec/wait/kill (**CAP-G4 path-A preferred** for `sys_exec` et al.). Legacy `&SysCap` still supersedes. Does **not** unlock hard Sys residual (`sys_prctl`, `python_embed`, epoll/inotify).
 * **`&SyncCap`**: IPC / Mutexes / Semaphores only. **Residual-only (CAP-G3):** type accept + grant + exact `oo_cap_require_sync` stub; mutex product path remains `&ThreadCap`.
 * **`&ThreadCap`**: Spawn parallel CPU threads. Product sealed (mutex/spawn/join/channel).
 * **`&EnvCap`**: Read environment variables. Product sealed.
