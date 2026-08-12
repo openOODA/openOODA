@@ -1,0 +1,97 @@
+# meta_phalanx_rollup.oot — Swarm Coordinator rollup (Command Wing)
+# Date: 2026-08-11
+# Wait: ~3m for peers, then merge meta_phalanx_*.oot + live re-prove
+# RFC: openOODA/rfcs/2026-08-11-metamorphic-path-a.oot
+
+## Inputs merged
+
+| Peer audit | Role | Verdict (self) |
+|------------|------|----------------|
+| `audit/meta_phalanx_peer1.oot` | Peer Verifier 1 — emit drive / double-decoy | CRITICAL fixed; 7 findings |
+| `audit/meta_phalanx_peer2.oot` | Peer Verifier 2 — residual honesty / dual-claim | 4/4 PASS |
+| `audit/meta_phalanx_security.oot` | Security Auditor — gadget model T1–T12 | path-A acceptable; not CFI |
+| `audit/meta_phalanx_memory.oot` | Memory Auditor — emit quotas / O(fns) | caps claimed (see race note) |
+| `audit/meta_phalanx_integration.oot` | Compiler Integration Tester | runtime+pure multi PASS; emit PARTIAL |
+| `audit/meta_phalanx_hygiene.oot` | Dependency / Hygiene Enforcer | PASS (line-lock, /tmp, bash -n, fixtures) |
+
+Coordinator live re-prove (post-wait):
+- `metamorphic_path_a_smoke.sh` → **PASSED**
+- `metamorphic_residual_smoke.sh` → **PASSED**
+- `gcc -c -Wall -Wextra -Werror runtime/chs_rt_meta.c` → **EXIT 0**
+
+## 12-agent outcomes
+
+| # | Agent (SWARM phalanx) | Mapped this turn | Outcome | Notes |
+|---|----------------------|------------------|---------|-------|
+| 1 | Domain Expert A (emit) | path-A floor: `c_emit_meta.oo` / wire | **SHIP** | parse + decoy emit + mode gate |
+| 2 | Domain Expert B (runtime) | `chs_rt_meta.c` epoch + hooks | **SHIP** | `oo_meta_epoch` / mix / path_a flag |
+| 3 | Machine Code / Runtime Auditor | integration gcc + nm | **PASS** | unit object green; symbols present |
+| 4 | Peer Verifier 1 | `meta_phalanx_peer1.oot` | **PASS+FIX** | F1 critical double-decoy fixed |
+| 5 | Peer Verifier 2 | `meta_phalanx_peer2.oot` | **PASS** | refuse rails; no dual-claim |
+| 6 | Security Auditor | `meta_phalanx_security.oot` | **PASS** | static/used/noinline; inert sinks |
+| 7 | Memory Auditor | `meta_phalanx_memory.oot` | **PARTIAL** | report claims ≤64/pad[16]; live re-read of `c_emit_meta.oo` lacks those gates (peer write race) |
+| 8 | Compiler Integration Tester | `meta_phalanx_integration.oot` | **PARTIAL** | pure multi + epoch harness PASS; fixture emit-c residual |
+| 9 | Test Harness Writer | smokes + `meta_epoch_smoke.sh` | **SHIP** | path-a + residual + epoch |
+| 10 | Dependency / Hygiene Enforcer | `meta_phalanx_hygiene.oot` | **PASS** | ≤256 line-lock; no /tmp; restored shuffle+epoch fixtures |
+| 11 | Documentation Writer | METAMORPHIC.md + DESIGN/PM labels | **PASS** | path-A partial; full immune residual |
+| 12 | Swarm Coordinator | this rollup + RFC + LANE/SPRINT | **SHIP** | Command Wing close |
+
+**Cohort summary:** Engineering Core SHIP · Adversarial QA 3 PASS / 1 PARTIAL ·
+Integration PARTIAL (emit dual-green) · Command SHIP.
+
+## Findings merge (deduped)
+
+### Closed / mitigated this wave
+
+| ID | Source | Finding | Status |
+|----|--------|---------|--------|
+| F1 | peer1 | multi-pass protos+bodies double-emit → static redefinition | **FIXED** (`c_meta_layout_emit_decoys`) |
+| F2 | peer1 | protos-mode decoy placement wrong | **FIXED** with F1 |
+| T1–T5 | security | export / main / fptr / exec / user-format gadgets | **mitigated** (static inert body) |
+| T7 | security | DCE strips decoys | **mitigated** (`used,noinline` under GNUC/clang) |
+| V1–V4 | peer2 | residual refuse + dual-claim ban + smoke expand | **PASS** |
+| R-epoch | integration | `oo_meta_epoch` stable same-process | **PASS** |
+| R-cc | integration | `chs_rt_meta.c` -Werror unit compile | **PASS** |
+| R-pure | integration | seed_pure_multi green (minisign on PATH) | **PASS** |
+| H1–H5 | hygiene | line-lock ≤256; /tmp purge; bash -n; root sludge; doc fixtures | **PASS** |
+| H-fix | hygiene | restored `metamorphic_path_a_shuffle.oo` + `metamorphic_epoch.oo` | **SHIP** |
+
+### Open residuals (next round)
+
+| ID | Severity | Residual | Owner hint |
+|----|----------|----------|------------|
+| R1 | **High (prove)** | Live emit-c of `metamorphic_path_a.oo`: free-call annotation residual for `meta_epoch`/`oo_meta_epoch` (tip + side). Decoys **do** appear on fresh pure multi before abort. | emit / pure re-sync |
+| R2 | Med (process) | Tip host `oodac/oodac` binary stale vs source; path-a smoke soft-skips live emit | rebuild tip oodac |
+| R3 | Med (race) | Memory M1/M2 (decoy max 64, pad[16]) reported but not in final `c_emit_meta.oo` re-read | memory lane re-land or close as wontfix |
+| R4 | Design | Full continuous RAM mutation / ROP reshape / `metamorphic_emit` product | residual refuse — do not stub |
+| R5 | Honesty | Layout diversity ≠ CFI / ASLR replacement | docs seal (security T9) |
+| R6 | Low | `meta_epoch` not CSPRNG; not wired into decoy generation | leave residual |
+| R7 | Low | Optional extract `c_emit_meta_drive.oo`; optional ci wire for `meta_epoch_smoke.sh` | hygiene |
+
+## Honesty line (agents)
+
+> Path-A: opt-in emit path-a-shuffle (static layout decoys) + process-local
+> `meta_epoch`. Weak ASLR-style helper only — **not CFI**, not continuous
+> runtime re-mutation. Default builds stay deterministic. Full DESIGN immune
+> product remains residual refuse.
+
+## Rollup verdict
+
+**Path-A metamorphic floor accepted** for source-floor + residual honesty +
+runtime epoch. **Not dual-green** on clean fixture emit-c until R1/R2 close.
+Do not reopen full immune product as alpha-shipped.
+
+## Paths
+
+| Path | Role |
+|------|------|
+| `/home/jeryd/Projects/openOODA/openOODA/audit/meta_phalanx_rollup.oot` | this rollup |
+| `/home/jeryd/Projects/openOODA/openOODA/rfcs/2026-08-11-metamorphic-path-a.oot` | coordinator RFC |
+| `/home/jeryd/Projects/openOODA/openOODA/audit/meta_phalanx_peer1.oot` | peer1 |
+| `/home/jeryd/Projects/openOODA/openOODA/audit/meta_phalanx_peer2.oot` | peer2 |
+| `/home/jeryd/Projects/openOODA/openOODA/audit/meta_phalanx_security.oot` | security |
+| `/home/jeryd/Projects/openOODA/openOODA/audit/meta_phalanx_memory.oot` | memory |
+| `/home/jeryd/Projects/openOODA/openOODA/audit/meta_phalanx_integration.oot` | integration |
+| `/home/jeryd/Projects/openOODA/openOODA/audit/meta_phalanx_hygiene.oot` | hygiene |
+
+end of meta_phalanx_rollup.oot

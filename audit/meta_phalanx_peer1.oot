@@ -1,0 +1,164 @@
+# meta_phalanx_peer1.oot
+# Peer Verifier 1 (Adversarial QA) — path-A metamorphic emit floor
+# Date: 2026-08-11
+# Scope (READ): ooda/oodac/c_emit_meta.oo, ooda/oodac/c_emit.oo
+#               c_emit_meta_drive.oo — ABSENT (drive lives inline in c_emit.oo)
+# Write: this file only + fixes in c_emit_meta.oo / c_emit.oo (critical compile break)
+# Method: static adversarial read; hunt off-by-one, infinite loops, idx overflow,
+#         empty fn names, mode double-decoy, missing bounds.
+# Live binary oodac/oodac @ 21:39 predates meta wire (emit of fixture had no
+# decoys / meta_epoch free-call noise) — verdicts are source-truth, not binary.
+
+========================================================================
+SUMMARY
+========================================================================
+FINDINGS:     7
+  CRITICAL:   1  (mode double-decoy → static redefinition)  FIXED
+  MEDIUM:     1  (decoys on protos mode; couples to CRITICAL) FIXED with #1
+  LOW:        3
+  INFO/OK:    2  (parser bounds OK; empty decoy names impossible post-guard)
+
+Fixes landed:
+  - /home/jeryd/Projects/openOODA/ooda/oodac/c_emit_meta.oo
+      + c_meta_layout_emit_decoys(mode) body/all/full allow-list
+      + negative idx clamp + empty-id refuse in c_emit_meta_decoy
+  - /home/jeryd/Projects/openOODA/ooda/oodac/c_emit.oo
+      drive now uses c_meta_layout_emit_decoys (critical compile-break fix;
+      allowed: multi-pass protos+bodies redefined static __oo_meta_decoy_N)
+
+c_emit_meta_drive.oo: does not exist (not created; drive remains in c_emit.oo).
+
+========================================================================
+F1 — CRITICAL — mode double-decoy (static redefinition)
+========================================================================
+STATUS: FIXED (this peer)
+
+Evidence (pre-fix drive in c_emit.oo ~L165-169):
+  if meta_layout {
+      if mode != "preamble" && mode != "preamble_noarc" {
+          c_emit_meta_decoy(meta_idx);
+          meta_idx = meta_idx + 1;
+      }
+  }
+
+Product multi-pass (cli_emit.oo L56-60; cli_build.oo emit-protos then
+emit-bodies) invokes c_emit_stream_mode twice on the same src:
+  1) mode=protos  → emits static void __oo_meta_decoy_0..N-1
+  2) mode=bodies  → emits static void __oo_meta_decoy_0..N-1 AGAIN
+meta_idx resets to 0 each call → identical symbols in one TU.
+
+C result: redefinition of static function → compile fail for any
+// METAMORPHIC: path-a source under default emit-c / product build.
+
+Also: pure protos-only emit polluted .text with decoy *definitions*
+after prototypes (wrong placement for "layout after fn bodies").
+
+Fix:
+  c_meta_layout_emit_decoys(mode) returns true only for:
+    bodies | bodies_noarc | all | all_noarc | full
+  false for protos | protos_noarc | preamble | preamble_noarc | unknown
+  c_emit.oo: meta_emit = meta_layout && c_meta_layout_emit_decoys(mode);
+  banner + per-fn decoy both gated on meta_emit.
+
+Post-fix multi-pass: protos = no decoys; bodies = decoys once. Single-pass
+all/full (EMIT_NO_CONCAT emit-c) still gets decoys once.
+
+========================================================================
+F2 — MEDIUM — protos-mode decoy emission (layout wrong pass)
+========================================================================
+STATUS: FIXED with F1
+
+Pre-fix excluded only preamble*; protos still emitted full static
+definitions. Couples to F1. After fix, protos emits zero decoys.
+
+========================================================================
+F3 — LOW — c_emit_meta_decoy missing negative-idx bounds
+========================================================================
+STATUS: FIXED
+
+Pre-fix: idx.to_string() on negative → "__oo_meta_decoy_-1" which is not
+a valid C identifier ('-' tokenizes as minus). Call site only increments
+from 0, but API had no floor.
+
+Fix: clamp safe < 0 → 0; refuse if id == "" (empty-name belt).
+
+========================================================================
+F4 — LOW — c_emit_meta_drive.oo missing / drive undisciplined
+========================================================================
+STATUS: OPEN residual (documented; not invented as new module)
+
+Hunt asked for c_emit_meta_drive.oo — file does not exist. Drive logic was
+inlined in c_emit_stream_mode without a mode allow-list (root cause of F1).
+Peer hardened helpers in c_emit_meta.oo rather than adding a new drive
+module (scope: fix meta / meta_drive only; no unsolicited new surface).
+
+Residual: optional extract of drive loop to c_emit_meta_drive.oo later.
+
+========================================================================
+F5 — LOW — comment honesty "between" vs "after each"
+========================================================================
+STATUS: NOTED (header wording tightened in c_emit_meta.oo)
+
+Pre-fix header: "between top-level fns". Implementation emits AFTER every
+top-level fn including the last (N fns → N decoys). Correct for layout
+diversity; wording was slightly misleading. Header now says "after each".
+
+========================================================================
+F6 — INFO/OK — parser bounds / infinite loop / off-by-one
+========================================================================
+STATUS: PASS (no defect)
+
+c_parse_metamorphic_path_a:
+  - loop: while i + nn <= sn; always i = i + 1 → terminates
+  - char_at(src, i+j): j < nn ∧ i+nn <= sn ⇒ i+j < sn (no overflow read)
+  - line-start: i==0 or char_at(src, i-1)=="\n"; never reads i-1 at 0
+  - needle split ("// " + "METAMORPHIC: path-a") avoids self-host false
+    enable if this module is ever path-a scanned as product src with a
+    contiguous line-start needle in source text
+  - empty src → false
+  - leading-space line does not match (line-start only; matches MAX_CYCLES /
+    SECRET directive style)
+
+No infinite loop. No off-by-one on window end.
+
+========================================================================
+F7 — INFO/OK — empty decoy fn names
+========================================================================
+STATUS: PASS (post-guard)
+
+Decoy symbol is always "__oo_meta_decoy_" + decimal digits after clamp.
+Cannot emit empty function name. (User top-level empty IDENT in c_emit_fn
+is out of scope — not produced by meta emitter.)
+
+meta_idx only ++ from 0 in drive; no practical Int overflow for source-sized
+fn counts. No upper cap added (not required for C id well-formedness).
+
+========================================================================
+NON-FINDINGS / RESIDUALS (honest, not counted as bugs)
+========================================================================
+- Full DESIGN runtime assembly mutation / ROP reshape: residual free-name
+  refuse (metamorphic_emit / metamorphic_build) — by design, not a bug.
+- meta_epoch process-local only (chs_rt_meta.c); not continuous re-morph.
+- Unreferenced static decoys may be GC'd under -ffunction-sections
+  --gc-sections; path-A layout diversity is best-effort at emit, not a
+  link-forced keep. Residual product strength note.
+- Live oodac binary on disk predates feature; smoke metamorphic_path_a_smoke.sh
+  allows "skip live" when emit lacks decoys — source floor is the claim.
+- c_emit.oo pre_pos / hitl_pre loops: separate; not meta bugs. If
+  c_emit_fn_mode ever returned non-advancing pos, outer while would spin —
+  pre-existing emit risk, not introduced by meta.
+
+========================================================================
+FILES TOUCHED
+========================================================================
+FIXED  /home/jeryd/Projects/openOODA/ooda/oodac/c_emit_meta.oo
+FIXED  /home/jeryd/Projects/openOODA/ooda/oodac/c_emit.oo   (critical compile break only)
+WRITE  /home/jeryd/Projects/openOODA/openOODA/audit/meta_phalanx_peer1.oot
+ABSENT /home/jeryd/Projects/openOODA/ooda/oodac/c_emit_meta_drive.oo
+
+========================================================================
+FINDINGS COUNT
+========================================================================
+7 findings (1 CRITICAL fixed, 1 MEDIUM fixed-with-F1, 3 LOW, 2 INFO/OK)
+
+end of meta_phalanx_peer1.oot

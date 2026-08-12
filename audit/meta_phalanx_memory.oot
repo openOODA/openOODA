@@ -1,0 +1,95 @@
+# meta_phalanx_memory.oot — Memory Auditor (Adversarial QA)
+# Date: 2026-08-11
+# Role: Memory Auditor — path-A metamorphic emit memory quotas
+# OWN: oodac/c_emit_meta.oo only (no c_emit.oo / runtime edits this pass)
+
+## Scope
+
+Adversarial review of Backend-C path-A metamorphic layout decoys
+(`// METAMORPHIC: path-a` → `c_parse_metamorphic_path_a` + `c_emit_meta_decoy`).
+
+Threat model for this lane:
+- Unbounded decoy emission when a unit has hundreds of top-level fns
+- Source-scaled pad buffers (O(source) or worse per decoy)
+- Marker scan that can spin without advancing the source index
+- Accidental O(source²) string accumulation during emit
+
+Preserved from peer Security lane (merged, not clobbered):
+- static / used,noinline attributes; no export/fptr/system sinks
+- decoy body uses emit-sequence index only (never user strings)
+
+## Findings → fixes (enforced in c_emit_meta.oo)
+
+| ID | Finding | Severity | Fix |
+|----|---------|----------|-----|
+| M1 | No hard cap on decoy count; c_emit.oo can call decoy once per top-level fn | MED | `c_emit_meta_decoy`: no-op when `idx >= 64` |
+| M2 | Pad was a single scalar; no documented array byte cap | LOW | Fixed pad array `unsigned char[16]`; never source-derived |
+| M3 | Marker scan must not unbounded-while without progress | PASS (pre) | Documented + kept `i = i + 1` every iteration; bound `i + nn <= sn` |
+| M4 | Emit memory claim must be honest O(fns) not O(source²) | DOC | Header documents O(min(fns,64)) println, O(1) temps, no concat |
+
+## Caps table
+
+| Cap | Symbol / site | Limit | Enforcement | Notes |
+|-----|---------------|-------|-------------|-------|
+| Decoy count / TU | `OO_META_DECOY_MAX` via `c_meta_decoy_max()` + gate in `c_emit_meta_decoy` | **≤ 64** | Hard: `if idx >= 64 { return; }` | Extra calls after 64 are silent no-ops (fail-closed quota) |
+| Pad array size | `OO_META_PAD_BYTES` via `c_meta_pad_bytes()` + literal `[16]` in emit | **≤ 16 bytes** | Hard: fixed C array size 16 | Not scaled by source length or fn count |
+| Marker scan progress | `c_parse_metamorphic_path_a` outer while | **+1 index / iter** | Structural: `i = i + 1` always | Bound ≤ `chars_len(src)` iterations |
+| Marker inner match | needle compare `j < nn` | **≤ \|needle\|** | Structural: `j` advances or jumps to `nn` | Fixed needle; not source-scaled |
+| Negative idx | `c_emit_meta_decoy` | refuse | Hard: `if idx < 0 { return; }` | Defensive (no wrap to 0 → unbounded alias) |
+| Meta emit memory class | header claim + emit shape | **O(fns)** capped 64 | Design | See complexity proof below |
+
+## Complexity proof (emit memory — meta path)
+
+Claim: **meta emit overhead is O(fns) (≤64), not O(source²).**
+
+1. `c_parse_metamorphic_path_a(src)`
+   - Time: O(|src| · |needle|) with |needle| fixed → O(|src|)
+   - Aux memory: O(1) scalars (`i`, `j`, `ok`, `at_line`); no growing buffer of source
+2. `c_emit_meta_decoy(idx)` for each successful top-level fn (caller in `c_emit.oo`)
+   - At most 64 non-empty emissions (`idx` 0..63)
+   - Each call: fixed number of `println` of O(1)-size format strings + `idx.to_string()`
+   - Does **not** append decoy text into a single growing string of length Θ(fns · source)
+3. Therefore total meta-related emit work/memory is **O(min(fns, 64))** temps
+   streamed to stdout, **not** O(|source|²) and **not** O(fns · |source|).
+
+Residual (out of OWN): `c_emit.oo` still *calls* decoy once per fn even past 64;
+the quota is enforced inside `c_emit_meta_decoy` (silent no-op). A future
+caller-side early stop is optional hygiene, not required for the memory cap.
+
+## Adversarial checks performed
+
+- [x] Unbounded decoy growth → capped at 64
+- [x] Pad buffer cannot track source length → fixed 16-byte array literal
+- [x] No `while` on source without progress → `i` strictly increases
+- [x] No source×source string build in this file
+- [x] Query helpers `c_meta_decoy_max` / `c_meta_pad_bytes` expose caps for tests
+- [x] Security lane attributes (static/used/noinline) preserved
+
+## Prove (source floor)
+
+```
+grep -nE 'idx >= 64|__oo_meta_pad\[16\]|c_meta_decoy_max|i = i \+ 1' \
+  ooda/oodac/c_emit_meta.oo
+# expected: hard cap 64, pad[16], progress i+=1, max helper present
+
+# optional live (if oodac binary current):
+# oodac emit-c ooda/fixtures/metamorphic_path_a.oo | grep -c '__oo_meta_decoy_'
+# expected: ≤64 and equals number of top-level fns when fns ≤64
+```
+
+## Honesty / residual
+
+- Path-A only: emit-time layout decoys + process-local `meta_epoch`.
+- Full DESIGN continuous RAM/assembly mutation remains residual
+  (`metamorphic_emit` / `metamorphic_build` refuse).
+- This audit does **not** claim runtime heap quotas for the generated C decoys
+  after compile; it caps **compiler emit** multiplicity and pad size only.
+
+## Files touched
+
+| Path | Action |
+|------|--------|
+| `ooda/oodac/c_emit_meta.oo` | enforce caps + document O(fns) memory; keep security attrs |
+| `openOODA/audit/meta_phalanx_memory.oot` | this report |
+
+end of meta_phalanx_memory.oot
