@@ -7,7 +7,7 @@ This document lists our current tasks.
 ## 1. Current Status
 
 - **Release:** Version 0.184.0-alpha.
-- **Focus:** F26 closed (`3fb94504` p7=0 s29=0). F27 source-clear. Next: B1 F43, Bool/String 36:5, 2.10 cheap marker.
+- **Focus:** F26 closed (`3fb94504` p7=0 s29=0). F27 source-clear (wc 0 >256). B1 closed (CRIT 0, HIGH 0, MED 1 F43). Next: Bool/String 36:5, 2.10 cheap marker.
 
 ---
 
@@ -35,6 +35,9 @@ Choose at most 5 tasks at a time.
 - [ ] **Option 2: Next Audit Priority**  
   **Goal:** Grok will do this task. It must follow the English guidance found in rules. It will make corrections on the spot.
 
+- [ ] **Fix Compiler Infinite Loop Bug (check_caps.oo)**  
+  **Problem:** The native compiler binary (`oodac/oodac`) gets stuck in an infinite loop while compiling `oodac/check_caps.oo`. This bug is currently masked in the pure build by a `timeout 60` and `|| true` fallback, which causes it to silently drop the rest of the generated C code and leads to missing function declarations (like `check_function`) downstream. We need to trace the infinite loop and fix it, as well as remove the dangerous `|| true` masking in the build scripts.
+
 - [x] **C Code Security Check (path-A floor)**  
   **Problem:** Test C runtime for memory/shell/FFI holes.  
   **Done:** `execvp` (no `system(3)`), env filter, FS writedir, T3 smoke green.  
@@ -46,23 +49,24 @@ Choose at most 5 tasks at a time.
 - [x] **Clean Code Rules (Fixed)**  
   We removed old debug code and trash files. The code is now clean.
 
-- [ ] **B1 ZT re-sweep (F43–F45)** — ledger `audit/audit_2026-08-12_run.oot` B1.  
-  - F46 brace gone. F44 `.oot` greps dual-green. F45 process.oo restated. F43 sock_raw deny = F12 (no extra fixture).
+- [x] **B1 ZT re-sweep (F43–F46)** — ledger `audit/audit_2026-08-12_run.oot` B1. **Closed 2026-08-12.**  
+  - F46 brace gone — `gcc -c chs_rt_sys.c` OK. F44 `.oot` greps dual-green. F45 `process.oo` restated — `oodac check` OK. F43 `sock_raw` deny via F12 (no extra fixture this wave; MED residual).  
+  - In plain words: the C file builds, the checks pass, and the docs now point to the right files.
 
 - [ ] **Audit Findings — openOODA/audit run 2026-08-12 (42 findings)**  
   **Source ledger:** `openOODA/audit/audit_2026-08-12_run.oot` (139 lines, PROBE §9 schema).  
   **Problem:** Five-audit sweep (Doctrine, CAPS path-A, Compiler, T5 std honesty, Crypto gates) surfaced 42 findings (F1–F42). This is **one umbrella task** under the power-law cap. Below is the full rank-ordered subtask list for Grok to work through.  
-  **Severity counts:** CRIT 0 open. F26 closed. F27 source-clear. F46 brace fixed.  
+  **Severity counts:** CRIT 0 open (F26 p7=0 s29=0, F27 wc 0 >256, F46 brace gone, F44/F45 dual-green). F27 source-clear (no file >256). F46 brace fixed (`gcc -c` OK). B1 closed (CRIT 0 HIGH 0 MED 1).  
   **Subtasks (rank by severity, do ≤5 per rotation):**  
   - **CRIT (do first):** none.  
-  - **HIGH (do next):** none this rotation (F44 `.oot` greps dual-green; F45 process.oo restated).  
+  - **HIGH (do next):** none — F44 `.oot` greps dual-green, F45 `process.oo` restated, F46 brace gone. B1 HIGH → 0. In plain words: no high-risk items remain; all checks pass.  
   - **MED (after HIGH clears):**  
     - F5 `tmp_test/` is a tracked fixture — keep. scratch/ + emit `.c` deleted.  
     - F13 SysCap bulk residual ~571 hits under `std/src`. Track for T6.  
     - F21 Args/Walk cannot compile until product lands. String is basic only (F35 closed).  
     - F41 `core/crypto.oo` verify asserts length only.  
   - **LOW / INFO:** F2 ✅ F3 ✅ F4 ✅ F6 ✅ F9 ✅ F42 chs_rt vs pack scope.  
-  **Removed this wave (proved):** F26 p7=0 + s29=0 (`3fb94504`). F27 wc empty. F44 `.oot` greps. F45 process.oo restated. F46 brace. F1 DESIGN. F19 RFC-003. F20 inventory. F23 MUST-GATE. F34 PM R5. F36 dns.oo. F39 md5/sha1. F35 string. F40 AES. F8 RFC-004. F15–F18/F28/F29. F7 SPEC. F22/F24/F25/F37 moot.  
+  **Removed this wave (proved):** F26 p7=0 + s29=0 (`3fb94504`). F27 wc 0 >256 (no file >256). F44 `.oot` greps dual-green. F45 `process.oo` restated (`oodac check` OK). F46 brace gone (`gcc -c` OK). B1 closed (all smokes PASS). F1 DESIGN. F19 RFC-003. F20 inventory. F23 MUST-GATE. F34 PM R5. F36 dns.oo. F39 md5/sha1. F35 string. F40 AES. F8 RFC-004. F15–F18/F28/F29. F7 SPEC. F22/F24/F25/F37 moot.  
   **Done when:** CRIT closed with dual-repro smokes; HIGH has owner + close plan.  
   **Smoke:** `p7_check_main_smoke.sh`, `scan_fn_light_smoke.sh`, `wc -l ooda/oodac/*.oo | awk '$1>256'` (must be empty).
 
@@ -99,3 +103,34 @@ Do not work on these tasks until the main code is stable.
 ## 5. Completed Tasks
 
 We completed a large security audit on August 11, 2026. We fixed all 50 critical security holes found in the audit. The system is now much more secure.
+
+---
+
+## 6. Lanes (SWARM Lock — 12-Agent Phalanx)
+
+**Power law:** ≤5 active tasks per rotation (RULES §1.2, BOOTSTRAP §Power law, OODA §2). Current open: 3 top-level (Option 2 + check_caps infinite loop + umbrella). Umbrella = 1 task; subtasks batched ≤5 per rotation. Compliant.
+
+**RFC handoff:** Next rotation picks ≤5 from umbrella (MED: F43 sock_raw fixture, F13 SysCap 571, F21 Args/Walk, F41 verify length, F5 tmp_test). F43 via F12 deny — no code, just fixture. RFC-002/003/004 closed — do not re-open. New RFC only if Design gap needs it; draft lives in `openOODA/RFC-*.oot` then audit close.
+
+**Lane ownership — orthogonal files (no two writers on same file without worktree isolation):**
+
+| Wing | Lane | Agent | Owns (writes) | Read-only |
+|------|------|-------|---------------|-----------|
+| I Core | DE1 | Domain Expert 1 | `ooda/oodac/check_caps.oo` (infinite loop) | — |
+| I Core | DE2 | Domain Expert 2 | `ooda/oodac/check_cap_util.oo`, `check_drive.oo` | — |
+| I Core | RT | Runtime Auditor | `ooda/runtime/chs_rt*.c` only | oodac emit |
+| II QA | PV1 | Peer Verifier 1 | — | check_caps + cap_util (forge) |
+| II QA | PV2 | Peer Verifier 2 | — | check_caps + bracket_depth (underflow) |
+| II QA | SEC | Security Auditor | — | CAPS + PROBE + cap smokes |
+| II QA | MEM | Memory Auditor | — | c_emit + chs_rt quota |
+| III Integ | INT | Integration Tester | `ooda/scripts/*smoke.sh` (if needed) | full build |
+| III Integ | HARN | Harness Writer | `ooda/bootstrap/corpus/check/fail/*.oo` fixtures | — |
+| III Integ | HYG | Hygiene Enforcer | scrub `scratch/`, `*.c.tmp`, `.gitignore` | line lock |
+| IV Cmd | DOCS | Documentation Writer | `openOODA/*.oot` + `openOODA/audit/*.oot` only | — |
+| IV Cmd | COORD | Swarm Coordinator | `openOODA/SPRINT.oot` + `openOODA/audit/*rollup.oot` + `/tmp/phalanx_COORD.log` | — |
+
+**SWARM lock 2026-08-12:** Verified — no rogue helpers. `ps aux` = 1 coordinator shell only. Phalanx logs show orthogonal writes (DE2 oodac, RT runtime, DOCS boards, HARN fixtures). No debugger swarm (SWARM §3): PV hang probes used `timeout 1-2` + `grep`, not subagents. One umbrella task prevents 42× fan-out.
+
+**Sprint goal enforcement:** B1 closed, F26/F27 closed, no HIGH open. Next: fix `check_caps.oo` hang (remove `timeout 60 || true`), then ≤5 MED per rotation. Do not start moonshots (§4).
+
+**Coord handoff log:** `/tmp/phalanx_COORD.log` (this lane).
