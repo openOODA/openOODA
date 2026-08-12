@@ -1,0 +1,75 @@
+# openOODA v2: Comprehensive Zero-Trust Capability Model
+
+**Location:** `openOODA/CAPS.oot`  
+**Scope:** V2 capability catalog for product and `std/src/ooda/`  
+**Purpose:** Single list agents must read when gating code. Mirrors `DESIGN.oot` §3.1 + V2 Architecture. Status lives in `PM.oot` §3.
+
+**In plain English:** Before, one network token gave full access. Now we split it into small tokens. You give only what the code needs from `main()`. Each token is checked when you compile. At run time the process re-checks a process-local seal before the effect runs; forged or missing tokens fail closed. **[STATUS: residual — full `seccomp-bpf` / `SIGSYS` coverage and unforgeable object-caps are residual; path-A is process-local token re-check. Per-op vs per-call granularity and 8-byte token randomness are residual; see DESIGN §3.1]**
+
+The core principle is **least privilege at the compiler**. Every capability is checked at compile time and enforced at run time.
+
+Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `DESIGN.oot` §V2 Architecture counts **18** new granular tokens that fractured `SysCap`/`NetCap`. The list below shows **27** entries because it keeps the 2 legacy broad tokens for compat plus 7 related tokens (`EnvCap`, `MemCap`, `FfiCap`, etc.) that DESIGN groups under §3. **`is_cap_type` accepts all 27.** Use granular tokens for **new** `std/` and product code.
+
+### Path-A honesty (do not greenwash)
+
+| Layer | What is true today |
+|-------|--------------------|
+| **Type accept** | All 27 names below are valid `&Cap` types in check (`oodac/check_cap_util.oo`). |
+| **Sealed ops** | Most free-call seals still map to **legacy** kinds: `FsCap`, `SysCap`, `EnvCap`, `NetCap`, plus `TimeCap` / `RandCap` / `AllocCap` / `UnsafeFFICap` / `ThreadCap` / `GpuCap`. Granular `HttpCap`/`TcpCap`/`FsReadCap`/… **types exist**; **op→granular enforce is residual** (SPRINT CAP-G*). |
+| **Runtime grants** | Header declares many `oo_cap_grant_*` (incl. granular); path-A product require path is still the legacy + FFI/thread/gpu set for most sealed ops. |
+| **Policy overlays (not Cap types)** | `OODA_FS_WRITEDIR` on writes; `sys_exec` child env filter (`OODA_`/`OO_` + minimal PATH); FFI nested-`dlopen` refuse — see residual links. |
+| **Not a Cap** | `// SECRET:` taint / sink refuse is **IFC**, not a capability token. Do not add SECRET to this list. |
+
+### 1. File System & Memory
+* **`&FsReadCap`**: Permission to read files (e.g., config parsers).
+* **`&FsWriteCap`**: Permission to create or modify files.
+* **`&AllocCap`**: Permission to allocate heap memory (`malloc`/`free`).
+* **`&MemCap`**: Permission to use shared memory or `mmap` across boundaries.
+
+### 2. Network & Web
+* **`&NetCap`**: Broad network access **(legacy — prefer granular below; kept for compat).**
+* **`&HttpCap`**: Send HTTP/HTTPS requests only. No raw sockets.
+* **`&TcpCap`**: Open raw TCP sockets.
+* **`&UdpCap`**: Open raw UDP sockets (for P2P).
+* **`&BindCap`**: Listen on a port and start a server.
+
+### 3. OS & Execution
+* **`&SysCap`**: Broad OS execution **(legacy — prefer granular below; kept for compat).**
+* **`&ProcessCap`**: Spawn subprocesses (`fork`/`exec`) only.
+* **`&SyncCap`**: Use IPC, Mutexes, and Semaphores only.
+* **`&ThreadCap`**: Spawn parallel CPU threads.
+* **`&EnvCap`**: Read environment variables.
+
+### 4. Hardware & Peripherals
+* **`&GpuCap`**: Run parallel work on the GPU/NPU.
+* **`&UsbCap`**: Direct hardware passthrough (for I2C).
+* **`&AudioCap`**: Read mic / write speakers.
+* **`&CameraCap`**: Read raw video frames from a webcam.
+* **`&HidCap`**: Read keyboard/mouse events (checks keyloggers).
+
+### 5. UI & Display
+* **`&WindowCap`**: Request a GUI window from the OS compositor.
+* **`&FrameCap`**: Map pixels directly to the framebuffer (for hologram engines).
+
+### 6. Audit & Security
+* **`&AuditCap`**: Write to the append-only, cryptographic audit trail.
+* **`&SignCap`**: Use the host Secure Enclave (TPM/HSM) to sign payloads.
+* **`&HitlCap`** (Human-In-The-Loop): Freeze the thread and prompt the human for YubiKey or biometric.
+* **`&TimeCap`**: Read the system clock. Without it, you cannot measure time (helps limit timing side channels).
+* **`&RandCap`**: Read from `/dev/urandom` (cryptographically secure random).
+* **`&FfiCap`** (`&UnsafeFFICap` alias): Run unsafe C bindings. Most dangerous. Requires explicit grant.
+
+### Residual links (product truth, not this catalog)
+
+| Doc | Role |
+|-----|------|
+| `../ooda/bootstrap/CAPS_MATRIX.md` | Op → Cap → check/emit/runtime matrix (path-A) |
+| `../ooda/bootstrap/STATIC_CAPS.md` | Process-local seal semantics |
+| `../ooda/bootstrap/CAP_FFI.md` | FFI allowdir, handle mutex, nested dlopen refuse |
+| `../ooda/bootstrap/SECRET_TAINT.md` | SECRET IFC (orthogonal to this list) |
+| `SPRINT.oot` §Runtime/caps + **CAP-G*** | Meta backlog: granular enforce, unused grants |
+| `PM.oot` §3 | Milestone status for capability sandboxing |
+
+**When to read this file:** When you add or gate code that touches files, network, OS, hardware, UI, or security — and always when you edit `std/src/ooda/` (see `BOOTSTRAP.oot` tier *Security, sandboxing, capability gating* + `DESIGN.oot` §3).
+
+*Update this list when a token is added or fractured. Keep count note in sync with DESIGN. Prefer granular tokens in new APIs; do not claim op-level granular enforce until CAP-G* lands.*

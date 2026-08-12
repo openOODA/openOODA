@@ -97,9 +97,23 @@ Deep finding tables from the 2026-08-11 zero-trust phalanx lived in an earlier S
 | 3.2–3.5 | HIGH | Cap init “without cap” — mostly by-design bootstrap; document residual or bootstrap token |
 | 3.6–3.11 | HIGH | Long HITL audit path — **stale** if slim HITL remains; re-verify before work |
 | 4.2 | HIGH | `oo_cg_sign`/`verify` declare-or-implement |
-| 4.3 | HIGH | V2 caps granted but unused — remove or wire |
+| 4.3 | HIGH | V2 caps granted but unused — remove or wire (overlap CAP-G3) |
 | 6.3 | HIGH | DESIGN: document `SEED_PUBKEY_FP=645069A34E6058B7` |
 | 7.4–7.8 | CRIT | HITL key wipe / core dump / msg wipe — re-scope if slim HITL has no `g_audit_key` |
+
+### Caps catalog → product enforce (**meta lane** — CAPS.oot honesty 2026-08-12)
+
+Catalog is `CAPS.oot` (27 types accepted). Path-A ops matrix is `ooda/bootstrap/CAPS_MATRIX.md`. Do **not** thrash SECRET (T1–T2 closed) for these.
+
+| ID | Sev | Owner | Todo |
+|----|-----|-------|------|
+| **CAP-G1** | HIGH | **meta** | Granular **net** enforce: map sealed ops to `HttpCap`/`TcpCap`/`UdpCap`/`BindCap` (check `sealed_kind_of` + arg-flow + emit grant/require). Keep legacy `NetCap` compat one wave. Prove: fixtures + CAPS_MATRIX row updates. |
+| **CAP-G2** | HIGH | **meta** | Granular **fs** enforce: `FsReadCap` vs `FsWriteCap` on read/write/path ops; legacy `FsCap` compat; keep `OODA_FS_WRITEDIR` overlay. |
+| **CAP-G3** | HIGH | **meta** | Wire or remove **unused** V2 grants (`ProcessCap`/`SyncCap`/`MemCap`/HW/UI…) — product require path or honest residual-only; closes **4.3** when done. |
+| **CAP-G4** | MED | **meta** | `ProcessCap` path for `sys_exec` vs legacy `SysCap` (or document permanent SysCap for exec). |
+| **CAP-G5** | MED | **meta** | Seccomp / OS isolation residual honesty: either land minimal path-A seccomp for sealed syscalls or keep process-local seal claim only (do not greenwash `SIGSYS` in DESIGN/CAPS). |
+| **CAP-G6** | MED | **meta** + std | Continue **std** migration to granular caps (`audit/std_caps_batch_*`); land with honesty notes; no greenwash evaluate-success as crypto. |
+| **CAP-G7** | LOW | **meta** | Optional: migrate `CAPS_MATRIX.md` / `STATIC_CAPS.md` → `.oot` under process or bootstrap (format residual only). |
 
 ### Product / process
 
@@ -109,6 +123,7 @@ Deep finding tables from the 2026-08-11 zero-trust phalanx lived in an earlier S
 | P2 | Product depth moonshots: full `import_c`, unrestricted dlopen, OS rlimit |
 | P3 | Agy NN post-compiler — **agy lane**; do not thrash |
 | P4 | DESIGN long-horizon: SMT, GPU, pkg/LSP, beta, … |
+| P5 | **Human-gated push/PR** — clean dirty ooda/std/openOODA slices per `audit/t5_ship_readiness.oot` (not agent auto-push) |
 
 ### Already FIXED (do not re-open) — see `audit/track_ab_close.oot` + `audit/t1_phalanx_rollup.oot` + `audit/t2_phalanx_rollup.oot` + `audit/t3_phalanx_rollup.oot` + `audit/t4_phalanx_rollup.oot`
 
@@ -125,12 +140,13 @@ Runtime seals; FFI allowlist + realpath/O_NOFOLLOW + handle dlsym; TLS host veri
 
 ## How to use this backlog
 
-1. Pick **T1–T5** only this turn (power law).  
-2. When an ID lands, mark `[x]` here and add a one-line evidence path under `audit/`.  
+1. **T1–T5 power-law row is closed.** Next picks: backlog tables (secret residual, **CAP-G*** for **meta**, product P*). ≤5 items/turn.  
+2. When an ID lands, mark evidence under `audit/` and tick or strike the row here.  
 3. Do not paste full 12-agent findings back into this file — keep them in `audit/` or git history.  
-4. `PM.oot` mirrors `DESIGN.oot` plus current status; **SPRINT is the active todo list**.
+4. Capability **catalog** = `CAPS.oot`. Capability **op matrix** = `../ooda/bootstrap/CAPS_MATRIX.md`.  
+5. `PM.oot` mirrors `DESIGN.oot` plus current status; **SPRINT is the active todo list**.
 
-**Glossary for owners:** `T2` = next fix for hidden secrets in function arguments; `ZT` = zero-trust check; `chs_rt` = C runtime that enforces permission tokens.
+**Glossary for owners:** `T2` (secret) = scan depth / return taint (closed path-A); `ZT` = zero-trust; `chs_rt` = C runtime that enforces permission tokens; `CAP-G*` = granular cap enforce (**meta**).
 
 ---
 
