@@ -1,0 +1,122 @@
+# t1_phalanx_rollup.oot — Swarm Coordinator rollup (Command Wing)
+# Date: 2026-08-12T10:28:41Z
+# Wait: ~4m for peers, then merge openOODA/audit/t1_*.oot + live re-prove
+# Scope: SPRINT T1 — secret return / control-flow taint (IDs 2.1, 2.4, 5.1, 5.2, 5.3)
+
+## Inputs merged
+
+| Peer audit | Role | Verdict (self) |
+|------------|------|----------------|
+| `audit/t1_hygiene.oot` | Hygiene Enforcer | **PASS** (line-lock ≤300; no /tmp; bash -n 4/4) |
+| `audit/t1_memory.oot` | Memory Auditor | **PASS** adjacent 7.1/7.2 slice; T1 not OWN |
+| `audit/t1_security.oot` | Security Auditor | **OPEN** on stale product host (pre-rebuild 908656) |
+| `audit/t1_integration.oot` | Compiler Integration Tester | **PASS** 23/23 matrix; seed pure multi; atomic install |
+| `audit/t1_peer1_return_taint.oot` | Peer Verifier 1 | **PASS** 2.1 + 5.x; 3/3 primary matrix |
+
+Missing this wave (no file): `t1_peer2*.oot` — Peer Verifier 2 did not land before rollup.
+
+Coordinator note on security vs integration: security ran against **stale** `oodac/oodac` (908656 B, md5 a83c19dd…, mtime 03:05) before pure-multi rebuild. Integration rebuilt tip → 942360 B (BuildID 7b88bbcd…, mtime 03:25). Live re-prove below uses **post-install** product host only.
+
+## Coordinator live re-prove (post-wait, post-rebuild)
+
+| Item | Value |
+|------|--------|
+| Tip commit | `4b70f14` (+ dirty secret WIP → this commit) |
+| Product binary | `ooda/oodac/oodac` **942360** B @ 2026-08-12 03:25:26 |
+| T1 fixture matrix | **pass=25 fail=0** |
+
+### ID gate (2.1 / 2.4 / 5.1–5.3)
+
+| ID | Claim | Live fixtures | Result |
+|----|-------|---------------|--------|
+| **2.1** | SECRET through function returns | `secret_function_return_{fail,pass}`, `secret_t1_return_local`, `secret_t1_return_concat`, `secret_t1_bypass_return_x`, `secret_call_return_fail` | **FIXED** (all refuse/ok as wired) |
+| **2.4** | Alias rebind (`let f = println` / sticky assign) | `secret_t1_alias_println` refuse; `secret_alias_rebind_pass` refuse; `secret_alias_rebind_fail` ok (sticky clear) | **FIXED** (fixture gate green) |
+| **5.1–5.3** | if/match LBRACE walker | `secret_if_taint_{fail,pass}`, `secret_t1_if_branch`, `secret_t1_if_expr` | **FIXED** |
+
+### Full matrix (coordinator)
+
+```
+PASS refuse function_return_fail / ok function_return_pass
+PASS ok alias_rebind_fail / refuse alias_rebind_pass
+PASS refuse t1_return_local / t1_return_concat / t1_bypass_return_x
+PASS refuse t1_if_branch / t1_if_expr / t1_alias_println
+PASS refuse call_return_fail / assign_fail / chain_fail / concat_fail / sink_fail
+PASS ok assign_pass / sink_pass
+PASS method/field/closure return-or-assign pairs green
+PASS if_taint_fail refuse / if_taint_pass ok
+TOTAL pass=25 fail=0
+```
+
+Path-A floor sample remains green (sink/assign/concat). Full `secret_sink_enforce_smoke.sh` is **PARTIAL** on non-T1 residual `secret_file_size_pass` (`ERR c_emit unknown free call needs annotation oo_file_size`) — same on pre-T1 bak; **not** a T1 regression.
+
+## Cohort outcomes
+
+| # | Agent | Mapped this turn | Outcome | Notes |
+|---|-------|------------------|---------|-------|
+| 1–2 | Domain Experts (secret emit) | `c_emit_secret*.oo` WIP + fixtures | **SHIP** | `__fr_secret__`, brace prop, alias |
+| 3 | Machine Code / Runtime | pure multi seed rebuild | **PASS** (via integration) | unique_fns=421 modules=149 |
+| 4 | Peer Verifier 1 | `t1_peer1_return_taint.oot` | **PASS** | no peer code fix needed |
+| 5 | Peer Verifier 2 | — | **ABSENT** | no audit file |
+| 6 | Security Auditor | `t1_security.oot` | **STALE OPEN** | pre-rebuild BYPASS; superseded |
+| 7 | Memory Auditor | `t1_memory.oot` | **PASS** (7.1/7.2 adjacent) | T1 not closed there |
+| 8 | Compiler Integration Tester | `t1_integration.oot` | **PASS** | 23/23 + install |
+| 9 | Test Harness | fixtures + smoke extensions | **SHIP** | T1 fixtures + smoke wiring |
+| 10 | Hygiene Enforcer | `t1_hygiene.oot` | **PASS** | secret.oo 263/300 |
+| 11 | Documentation | SECRET_TAINT / SPRINT | **PASS** | residual honesty retained |
+| 12 | Swarm Coordinator | this rollup | **SHIP** | T1 closed on fixture gate |
+
+**Cohort summary:** Engineering SHIP · Adversarial 1 PASS / 1 ABSENT / 1 STALE · Integration PASS · Hygiene PASS · Command SHIP.
+
+## Mechanism (tip tree)
+
+| Piece | Path | Role |
+|-------|------|------|
+| Mark secret-returning fns | `oodac/c_emit_secret_prop.oo` | `__fr_secret__<fn>` |
+| Brace-aware RHS prop | same | if/match LBRACE no longer drops taint |
+| Call-site refuse wire | `oodac/c_emit_secret.oo` | mark **before** prop/sink in check path |
+| Alias resolve | `oodac/c_emit_secret_alias.oo` + guard | `__alias__` chain; sink rebind |
+| Guard / arg scan | `oodac/c_emit_secret_guard.oo` | resolved refuse + `c_guard_scan_idents` |
+
+## FIXED IDs (this rollup)
+
+`2.1` `2.4` `5.1` `5.2` `5.3` — **FIXED** (T1 closed on live product host post-rebuild).
+
+SPRINT: mark **T1 [x]**. Do not re-open unless a prove fails.
+
+## Residuals (honest — do not block T1)
+
+| Residual | Sev | Notes |
+|----------|-----|-------|
+| Body-touch over-taint | MED | any secret IDENT in `-> String` body may mark whole fn (fail-closed) |
+| Mark order multi-hop | MED | callees only if already marked earlier in token stream |
+| sticky-clear precision (2.11) | LOW/MED | fixture gate green; full sticky lattice residual remains backlog |
+| `secret_file_size_pass` free-name | HIGH | non-T1 emit residual; smoke PARTIAL |
+| tcp_write/dlopen scan depth | HIGH | T2-class (memory audit M-SG7) |
+| Full IFC / `#[Secret]` | — | still residual; SECRET_TAINT honesty smoke PASS |
+| Peer2 audit | process | absent this wave |
+
+## Evidence paths
+
+| Item | Path |
+|------|------|
+| This rollup | `/home/jeryd/Projects/openOODA/openOODA/audit/t1_phalanx_rollup.oot` |
+| Integration | `audit/t1_integration.oot` |
+| Peer1 | `audit/t1_peer1_return_taint.oot` |
+| Security (stale host) | `audit/t1_security.oot` |
+| Hygiene / memory | `audit/t1_hygiene.oot`, `audit/t1_memory.oot` |
+| Sources | `ooda/oodac/c_emit_secret{,_prop,_alias,_guard}.oo` |
+| Fixtures | `ooda/fixtures/secret_function_return_*.oo`, `secret_t1_*.oo`, `secret_if_taint_*.oo`, `secret_alias_rebind_*.oo` |
+| Product host | `ooda/oodac/oodac` 942360 B |
+
+## Close decision
+
+| Question | Answer |
+|----------|--------|
+| T1 fixtures prove green on rebuilt product host? | **YES** (25/25 coordinator; 23/23 integration) |
+| Mark T1 [x] in SPRINT? | **YES** |
+| FIXED IDs | **2.1, 2.4, 5.1, 5.2, 5.3** |
+| Commit secret + audit/SPRINT? | **YES** (local only, no push) |
+
+**T1 closed: yes**
+
+end of t1_phalanx_rollup.oot

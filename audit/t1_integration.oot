@@ -1,0 +1,160 @@
+# t1_integration.oot — Compiler Integration Tester
+# Date: 2026-08-12T10:25:21Z
+# Worker: Grok Build (Compiler Integration Tester)
+# Cwd: /home/jeryd/Projects/openOODA/ooda
+# Scope: tip oodac secret return / control-flow taint (SPRINT T1: 2.1, 2.4, 5.1–5.3)
+
+## TIP SHA / binary
+
+```
+git rev-parse --short HEAD → 4b70f14
+git log -1 --oneline       → 4b70f14 fix: zero-trust audit CRITs — caps once/entropy, alloc, secrets, crypto wipe
+# note: T1 sources are dirty WIP on tip tree (not yet committed); product binary rebuilt from working tree
+```
+
+| Item | Value |
+|------|--------|
+| Product tip | `oodac/oodac` **942360** bytes |
+| BuildID | `7b88bbcd95a21e2dd80b37e441829ad792a99f82` |
+| Side rebuild | `~/.cache/ooda-tmp/oodac_from_seed` **942360** (matches tip) |
+| Prior tip bak | `oodac/oodac.bak` 908656 |
+| pure multi | unique_fns=**421** from_modules=**149** |
+
+## 0) Stale tip diagnosis
+
+Initial command:
+
+```
+./oodac/oodac emit-c fixtures/secret_function_return_fail.oo
+# STALE tip (908656 / BuildID 48c440a8…): rc=0, full C emit (NO refuse) → FAIL
+```
+
+Cause: product binary older than WIP T1 sources (`c_emit_secret*.oo`, `__fr_secret__`, sticky-clear + `__secref__`).
+
+## 1) seed_pure_multi + atomic install — PASS
+
+```
+bash scripts/seed_pure_multi_smoke.sh
+# exit 0
+OK seed_pure_multi: cold seed pure multi rebuild green
+pure_build: unique_fns=421 from_modules=149
+OK_PURE_MULTI
+seed_pure_multi_smoke: PASSED (green)
+```
+
+Atomic install (Text-file-busy safe):
+
+```
+cp -a oodac/oodac oodac/oodac.bak
+cp -a ~/.cache/ooda-tmp/oodac_from_seed oodac/oodac.new && mv -f oodac/oodac.new oodac/oodac
+```
+
+Integration fix applied so pure multi could green:
+
+- `c_emit_secret_prop.oo`: bare Bool `let was = (str == str)` → String flag `was_sec` (seed emit typed Bool as OoStr → gcc fail)
+- `c_emit_secret_guard.oo`: helpers (`c_secret_refuse_sink_resolved`, `c_guard_scan_idents`) defined before `c_secret_emit_guard`
+- Restored accidental pthread wrap corruption in `c_emit_stmt.oo` (not T1; would poison user emit)
+
+Log: `/home/jeryd/.cache/ooda-tmp/seed_pure_multi_t1b.log`
+
+## 2) Gate: secret_function_return_fail — PASS (post-install)
+
+```
+./oodac/oodac emit-c fixtures/secret_function_return_fail.oo
+# rc=1
+ERR	secret	println sink refuses SECRET y
+```
+
+```
+./oodac/oodac emit-c fixtures/secret_function_return_pass.oo
+# rc=0 (no ERR secret)
+```
+
+## 3) T1 prove matrix — ALL GREEN (23/23)
+
+Legend: **refuse** = non-zero rc + `ERR\tsecret`; **ok** = rc=0 and no secret ERR.
+
+### Core T1 (return taint + alias rebind + control-flow)
+
+| Fixture | Expect | rc | secret ERR | Result |
+|---------|--------|----|------------|--------|
+| secret_function_return_fail | refuse | 1 | yes | **PASS** |
+| secret_function_return_pass | ok | 0 | no | **PASS** |
+| secret_alias_rebind_fail | ok (clear sticky) | 0 | no | **PASS** |
+| secret_alias_rebind_pass | refuse | 1 | yes | **PASS** |
+| secret_t1_return_local | refuse | 1 | yes | **PASS** |
+| secret_t1_return_concat | refuse | 1 | yes | **PASS** |
+| secret_t1_bypass_return_x | refuse | 1 | yes | **PASS** |
+| secret_t1_if_branch | refuse | 1 | yes | **PASS** |
+| secret_t1_if_expr | refuse | 1 | yes | **PASS** |
+| secret_t1_alias_println | refuse | 1 | yes | **PASS** |
+| secret_call_return_fail | refuse | 1 | yes | **PASS** |
+| secret_assign_fail | refuse | 1 | yes | **PASS** |
+| secret_assign_pass | ok | 0 | no | **PASS** |
+| secret_chain_fail | refuse | 1 | yes | **PASS** |
+| secret_concat_fail | refuse | 1 | yes | **PASS** |
+| secret_sink_fail | refuse | 1 | yes | **PASS** |
+| secret_sink_pass | ok | 0 | no | **PASS** |
+
+### Adjacent (method / field / closure)
+
+| Fixture | Expect | rc | secret ERR | Result |
+|---------|--------|----|------------|--------|
+| secret_method_return_fail | refuse | 1 | yes | **PASS** |
+| secret_method_return_pass | ok | 0 | no | **PASS** |
+| secret_field_assign_fail | refuse | 1 | yes | **PASS** |
+| secret_field_assign_pass | ok | 0 | no | **PASS** |
+| secret_closure_return_fail | refuse | 1 | yes | **PASS** |
+| secret_closure_return_pass | ok | 0 | no | **PASS** |
+
+**T1 matrix: PASS=23 FAIL=0**
+
+## 4) Path-A floor sample (smoke subset) — PASS
+
+| Fixture | Result |
+|---------|--------|
+| secret_write_file_{fail,pass} | PASS |
+| secret_fetch_{fail,pass} | PASS |
+| secret_sys_exec_{fail,pass} | PASS |
+| secret_env_get_{fail,pass} | PASS |
+| secret_read_file_{fail,pass} | PASS |
+| secret_process_exit_{fail,pass} | PASS |
+
+## 5) secret_sink_enforce_smoke — PARTIAL (non-T1 residual)
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/secret_sink_enforce_smoke.sh
+# exit 1
+```
+
+All T1 / path-A secret refuse/ok lines through read/path/file_size_fail **OK**.
+
+Stops on:
+
+```
+FAIL secret_file_size_pass emit failed rc=1
+ERR	c_emit	unknown free call needs annotation	oo_file_size
+```
+
+**Not a T1 regression:** prior tip (`oodac/oodac.bak`) fails the same `file_size_pass` free-name annotation residual. Out of SPRINT T1 scope (return/control-flow taint).
+
+## RESULT SUMMARY
+
+| Step | Result |
+|------|--------|
+| Stale tip detected on secret_function_return_fail | **YES** (rc=0, no refuse) |
+| seed_pure_multi_smoke | **PASS** |
+| Atomic install side → oodac/oodac | **PASS** |
+| secret_function_return_fail refuses | **PASS** |
+| T1 prove matrix (23 fixtures) | **PASS 23/23** |
+| secret_sink_enforce_smoke full | **PARTIAL** (file_size_pass free-name residual) |
+
+**OVERALL T1 integration: PASS** (return/control-flow taint fixtures green on rebuilt tip)
+
+## Mechanism notes (tip tree)
+
+- `__fr_secret__<fn>`: mark secret-returning fns (body touches SECRET / returns secret local)
+- Call-site prop: `let y = make_secret()` taints `y` via `__fr_secret__`
+- Sticky clear on clean rebind; **never** wipe `__secref__` directive roots (`// SECRET: name`)
+- Alias: `__alias__` + resolve for sink rebinds (`let f = println`)
+- LBRACE walker for if/match prop (if-branch / if-expr fixtures green)
