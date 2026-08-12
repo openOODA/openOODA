@@ -1,0 +1,149 @@
+# grok_work_up_verify.oot
+# Peer-style verifier (read-only) — work-up wave PASS/FAIL
+# Verifier: Grok. No product source modified for this report (SPRINT residual
+#           snapshot updated separately as assigned owner).
+# Tree: /home/jeryd/Projects/openOODA
+# Method: file reads + shell `wc`/`find`/`sha256sum` + repo-local minisign.
+# Policy: fail-closed — cannot prove => FAIL or residual note, never silent invent.
+# Timing: waited ~90s then final re-read so peer agents (seed FP, mono shims, m162)
+#         could finish; verdicts below are from the post-wait snapshot.
+
+========================================================================
+SUMMARY
+========================================================================
+PASS: 7
+FAIL: 0
+
+W1 PASS  seed sha256sum -c works from bootstrap/seed
+W2 PASS  oodac.pub + minisig exist
+W3 PASS  SEED_PUBKEY_FP != TODO_PUBKEY_FP in bootstrap scripts
+W4 PASS  m162 uses --hitl-allowed for allow path
+W5 PASS  solar.oo, wind.oo, hft.oo, phylo.oo each ≤120 (clearly shim)
+W6 PASS  no monofile among those four still >600
+W7 PASS  check_caps has type seal (F02 actual_ty vs expected_ty)
+
+Note: mid-wave races observed (SEED_PUBKEY_FP was TODO, four targets >600,
+m162 used env allow). Final re-read is the verdict basis. Live monofile
+count under std/src/ooda is **13** (>600); new worst is crypto/sha256.oo (908).
+
+========================================================================
+W1 — seed sha256sum -c works from bootstrap/seed
+========================================================================
+VERDICT: PASS
+
+Evidence:
+  cd /home/jeryd/Projects/openOODA/ooda/bootstrap/seed
+  `sha256sum -c oodac.sha256` → `oodac: OK` (rc=0)
+  Sidecar content:
+    37a99a97c0dce4dd4c6b3a89a55387b3689d568b9cf8f811494ededb92cf47aa  oodac
+  Binary present: oodac (878392 bytes, executable)
+
+========================================================================
+W2 — oodac.pub + minisig exist
+========================================================================
+VERDICT: PASS
+
+Evidence (same directory):
+  oodac.pub              (113 bytes) — minisign public key
+  oodac.sha256.minisig   (307 bytes) — detached signature of .sha256
+  oodac.pub first line:
+    untrusted comment: minisign public key 645069A34E6058B7
+
+Also: repo-local minisign at ooda/tools/minisign (static ELF).
+  `tools/minisign -V -p bootstrap/seed/oodac.pub -m bootstrap/seed/oodac.sha256`
+  → "Signature and comment signature verified" (rc=0)
+
+System `minisign` not on PATH on this host; bootstrap scripts fall back to
+`$ROOT/tools/minisign` (bootstrap_no_cargo.sh:54-60). Not a FAIL of W2.
+
+========================================================================
+W3 — SEED_PUBKEY_FP != TODO_PUBKEY_FP in bootstrap scripts
+========================================================================
+VERDICT: PASS
+
+Evidence:
+  ooda/scripts/bootstrap_no_cargo.sh:13
+    SEED_PUBKEY_FP="645069A34E6058B7"
+  ooda/scripts/bootstrap_2stage.sh:9
+    SEED_PUBKEY_FP="645069A34E6058B7"
+  Both still *test* residual against the string TODO_PUBKEY_FP
+  (bootstrap_no_cargo.sh:78, bootstrap_2stage.sh:44) but the assigned value
+  is the real key id from oodac.pub, not the placeholder.
+
+========================================================================
+W4 — m162 uses --hitl-allowed for allow path
+========================================================================
+VERDICT: PASS
+
+Evidence:
+  ooda/scripts/m162_residual_deepen_smoke.sh:56-69
+    # M-CTZ-2: check gate is CLI --hitl-allowed (not OODA_HITL_ALLOW env).
+    Deny: env -u OODA_HITL_ALLOW -u OODA_HITL_AUTO_APPROVE "$OODAC_BIN" check …
+    Allow: OODA_HITL_AUTO_APPROVE=1 "$OODAC_BIN" --hitl-allowed check …
+
+Consistent with:
+  ooda/oodac/main.oo:148  — else if a == "--hitl-allowed"
+  ooda/oodac/check_hitl.oo — fail-closed unless hitl_allowed
+  ooda/scripts/hitl_product_floor_smoke.sh — deny without --hitl-allowed
+
+========================================================================
+W5 — solar / wind / hft / phylo each ≤120 or clearly shim
+========================================================================
+VERDICT: PASS
+
+Live line counts (post-wait):
+  std/src/ooda/grid/solar.oo   63  — "Solar Re-export Shim (M172 split)"
+  std/src/ooda/grid/wind.oo    63  — "Wind Re-export Shim (M172 split)"
+  std/src/ooda/fin/hft.oo     103  — "HFT Re-export Shim (M172 split)"
+  std/src/ooda/bio/phylo.oo    79  — "Phylo Re-export Shim (M172 split)"
+
+All four are explicit re-export shims with sibling split files
+(solar_*, wind_*, hft_*, phylo_*).
+
+========================================================================
+W6 — no monofile among those four still >600
+========================================================================
+VERDICT: PASS
+
+None of solar.oo / wind.oo / hft.oo / phylo.oo appear in the live >600 inventory.
+Live >600 count under std/src/ooda: **13** (worst: crypto/sha256.oo 908).
+
+========================================================================
+W7 — check_caps has type seal (F02)
+========================================================================
+VERDICT: PASS — PATH-A SHIPPED (no rewrite)
+
+Evidence:
+  ooda/oodac/check_caps.oo header L3-5 documents F02 type-level hardening.
+  L22-34  c_capname_to_type(kind) → "&FsCap" etc.
+  L39-70  c_param_lookup_type(param_types, name)
+  L76-83  c_arg_cap_type(toks, pos, n, param_types)
+  L97-155 param_types bag built while scanning fn params
+  L227-244 F02 seal:
+    let expected_ty: String = c_capname_to_type(kind);
+    let actual_ty: String = c_arg_cap_type(toks, cap_pos, n, param_types);
+    if expected_ty != "" && actual_ty != "" && actual_ty != expected_ty {
+        cap_deny(... "declared as '" + actual_ty + "', not the required '" + expected_ty + "'");
+    }
+
+Name-only bag match remains for form/identity; type mismatch is a second deny.
+
+========================================================================
+CT#5 disposition (task 1)
+========================================================================
+F02 type-level cap check already present (actual_ty vs expected_ty).
+**No rewrite of check_caps.oo.** Documented in SPRINT as PATH-A SHIPPED with
+file:line evidence (check_caps.oo:227-244).
+
+========================================================================
+Honest residuals (out of W1–W7 claim scope)
+========================================================================
+- Monofile pressure remains: 13 files >600; next batch sha256/blake3/occupancy/tvc/ima.
+- Pure dual-green not re-proved on tip 89d6e9b this pass.
+- System minisign not installed; product path uses ooda/tools/minisign fallback.
+- .keys-local/oodac.sec present under bootstrap/seed (local; must not ship).
+- 884-stub / domain honesty residual unchanged.
+
+========================================================================
+END
+========================================================================

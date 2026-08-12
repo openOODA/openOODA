@@ -1,0 +1,101 @@
+// check_oot.oo - Strict hygiene enforcer for .oot documentation files
+// Enforces Zero Trust on documentation. Any .oot file that does not match
+// the strict architectural whitelist is classified as LLM sludge and purged.
+
+pub fn starts_with(s: String, prefix: String) -> Bool {
+    if prefix.len() > s.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < prefix.len() {
+        if s[i] != prefix[i] {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+pub fn ends_with(s: String, suffix: String) -> Bool {
+    if suffix.len() > s.len() {
+        return false;
+    }
+    let mut i = 0;
+    let offset = s.len() - suffix.len();
+    while i < suffix.len() {
+        if s[offset + i] != suffix[i] {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+pub fn strings_equal(a: String, b: String) -> Bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+pub fn main() {
+    print("Running strict .oot hygiene check...\n");
+    let mut sludge_count = 0;
+
+    let files = fs::read_dir(".");
+    for file in files {
+        let name = file.name();
+        
+        if !ends_with(name, ".oot") {
+            continue;
+        }
+
+        let mut is_whitelisted = false;
+        
+        if strings_equal(name, "README.oot") { is_whitelisted = true; }
+        if strings_equal(name, "DESIGN.oot") { is_whitelisted = true; }
+        if strings_equal(name, "SPRINT.oot") { is_whitelisted = true; }
+        if strings_equal(name, "RULES.oot") { is_whitelisted = true; }
+        if strings_equal(name, "SWARM.oot") { is_whitelisted = true; }
+        if strings_equal(name, "OODA.oot") { is_whitelisted = true; }
+        if strings_equal(name, "PROBE.oot") { is_whitelisted = true; }
+        if strings_equal(name, "BOOTSTRAP.oot") { is_whitelisted = true; }
+        if strings_equal(name, "PM.oot") { is_whitelisted = true; }
+        if strings_equal(name, "SPEC.oot") { is_whitelisted = true; }
+        if strings_equal(name, "SCRIPTS.oot") { is_whitelisted = true; }
+        if strings_equal(name, "LANE.oot") { is_whitelisted = true; }
+        if strings_equal(name, "CONFLICTS.oot") { is_whitelisted = true; }
+        if strings_equal(name, "TEMPLATE.oot") { is_whitelisted = true; }
+        if strings_equal(name, "DESIGN_SYSTEM.oot") { is_whitelisted = true; }
+        if strings_equal(name, "bug_report.oot") { is_whitelisted = true; }
+        if strings_equal(name, "feature_request.oot") { is_whitelisted = true; }
+
+        if is_whitelisted {
+            continue;
+        }
+
+        if starts_with(name, "RP-") && ends_with(name, ".oot") { is_whitelisted = true; }
+        if starts_with(name, "DOC-") && ends_with(name, ".oot") { is_whitelisted = true; }
+        if starts_with(name, "RFC-") && ends_with(name, ".oot") { is_whitelisted = true; }
+        if starts_with(name, "00") && ends_with(name, ".oot") { is_whitelisted = true; }
+        if ends_with(name, "_BASE.oot") { is_whitelisted = true; }
+
+        if is_whitelisted {
+            continue;
+        }
+
+        print("  [PURGE] Unrecognized .oot file: {}\n", file.path());
+        fs::remove_file(file.path());
+        sludge_count = sludge_count + 1;
+    }
+
+    print("Hygiene complete. Purged {} illegal .oot files.\n", sludge_count);
+    process_exit(0);
+}
