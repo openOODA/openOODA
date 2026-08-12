@@ -1,0 +1,293 @@
+# cap_g2_peer3_regression.oot
+# Peer Verifier 3 (QA) — Floor Regression Gate for CAP-G2
+# Date: 2026-08-12T11:54:06Z
+# Role: QA Peer 3 — Regression on CAP-G2 (granular fs enforce wave)
+# Tree: /home/jeryd/Projects/openOODA/ooda
+# OWN: write this audit only; no product feature work; no push
+# Scope: re-prove path-A floors still green under tip product host while
+#        CAP-G2 meta fs work proceeds:
+#        CAP-G1 net granular must stay green;
+#        T1 secret return / T2 secret depth (soft residual OK with reason);
+#        T3 runtime ZT; T4 hygiene; fs_writedir (CAP-G2-adjacent floor)
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Gate | Command | Result |
+|------|---------|--------|
+| CAP-G1 net granular | `OODAC_BIN=./oodac/oodac bash scripts/cap_g1_net_granular_smoke.sh` | **PASS** exit 0 |
+| T1 secret return | `OODAC_BIN=./oodac/oodac bash scripts/secret_t1_return_smoke.sh` | **PASS** exit 0 |
+| T2 secret depth | `OODAC_BIN=./oodac/oodac bash scripts/secret_t2_depth_smoke.sh` | **FAIL** exit 1 → **soft residual** (reason below) |
+| T3 runtime ZT rollup | `OODAC_BIN=./oodac/oodac bash scripts/runtime_zt_t3_smoke.sh` | **PASS** exit 0 |
+| T4 hygiene | `bash scripts/hygiene_t4_smoke.sh` | **PASS** exit 0 |
+| FS writedir | `OODAC_BIN=./oodac/oodac bash scripts/fs_writedir_smoke.sh` | **PASS** exit 0 |
+
+**OVERALL: PASS** (hard CAP-G2 regression rails green; CAP-G1 must-stay-green holds;
+T2 soft residual with reason — mandate allows soft residual on secret_t1/t2)
+
+Assigned scripts run to completion. Soft residual inside T3 rollup
+(`cap_ffi_runtime` / `ffi_dlopen_path_a` exit 1) is unchanged policy, not a
+peer soft-skip. T2 hard-smoke exit 1 is recorded as **soft residual with reason**
+per CAP-G2 peer3 charter (`secret_t1/t2 if host allows`).
+
+========================================================================
+HOST / TIP / CAP-G2 SURFACE
+========================================================================
+
+| Item | Value |
+|------|--------|
+| Cwd | `/home/jeryd/Projects/openOODA/ooda` |
+| Tip (`git rev-parse --short HEAD`) | `c2da895` |
+| Tip subject | `fix(cap-g1): granular net enforce — preferred kinds + runtime require` |
+| Full tip | `c2da8950bd5498173867416acb484e22e6ef092b` |
+| Prior floors | CAP-G1 FIXED on this tip; T4 `0bfd752`; T3 `344defe` lineage |
+| Gate product host | `oodac/oodac` **1146880** B @ 2026-08-12 04:51:28 -0700 |
+| Gate host md5 | `6165082592e01149a580dfaf5dd6b12b` |
+| Gate host BuildID | `3d0532227b516b0f869972e1b967a109f3eb9781` |
+| Side `oodac_new` | 956688 B (not gate host) |
+| Bak (gitignored — T4 OK) | `oodac.bak`, `.bak.pre_cap_g1`, `.bak.pre_capg1`, `.bak.t3pre`, `.bak.t5live` (5) |
+| Branch | `main...origin/main` **ahead 27** (no push this peer) |
+| CAP-G2 mandate | granular fs enforce must not break CAP-G1 or T3/T4/fs_writedir floors |
+
+### WT observed at peer run (context only; not edited)
+
+~43 status lines; many tracked `oodac/*` dirty (parse/tc/emit WIP under concurrent
+CAP meta lane) + `runtime/chs_rt_fs.c` / `chs_rt_sys.c` + `scripts/cap_g1_net_granular_smoke.sh`.
+This peer **did not** edit product, runtime, scripts, or hygiene — audit only.
+
+### CAP-G2 surface (observed, not owned)
+
+`oodac/check_cap_util.oo`:
+- `sealed_fs_kind_of` — read_file/fs_read/path_exists/file_size → `FsReadCap`;
+  write_file/fs_write → `FsWriteCap`
+- CAP-G2 comment: fs → FsReadCap/FsWriteCap; FsCap legacy supersede
+
+`oodac/check_caps.oo`: dual-accept branches for `FsReadCap` / `FsWriteCap`
+
+`runtime/chs_rt_fs.c`:
+- `oo_cap_require_fsread` / `oo_cap_require_fswrite` on read/write paths
+- `OODA_FS_WRITEDIR` fail-closed overlay still present (path_under_writedir)
+
+`runtime/chs_rt_sys.c`:
+- `oo_cap_require_fs` + granular wrong-kind fail-closed note (FsWriteCap ↛ read)
+
+========================================================================
+1) cap_g1_net_granular_smoke.sh — PASS (must stay green)
+========================================================================
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/cap_g1_net_granular_smoke.sh
+# exit 0
+```
+
+Live transcript (run twice — initial + reconfirm; both exit 0):
+
+```
+OK static sealed_net_kind_of map (tcp_bind→BindCap)
+OK static runtime oo_cap_require_http
+OK check deny HttpCap+tcp_bind
+OK check deny TcpCap+fetch
+OK check allow NetCap+fetch+tcp_connect
+OK check allow TcpCap+tcp_connect
+OK check allow HttpCap+fetch
+OK check allow NetCap+fetch (legacy)
+OK ci_product soft-wire present
+cap_g1_net_granular_smoke: PASSED
+```
+
+**CAP-G1 granular net enforce still green under tip host while CAP-G2 fs work is live.**
+Wrong-granular deny + preferred/legacy NetCap allow paths intact.
+
+========================================================================
+2) secret_t1_return_smoke.sh — PASS
+========================================================================
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/secret_t1_return_smoke.sh
+# exit 0
+```
+
+Live transcript:
+
+```
+OK secret_function_return_fail emit refuses (rc=1)
+OK secret_function_return_pass emit OK
+OK secret_alias_rebind_pass emit refuses (rc=1)
+OK secret_alias_rebind_fail residual sticky-taint over-refuse (rc=1)
+OK secret_if_taint_fail emit refuses (rc=1)
+OK secret_if_taint_pass emit OK
+OK ci_product wires secret_t1_return_smoke
+OK secret_t1_return_smoke
+```
+
+**No T1 hard regression.** Smoke soft-passes sticky over-refuse on
+`secret_alias_rebind_fail` (product residual; expected path in harness).
+
+========================================================================
+3) secret_t2_depth_smoke.sh — FAIL → soft residual (reason)
+========================================================================
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/secret_t2_depth_smoke.sh
+# exit 1
+```
+
+Live transcript (first hard fail):
+
+```
+OK secret_field_assign_fail emit refuses (rc=1)
+OK secret_field_assign_pass emit OK
+FAIL secret_method_return_fail should non-zero rc (got 0)
+```
+
+### Soft residual reason (charter: soft residual OK with reason)
+
+Tip product host **allows** `secret_method_return_fail` (emit rc=0, full C ~9740 B,
+no `ERR\tsecret`) instead of clean method-return taint refuse. Not a host abort
+(malloc/tcache); clean false-negative on method-call return taint through
+`make_secret().len()` → `println(y)`. CAP-G2 peer charter allows soft residual
+on secret_t1/t2 when host cannot fully green.
+
+### Isolate matrix (same gate host; not a soft redefinition of the smoke)
+
+| Fixture | emit rc | ERR secret | Smoke expect | Note |
+|---------|---------|------------|--------------|------|
+| `secret_field_assign_fail` | 1 | **yes** | refuse | **OK** |
+| `secret_field_assign_pass` | 0 | no | ok | **OK** |
+| `secret_method_return_fail` | **0** | no | refuse | **FN — hard smoke FAIL** |
+| `secret_method_return_pass` | 0 | no | ok | **OK** |
+| `secret_call_arg_fail` | 1 | **yes** | refuse | **OK** (isolate; smoke stopped earlier) |
+| `secret_multi_arg_println_fail` | 1 | **yes** | refuse | **OK** |
+| `secret_multi_name_fail` | 1 | **yes** | refuse | **OK** |
+| `secret_multi_name_pass` | 0 | no | ok | **OK** |
+| `secret_midline_safe` | 0 | no | ok | **OK** |
+| `secret_dlopen_arg_fail` | **0** | no | refuse | **FN isolate** (optional rail; not reached by smoke) |
+| `secret_dlopen_arg_pass` | 0 | no | ok | **OK** |
+| `secret_sys_exec_argv_fail` | 1 | **yes** | refuse | **OK** |
+| `secret_sys_exec_argv_pass` | 0 | no | ok | **OK** |
+
+**T2 soft residual:** method-return taint FN (hard smoke first fail) + isolate
+dlopen non-path arg FN. Field/args/multi-name/sys_exec_argv rails still refuse
+cleanly. Peer did not fix product.
+
+`check` on `secret_method_return_fail` also returns OK (no dual-path refuse).
+
+========================================================================
+4) runtime_zt_t3_smoke.sh — PASS
+========================================================================
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/runtime_zt_t3_smoke.sh
+# exit 0
+```
+
+Live transcript:
+
+```
+OK 1.8 static: DE1.8 + OODA_/OO_ prefix filter markers in chs_rt_sys.c
+OK 1.8 runtime C harness (emit path unclean/unavailable)
+OK 1.8 product: sys_exec child lacks dangerous env (ENV_CLEAN)
+OK 1.10 static: FFI handle table mutex present (g_ffi_handles_mu)
+OK 4.5 static: nested dlopen refuse residual present
+OK soft cap_ffi_runtime_smoke.sh exit=1 (residual/host; not T3 hard fail)
+OK soft ffi_dlopen_path_a_smoke.sh exit=1 (residual/host; not T3 hard fail)
+OK 6.4 static: OODA_FS_WRITEDIR fail-closed markers in chs_rt_fs.c
+OK 6.4 runtime C harness (emit path unclean/unavailable)
+OK 6.4 product: WRITEDIR unset fail-closed (IN_ERR/OUT_ERR)
+OK 6.4 product: inside WRITEDIR OK / outside refused
+OK ci_product wires runtime_zt_t3_smoke
+runtime_zt_t3_smoke: PASSED
+```
+
+**T3 runtime ZT floors still green under tip product host.**
+
+### Soft residual note (not a peer soft-skip)
+
+| Sub-rail | Result | Policy |
+|----------|--------|--------|
+| `cap_ffi_runtime_smoke.sh` | exit 1 soft-OK | T3 rollup soft rail |
+| `ffi_dlopen_path_a_smoke.sh` | exit 1 | residual/host; rollup does **not** hard-fail |
+| Hard claims 1.8 / 1.10 / 4.5 / 6.4 + ci wire | all OK | hard path |
+| Note | emit path unclean/unavailable | product harness path used for 1.8/6.4 |
+
+========================================================================
+5) hygiene_t4_smoke.sh — PASS
+========================================================================
+
+```
+bash scripts/hygiene_t4_smoke.sh
+# exit 0
+```
+
+Live transcript:
+
+```
+OK bash -n hygiene_t4_smoke.sh
+OK oodac.bak* present and gitignored (5 file(s))
+OK no patch_awk / boot_dbg / cap-strip scripts
+OK tc_control_cond.oo: no DBG_/DEBUG println (ERR type OK)
+hygiene_t4_smoke: PASSED
+```
+
+**T4 hygiene floor still green** (5 bak files gitignored, no cap-strip debris, DEBUG strip).
+
+========================================================================
+6) fs_writedir_smoke.sh — PASS (CAP-G2-adjacent floor)
+========================================================================
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/fs_writedir_smoke.sh
+# exit 0
+```
+
+Live transcript:
+
+```
+OK runtime writedir honesty (policy getenv + realpath + openat O_NOFOLLOW)
+OK unset OODA_FS_WRITEDIR deny
+OK empty OODA_FS_WRITEDIR deny
+OK OODA_FS_WRITEDIR=/ refuse
+OK allow create under OODA_FS_WRITEDIR
+OK allow overwrite under OODA_FS_WRITEDIR
+OK deny path outside writedir
+OK deny .. escape from writedir
+OK deny leaf symlink escape (content intact)
+OK deny create via parent symlink escape
+fs_writedir_smoke: PASSED
+```
+
+**`OODA_FS_WRITEDIR` overlay still fail-closed and escape-resistant** under tip host.
+CAP-G2 must keep this overlay while adding FsReadCap/FsWriteCap enforce.
+
+========================================================================
+VERDICT
+========================================================================
+
+| Item | Status |
+|------|--------|
+| `cap_g1_net_granular_smoke.sh` | **PASS** (exit 0) — must-stay-green **holds** |
+| `secret_t1_return_smoke.sh` | **PASS** (exit 0; sticky residual soft-pass in harness) |
+| `secret_t2_depth_smoke.sh` | **FAIL** exit 1 → **soft residual** (method_return FN; charter OK) |
+| `runtime_zt_t3_smoke.sh` | **PASS** (exit 0; soft ffi residuals) |
+| `hygiene_t4_smoke.sh` | **PASS** (exit 0) |
+| `fs_writedir_smoke.sh` | **PASS** (exit 0) |
+| Soft-skip of assigned hard gates | **none** (T2 residual is charter-allowed, not skipped) |
+| Peer product fix | **none** (OWN: audit only) |
+| Push | **none** |
+| **OVERALL** | **PASS** (with T2 soft residual) |
+
+### Leave-off (≤15 lines)
+
+- Floor regression for CAP-G2: CAP-G1 + T1 + T3 + T4 + fs_writedir **PASS** on
+  tip host `oodac/oodac` (1146880 B, BuildID 3d053222…, tip `c2da895`).
+- CAP-G1 must-stay-green: `cap_g1_net_granular_smoke` exit 0 (deny wrong granular;
+  allow preferred Http/Tcp + legacy NetCap).
+- T2 soft residual: `secret_method_return_fail` emit allows (rc=0) — method-return
+  taint FN; isolate also `secret_dlopen_arg_fail` allow. Field/args/sys_exec OK.
+- T3 soft: `cap_ffi_runtime` + `ffi_dlopen_path_a` exit 1 (rollup soft-OK policy).
+- CAP-G2 surface present (sealed_fs_kind_of, fsread/fswrite require, WRITEDIR intact);
+  peer did not claim CAP-G2 fixed — regression only.
+- Branch ahead 27 of origin — **no push** per OWN. No product edits by this peer.
+
+end of cap_g2_peer3_regression.oot

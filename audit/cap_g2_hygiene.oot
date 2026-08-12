@@ -1,0 +1,282 @@
+# cap_g2_hygiene.oot — Hygiene Enforcer (CAP-G2 granular fs)
+# Date: 2026-08-12T11:54:32Z
+# Role: Hygiene Enforcer — CAP-G2
+# Tree: /home/jeryd/Projects/openOODA  (ooda/ + openOODA/)
+# Tip (ooda): c2da895 (working tree dirty — CAP-G2 WIP on util/fs/sys)
+# Tip (openOODA): 9f33aa4
+# OWN: line-lock check_cap_util / check_caps / chs_rt_fs / chs_rt_sys;
+#      bash -n CAP-G2-related smokes; no /tmp secrets; no mass deletes; no push
+# WRITE: this audit only
+# POLICY: RULES §1.7 / PROBE MAX_LINES = 256 (soft); pack watch 300; hard ban >600
+#         No mass peels/deletes this pass (DE mid-flight on CAP-G2)
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Check | VERDICT | Notes |
+|-------|---------|-------|
+| Soft lock ≤256 (OWN four) | **FAIL residual** | 2/4 over: util **321**, sys **375**; caps 210 PASS; fs **227** PASS |
+| Pack pressure ≤300 | **FAIL residual** | util **321** (−21 past 300); sys **375** (−75); caps+fs under |
+| Hard ban >600 | **PASS** | 0 OWN files >600 |
+| Split this pass | **NOT done** | not trivial mass peel; DE-owned CAP-G2 WIP; no mass deletes |
+| `bash -n` CAP-G2 / fs / caps smokes | **PASS** | 9/9 syntax clean (no `cap_g2_*.sh` yet) |
+| `/tmp` secrets in OWN + smokes | **PASS** | ZERO secrets; OWN free of `/tmp`; smokes use `$HOME/.cache/ooda-tmp` |
+| New fail fixtures present | **observe** | host `/tmp/cap_g2_peer1/*` probe only — not corpus-landed |
+| Mass deletes | **none** | charter |
+| Push | **no** | charter |
+
+OVERALL: **HONEST RESIDUAL PASS** (hygiene measured; soft/pack line residual named; CAP-G2 not claimed closed)
+
+========================================================================
+SCOPE + METHOD
+========================================================================
+
+OWN units (CAP-G2 surface — SPRINT: granular **fs** enforce):
+
+  `ooda/oodac/check_cap_util.oo`
+  `ooda/oodac/check_caps.oo`
+  `ooda/runtime/chs_rt_fs.c`
+  `ooda/runtime/chs_rt_sys.c`
+
+Related (observe / bash -n only):
+
+  `scripts/fs_writedir_smoke.sh`          — OODA_FS_WRITEDIR overlay (T3/CAP-G2 keep)
+  `scripts/cap_g1_net_granular_smoke.sh`  — sibling granular harness (M dirty)
+  `scripts/caps_matrix_smoke.sh`
+  `scripts/caps_product_floor_smoke.sh`
+  `scripts/cap_forge_path_a_smoke.sh`
+  `scripts/sys_exec_env_filter_smoke.sh`
+  `scripts/sys_syscall_path_a_smoke.sh`
+  `scripts/runtime_zt_t3_smoke.sh`
+  `scripts/cap_ffi_runtime_smoke.sh`
+  `bootstrap/corpus/check/pass/ok_fs_read.oo` / `ok_fs_write.oo` / `ok_method_fs_read.oo`
+  `bootstrap/corpus/check/fail/list_fscap_not_grant.oo`
+  host `/tmp/cap_g2_peer1/*.oo` (DE probe; untracked)
+
+Commands:
+
+  `wc -l` on OWN four
+  `bash scripts/check_file_lines.sh` (repo MAX_LINES=256; O=17 whole tree)
+  `bash -n` on CAP-G2-related smokes
+  `grep` secret-pattern + `/tmp` scan on OWN / smokes
+  observe `/tmp/cap_g2*` probe debris (not committed)
+
+Thresholds:
+
+| Threshold | Meaning |
+|-----------|---------|
+| **256** | RULES §1.7 / PROBE MAX_LINES — soft lock |
+| **300** | Pack monofile pressure (flag for DE peel) |
+| **600** | Path-A hard ban — still green for OWN |
+
+========================================================================
+LINE LOCK — OWN FOUR (live)
+========================================================================
+
+Measured under `ooda/` at tip `c2da895` + dirty CAP-G2 WIP (2026-08-12T11:54Z).
+
+| File | Lines | ≤256 | ≤300 | ≤600 | Headroom 256 | Headroom 300 | Split? |
+|------|------:|:----:|:----:|:----:|-------------:|-------------:|:------:|
+| `oodac/check_cap_util.oo` | **321** | FAIL | FAIL | PASS | −65 | −21 | DE later |
+| `oodac/check_caps.oo` | **210** | PASS | PASS | PASS | +46 | +90 | NO |
+| `runtime/chs_rt_fs.c` | **227** | PASS | PASS | PASS | +29 | +73 | freeze growth prefer |
+| `runtime/chs_rt_sys.c` | **375** | FAIL | FAIL | PASS | −119 | −75 | DE later |
+| **OWN total** | **1133** | — | — | — | — | — | — |
+
+Committed baselines (HEAD only, for delta):
+
+| File | HEAD lines | Working | Δ |
+|------|----------:|--------:|--:|
+| `check_cap_util.oo` | 285 | 321 | **+36** |
+| `check_caps.oo` | 210 | 210 | 0 |
+| `chs_rt_fs.c` | 225 | 227 | **+2** |
+| `chs_rt_sys.c` | 359 | 375 | **+16** |
+
+Delta notes (CAP-G2 land pressure on dirty tree):
+
+- **util +36**: `sealed_fs_kind_of`, `is_soft_fs_kind`, `cap_fs_granted_ok` /
+  `cap_fs_argflow_ok`, `sealed_kind_of` routes fs via preferred FsRead/FsWrite.
+  Already over soft at HEAD (285); CAP-G2 helpers push past **pack 300** (321).
+- **caps +0**: FsRead/FsWrite grant + arg-flow dual-accept already at HEAD
+  (inline twin of util helpers; helpers still **not called** from check_caps).
+- **fs +2**: comments / require_fsread·fswrite wiring on read/write/path/size
+  (require bodies live in sys.c). Soft-lock OK with +29 headroom.
+- **sys +16**: `oo_cap_require_fsread` / `oo_cap_require_fswrite` (granular OR
+  full FsCap). File was already over soft+pack at HEAD (359 → 375).
+
+Repo-wide `check_file_lines.sh` (MAX=256): **O=17** violators; OWN contributors
+are `check_cap_util.oo` (321) and `chs_rt_sys.c` (375). `check_caps.oo` and
+`chs_rt_fs.c` not listed (under soft lock).
+
+vs CAP-G1 hygiene residual (prior wave, different OWN set with netfloor):
+
+| Unit | CAP-G1 hygiene | CAP-G2 hygiene (now) |
+|------|---------------:|---------------------:|
+| util | 288 | **321** (grew + CAP-G2 fs helpers) |
+| caps | 211 | **210** |
+| sys  | 358 | **375** (grew + require_fsread/write) |
+| netfloor / fs | netfloor 256 | **fs 227** (this wave OWN) |
+
+========================================================================
+SPLIT GATE (not exercised this pass)
+========================================================================
+
+Rule: if OWN unit over soft lock and peel is **trivial + DE-authorized**,
+split at functional seams. Charter this pass: **no mass deletes / no mass peel**.
+
+| Unit | Over? | Trivial peel? | Action |
+|------|:-----:|:-------------:|--------|
+| `check_cap_util.oo` 321 | soft+pack | semi — peel `sealed_fs_kind_of` + `cap_fs_*` and/or net helpers to `check_cap_net.oo` / `check_cap_fs.oo` | **defer** DE |
+| `check_caps.oo` 210 | no | n/a | none |
+| `chs_rt_fs.c` 227 | no | n/a | **freeze growth** prefer; keep writedir + require calls thin |
+| `chs_rt_sys.c` 375 | soft+pack | no — grant/token table + require_* net+fs + fetch/sys_exec co-located | **defer** DE |
+
+Suggested DE peel (when authorized, not this hygiene pass):
+
+1. `check_cap_util.oo` → move CAP-G1 net helpers + CAP-G2 fs helpers out of the
+   monofile (`check_cap_net.oo` / `check_cap_fs.oo`); keep `sealed_kind_of` as
+   thin router + `is_cap_type`.
+2. Wire `check_caps.oo` to call `cap_fs_granted_ok` / `cap_fs_argflow_ok` (and
+   net twins) instead of inlined supersede — residual cohesion debt, not a
+   hygiene fail by itself.
+3. `chs_rt_sys.c` → peel grant/require token block (net + fs granular) to
+   `chs_rt_cap_*.c` only if DE wants pack ≤300; not blocking CAP-G2 prove.
+4. Dead-ish `kind == "FsCap"` dual-accept branches in check_caps (ops now seal
+   as FsRead/FsWrite via `sealed_kind_of`) — DE cleanup residual, not peel.
+
+========================================================================
+CAP-G2 SURFACE SNAPSHOT (hygiene observe — not prove)
+========================================================================
+
+Check (working tree):
+
+- `sealed_kind_of` → prefers `FsReadCap` / `FsWriteCap` via `sealed_fs_kind_of`
+  (read_file/fs_read/path_exists/file_size → FsRead; write_file/fs_write →
+  FsWrite). Fail-closed intent: FsReadCap ↛ write.
+- `check_caps.oo`: exact preferred bag hit OR legacy `FsCap` supersede for soft
+  granular fs kinds; also retains inverse FsCap→granular branches (likely
+  dead now that kind is never FsCap for those ops).
+- Helpers `cap_fs_granted_ok` / `cap_fs_argflow_ok` defined in util but
+  **not yet called** from check_caps (inline twin logic) — DE cleanup residual.
+- `is_cap_type` accepts FsCap / FsReadCap / FsWriteCap.
+
+Runtime (working tree):
+
+- `oo_cap_require_fsread` / `oo_cap_require_fswrite` accept granular token
+  **or** full FsCap (`g_tok_fs`).
+- `chs_rt_fs.c`: read_file/path_exists/file_size → require_fsread;
+  write_file → require_fswrite; `OODA_FS_WRITEDIR` overlay preserved.
+- Grants: `oo_cap_grant_fsread` / `oo_cap_grant_fswrite` present in sys.c +
+  chs_rt.h (alongside legacy `oo_cap_grant_fs`).
+
+Fixtures / smokes:
+
+| Path | Intent | Landed? |
+|------|--------|:-------:|
+| corpus pass `ok_fs_read/write` | legacy FsCap allow | yes (pre-G2) |
+| corpus fail `list_fscap_not_grant` | list bag hygiene | yes (pre-G2) |
+| `/tmp/cap_g2_peer1/*` | wrong-granular deny / allow matrix | **host only** |
+| `scripts/cap_g2_*_smoke.sh` | product harness | **none yet** |
+| `scripts/fs_writedir_smoke.sh` | writedir overlay (keep) | yes |
+
+No dedicated `scripts/cap_g2_*_smoke.sh` in tree yet — prove likely via DE peer
+fixtures → corpus land + optional harness (mirror `cap_g1_net_granular_smoke.sh`).
+
+========================================================================
+bash -n (CAP-G2-related smokes)
+========================================================================
+
+```
+bash -n scripts/fs_writedir_smoke.sh          # OK  142 lines
+bash -n scripts/cap_g1_net_granular_smoke.sh  # OK  105  (sibling granular; M dirty)
+bash -n scripts/caps_matrix_smoke.sh          # OK  240
+bash -n scripts/caps_product_floor_smoke.sh   # OK   29
+bash -n scripts/cap_forge_path_a_smoke.sh     # OK   80
+bash -n scripts/sys_exec_env_filter_smoke.sh  # OK  125
+bash -n scripts/sys_syscall_path_a_smoke.sh   # OK  133
+bash -n scripts/runtime_zt_t3_smoke.sh        # OK  284
+bash -n scripts/cap_ffi_runtime_smoke.sh      # OK   84
+# all: exit 0
+```
+
+ALL_BASHN_OK = true
+NEW_CAP_G2_SMOKE_SH = none (probe fixtures are host `/tmp` .oo; no new .sh this wave)
+
+========================================================================
+/tmp + SECRETS
+========================================================================
+
+### OWN units
+
+Scan secret-like patterns (`password`, `BEGIN *PRIVATE`, api keys) + `/tmp`:
+
+  - `oodac/check_cap_util.oo` — **clean**
+  - `oodac/check_caps.oo` — **clean**
+  - `runtime/chs_rt_fs.c` — **clean**
+  - `runtime/chs_rt_sys.c` — **clean**
+
+### Smokes
+
+`fs_writedir_smoke.sh` / `cap_g1_net_granular_smoke.sh` / `caps_matrix_smoke.sh`
+prefer non-/tmp temps:
+
+  `export TMPDIR="${TMPDIR:-$HOME/.cache/ooda-tmp}"`
+  `mkdir -p "$TMPDIR"`
+
+Embedded `/tmp` strings (product rails / probe defaults — **not** script sludge):
+
+  - `fs_writedir_smoke.sh` L~34: default path `"/tmp/ooda_wd_missing"` for outside-allowdir deny path (probe binary argv)
+  - host peer fixtures use `"/tmp/cap_g2_x"` as synthetic write target in deny cases
+
+### Host `/tmp` CAP-G2 probe debris (not committed)
+
+Observed:
+
+  - `/tmp/cap_g2_peer1/` — 12 tiny `.oo` fixtures (deny/allow matrix; ~59 lines total)
+  - `/tmp/probe_fscap_granular.oo`, `/tmp/test_fs_granular.oo`, `/tmp/cap_g2_out.txt`
+
+**No secret material** (no keys/passwords/tokens). Hygiene does **not** mass-delete
+host `/tmp` (charter: no mass deletes); operator may `rm -rf /tmp/cap_g2*` when done.
+Recommend DE promote peer fixtures into `bootstrap/corpus/check/{fail,pass}/`
+rather than leaving prove surface host-only.
+
+VERDICT `/tmp` secrets: **PASS**
+
+========================================================================
+ACTIONS / NON-ACTIONS THIS PASS
+========================================================================
+
+| Action | Result |
+|--------|--------|
+| Measure OWN four line locks | **done** — util 321, caps 210, fs 227, sys 375 |
+| Flag soft/pack residual | **ledger above** |
+| Split oversize units | **none** (not trivial; DE-owned; no mass peel) |
+| Mass deletes (bak, /tmp probes, WIP) | **none** |
+| `bash -n` CAP-G2-related smokes | **9/9 OK** |
+| Purge `/tmp` secrets from committed surface | already clean; no edit |
+| Product / runtime / check source edits | **none** (hygiene audit only) |
+| Mark SPRINT CAP-G2 closed | **no** |
+| Push | **no** |
+| Audit write | **this file only** |
+
+========================================================================
+RETURN — COMPACT
+========================================================================
+
+```
+SCOPE   CAP-G2 OWN four  tip ooda=c2da895+WIP  openOODA=9f33aa4
+OWN     util=321  caps=210  fs=227  sys=375  total=1133
+ΔHEAD   util=+36  caps=0  fs=+2  sys=+16  (CAP-G2 dirty land)
+>600    0   PASS hard ban
+>300    2   FAIL residual  (util 321, sys 375)
+>256    2   FAIL residual  (util 321, sys 375); fs 227 PASS; caps 210 PASS
+BASHN   9/9 OK  (no new cap_g2_*.sh)
+/tmp    PASS  no secrets; smokes use ~/.cache/ooda-tmp; peer debris host-only
+SPLIT   none this pass (DE; no mass peel/delete)
+PUSH    no
+CAP-G2  residual — hygiene measure only; not closed
+OVERALL HONEST RESIDUAL PASS
+```
+
+end of cap_g2_hygiene.oot

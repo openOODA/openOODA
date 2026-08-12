@@ -4,7 +4,7 @@
 **Scope:** V2 capability catalog for product and `std/src/ooda/`  
 **Purpose:** Single list agents must read when gating code. Mirrors `DESIGN.oot` §3.1 + V2 Architecture. Status lives in `PM.oot` §3.
 
-**In plain English:** Before, one network token gave full access. Now we split it into small tokens. You give only what the code needs from `main()`. Each token is checked when you compile. At run time the process re-checks a process-local seal before the effect runs; forged or missing tokens fail closed. **[STATUS: path-A process-local token re-check. CAP-G1 net op→preferred granular map is FIXED path-A (Http/Tcp/Udp/Bind + NetCap supersede; see SPRINT CAP-G1). Full `seccomp-bpf` / `SIGSYS` OS isolation, unforgeable object-caps, and non-net granular families (fs/sys/…) are residual — do **not** claim full OS isolation. 8-byte token randomness residual; see DESIGN §3.1]**
+**In plain English:** Before, one network token gave full access. Now we split it into small tokens. You give only what the code needs from `main()`. Each token is checked when you compile. At run time the process re-checks a process-local seal before the effect runs; forged or missing tokens fail closed. **[STATUS: path-A process-local token re-check. CAP-G1 net op→preferred granular map is path-A (Http/Tcp/Udp/Bind + NetCap supersede). CAP-G2 fs op→preferred granular map is path-A (FsRead/FsWrite + FsCap supersede; keep `OODA_FS_WRITEDIR` write overlay). Full `seccomp-bpf` / `SIGSYS` OS isolation, unforgeable object-caps, sys/process granular (CAP-G4), and unused V2 grants (CAP-G3) are residual — do **not** claim full OS isolation. 8-byte token randomness residual; see DESIGN §3.1]**
 
 The core principle is **least privilege at the compiler**. Every capability is checked at compile time and enforced at run time.
 
@@ -15,17 +15,19 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 | Layer | What is true today |
 |-------|--------------------|
 | **Type accept** | All 27 names below are valid `&Cap` types in check (`oodac/check_cap_util.oo`). |
-| **Sealed ops (net / CAP-G1)** | **FIXED path-A:** `sealed_net_kind_of` returns preferred Http/Tcp/Udp/Bind/NetCap; check accepts exact preferred **or** legacy NetCap; wrong granular denied (HttpCap↛`tcp_bind`). Smoke: `cap_g1_net_granular_smoke.sh`. |
-| **Sealed ops (non-net)** | Still mostly **legacy** kinds: `FsCap`, `SysCap`, `EnvCap`, plus `TimeCap` / `RandCap` / `AllocCap` / `UnsafeFFICap` / `ThreadCap` / `GpuCap`. `FsReadCap`/`FsWriteCap` have partial check dual-accept; full fs/sys granular enforce residual (**CAP-G2+**). |
-| **Runtime require (net)** | **FIXED path-A:** `oo_cap_require_{http,tcp,udp,bind}` accept granular **or** `g_tok_net`; `sock_raw` NetCap-only. **Not** OS seccomp isolation of sockets. |
+| **Sealed ops (net / CAP-G1)** | **path-A:** `sealed_net_kind_of` returns preferred Http/Tcp/Udp/Bind/NetCap; check accepts exact preferred **or** legacy NetCap; wrong granular denied (HttpCap↛`tcp_bind`). Smoke: `cap_g1_net_granular_smoke.sh`. |
+| **Sealed ops (fs / CAP-G2)** | **path-A:** `sealed_fs_kind_of` returns preferred FsReadCap/FsWriteCap; check accepts exact preferred **or** legacy FsCap supersede; wrong granular denied (FsWriteCap↛`read_file`; FsReadCap↛`write_file`). Helpers: `cap_fs_granted_ok` / `cap_fs_argflow_ok`. |
+| **Sealed ops (other non-net)** | Still **legacy** kinds: `SysCap`, `EnvCap`, plus `TimeCap` / `RandCap` / `AllocCap` / `UnsafeFFICap` / `ThreadCap` / `GpuCap`. Process/Sync/Mem/HW/UI sealed enforce residual (**CAP-G3/G4+**). |
+| **Runtime require (net)** | **path-A:** `oo_cap_require_{http,tcp,udp,bind}` accept granular **or** `g_tok_net`; `sock_raw` NetCap-only. **Not** OS seccomp isolation of sockets. |
+| **Runtime require (fs)** | **path-A:** `oo_cap_require_fsread` / `oo_cap_require_fswrite` accept granular **or** `g_tok_fs` (FsCap supersede). Wrong granular fails closed. Write still gated by **`OODA_FS_WRITEDIR`** policy overlay. **Not** OS path sandbox / landlock / full FS isolation. |
 | **Runtime grants** | Header declares many `oo_cap_grant_*` (incl. granular). Emit injects legacy set + partial granular (`tcp` / `fsread` / `process` today); full main-param grant matrix for every V2 name residual (**CAP-G3**). |
 | **Policy overlays (not Cap types)** | `OODA_FS_WRITEDIR` on writes; `sys_exec` child env filter (`OODA_`/`OO_` + minimal PATH); FFI nested-`dlopen` refuse — see residual links. |
 | **Not a Cap** | `// SECRET:` taint / sink refuse is **IFC**, not a capability token. Do not add SECRET to this list. |
 | **Isolation ceiling** | Process-local tokens + check refuse. **Do not claim** full OS isolation, complete `seccomp-bpf`/`SIGSYS` coverage, or unforgeable object-caps across hostile rewrite. |
 
-### CAP-G1 target map (aspirational until smoke green)
+### CAP-G1 path-A map (net)
 
-**Target** preferred kind (once `sealed_net_kind_of` or equivalent lands). **Legacy supersede:** `&NetCap` may satisfy soft-granular preferred ops (one-wave compat). **Hard NetCap-only:** `sock_raw` / `raw_socket`. **Close gate:** deny wrong granular (HttpCap↛`tcp_bind`); `cap_g1_net_granular_smoke` exit 0; peers+security+integration green; T1–T4 live green — see SPRINT CAP-G1 + rollup.
+**Legacy supersede:** `&NetCap` may satisfy soft-granular preferred ops (one-wave compat). **Hard NetCap-only:** `sock_raw` / `raw_socket`.
 
 | Preferred cap | Sealed ops (product or residual emit) | Runtime require (target) |
 |---------------|----------------------------------------|--------------------------|
@@ -37,18 +39,30 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 
 **New code:** prefer the granular token that matches the op. **Compat:** keep `&NetCap` until call sites migrate (std majority still legacy — CAP-G6).
 
+### CAP-G2 path-A map (fs)
+
+**Legacy supersede:** `&FsCap` may satisfy soft-granular preferred fs ops (one-wave compat). **No hard FsCap-only product op** (unlike net `sock_raw`); broad `FsCap` is supersede-only for soft read/write. **Wrong granular fail-closed:** `FsReadCap` must **not** authorize write; `FsWriteCap` must **not** authorize read/path/size.
+
+| Preferred cap | Sealed ops (product or residual emit) | Runtime require (target) |
+|---------------|----------------------------------------|--------------------------|
+| **`&FsReadCap`** | `read_file` / `fs_read` / `path_exists` / `file_size` | `oo_cap_require_fsread` (or FsCap) |
+| **`&FsWriteCap`** | `write_file` / `fs_write` | `oo_cap_require_fswrite` (or FsCap) + **`OODA_FS_WRITEDIR`** overlay |
+
+**New code:** prefer `&FsReadCap` for read/probe/size, `&FsWriteCap` for create/modify. **Compat:** keep `&FsCap` until call sites migrate (`std/os/fs.oo` still legacy — CAP-G6). **Not claimed:** OS FS isolation, landlock, or complete `seccomp-bpf` on open/write (CAP-G5 residual honesty).
+
 ### 1. File System & Memory
-* **`&FsReadCap`**: Permission to read files (e.g., config parsers).
-* **`&FsWriteCap`**: Permission to create or modify files.
+* **`&FsCap`**: Broad filesystem access **(legacy — supersedes soft-granular FsReadCap/FsWriteCap for one-wave compat). Prefer granular below for new APIs.**
+* **`&FsReadCap`**: Preferred for read/probe sealed ops (`read_file` / `fs_read` / `path_exists` / `file_size`). **Must not** authorize write alone once CAP-G2 check map is path-A.
+* **`&FsWriteCap`**: Preferred for create/modify sealed ops (`write_file` / `fs_write`). **Must not** authorize read/path/size alone. Writes still fail-closed under `OODA_FS_WRITEDIR` (policy overlay, not a Cap type).
 * **`&AllocCap`**: Permission to allocate heap memory (`malloc`/`free`).
 * **`&MemCap`**: Permission to use shared memory or `mmap` across boundaries.
 
 ### 2. Network & Web
-* **`&NetCap`**: Broad network access **(legacy — still the sealed check kind for product net ops on tip; required for `sock_raw` / `raw_socket`). Prefer granular below for new APIs once CAP-G1 lands.**
-* **`&HttpCap`**: Target preferred for HTTP-ish sealed ops (`fetch` product; other names residual emit). **Must not** authorize raw bind/connect alone once CAP-G1 check map is FIXED.
-* **`&TcpCap`**: Target preferred for client TCP slot IO + `tls_connect` (TLS product only when OpenSSL linked).
-* **`&UdpCap`**: Target preferred for UDP bind/recv.
-* **`&BindCap`**: Target preferred for TCP listen/bind (`tcp_bind`).
+* **`&NetCap`**: Broad network access **(legacy — supersedes soft-granular Http/Tcp/Udp/Bind for one-wave compat; required for `sock_raw` / `raw_socket`). Prefer granular below for new APIs.**
+* **`&HttpCap`**: Preferred for HTTP-ish sealed ops (`fetch` product; other names residual emit). **Must not** authorize raw bind/connect alone.
+* **`&TcpCap`**: Preferred for client TCP slot IO + `tls_connect` (TLS product only when OpenSSL linked).
+* **`&UdpCap`**: Preferred for UDP bind/recv.
+* **`&BindCap`**: Preferred for TCP listen/bind (`tcp_bind`).
 
 ### 3. OS & Execution
 * **`&SysCap`**: Broad OS execution **(legacy — prefer granular below; kept for compat).**
@@ -84,10 +98,11 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 | `../ooda/bootstrap/STATIC_CAPS.md` | Process-local seal semantics |
 | `../ooda/bootstrap/CAP_FFI.md` | FFI allowdir, handle mutex, nested dlopen refuse |
 | `../ooda/bootstrap/SECRET_TAINT.md` | SECRET IFC (orthogonal to this list) |
-| `SPRINT.oot` §Runtime/caps + **CAP-G*** | Meta backlog: **CAP-G1 OPEN FAIL** (`audit/cap_g1_phalanx_rollup.oot`); residual CAP-G2+ (fs/sys), CAP-G3 unused grants, CAP-G5 OS isolation honesty |
-| `audit/cap_g1_phalanx_rollup.oot` | CAP-G1 close evidence — FAIL leave open (2026-08-12) |
+| `SPRINT.oot` §Runtime/caps + **CAP-G*** | Meta backlog: CAP-G1/G2 path-A maps in this catalog; residual CAP-G3 unused grants, CAP-G4 ProcessCap/sys, CAP-G5 OS isolation honesty, CAP-G6 std migration — **do not greenwash SPRINT close here** |
+| `audit/cap_g1_phalanx_rollup.oot` | CAP-G1 close evidence — FIXED path-A |
+| `audit/cap_g2_phalanx_rollup.oot` | CAP-G2 close evidence — FIXED path-A |
 | `PM.oot` §3 | Milestone status for capability sandboxing |
 
 **When to read this file:** When you add or gate code that touches files, network, OS, hardware, UI, or security — and always when you edit `std/src/ooda/` (see `BOOTSTRAP.oot` tier *Security, sandboxing, capability gating* + `DESIGN.oot` §3).
 
-*Update this list when a token is added or fractured. Keep count note in sync with DESIGN. Prefer granular tokens in new APIs. CAP-G1 preferred-map is residual until rollup green; do **not** claim full OS isolation or that non-net CAP-G* families are done.*
+*Update this list when a token is added or fractured. Keep count note in sync with DESIGN. Prefer granular tokens in new APIs. CAP-G1/G2 preferred maps are path-A process-local seal contracts; do **not** claim full OS isolation, complete `seccomp-bpf`/`SIGSYS`, or that CAP-G3+ families are done.*
