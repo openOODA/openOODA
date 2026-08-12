@@ -1,0 +1,200 @@
+# t3_peer1_exec_env.oot
+# QA Peer Verifier 1 — Exec Env Filter (ID 1.8)
+# Date: 2026-08-12
+# Role: Peer Verifier 1 (QA) — independent prove; do not trust implementers
+# Tree: /home/jeryd/Projects/openOODA/ooda
+# OWN: this audit only; no push; no FFI/FS rewrites
+# Subject: `runtime/chs_rt_sys.c` — `oo_sys_exec` + `oo_process_policy_getenv`
+# Tip note: working tree dirty on `chs_rt_sys.c` (DE1.8 fix unstaged vs HEAD)
+
+========================================================================
+SUMMARY
+========================================================================
+**ID 1.8 exec env filter: PASS (re-proved live against DE1-fixed source).**
+
+DE1 already landed a correct filter in the working tree (unstaged diff vs
+committed broken shape). Peer did **not** re-patch: residual bugs from the
+pre-fix shape are closed; live matrix is green. No peer minimal fix required.
+
+| Scope | Verdict |
+|-------|---------|
+| `oo_process_policy_getenv` fail-closed prefix | **PASS** |
+| `oo_sys_exec` child env filter (DE1.8) | **PASS** |
+| Hunt matrix (6 classes) | **6/6 PASS** |
+| Live behavioral matrix | **19/19 PASS** |
+| Peer code change | **none** (already fixed) |
+
+========================================================================
+SOURCE UNDER AUDIT (post-DE1, peer-read live)
+========================================================================
+
+### `oo_process_policy_getenv` — lines 86–94
+```
+/* ZT path A: process-policy getenv — fail-closed for non OODA_/OO_ keys. */
+const char *oo_process_policy_getenv(const char *key) {
+  if (!key || !key[0]) return NULL;
+  if (strncmp(key, "OODA_", 5) != 0 && strncmp(key, "OO_", 3) != 0) {
+    return NULL;
+  }
+  return getenv(key);
+}
+```
+Fail-closed for NULL/empty/non-prefix. Product `env_get` still requires EnvCap
+elsewhere; this helper is process-policy only.
+
+### `oo_sys_exec` child filter — lines 124–164 (DE1.8 fixed shape)
+Order of operations (critical):
+
+1. **Walk parent `environ` first** — keep entries whose **key prefix** is
+   `OODA_` (klen≥5) or `OO_` (klen≥3) via `strncmp` on the `KEY=value` string.
+2. **Do not call `getenv` / `oo_process_policy_getenv` in the child filter**
+   (those see empty env after clear and would drop every keep-candidate).
+3. **Then** `clearenv()` (glibc/Apple) or `environ = NULL` (else).
+4. Install `newenv` (if any) as `environ`.
+5. `setenv("PATH", "/usr/bin:/bin", 1)` — forced minimal PATH (overwrite).
+6. `execvp(av[0], av)` / `_exit(127)`.
+
+Capacity counter is `env_cap` (not `cap`) so the SysCap parameter is not
+shadowed.
+
+Empty argv guard (parent, pre-fork): `argc < 1 || !argv || !argv[0].data`.
+
+========================================================================
+HUNT MATRIX (assigned bug classes)
+========================================================================
+
+| # | Hunt item | Pre-DE1 (HEAD / first peer snapshot) | Post-DE1 live | Verdict |
+|---|-----------|--------------------------------------|---------------|---------|
+| H1 | **clearenv-before-getenv** | `clearenv()` then `oo_process_policy_getenv` → `getenv` always NULL → keep-list never applied (and/or `saved` vector UAF after glibc free) | Walk prefix **before** `clearenv`; no `getenv` in filter | **PASS** |
+| H2 | **env shadowing of `cap`** | `size_t n = 0, cap = 0` shadowed SysCap param | renamed `env_cap` | **PASS** |
+| H3 | **LD_PRELOAD inheritance** | stripped only as side-effect of total wipe | stripped (non-`OO*` prefix dropped) | **PASS** |
+| H4 | **PATH injection** | forced PATH after wipe | `PATH=/usr/bin:/bin` overwrite=1; parent `/evil/bin` absent | **PASS** |
+| H5 | **empty argv** | `argc < 1` / NULL argv / NULL argv0.data | same guards + empty-string argv0 → exec fail ok=0 | **PASS** |
+| H6 | **double-free of environ pointers** | clearenv-then-walk `saved` → UAF on glibc after setenv-built vector | snapshot pointers **before** clearenv; glibc clearenv frees vector only, not `NAME=value` strings held in `newenv`; 50× exec smoke green; parent environ intact | **PASS** |
+
+Static code facts (child block only, comments stripped):
+- `oo_process_policy_getenv` / `getenv(`: **not called**
+- `size_t n = 0, cap`: **absent**
+- `env_cap`: **present**
+- `for (src` index **<** `clearenv()` index
+- `system(`: **absent** (still `fork`+`execvp`)
+
+========================================================================
+LIVE BEHAVIORAL MATRIX
+========================================================================
+Harness: gcc `-O0 -I runtime` + `runtime/chs_rt.c` (umbrella includes
+`chs_rt_sys.c`). Hostile parent env:
+`LD_PRELOAD`, `LD_LIBRARY_PATH`, `PATH=/evil/...`, `SECRET_LEAK`, `HOME`,
+plus policy `OODA_KEEP` / `OO_KEEP`. Child observed via `/usr/bin/env` through
+`oo_sys_exec`.
+
+| # | Case | Expected | Actual | Verdict |
+|---|------|----------|--------|---------|
+| 1 | LD_PRELOAD stripped | absent | absent | **PASS** |
+| 2 | LD_LIBRARY_PATH stripped | absent | absent | **PASS** |
+| 3 | non-policy keys stripped | SECRET/HOME/fakes absent | absent | **PASS** |
+| 4 | OODA_ policy keep | OODA_KEEP=policy-ok | kept | **PASS** |
+| 5 | OO_ policy keep | OO_KEEP=also-ok | kept | **PASS** |
+| 6 | PATH forced minimal | PATH=/usr/bin:/bin | exact | **PASS** |
+| 7 | no evil/password/attacker substr | clean child dump | clean | **PASS** |
+| 8 | exec absolute `/bin/true` | ok=1 | ok=1 | **PASS** |
+| 9 | exec relative `true` via safe PATH | ok=1 | ok=1 | **PASS** |
+| 10 | empty argc | ok=0 | ok=0 | **PASS** |
+| 11 | NULL argv | ok=0 | ok=0 | **PASS** |
+| 12 | argv[0].data NULL | ok=0 | ok=0 | **PASS** |
+| 13 | empty-string argv0 | ok=0 (exec fail) | ok=0 | **PASS** |
+| 14 | parent environ intact post-exec | LD_PRELOAD/OODA_KEEP unchanged | unchanged | **PASS** |
+| 15 | forged SysCap `0x4F4F5359` | child exit ≠0 | status=256 (exit 1) | **PASS** |
+| 16 | `oo_process_policy_getenv` allowlist | deny LD_PRELOAD/PATH/SECRET/""/NULL/OO; allow OODA_/OO_ | match | **PASS** |
+| 17 | OO without underscore | `OO` denied | NULL | **PASS** |
+| 18 | 50× `/bin/true` smoke | no crash / all ok | 50 ok | **PASS** |
+| 19 | parent env after 50× | still intact | intact | **PASS** |
+
+**Live matrix: 19/19 PASS.**
+
+Contrast (isolation prove of **broken** pre-DE1 order): clearenv → getenv keep
+logic yields **only** `PATH=/usr/bin:/bin` and drops `OODA_KEEP` (fail-closed
+but wrong vs policy-keep contract). Fixed order restores policy keys without
+re-admitting LD_PRELOAD/SECRET.
+
+========================================================================
+PRE-DE1 BROKEN SHAPE (evidence why DE1 was required)
+========================================================================
+Committed/earlier snapshot (peer first read + `git diff` reverse):
+
+```
+saved = environ;
+clearenv();                    /* or environ=NULL */
+for (src = saved; *src; src++) {
+  /* extract key → kbuf */
+  if (oo_process_policy_getenv(kbuf) == NULL) continue;  /* getenv empty → always skip */
+  newenv[n++] = *src;
+}
+```
+
+Bugs:
+1. **clearenv-before-getenv** — policy keep never fires after clear.
+2. **`cap` shadow** — `size_t cap` hides SysCap parameter (hygiene; check already done pre-fork).
+3. **UAF risk** — glibc `clearenv` may `free` the environ vector; walking `saved` after free is undefined (observed walk count 0 after clear on this host).
+
+DE1 unstaged fix (stat: 21 insertions, 20 deletions on `chs_rt_sys.c`) closes all three.
+
+========================================================================
+RESIDUALS (honest, non-blocking for 1.8)
+========================================================================
+1. **ASAN** not linked on this host (`libasan.so.8` missing) — double-free class
+   covered by static order proof + 50× smoke + parent-intact, not ASan.
+2. **`OO_` prefix is intentionally broad** — any `OO_*` / `OODA_*` parent key
+   is forwarded (including future foot-guns if someone names a dangerous
+   `OO_LD_*`). Out of scope for 1.8; document if product wants a tighter
+   allowlist later.
+3. **Working tree dirty** — DE1.8 filter is not in the last `ooda` commit tip
+   cited by SPRINT; ship path should stage/commit `chs_rt_sys.c` with T3
+   close. Peer did not push (assigned constraint).
+4. **`oo_sys_exec1` → `sh -c`** still exposes shell metacharacters in the
+   command string (argv form, not `system(3)`). Separate from env filter; R2/R3
+   residual if shell-less single-arg exec is required later.
+
+========================================================================
+PEER ACTION
+========================================================================
+- **Fix applied by peer:** none (DE1 already correct in working tree).
+- **FAIL residual:** none for ID 1.8.
+- **Verdict:** **PASS** — re-proved independently.
+
+========================================================================
+REPRO (core)
+========================================================================
+```
+cd /home/jeryd/Projects/openOODA/ooda
+# hostile env + oo_sys_exec("/usr/bin/env") — expect only OODA_*/OO_* + PATH=/usr/bin:/bin
+gcc -O0 -I runtime -o /tmp/prove_oo_sys_exec -x c - runtime/chs_rt.c -lm -ldl -lpthread <<'EOF'
+#include "chs_rt.h"
+#include <stdio.h>
+#include <stdlib.h>
+int main(void) {
+  setenv("LD_PRELOAD","/evil/lib.so",1);
+  setenv("PATH","/evil/bin",1);
+  setenv("SECRET_LEAK","password123",1);
+  setenv("OODA_KEEP","policy-ok",1);
+  setenv("OO_KEEP","also-ok",1);
+  long long sys = oo_cap_grant_sys();
+  OoStr av[1]; av[0] = oo_str_lit("/usr/bin/env");
+  return oo_sys_exec(sys, 1, av).ok ? 0 : 1;
+}
+EOF
+/tmp/prove_oo_sys_exec | sort
+```
+
+Expected child lines (order free):
+- `OODA_KEEP=policy-ok`
+- `OO_KEEP=also-ok`
+- `PATH=/usr/bin:/bin`
+- no `LD_PRELOAD`, `SECRET_LEAK`, or `/evil`
+
+========================================================================
+SIGN-OFF
+========================================================================
+QA Peer Verifier 1 (Exec Env Filter) — ID **1.8** **PASS**.
+Audit path: `openOODA/audit/t3_peer1_exec_env.oot`
+No push. No FFI/FS edits.
