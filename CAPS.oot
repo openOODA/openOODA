@@ -4,7 +4,7 @@
 **Scope:** V2 capability catalog for product and `std/src/ooda/`  
 **Purpose:** Single list agents must read when gating code. Mirrors `DESIGN.oot` §3.1 + V2 Architecture. Status lives in `PM.oot` §3.
 
-**In plain English:** Before, one network token gave full access. Now we split it into small tokens. You give only what the code needs from `main()`. Each token is checked when you compile. At run time the process re-checks a process-local seal before the effect runs; forged or missing tokens fail closed. **[STATUS: path-A process-local token re-check. CAP-G1 net + CAP-G2 fs preferred maps path-A. CAP-G3 unused grants FIXED residual-only: Process/Sync/Mem/HW/UI/Sign = type accept + grant + exact require stubs; **no sealed product ops** (do not invent CameraCap product). Emit type-driven main-param inject residual (DE1). **CAP-G4 FIXED** ProcessCap preferred for exec/spawn. **CAP-G5 FIXED residual:** no product seccomp-bpf (dead stub removed). **CAP-G6 residual (not FIXED):** product `std/os` fs+net sample facades prefer granular tokens (local WIP); **SysCap bulk residual** across domain `std/src` (~250 `: &SysCap` params / ~110 files); **ProcessCap = 0** in std (process wrappers still SysCap). Unforgeable object-caps residual — do **not** claim full OS isolation. 8-byte token randomness residual; see DESIGN §3.1]**
+**In plain English:** Before, one network token gave full access. Now we split it into small tokens. You give only what the code needs from `main()`. Each token is checked when you compile. At run time the process re-checks a process-local seal before the effect runs; forged or missing tokens fail closed. **[STATUS: path-A process-local token re-check. CAP-G1 net + CAP-G2 fs preferred maps path-A. CAP-G3 unused grants FIXED residual-only: Process/Sync/Mem/HW/UI/Sign = type accept + grant + exact require stubs; **no sealed product ops** (do not invent CameraCap product). Emit type-driven main-param inject residual (DE1). **CAP-G4 FIXED** ProcessCap preferred for exec/spawn. **CAP-G5 FIXED residual:** no product seccomp-bpf (dead stub removed). **CAP-G6 FIXED net+fs product facade wave:** `std/os` + `std/src` fs/net facades prefer granular tokens; smoke `cap_g6_std_migrate_smoke.sh`. **Honesty: SysCap bulk residual** (~571 hits under `std/src`; process/async/python facades still SysCap; ProcessCap std = 0) — full SysCap purge **not** claimed. Unforgeable object-caps residual — do **not** claim full OS isolation. 8-byte token randomness residual; see DESIGN §3.1]**
 
 The core principle is **least privilege at the compiler**. Every capability is checked at compile time and enforced at run time.
 
@@ -27,7 +27,7 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 | **Policy overlays (not Cap types)** | `OODA_FS_WRITEDIR` on writes; `sys_exec` child env filter (`OODA_`/`OO_` + minimal PATH); FFI nested-`dlopen` refuse — see residual links. |
 | **Not a Cap** | `// SECRET:` taint / sink refuse is **IFC**, not a capability token. Do not add SECRET to this list. |
 | **Isolation ceiling** | Process-local tokens + check refuse. **Do not claim** full OS isolation, complete `seccomp-bpf`/`SIGSYS` coverage, or unforgeable object-caps across hostile rewrite. |
-| **Std migration (CAP-G6)** | **Residual — not FIXED.** Product sample path-A (local WIP): `ooda/std/os/fs.oo` → FsRead/FsWrite; `ooda/std/os/net.oo` → Http/Tcp/Udp/Bind (`sock_raw` NetCap-only). Sample std/src wave: `fs.oo`, `net.oo`, `net/wireguard`, `sec/net/mtls*`, select `sec/cps/*` + `prompt_filter*`. **Honesty:** **SysCap bulk residual** (~250 param sites / ~110 files under `std/src`); `ooda/std/os/process.oo` + async/python still `&SysCap`; **ProcessCap count = 0** in std. Hard Sys residual (prctl/python_embed/epoll) correctly SysCap-only. Do **not** greenwash domain SysCap stubs as granular-migrated. Floor re-prove: `audit/cap_g6_peer3_regression.oot` (G1–G5 PASS). Evidence: `audit/cap_g6_std_honesty.oot`. |
+| **Std migration (CAP-G6)** | **FIXED path-A for net+fs product facade wave** (2026-08-12). Product: `ooda/std/os/fs.oo` → FsRead/FsWrite; `ooda/std/os/net.oo` → Http/Tcp/Udp/Bind (`sock_raw` NetCap-only). External: `std/src/fs.oo` + `std/src/net.oo` twins + domain honesty (wireguard UdpCap residual, mTLS TcpCap, select cps/ai). Smoke: `scripts/cap_g6_std_migrate_smoke.sh` exit 0. **Honesty — not claimed:** full std SysCap/NetCap/FsCap purge. **SysCap bulk residual** (~571 lines under `std/src`; inventory `audit/cap_g6_syscap_inventory.oot`); `process.oo`/`async.oo`/`python.oo` still SysCap; **ProcessCap = 0** in std. Hard Sys residual (prctl/python_embed/epoll) correctly SysCap-only. Evidence: `audit/cap_g6_phalanx_rollup.oot` + peers. |
 
 ### CAP-G1 path-A map (net)
 
@@ -69,7 +69,7 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 * **`&BindCap`**: Preferred for TCP listen/bind (`tcp_bind`). Emit type→`grant_bind` residual (**DE1**).
 
 ### 3. OS & Execution
-* **`&SysCap`**: Broad OS execution **(legacy — prefer ProcessCap for spawn/exec where CAP-G4 applies; kept for compat + hard Sys residual).** **CAP-G6 honesty:** bulk domain `std/src` still threads `&SysCap` (~250 param sites) — residual, not migrated.
+* **`&SysCap`**: Broad OS execution **(legacy — prefer ProcessCap for spawn/exec where CAP-G4 applies; kept for compat + hard Sys residual).** **CAP-G6 honesty:** bulk domain `std/src` still threads `&SysCap` (~571 line hits / inventory) — residual, not migrated.
 * **`&ProcessCap`**: Spawn/exec/wait/kill (**CAP-G4 path-A preferred** for `sys_exec` et al.). Legacy `&SysCap` still supersedes. Does **not** unlock hard Sys residual (`sys_prctl`, `python_embed`, epoll/inotify). **CAP-G6 residual:** std has **0** `&ProcessCap` params today (`std/os/process.oo` still SysCap).
 * **`&SyncCap`**: IPC / Mutexes / Semaphores only. **Residual-only (CAP-G3):** type accept + grant + exact `oo_cap_require_sync` stub; mutex product path remains `&ThreadCap`.
 * **`&ThreadCap`**: Spawn parallel CPU threads. Product sealed (mutex/spawn/join/channel).
@@ -102,17 +102,20 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 | `../ooda/bootstrap/STATIC_CAPS.md` | Process-local seal semantics |
 | `../ooda/bootstrap/CAP_FFI.md` | FFI allowdir, handle mutex, nested dlopen refuse |
 | `../ooda/bootstrap/SECRET_TAINT.md` | SECRET IFC (orthogonal to this list) |
-| `SPRINT.oot` §Runtime/caps + **CAP-G*** | Meta: CAP-G1–G5 path-A FIXED; **CAP-G6 residual open** (sample net+fs facades prefer granular; **SysCap bulk residual**; ProcessCap std = 0; C2 closes SPRINT when green) |
+| `SPRINT.oot` §Runtime/caps + **CAP-G*** | Meta: CAP-G1–G5 path-A FIXED; **CAP-G6 FIXED net+fs facade wave** (SysCap bulk residual inventoried; ProcessCap std facades next) |
 | `../ooda/bootstrap/AUDIT_RESIDUAL.md` | CAP-G3 residual ledger + monofile honesty |
 | `audit/cap_g1_phalanx_rollup.oot` | CAP-G1 close evidence — FIXED path-A |
 | `audit/cap_g2_phalanx_rollup.oot` | CAP-G2 close evidence — FIXED path-A |
 | `audit/cap_g3_residual.oot` | CAP-G3 unused-grant residual-only evidence |
 | `audit/cap_g4_phalanx_rollup.oot` | CAP-G4 ProcessCap path-A FIXED |
 | `audit/cap_g5_phalanx_rollup.oot` | CAP-G5 seccomp residual honesty FIXED |
-| `audit/cap_g6_peer3_regression.oot` | CAP-G6 window: G1–G5 floor re-prove PASS (not CAP-G6 FIXED) |
-| `audit/cap_g6_std_honesty.oot` | CAP-G6 Docs Cartographer residual ledger (SysCap bulk honesty) |
+| `audit/cap_g6_phalanx_rollup.oot` | CAP-G6 net+fs facade wave FIXED + residual honesty |
+| `audit/cap_g6_syscap_inventory.oot` | **SysCap bulk residual** inventory (not full purge claim) |
+| `audit/cap_g6_peer1_facades.oot` | Product facade signature peer |
+| `audit/cap_g6_peer3_regression.oot` | G1–G5 floors green under CAP-G6 wave |
+| `audit/cap_g6_std_honesty.oot` | Docs Cartographer residual ledger (this pass) |
 | `PM.oot` §3 | Milestone status for capability sandboxing |
 
 **When to read this file:** When you add or gate code that touches files, network, OS, hardware, UI, or security — and always when you edit `std/src/ooda/` (see `BOOTSTRAP.oot` tier *Security, sandboxing, capability gating* + `DESIGN.oot` §3).
 
-*Update this list when a token is added or fractured. Keep count note in sync with DESIGN. Prefer granular tokens in new APIs. CAP-G1/G2 preferred maps are path-A process-local seal contracts. CAP-G3 is residual-only honesty (exact require stubs; **no** HW/UI product ops). CAP-G3 inject path-A landed. CAP-G4 ProcessCap path-A FIXED. CAP-G5: process-local only (no product seccomp). **CAP-G6 not FIXED:** sample fs/net product facades prefer granular; **SysCap bulk residual** + ProcessCap std = 0; no push until C2.*
+*Update this list when a token is added or fractured. Keep count note in sync with DESIGN. Prefer granular tokens in new APIs. CAP-G1/G2 preferred maps are path-A process-local seal contracts. CAP-G3 is residual-only honesty (exact require stubs; **no** HW/UI product ops). CAP-G3 inject path-A landed. CAP-G4 ProcessCap path-A FIXED. CAP-G5: process-local only (no product seccomp). **CAP-G6 FIXED net+fs product facades;** **SysCap bulk residual** named in `audit/cap_g6_syscap_inventory.oot` — do not greenwash full std least-privilege.*

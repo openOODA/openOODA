@@ -1,0 +1,234 @@
+# cap_g6_peer1_net.oot
+# QA Peer 1 — Net Migration Verify (CAP-G6)
+# Date: 2026-08-12T13:49Z
+# Role: QA Peer Verifier 1 (Net Migration Verify)
+# Trees: /home/jeryd/Projects/openOODA/std + /home/jeryd/Projects/openOODA/ooda
+# OWN: verify every former NetCap file uses granular **or** residual NetCap honesty for raw;
+#      oodac check on migrated files if product host available;
+#      fix **only** critical wrong caps (Http for raw socket). No push.
+# Scope: CAP-G6 DE net migrations landed in working trees (uncommitted)
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Claim | Expected | Actual | VERDICT |
+|-------|----------|--------|---------|
+| Every former NetCap file is granular **or** raw residual-honest | preferred Http/Tcp/Udp/Bind **or** hard NetCap for raw/L2 | **18/18** DE-touched surfaces classified; 0 unlabeled NetCap leftovers in DE set | **PASS** |
+| Critical wrong cap: **HttpCap for sock_raw** | zero call sites; check deny | 0 product/std call sites; check `http_raw_deny` **rc=1** | **PASS** (no fix needed) |
+| Product facade map matches CAPS.oot CAP-G1 | Http/Tcp/Bind/Udp preferred; NetCap only sock_raw | `ooda/std/os/net.oo` exact map | **PASS** |
+| oodac check on migrated files | product host available → OK/deny as appropriate | host green; facades OK; CRIT deny green | **PASS** |
+| CAP-G1 floor still green under CAP-G6 window | `cap_g1_net_granular_smoke.sh` exit 0 | **PASSED** | **PASS** |
+| Peer product/std critical fix | only if Http→raw found | **none** (clean) | **PASS** |
+| Push | none | none | **PASS** |
+
+**OVERALL: PASS** — DE net migration is honest; no critical Http-for-raw; residual NetCap kept only where raw/L2 (or soft supersede leftover dns).
+
+Do **not** claim CAP-G6 FIXED (std migration continues; dns still legacy NetCap for UDP residual; batch_2 five-file claim not on disk).
+
+========================================================================
+HOST / TIP / DE CONTEXT
+========================================================================
+
+| Item | Value |
+|------|--------|
+| Product host | `/home/jeryd/Projects/openOODA/ooda/oodac/oodac` **962680** B @ 2026-08-12 06:41 |
+| Host md5 | `7e1ce7df9bd366b607f35724e0efe80b` |
+| ooda tip | `aa97009` `fix(cap-g5): remove dead non-compiling seccomp stub from emit preamble` |
+| std tip | `7ec1a61` `feat(std/bio): Smith-Waterman align as dna_sw monofile` |
+| DE state | **uncommitted** WT migrations under std + `ooda/std/os/net.oo` (no land commit this peer) |
+| Peer3 floor | `audit/cap_g6_peer3_regression.oot` — G1–G5 smokes PASS (re-proved G1 here) |
+| No push | **confirmed** |
+
+### CAP-G1 preferred map (product truth — CAPS.oot §CAP-G1)
+
+| Preferred | Sealed ops | Residual honesty |
+|-----------|------------|------------------|
+| **HttpCap** | `fetch` / `http_get` / `net_get` | soft; NetCap supersedes |
+| **TcpCap** | `tcp_connect` / `tcp_write` / `tcp_read` / `tcp_close` / `tls_connect` | soft |
+| **BindCap** | `tcp_bind` | soft |
+| **UdpCap** | `bind_udp` / `udp_recv` | soft |
+| **NetCap only** | `sock_raw` / `raw_socket` | **hard** — no SoftGranular |
+
+========================================================================
+METHOD
+========================================================================
+
+1. Inventory every std + product-std `.oo` with `&NetCap` / granular net caps (param signatures).
+2. Diff DE-touched porcelain for net migration (std + ooda/std).
+3. Classify each former NetCap surface:
+   - **GRANULAR** — preferred Http/Tcp/Udp/Bind on the matching op family
+   - **RAW_RESIDUAL** — keeps `&NetCap` with explicit CAP-G6 raw/L2 honesty
+   - **SOFT_LEGACY** — still `&NetCap` on a soft-granular path (supersede OK; migrate residual)
+4. CRIT scan: any fn that takes Http/Tcp/Udp/Bind and calls `sock_raw`/`raw_socket`.
+5. Product host: `oodac check` on migrated facades + shape fixtures + CRIT deny fixtures.
+6. Re-run `scripts/cap_g1_net_granular_smoke.sh` (must-stay-green under CAP-G6).
+7. Fix only if CRIT Http→raw found (none).
+
+========================================================================
+DE-MIGRATED SURFACE (verify matrix)
+========================================================================
+
+### A. Product facades — GRANULAR + raw residual
+
+**File:** `ooda/std/os/net.oo` (M — CAP-G6 DE)
+
+| Fn | Cap | Class | Notes |
+|----|-----|-------|-------|
+| `http_get` / `net_get` | **HttpCap** | GRANULAR | → sealed `fetch` |
+| `net_tcp_bind` | **BindCap** | GRANULAR | → `tcp_bind` |
+| `net_tcp_connect` / write / read / close / `net_tls_connect` | **TcpCap** | GRANULAR | TLS residual honesty in header |
+| `net_bind_udp` / `net_udp_recv` | **UdpCap** | GRANULAR | |
+| `net_sock_raw` | **NetCap** | **RAW_RESIDUAL** | hard NetCap-only; header documents CAP-G1 |
+
+Header honesty: "NetCap — sock_raw only (hard NetCap-only residual)"; legacy supersede one-wave.
+
+**oodac check:** `std/os/net.oo` → **OK** rc=0
+
+### B. Std top-level net — GRANULAR
+
+| File | Fn | Cap | Class |
+|------|-----|-----|-------|
+| `std/src/net.oo` | `http_get` / `net_get` | **HttpCap** | GRANULAR |
+| `std/src/net/wireguard.oo` | `wg_init` / `wg_create_interface` | **UdpCap** | GRANULAR residual (+ process_exit gates; crypto not claimed) |
+
+**oodac check:** both **OK** rc=0
+
+WireGuard honesty: fail-closed process_exit; preferred UdpCap (UDP VPN); "do not greenwash cap migration as crypto."
+
+### C. sec/net mtls — GRANULAR (TcpCap)
+
+| File | Cap on effectful params | Class |
+|------|-------------------------|-------|
+| `mtls.oo` shims (`socket_hs`, `ocsp`) | **TcpCap** | GRANULAR |
+| `mtls_engine.oo` evaluate handshake | **TcpCap** | GRANULAR (+ T5 evaluate-not-crypto honesty retained) |
+| `mtls_stubs.oo` handshake_raw / ocsp | **TcpCap** | GRANULAR residual gates |
+| `mtls_cert.oo` / `mtls_ops.oo` / `mtls_types.oo` | header CAP-G6 only (no NetCap params left) | GRANULAR notes |
+
+**oodac check:** `mtls_stubs.oo` → **OK** rc=0
+
+### D. sec/ai prompt filter — GRANULAR (HttpCap)
+
+| File | Fn | Cap | Class |
+|------|-----|-----|-------|
+| `prompt_filter.oo` | `shim_marker_scan_llm` | **HttpCap** | GRANULAR residual |
+| `prompt_filter_stubs.oo` | `prompt_scan_with_llm` | **HttpCap** | GRANULAR residual (process_exit / Err) |
+
+**oodac check:** `prompt_filter_stubs.oo` → **OK** rc=0
+
+### E. sec/cps industrial — GRANULAR Tcp + RAW residual NetCap
+
+| File | Fn | Cap | Class | Honesty |
+|------|-----|-----|-------|---------|
+| `bft.oo` | `bft_broadcast_prepare` | **TcpCap** | GRANULAR | replica mesh; multiprotocol residual note |
+| `dnp3_sec.oo` | `dnp3_tcp_open` / `dnp3_issue_challenge` | **TcpCap** | GRANULAR | DNP3 TCP path |
+| `modbus_sec.oo` | `modbus_tcp_open` / `modbus_send_request` | **TcpCap** | GRANULAR | Modbus TCP; RTU stays FsCap |
+| `sis.oo` | `sis_modbus_read_coil` / `sis_write_shutdown_command` | **TcpCap** | GRANULAR | SIS Modbus/PLC TCP-ish |
+| `goose_sec.oo` | `goose_join_multicast` | **NetCap** | **RAW_RESIDUAL** | L2 ethertype 0x88B8 — "no SoftGranular" |
+| `scada_fw.oo` | `scada_open_capture` | **NetCap** | **RAW_RESIDUAL** | AF_PACKET/pcap ≈ sock_raw family |
+
+**oodac check:** goose/scada/modbus/dnp3/bft/sis → all **OK** rc=0
+
+### F. Not DE-migrated leftover (observed)
+
+| File | Cap | Class | Peer action |
+|------|-----|-------|-------------|
+| `ooda/std/src/net/dns.oo` `resolve_ipv4` | **NetCap** | **SOFT_LEGACY** | UDP residual string honest; **not** raw. Prefer **UdpCap** next DE wave. Not CRIT (not Http→raw). **No fix** this peer. |
+| `std/src/ooda/sec/sys/enclave.oo` | NetCap in Err string only | n/a | no param; collateral-fetch residual note |
+| `redteam_stubs.oo` | `raw_socket_fd: Int` + **SysCap** | n/a | fd int param; not HttpCap; not a sealed sock_raw call |
+
+### G. batch_2 honesty correction
+
+`audit/std_caps_batch_2.oot` claimed migration of `http_server.oo` / `dns_server.oo` / `mqtt.oo` / `websocket.oo` / `quic.oo` (5/42). **Live tree:** those five paths **do not exist** under `std/src/net/` (only `wireguard.oo` + top-level `net.oo`). Treat batch_2 five-file land as **not verified / not on disk**; this peer certifies the **current DE WT migration** only.
+
+========================================================================
+CRITICAL: HttpCap for raw socket
+========================================================================
+
+| Probe | Result |
+|-------|--------|
+| Grep product+std for `sock_raw`/`raw_socket` call sites | only `net_sock_raw(net: &NetCap)` + comments; **no** HttpCap first arg |
+| Fn-body CRIT scan (Http/Tcp/Udp/Bind params + sock_raw body) | **0 hits** |
+| Fixture `/tmp/cap_g6_peer1_net/http_raw_deny.oo` (HttpCap + sock_raw) | **rc=1** ERR requires `&NetCap` |
+| Fixture `tcp_raw_deny.oo` (TcpCap + sock_raw) | **rc=1** ERR requires `&NetCap` |
+| Fixture `raw_netcap_ok.oo` (NetCap + sock_raw) | **rc=0** OK |
+
+**Peer fix:** **none** — no critical wrong cap in tree.
+
+========================================================================
+OODAC CHECK MATRIX (product host)
+========================================================================
+
+Host: `./oodac/oodac` (tip binary above).
+
+### Migrated modules / facades
+
+| Target | Expect | rc | Verdict |
+|--------|--------|---:|---------|
+| `ooda/std/os/net.oo` | OK | 0 | **PASS** |
+| `std/src/net.oo` | OK | 0 | **PASS** |
+| `std/src/net/wireguard.oo` | OK | 0 | **PASS** |
+| `std/.../mtls_stubs.oo` | OK | 0 | **PASS** |
+| `std/.../prompt_filter_stubs.oo` | OK | 0 | **PASS** |
+| `std/.../goose_sec.oo` | OK | 0 | **PASS** |
+| `std/.../scada_fw.oo` | OK | 0 | **PASS** |
+| `std/.../modbus_sec.oo` | OK | 0 | **PASS** |
+| `std/.../dnp3_sec.oo` | OK | 0 | **PASS** |
+| `std/.../bft.oo` | OK | 0 | **PASS** |
+| `std/.../sis.oo` | OK | 0 | **PASS** |
+| `ooda/std/src/net/dns.oo` | OK | 0 | **PASS** (legacy NetCap still types) |
+
+### Shape / CRIT fixtures (`/tmp/cap_g6_peer1_net/`)
+
+| Fixture | Expect | rc | Verdict |
+|---------|--------|---:|---------|
+| `http_get_shape.oo` HttpCap+fetch | ALLOW | 0 | **PASS** |
+| `tcp_connect_shape.oo` TcpCap+tcp_connect | ALLOW | 0 | **PASS** |
+| `bind_shape.oo` BindCap+tcp_bind | ALLOW | 0 | **PASS** |
+| `udp_shape.oo` UdpCap+bind_udp | ALLOW | 0 | **PASS** |
+| `legacy_net_fetch.oo` NetCap+fetch supersede | ALLOW | 0 | **PASS** |
+| `raw_netcap_ok.oo` NetCap+sock_raw | ALLOW | 0 | **PASS** |
+| `http_raw_deny.oo` HttpCap+sock_raw | DENY | 1 | **PASS** |
+| `tcp_raw_deny.oo` TcpCap+sock_raw | DENY | 1 | **PASS** |
+
+### Floor smoke
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/cap_g1_net_granular_smoke.sh
+# cap_g1_net_granular_smoke: PASSED  (exit 0)
+```
+
+Wrong-granular deny + preferred Http/Tcp + legacy NetCap allow paths intact under CAP-G6 window.
+
+========================================================================
+CLASS ROLLUP
+========================================================================
+
+| Class | Count (effectful former-NetCap surfaces this verify) | Examples |
+|-------|------------------------------------------------------:|----------|
+| GRANULAR (Http/Tcp/Udp/Bind) | **majority of DE set** | product net facades, net.oo, wireguard Udp, mtls Tcp, cps TCP paths, prompt Http |
+| RAW_RESIDUAL (NetCap + honesty) | **3** | `net_sock_raw`, `goose_join_multicast`, `scada_open_capture` |
+| SOFT_LEGACY (NetCap on soft path) | **1** | `dns.resolve_ipv4` — next wave → UdpCap |
+| CRIT Http→raw | **0** | — |
+
+Every DE-touched former NetCap file is either granular or has residual NetCap honesty for raw/L2.
+
+========================================================================
+FIXES THIS PEER
+========================================================================
+
+**None.** CRIT scan clean; no HttpCap (or other soft granular) authorizing sock_raw in product/std sources.
+
+========================================================================
+RESIDUAL / LEAVE-OFF (≤15 lines)
+========================================================================
+
+- CAP-G6 net DE WT: product `std/os/net.oo` + std net/wireguard/mtls/cps/ai prompt migrations **verified PASS**.
+- Raw honesty correct: sock_raw / AF_PACKET / L2 GOOSE stay **NetCap-only** with CAP-G6 comments.
+- Soft leftover: `ooda/std/src/net/dns.oo` still `&NetCap` for UDP residual — prefer UdpCap next DE; not CRIT.
+- batch_2 five-file claim not on disk — do not cite as live evidence.
+- CAP-G1 smoke still green; Http/Tcp ↛ sock_raw proved at check (rc=1).
+- No peer fix; no push; do not claim CAP-G6 FIXED (migration residual continues).
+- Uncommitted DE work — human land/push separate (P5).
+
+end of cap_g6_peer1_net.oot
