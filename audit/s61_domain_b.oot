@@ -1,0 +1,227 @@
+# s61_domain_b.oot — Domain Expert B / SPRINT 6.1 env_set SECRETSINK
+# Residual: HIGH 6.1 — alias + string-lit no-FP + check-vs-emit honesty
+# Date: 2026-08-12T19:05:06Z
+# Role: Domain Expert B of 12-agent 6.1 phalanx (orthogonal to Domain A list)
+# Tree: /home/jeryd/Projects/openOODA
+# Tip (ooda): 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
+# Host: ooda/oodac/oodac (product, 962960 B, md5 a44ee35eb344837009697e2c9d4e4662)
+# OWN: prove `let f = env_set; f(..., secret)` **if** path-A claims alias;
+#      prove string-literal SECRET spelling is no-FP; name check vs emit
+#      dual-path honestly. Do not rewrite 7.1 / 7.2 / 7.10. No moonshots;
+#      no auto-push; monofile ≤600.
+#
+# ID collision: DESIGN/PM **6.1** = metamorphic vs deterministic (other paper).
+# This file is SPRINT backlog **6.1** = confirm `env_set` in SECRETSINK.
+
+========================================================================
+VERDICT
+========================================================================
+
+**PASS-with-residual** (honesty). No source change this turn. 7.x not rewritten.
+
+Path-A **does** claim sink alias (`SECRET_TAINT.oot` §2; `c_secret_is_sink_name`
+includes `env_set`; emit/check resolve `__alias__`). Live product host:
+
+- **Direct (A floor, B records dual-path):** `env_set(envc, "KEY", tok)` with
+  `// SECRET: tok` → `emit-c` / `emit-llvm` **BLOCK**
+  `ERR\tsecret\tenv_set sink refuses SECRET tok`. `oodac check` is
+  `ERR\ttype\tundefined variable 'env_set'` — **fail-closed, not dual-path secret**.
+- **String lit (no FP):** `env_set(envc, "KEY", "tok")` → **no** `ERR\tsecret`
+  on emit-c **or** check. emit-c then `unknown free call needs annotation
+  env_set`; check type-undefined. Harness smoke **PASS** (treats unknown-call
+  as lower residual, not FP).
+- **Alias (this OWN):** `let f = env_set; f(envc, "KEY", tok)` → emit-c
+  **ABORT rc=134** `oo_vemalloc(): unaligned tcache chunk detected`.
+  check = type-undefined `env_set`. **No** `ERR\tsecret`. Path-A alias
+  claim is **not live-proved** for `env_set`.
+- **7.x:** not rewritten
+- **Monofile:** `c_emit_secret_alias.oo` = **157**; guard = **228** (≤600)
+
+Domain A (when landed) owns “name is in SECRETSINK + direct IDENT refuse”.
+This file owns **alias / no-FP / dual-path honesty**.
+
+========================================================================
+SCOPE (orthogonal to Domain A)
+========================================================================
+
+| In | Out |
+|----|-----|
+| `let f = env_set; f(..., secret)` if path-A claims alias | Adding `env_set` to the sink list (A / 2.3 land) |
+| String literal `"tok"` no-FP (emit + check) | 7.1 `c_guard_scan_idents` rewrite |
+| Check vs emit dual-path honesty | 7.2 `c_sys_exec_last_arg` rewrite |
+| Isolated tmp probes (not committed fixtures) | 7.10 `c_parse_secret_env` rewrite |
+| | Product `oo_env_set` / lower; SPRINT flip; remotes |
+
+========================================================================
+PATH-A ALIAS CLAIM (why B must probe)
+========================================================================
+
+| Site | Claim |
+|------|-------|
+| `SECRET_TAINT.oot` §2 | Alias chain for sinks (`__alias__` walk) **In** (path A) |
+| `SECRET_TAINT.oot` table | setenv / **env_set** / unsetenv named sinks **In** (partial; re-prove) |
+| `c_emit_secret_alias.oo:16` | `c_secret_is_sink_name`: `env_get` \|\| **`env_set`** \|\| `setenv` \|\| `unsetenv` |
+| `c_emit_secret_guard.oo:115–116` | resolve callee so `let f = tcp_write; f(secret)` is a sink |
+| `c_emit_secret.oo:173–174` | check walk: resolve `let f = println\|tcp_write` through `__alias__` |
+| `c_emit_let.oo:168–169` | emit `let` records `__alias__` for known sink RHS |
+
+`env_set` is in the **same** alias name-set as `env_get`. B therefore must
+live-prove `let f = env_set; f(..., secret)` — not assume the table.
+
+========================================================================
+STATIC (tip source; B did not edit)
+========================================================================
+
+Emit guard `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo`
+
+| Site | Fact |
+|------|------|
+| L10–13 | refuse arg via `c_secret_resolve_alias` then `__sec__` |
+| L117 | `env_set` grouped with `env_get`/`fetch` — a1 only |
+| L157–165 | **also** `setenv`/`env_set`/… — a1 **and** a2 |
+| L213–225 | full `args` → `c_guard_scan_idents` includes `env_set` (hits a0 too) |
+
+Check walk `c_emit_secret.oo`
+
+| Site | Fact |
+|------|------|
+| L238–242 | `sid == "env_set"` → `c_secret_scan_call(..., want=1, eq_only=false)` |
+| L173–174 | `sid = c_secret_resolve_alias(env, id)` before the table |
+
+Wire order (dual-path hinge):
+
+| Path | Order |
+|------|-------|
+| `oodac check` (`check_drive.oo:80–106`) | **typecheck first**, then `check_secret_println_sinks` |
+| `oodac emit-c` (`c_emit.oo:53–86`) | preamble print → `check_secret_println_sinks` → body + `c_secret_emit_guard` |
+| `oodac emit-llvm` | same secret walk as emit (`llvm_emit.oo:79`) |
+
+`env_set` is **not** in `tc_names.oo` `is_known_name`. `is_sealed_env` lists
+it (cap table) but typecheck still dies “undefined variable”.
+`c_emit_lower.oo` has `env_get`→`oo_env_get` only — **no** `env_set`.
+
+7.1 walker / 7.2 last-arg / 7.10 parse-env **untouched**.
+
+========================================================================
+LIVE MATRIX — dual-path (tmp `$TMPDIR/s61_b_probes`)
+========================================================================
+
+Dir not committed. Host `oodac emit-c` + `oodac check` (+ llvm where noted).
+
+### Direct (record only; A floor)
+
+| Probe | emit-c | check | Dual-path secret? |
+|-------|--------|-------|-------------------|
+| `env_set(envc, "KEY", tok)` SECRET value | **BLOCK** `env_set sink refuses SECRET tok` | **type** undefined `env_set` | **no** (emit secret / check type) |
+| `env_set(envc, tok, "public")` SECRET key | **BLOCK** `SECRET tok` | **type** undefined | **no** |
+| `env_set(envc, "KEY", envc)` SECRET a0 | **BLOCK** `SECRET envc` (full-args scan) | **type** undefined | **no** |
+| product `secret_setenv_fail` | **BLOCK** `setenv sink refuses SECRET token` | **type** undefined `setenv` | **no** |
+| product `secret_env_get_fail` | **BLOCK** `env_get sink refuses SECRET token` | **BLOCK** same | **yes** (known builtin) |
+| `env_set` emit-llvm value | **BLOCK** `env_set sink refuses SECRET tok` | (same check type) | llvm pairs emit, not check |
+
+emit refuse of direct `env_set` lands **after preamble, before `int main`**
+→ `check_secret_println_sinks` on the emit path (host **does** list `env_set`).
+`oodac check` never reaches that walk: typecheck exits first.
+
+### String literal / comment — no FP
+
+| Probe | emit-c | check | Result |
+|-------|--------|-------|--------|
+| `env_set(envc, "KEY", "tok")` | rc=1 `unknown free call … env_set`; **no** `ERR secret` | type undefined; **no** `ERR secret` | **PASS** no-FP |
+| `env_set(envc, "tok", "public")` | same unknown-call; no secret | type; no secret | **PASS** no-FP |
+| `env_set(envc, "KEY", public)` public IDENT + unrelated SECRET tag | same unknown-call; no secret | type; no secret | **PASS** no-FP |
+| `// env_set(..., tok)` + public IDENT | same unknown-call; no secret | type; no secret | **PASS** no-FP |
+| product `secret_setenv_pass` | unknown-call `setenv`; no secret | type; no secret | **PASS** no-FP |
+| product `secret_t2_string_lit_arg_fp` | rc=0 | rc=0 `OK` | control (println) |
+
+Harness `s61_env_set_secretsink_smoke.sh` **PASS** exit 0 (no-FP rail accepts
+unknown-call residual). Isolated **FP=0**.
+
+### Alias — path-A claim vs live (this OWN)
+
+| Probe | emit-c | check | Result |
+|-------|--------|-------|--------|
+| `let f = env_set; f(envc, "KEY", tok)` | **ABORT 134** `unaligned tcache` | type undefined `env_set` | **FAIL live alias prove** |
+| `let f = env_set; f(envc, tok, "public")` | **ABORT 134** | type undefined | same |
+| `let f = env_set; f(envc, "KEY", "tok")` (lit) | **ABORT 134** | type undefined | crash before no-FP |
+| `let f = env_set;` only (no call) | **ABORT 134** | type undefined | crash is the **let**, not the call |
+| `let g = f` two-hop | **ABORT 134** | type undefined | same |
+| `let f = setenv; f(..., tok)` | **ABORT 134** | type undefined `setenv` | sibling same |
+| **control** `let f = println; f(tok)` | **BLOCK** `println sink refuses SECRET tok` | **BLOCK** same | alias **works** for println |
+| **control** `let f = env_get; f(envc, token)` | **ABORT 134** | **ABORT 134** | product sink let also unstable |
+| **control** `let w = write_file; w(fs, path, secret)` | **ABORT 134** | **ABORT 134** | same host hole |
+
+Alias **FN=not-applicable** (no silent OK) but **not** a secret refuse.
+Fail-closed via **crash** (emit) / **type** (check). Do **not** claim
+`let f = env_set; f(secret)` is path-A In.
+
+========================================================================
+RAILS
+========================================================================
+
+| Smoke | Result |
+|-------|--------|
+| `scripts/s61_env_set_secretsink_smoke.sh` | **PASS** exit 0 (emit refuse + no-FP; **emit-only**) |
+| product `secret_setenv_{fail,pass}` | emit secret / unknown-call; check type (honesty) |
+| product `secret_env_get_fail` | **PASS** dual-path secret (control) |
+| product `secret_t1_alias_println` | **PASS** dual-path secret (println alias control) |
+
+Harness does **not** cover alias or `oodac check`. B isolated probes do.
+
+========================================================================
+FILES TOUCHED
+========================================================================
+
+| File | Change |
+|------|--------|
+| `ooda/oodac/c_emit_secret_guard.oo` | **none** |
+| `ooda/oodac/c_emit_secret.oo` | **none** |
+| `ooda/oodac/c_emit_secret_alias.oo` | **none** |
+| `ooda/oodac/c_emit_args.oo` (7.2) | **none** |
+| `ooda/oodac/c_emit_secret.oo` parse-env (7.10) | **none** |
+| `openOODA/audit/s61_domain_b.oot` | this evidence |
+
+**Not touched:** 7.1 walker, 7.2 last-arg, 7.10 parse-env, sink list, smokes,
+SPRINT, remotes (no push).
+
+========================================================================
+RESIDUAL (honest; do not close)
+========================================================================
+
+1. **`oodac check` is not dual-path secret for `env_set`.** Typecheck runs
+   first (`check_drive.oo`) and `env_set` is not a known name →
+   `undefined variable`. Source walk L238–242 is **dead** on `oodac check`
+   for these programs. Fail-closed type ≠ `ERR\tsecret`. Contrast `env_get`.
+
+2. **Path-A alias is claimed, not live for `env_set`.** `let f = env_set`
+   aborts the shipping host (heap). check never records/uses `__alias__f`.
+   println alias still dual-path green. `env_get`/`write_file` **let-alias**
+   also abort on this host — wider than 6.1; do **not** greenwash T1
+   “alias In” as covering `env_set`.
+
+3. **a0 SECRET on emit** is refuse via full-args scan; check walk is
+   `argi >= 1` (would miss a0 even if typecheck did not run first).
+
+4. **No product `oo_env_set`.** Clean calls die unknown-free-call (CAPS_MATRIX
+   residual). 6.1 is SECRETSINK name, not a runtime setenv op.
+
+5. **Harness 7.10 note is stale** (`s61_harness.oot` still says parse-env
+   char-concat). Tip source is sliced (`str_slice`). Not B’s rewrite.
+
+6. **Full IFC / `${}` / `#[Secret]` / macro-body SECRET** — `SECRET_TAINT.oot`.
+
+========================================================================
+STATUS FOR SPRINT/PM
+========================================================================
+
+| Item | Status |
+|------|--------|
+| `env_set` in SECRETSINK (direct IDENT emit refuse) | **PASS** (A floor; emit + llvm) |
+| string lit `"tok"` no-FP | **PASS** (emit + check; no `ERR secret`) |
+| check vs emit dual-path **secret** | **RESIDUAL** — emit secret / check type |
+| `let f = env_set; f(..., secret)` | **RESIDUAL** — host abort; not secret refuse |
+| 7.1 / 7.2 / 7.10 rewrite | **not done** (not required) |
+| monofile ≤600 | guard 228 / alias 157 / secret 264 |
+| 6.1 Domain B contract | **PASS-with-residual** — do not close alias as In |
+
+end of s61_domain_b.oot

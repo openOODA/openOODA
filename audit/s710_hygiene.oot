@@ -1,0 +1,308 @@
+# s710_hygiene.oot — Hygiene Enforcer (7.10 c_parse_secret_env phalanx)
+# Date: 2026-08-12T18:55:35Z
+# Role: Dependency/Hygiene Enforcer — RULES §1.7 (7.10 phalanx)
+# Tree: /home/jeryd/Projects/openOODA  (ooda/ + openOODA/)
+# Tip (ooda): 52cc4b5 + WIP (`c_emit_secret.oo` slice + 2.10 `__sec_sink__`;
+#              `scripts/s710_parse_secret_env_smoke.sh` ??)
+# Tip (openOODA): 81f56fc + WIP s710_* audits + SPRINT 7.10 still OPEN (Docs)
+# OWN: line-lock 7.10-touched `.oo`; bash -n `s710_parse_secret_env_smoke.sh`;
+#      no ELF / scratch in `oodac/`; consistent `audit/s710_*.oot`; no credentials
+# WRITE: this audit + hygiene-only scrub of leftover emit dumps
+# POLICY: RULES §1.7 / PROBE MAX_LINES = 256 (soft); pack watch 300; hard ban >600
+#         No mass product peels; force-split only if DE blew 600
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Check | VERDICT | Notes |
+|-------|---------|-------|
+| Hard ban >600 (touched .oo) | **PASS** | 0 OWN / 0 `ooda/oodac/**/*.oo` over 600 |
+| Soft lock ≤256 (7.10 OWN) | **WARN** residual | `c_emit_secret.oo` **264** (pre-existing oversize; DE **did not grow**) |
+| Pack pressure ≤300 (OWN) | **PASS** | 264 < 300 |
+| Adjacent secret family soft | **WARN** residual | `c_emit_secret_prop.oo` **262**, `main.oo` **307** — not 7.10 blow |
+| DE monofile blow >600 | **none** | Domain A: slice-in-place; line count **same 264** as pre-fix |
+| ELF extra / scratch in `oodac/` | **PASS** | no bak/x/fuzz/toys; only product host |
+| Product host ELF | **kept** | gitignored `oodac/oodac` **962960** B — required by smoke; not a DE toy |
+| Super emit dump | **PASS** (scrubbed) | deleted `oodac_new.tmp.c` + fixture `*.bin.tmp.c` |
+| Credentials | **PASS** | ZERO live secrets/tokens/keys |
+| `/tmp` in product `.oo` | **PASS** | ZERO in 7.10 OWN |
+| Smoke `/tmp` | **PASS** | harness uses `$TMPDIR/s710_parse_secret_env_$$` + `trap` |
+| Integration `/tmp` logs | **WARN** residual | `s710_integration.oot` cites `/tmp/s710_integration/` (not product) |
+| `bash -n` s710 smoke | **PASS** | `scripts/s710_parse_secret_env_smoke.sh` 119L syntax clean |
+| `audit/s710_*.oot` names | **PASS** | consistent `s710_<role>.oot` set |
+| Mass deletes of product | **none** | only untracked/ignored debris |
+| Push | **no** | charter |
+
+OVERALL: **PASS**
+  (hard monofile green; no extra ELF; emit-dump scratch scrubbed; names
+   consistent; no credentials; soft residual only on pre-existing 264 OWN)
+
+========================================================================
+SCOPE + METHOD
+========================================================================
+
+7.10 ACTIVE (SPRINT backlog): HIGH `c_parse_secret_env` char-by-char
+OoStr leak — `ooda/oodac/c_emit_secret.oo`.
+
+OWN units this pass:
+
+| Path | Role in 7.10 | Git |
+|------|-------------|-----|
+| `oodac/c_emit_secret.oo` | parse-env walker + `str_slice` | dirty (7.10 slice + concurrent 2.10 +5) |
+| `scripts/s710_parse_secret_env_smoke.sh` | harness rails (TMPDIR fixtures) | `??` untracked |
+| `audit/s710_*.oot` | phalanx evidence | `??` / this file |
+
+Adjacent observe (line-lock only if DE had blown 600):
+
+| Path | Lines | Note |
+|------|------:|------|
+| `oodac/c_emit_secret_guard.oo` | 228 | 7.1 walker (already sliced) |
+| `oodac/c_emit_secret_prop.oo` | 262 | T1/T2 prop (pre-existing soft) |
+| `oodac/c_emit_secret_alias.oo` | 157 | alias resolve |
+| `oodac/c_emit_args.oo` | 240 | 7.2 last-arg (already sliced) |
+| `oodac/main.oo` | 307 | pre-existing soft/pack residual |
+
+DE A (`s710_domain_a.oot`): **FIXED path-A source close** — `let start = k`
+then one `str_slice(src, start, k)` at L65. No `name = name + c` remains
+in `c_parse_secret_env`. Integration (`s710_integration.oot`) and harness
+pointer still **print stale concat residual** (they landed before / without
+re-reading the slice). Hygiene does **not** rewrite peer audits.
+
+Commands:
+
+  `wc -l` + hard/pack/soft gates on OWN + full `oodac/*.oo` >600 inventory
+  `git add -n oodac/` before+after scrub
+  `bash -n` s710 smoke
+  `grep` credential + `/tmp` on OWN + smoke + s710 audits
+  delete extra ELF + emit-dump scratch; **keep** product `oodac/oodac`
+  no push; no product logic rewrite; no SPRINT flip
+
+Thresholds:
+
+| Threshold | Meaning |
+|-----------|---------|
+| **256** | RULES §1.7 / PROBE MAX_LINES — soft lock |
+| **300** | Pack monofile pressure (flag for DE peel) |
+| **600** | Path-A hard ban — force-split only if blown |
+
+========================================================================
+LINE LOCK — 7.10-touched / adjacent monofiles (live)
+========================================================================
+
+Measured under monorepo tip ooda=`52cc4b5`+WIP (2026-08-12T18:55Z).
+
+| File | Lines | ≤256 | ≤300 | ≤600 | HEAD dirty? | Split? |
+|------|------:|:----:|:----:|:----:|:-----------:|:------:|
+| `oodac/c_emit_secret.oo` | **264** | OVER | PASS | PASS | slice + 2.10 | residual |
+| `oodac/c_emit_secret_guard.oo` | **228** | PASS | PASS | PASS | 7.1/2.10 | NO |
+| `oodac/c_emit_secret_prop.oo` | **262** | OVER | PASS | PASS | no | residual |
+| `oodac/c_emit_secret_alias.oo` | **157** | PASS | PASS | PASS | no | NO |
+| `oodac/c_emit_args.oo` | **240** | PASS | PASS | PASS | 7.2 comments | NO |
+| `oodac/main.oo` | **307** | OVER | OVER | PASS | no | residual |
+| `scripts/s710_parse_secret_env_smoke.sh` | **119** | PASS | PASS | PASS | NEW | n/a |
+
+| Aggregate | Value |
+|-----------|------:|
+| Touched `.oo` over **600** | **0** |
+| `oodac/**/*.oo` over **600** | **0** |
+| 7.10 OWN over **256** | **1** (`c_emit_secret.oo` = 264) |
+| Adjacent over **256** | **2** (secret_prop 262 / main 307 — pre-existing) |
+
+md5 (stable re-read at measure):
+
+| File | md5 |
+|------|-----|
+| `c_emit_secret.oo` | `a1e63ca5a51b2602f39a651013c4ed9b` |
+| product `oodac/oodac` | `a44ee35eb344837009697e2c9d4e4662` (962960 B, BuildID `a93cfd09…`) |
+
+Delta honesty:
+
+- **7.10 slice is in-place.** HEAD `c_emit_secret.oo` was **259**. Live **264**.
+  Net +5 is concurrent **2.10** `__sec_sink__` prefix scan in
+  `check_secret_println_sinks` (L250–254) — **not** parse-env growth.
+  Parse-env rewrite replaced `name = name + c` with `start` + `str_slice`
+  (line-count neutral inside `c_parse_secret_env`).
+- **Hard ban holds** for entire `ooda/oodac/*.oo` product set
+  (count_over_600 = 0).
+- Soft residual on OWN 264 is **pre-existing** (s72 already measured 264)
+  — do not force-peel.
+- Out-of-OWN: `std/src/ooda/sec/crypto/*` still over 600 (pre-existing
+  catalog stubs). **Not** 7.10. Path-A oodac floor is the lock this pass.
+
+Live parse-env (hygiene re-read):
+
+```
+let start = k;
+while k < sn { … if is_al { k = k + 1 } else { break } }
+let name = str_slice(src, start, k);
+```
+
+Static: `name = name +` **absent** in `c_parse_secret_env`.
+
+========================================================================
+SPLIT GATE
+========================================================================
+
+Rule: force-split only if OWN unit >600 (path-A hard ban).
+
+| Unit | Over hard? | Action |
+|------|:----------:|--------|
+| `c_emit_secret.oo` 264 | no | **none** — soft residual only |
+| adjacent secret_prop 262 / main 307 | no hard | residual — not 7.10 OWN |
+| shared ident-slice helper | n/a | Domain A inlined; new monofile would be a peel, not this pass |
+
+Suggested DE (when authorized, not this hygiene pass):
+
+1. Optional peel of `c_emit_secret.oo` parse-env vs sink-scan if it
+   approaches pack 300.
+2. Keep fixtures under `$TMPDIR` via smoke — never `oodac/a.oo`.
+3. Stale harness/integration concat banners: peers rewrite their own
+   files, not hygiene.
+
+========================================================================
+BINARY + SCRATCH SCRUB
+========================================================================
+
+Charter: **no ELF / scratch in `oodac/`**. Extra copies + lab toys deleted.
+Product host kept (gitignored; harness `OODAC_BIN` default).
+
+### Extra ELF (this pass — already clean)
+
+| Artifact | Size | Pre | Post |
+|----------|-----:|-----|------|
+| `oodac/oodac.x` / bak / fuzz | — | absent (s71/s72 scrub) | **absent** |
+| `oodac/oodac` | 962960 B ELF | product host | **kept** (gitignored) |
+| `bin/ooda` | product CLI | kept | **kept** |
+| `bootstrap/seed/oodac` | seed pin | kept | **kept** |
+| super `oodac/oodac` | 962888 B ELF | **tracked** in super-repo | **kept** (do not `git rm`; residual) |
+
+`git add -n oodac/` after scrub: **product `.oo` only** (`c_emit_args`,
+`c_emit_secret`, `c_emit_secret_guard`) — no ELF, no scratch toys.
+
+### Scratch toys (scrubbed this pass)
+
+Super-repo / fixture emit dumps (gitignored `*.c`; reappeared mid-wave):
+
+- `oodac_new.tmp.c` — generated C preamble dump; **deleted**
+- `ooda/fixtures/secret_field_assign_fail.oo.bin.tmp.c` — emit leftover; **deleted**
+
+Product tree (`ooda/oodac/`): **no** `a.oo` / `b.oo` / `*.orig` / `*.rej` /
+`test_slice.oo` / `*.tmp.c` this pass (s72 seal held).
+
+Not deleted (out of 7.10 oodac charter): historical super-repo `tmp_*.oo`,
+`scratch/*.oo` sources, tracked corpus `oodac/test_*.oo`. Concurrent
+untracked `bootstrap/MACRO_SECRET_*.oot` is **2.8 residual** — leave.
+
+`.gitignore`: no new lines required. `/oodac/*.orig` `*.rej` `test_slice.oo`
+already sealed in 7.2. Product `/oodac/oodac` already ignored.
+Super `/*.c` already covers `oodac_new.tmp.c`.
+
+========================================================================
+bash -n + SECRETS + /tmp
+========================================================================
+
+```
+OK bash -n scripts/s710_parse_secret_env_smoke.sh   (119 lines)
+```
+
+Smoke uses `$TMPDIR/s710_parse_secret_env_$$` + `trap` cleanup — fixtures
+never land in-repo. **No** hard-coded `/tmp`.
+
+Credential-class scan (`password=`, `BEGIN *PRIVATE`, AWS/GitHub/Slack
+tokens, Bearer) on:
+
+  - `c_emit_secret.oo`
+  - `s710_parse_secret_env_smoke.sh`
+  - all live `audit/s710_*.oot`
+
+  → **ZERO live credentials.**
+
+Dummy fixture string `"s3cret"` in smoke heredoc = theater payload, not
+a host secret.
+
+`/tmp` in 7.10 OWN `.oo` + s710 smoke: **none**.
+
+`s710_integration.oot` records smoke logs under `/tmp/s710_integration/`
+(CIT host temp). **WARN residual** (prefer `$TMPDIR`); not a secret leak
+and not product source.
+
+VERDICT credentials: **PASS**
+
+========================================================================
+audit/s710_*.oot NAME CONSISTENCY
+========================================================================
+
+Pattern: `s710_<role>.oot` under `openOODA/audit/` (same family as
+`s72_hygiene.oot` / `s71_hygiene.oot`).
+
+| File | Role | Status |
+|------|------|--------|
+| `s710_harness.oot` | Test Harness Writer | present (37L; residual banner **stale** vs live slice) |
+| `s710_domain_a.oot` | Domain Expert A | present (181L; claims FIXED path-A; matches live `str_slice`) |
+| `s710_domain_b.oot` | Domain Expert B | present (244L; landed mid-pass) |
+| `s710_ideas.oot` | Idea Fairy residuals | present (280L; landed mid-pass) |
+| `s710_integration.oot` | Compiler Integration Tester | present (218L; **stale** — wrote before slice + smoke) |
+| `s710_hygiene.oot` | this file | **written** |
+| peer / memory / runtime / security / rollup | optional later: `s710_<role>.oot` | not required this pass |
+
+No rogue names (`s7.10_*.oot`, `710_*.oot`, `parse_env_hygiene.oot`,
+`secret_710_*`) on disk.
+
+Line pressure on audits (informational; ban is on touched `.oo`):
+
+| File | Lines |
+|------|------:|
+| `s710_harness.oot` | 37 |
+| `s710_domain_a.oot` | 181 |
+| `s710_domain_b.oot` | 244 |
+| `s710_ideas.oot` | 280 |
+| `s710_integration.oot` | 218 |
+| `s710_hygiene.oot` | this |
+
+Honesty: integration still says “no s710 smoke / still `name = name + c`”.
+Live tree at this measure: smoke **present**, slice **landed**. Hygiene
+does **not** rewrite CIT/harness files. SPRINT 7.10 row remains **OPEN**
+until Docs/Coordinator flip after peers.
+
+========================================================================
+ACTIONS / NON-ACTIONS THIS PASS
+========================================================================
+
+| Action | Result |
+|--------|--------|
+| Measure OWN monofile locks | **done** — hard 0 over 600 |
+| Force-split DE >600 | **not needed** |
+| Flag OWN soft residual | secret 264 (pre-existing; DE no grow) |
+| Scrub extra ELF | **none present** |
+| Scrub emit-dump scratch | **done** (`oodac_new.tmp.c` + fixture `.bin.tmp.c`) |
+| Keep product `oodac/oodac` | **yes** (smoke host) |
+| `bash -n` s710 smoke | **PASS** |
+| Product parse-env logic edits | **none** (DE A already sliced) |
+| Flip SPRINT 7.10 | **no** (peers/coordinator) |
+| Push | **no** |
+| Audit write | **this file** |
+
+========================================================================
+RETURN — COMPACT
+========================================================================
+
+```
+SCOPE   7.10 c_parse_secret_env  ooda=52cc4b5+WIP  openOODA=81f56fc+WIP
+OWN     c_emit_secret.oo=264  (DE A slice L65 str_slice; +5 is 2.10)
+>600    0 touched / 0 oodac product   PASS hard ban
+>300    0 OWN
+>256    1 OWN (secret 264 pre-existing); adjacent prop 262 / main 307 WARN
+BINARY  no extra ELF; product oodac KEPT (gitignored); super tracked residual
+SCRUB   oodac_new.tmp.c + fixtures/*.bin.tmp.c DELETED
+CREDS   PASS  no live secrets; dummy "s3cret" is fixture only
+/tmp    PASS product + smoke (TMPDIR+trap); WARN CIT /tmp/s710_integration logs
+BASHN   s710_parse_secret_env_smoke.sh OK (119)
+NAMES   s710_harness / domain_a / domain_b / ideas / integration
+        / hygiene  consistent
+        (harness+integration residual banners stale vs live slice)
+PUSH    no
+OVERALL PASS
+```
+
+end of s710_hygiene.oot

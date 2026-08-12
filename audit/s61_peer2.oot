@@ -1,0 +1,208 @@
+# s61_peer2.oot
+# Peer Verifier 2 (QA) — SPRINT 6.1 setenv / unsetenv SECRET parity
+# Date: 2026-08-12
+# Role: Peer Verifier 2 (orthogonal to Peer 1 / runtime auditor)
+# Tree: /home/jeryd/Projects/openOODA
+# OWN: this audit + live probes only. No product/std/oodac edits. No push.
+# Host: ooda/oodac/oodac
+#   size=962960 B  mtime=2026-08-12 07:49:59 -0700
+#   md5=a44ee35eb344837009697e2c9d4e4662
+# Tip (ooda): 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
+# ID honesty: DESIGN/PM 6.1 = metamorphic-vs-deterministic (different ID).
+#             This file is SPRINT backlog 6.1 = env_set SECRETSINK re-prove.
+
+========================================================================
+VERDICT
+========================================================================
+
+## **ACCEPT** setenv / unsetenv SECRET-sink parity with env_set
+
+SPRINT **6.1** names `env_set` in SECRETSINK (landed with 2.3). Peer 2
+probed the four-way SECRET surface live on the shipping host:
+
+`env_set`  vs  `setenv`  vs  `unsetenv`  vs  `env_get`
+
+**SECRET IDENT refuse is parity** across all four on `emit-c` and
+`emit-llvm` (rc≠0 + `ERR\tsecret\<sink> sink refuses SECRET <name>`).
+
+**`setenv` ≡ `unsetenv` ≡ `env_set`** on every SECRET axis measured
+(value IDENT, key IDENT, string-lit no-FP, 3-arg extra, llvm dual).
+Official smoke covers `env_set` + `setenv` only; this peer filled
+**`unsetenv`** (not a product gap — same refuse).
+
+**`env_get` is not product-parity** with the write-side trio. It is the
+only lowered / `is_known_name` env op, so `check` actually prints
+`ERR\tsecret`. `env_set` / `setenv` / `unsetenv` die first at
+`ERR\ttype\tundefined variable` (`check_drive.oo` typecheck L64 before
+`check_secret_println_sinks` L106). That is the same residual the
+runtime auditor named (R-check / R-lower). **Not a setenv≠unsetenv
+split. Not a SECRET false-negative on emit.**
+
+Do **not** claim: product `oo_env_set` / `oo_setenv` / `oo_unsetenv`;
+`check` dual-path `ERR\tsecret` for the write-side names; `is_sealed_env`
+lists `setenv`/`unsetenv` (it lists `env_set` + `getenv` only);
+`getenv` is a SECRETSINK (it is not — SECRET IDENT is **not** refused).
+
+========================================================================
+CLAIM UNDER PRESSURE
+========================================================================
+
+| Slice | Path-A claim | Peer 2 gate |
+|-------|--------------|-------------|
+| 6.1 `env_set` in SECRETSINK | emit refuse SECRET IDENT | `ERR\tsecret\tenv_set sink refuses SECRET token` rc=1 |
+| `setenv` sibling (2.3 / smoke) | same refuse | `… setenv sink refuses SECRET token` rc=1 |
+| `unsetenv` sibling (source list, **no official rail**) | same refuse | `… unsetenv sink refuses SECRET token` rc=1 |
+| `env_get` control (product op) | refuse SECRET **key** | `… env_get sink refuses SECRET token` rc=1 |
+| String-lit spelling of SECRET name | no `ERR\tsecret` | all four: `sec=0` |
+| `setenv` ≡ `unsetenv` ≡ `env_set` | write-side parity | **PASS** (emit + llvm + check-type residual) |
+| `env_get` ≡ write-side | full product parity | **FAIL** (check + lower only) — residual, not 6.1 FN |
+
+========================================================================
+SUMMARY TABLE (live host 07:49)
+========================================================================
+
+Fixtures ephemeral under `/tmp/s61_peer2_1103362/` (not in-tree).
+`OODAC=ooda/oodac/oodac`. `sec=1` means `ERR\tsecret` present.
+
+### A. emit-c SECRET IDENT (fail-closed)
+
+| # | Call | SECRET | rc | sec | Message | VERDICT |
+|---|------|--------|----|-----|---------|---------|
+| 1 | `env_get(envc, token)` | key | 1 | 1 | `env_get sink refuses SECRET token` | **PASS** |
+| 2 | `env_set(envc, "KEY", token)` | value | 1 | 1 | `env_set sink refuses SECRET token` | **PASS** |
+| 3 | `env_set(envc, k, "public")` | key | 1 | 1 | `env_set sink refuses SECRET k` | **PASS** |
+| 4 | `setenv(envc, "KEY", token)` | value | 1 | 1 | `setenv sink refuses SECRET token` | **PASS** |
+| 5 | `setenv(envc, k, "public")` | key | 1 | 1 | `setenv sink refuses SECRET k` | **PASS** |
+| 6 | `unsetenv(envc, token)` | key | 1 | 1 | `unsetenv sink refuses SECRET token` | **PASS** |
+| 7 | `unsetenv(envc, "KEY", token)` | value (3-arg trap) | 1 | 1 | `unsetenv sink refuses SECRET token` | **PASS** |
+| 8 | repo `secret_setenv_fail.oo` | value | 1 | 1 | `setenv sink refuses SECRET token` | **PASS** |
+| 9 | repo `secret_env_get_fail.oo` | key | 1 | 1 | `env_get sink refuses SECRET token` | **PASS** |
+
+### B. emit-c clean / string-lit (no SECRET FP)
+
+| # | Call | rc | sec | Other ERR | VERDICT |
+|---|------|----|-----|-----------|---------|
+| 10 | `env_get(envc, public)` unused SECRET | 0 | 0 | — | **PASS** product OK |
+| 11 | `env_get(envc, "tok")` `// SECRET: tok` | 0 | 0 | — | **PASS** no-FP |
+| 12 | `env_set(envc, "KEY", "public")` | 1 | 0 | `c_emit unknown free call … env_set` | **PASS** no-FP; lower residual |
+| 13 | `env_set(envc, "KEY", "tok")` | 1 | 0 | same `env_set` | **PASS** no-FP; lower residual |
+| 14 | `setenv(envc, "KEY", "public")` | 1 | 0 | `… setenv` | **PASS** no-FP; ≡ env_set |
+| 15 | `setenv(envc, "KEY", "tok")` | 1 | 0 | `… setenv` | **PASS** no-FP; ≡ env_set |
+| 16 | `unsetenv(envc, public)` | 1 | 0 | `… unsetenv` | **PASS** no-FP; ≡ env_set |
+| 17 | `unsetenv(envc, "tok")` | 1 | 0 | `… unsetenv` | **PASS** no-FP; ≡ env_set |
+| 18 | repo `secret_setenv_pass.oo` | 1 | 0 | `… setenv` | **PASS** no-FP (product smoke `expect_ok` would **not** accept rc=0) |
+| 19 | repo `secret_env_get_pass.oo` | 0 | 0 | — | **PASS** product OK |
+
+### C. `oodac check` dual-path
+
+| # | Name | SECRET fail | Clean / lit | VERDICT |
+|---|------|-------------|-------------|---------|
+| 20 | `env_get` | `ERR\tsecret` rc=1 | `OK` rc=0 | **PASS** dual-path |
+| 21 | `env_set` | `undefined variable 'env_set'` | same type | **FAIL residual** type-first |
+| 22 | `setenv` | `undefined variable 'setenv'` | same type | **FAIL residual** ≡ env_set |
+| 23 | `unsetenv` | `undefined variable 'unsetenv'` | same type | **FAIL residual** ≡ env_set |
+
+`check_drive.oo`: `typecheck_undefined_vars` (L64) **before**
+`check_secret_println_sinks` (L106). Source + ELF still list the sids;
+the CLI never reports `ERR\tsecret` for untyped names.
+
+### D. emit-llvm (same `check_secret_println_sinks` pre-pass)
+
+| # | Case | rc | sec | VERDICT |
+|---|------|----|-----|---------|
+| 24 | env_get / env_set / setenv / unsetenv SECRET IDENT | 1 | 1 | **PASS** four-way |
+| 25 | env_set lit / setenv pass / unsetenv lit / env_get pass | 0 | 0 | **PASS** no-FP (llvm does **not** hit C `unknown free call`) |
+
+### E. Official 6.1 smoke (not peer-owned)
+
+```
+cd ooda && OODAC_BIN=./oodac/oodac bash scripts/s61_env_set_secretsink_smoke.sh
+```
+
+| Rail | Result |
+|------|--------|
+| `env_set` SECRET IDENT refuse | **OK** |
+| `setenv` SECRET IDENT refuse | **OK** |
+| `env_set` string-lit no `ERR secret` (unknown-call residual allowed) | **OK** |
+| `unsetenv` | **not in rails** (peer 2 live-proved; same as setenv) |
+| exit | **0** `s61_env_set_secretsink_smoke: ALL OK` |
+
+### F. Adjacent (not 6.1 SECRET, named so nobody greens them)
+
+| # | Probe | Actual | VERDICT |
+|---|--------|--------|---------|
+| 26 | `is_sealed_env` | `env_get` + `env_set` + `getenv` + `verify_human`. **No** `setenv` / `unsetenv` | cap-seal **not** write-side parity |
+| 27 | `is_known_name` | **only** `env_get` | explains check type-first |
+| 28 | `c_emit_lower` / runtime | only `env_get` → `oo_env_get`. **No** `oo_env_set` / `oo_setenv` / `oo_unsetenv` | CAPS residual |
+| 29 | `getenv(envc, token)` `// SECRET: token` | emit-c rc=1 `unknown free call … getenv` — **no** `ERR\tsecret` | getenv is **EnvCap-sealed**, **not** SECRETSINK |
+| 30 | `let f = <sink>; f(secret)` | emit-c **SIGABRT** (malloc unaligned) for env_get **and** write-side | alias abort residual (not 6.1-specific) |
+| 31 | in-tree fixtures | `secret_env_get_*` + `secret_setenv_*` only; **no** `secret_env_set_*` / `secret_unsetenv_*` | rails residual |
+| 32 | `diag_json` E_SECRET help | lists `env_get`; omits `env_set` / `setenv` / `unsetenv` | hygiene residual |
+
+========================================================================
+SOURCE PARITY (write-side names)
+========================================================================
+
+| Site | env_get | env_set | setenv | unsetenv |
+|------|---------|---------|--------|----------|
+| `c_secret_is_sink_name` (`c_emit_secret_alias.oo:16`) | yes | yes | yes | yes |
+| `c_secret_emit_guard` a1 family (L117) | yes | yes | no | no |
+| `c_secret_emit_guard` a1+a2 6.1 family (L157) | no | yes | yes | yes |
+| `c_secret_emit_guard` full `args` scan (L214–218) | yes | yes | yes | yes |
+| `check_secret_println_sinks` (`c_emit_secret.oo:204` / `:239`) | argi=1 eq_only | argi≥1 | argi≥1 | argi≥1 |
+| `is_sealed_env` | yes | yes | **no** | **no** |
+| `is_known_name` / product lower | yes | **no** | **no** | **no** |
+
+`env_set` is listed in **both** guard families (a1-only **and** a1+a2).
+Harmless overlap. `setenv`/`unsetenv` rely on the 6.1 branch + full args
+scan — live refuse of key **and** value IDENTs proves that is enough.
+
+Host ELF (`nm`): `c_secret_is_sink_name` `T` @ `0x45c1c0`,
+`c_secret_emit_guard` `T` @ `0x461080`, `check_secret_println_sinks`
+`T` @ `0x475c50`. Refuse format is assembled
+(` sink refuses SECRET ` in rodata), not a per-sink static string.
+
+========================================================================
+METHOD
+========================================================================
+
+1. Read SPRINT 6.1, `SECRET_TAINT.oot`, `CAPS_MATRIX.oot`,
+   `c_emit_secret_guard.oo` / `c_emit_secret.oo` / `c_emit_secret_alias.oo`,
+   `check_cap_util.oo` `is_sealed_env`, `tc_names.oo`, `c_emit_lower.oo`,
+   `check_drive.oo` order, `scripts/s61_env_set_secretsink_smoke.sh`,
+   `audit/s61_harness.oot`, `audit/s61_runtime.oot`.
+2. Independent tmp matrix (not repo fixtures except the two existing
+   `secret_setenv_*` / `secret_env_get_*` controls).
+3. `emit-c` + `check` + `emit-llvm` on the four names × key/value/lit/pass.
+4. Official smoke exit 0 (re-ran).
+5. Negative: `getenv` SECRET (not a sink). Alias abort noted, not owned.
+
+========================================================================
+RESIDUAL (named; do not REJECT 6.1 SECRET parity on these)
+========================================================================
+
+| ID | Kind | Note |
+|----|------|------|
+| R-lower | fail-closed | write-side names unlowered; clean `emit-c` → `unknown free call` |
+| R-check | dual-path | `check` type-undefined before secret walk; env_get only dual-path |
+| R-seal | cap | `setenv`/`unsetenv` missing from `is_sealed_env` (env_set present) |
+| R-getenv | honesty | `getenv` EnvCap-sealed, **not** SECRETSINK — SECRET IDENT not refused |
+| R-smoke | rails | official 6.1 smoke omits `unsetenv` (peer 2 proved) |
+| R-fixture | rails | no in-tree `secret_env_set_*` / `secret_unsetenv_*` |
+| R-alias | abort | `let f = env_*; f(secret)` SIGABRT (env_get too) |
+| R-help | hygiene | `diag_json` E_SECRET omits write-side names |
+| R-ifc | design | full IFC / `#[Secret]` / `${}` — SECRET_TAINT residual |
+
+========================================================================
+OVERALL
+========================================================================
+
+**ACCEPT** SPRINT 6.1 setenv/unsetenv SECRET parity.
+
+- Write-side trio is **one SECRETSINK family** on the live host.
+- `env_get` is the **product** env op (lower + check dual-path) and
+  matches them **only** on emit SECRET refuse / no-FP.
+- Do not close CAPS lower, `is_sealed_env` write-side names, or
+  `getenv`-as-sink on this ticket.
+
+end of s61_peer2.oot

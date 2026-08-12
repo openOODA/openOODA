@@ -1,0 +1,83 @@
+# f27_peel_skip.oot — Domain Expert A / F27 peel #2
+# Date: 2026-08-12
+# Role: Domain Expert A of 12-agent crush phalanx
+# OWN: oodac/c_emit_skip.oo + new oodac/c_emit_skip_grant.oo
+#      one import in main.oo (required so grant fns still load)
+# No push. No SPRINT.oot / PM.oot / check_cap_util / check_collect / check_scan.
+
+========================================================================
+VERDICT
+========================================================================
+
+Peel is **in source**. Both owned files ≤256. **Not FIXED.**
+No dual-repro of grant emit. No host rebuild.
+
+========================================================================
+WHAT MOVED
+========================================================================
+
+From `oodac/c_emit_skip.oo` → `oodac/c_emit_skip_grant.oo`:
+
+| fn | vis | why |
+|----|-----|-----|
+| `c_emit_main_typed_cap_grants` | pub (caller `c_emit_fn.oo:152`) | playbook target |
+| `c_main_grant_ambient` | pub (only used inside grant emit) | helper only that fn uses |
+
+Stayed in `c_emit_skip.oo`: `c_ty_at`, `c_peek_list_elem`,
+`c_emit_skip_type`, `c_emit_skip_braces`, `c_emit_skip_contracts`,
+`c_emit_skip_verify`, `c_is_struct_lit_lbrace`, `c_peek_type_name`,
+`c_cap_grant_suffix`.
+
+Wire: **one** new line in `oodac/main.oo`:
+`import "c_emit_skip_grant.oo";` immediately after `c_emit_skip.oo`.
+Import was **not** left in skip: `check` concat of grant+skip hung
+(timeout 20s, rc 124). Each file alone finishes.
+
+Comment-only trim in skip (no fn logic change) so leftover after
+the peel landed on the 256 cap.
+
+========================================================================
+LINE COUNTS
+========================================================================
+
+| file | before | after | cap |
+|------|-------:|------:|-----|
+| `oodac/c_emit_skip.oo` | 329 | **256** | 256 |
+| `oodac/c_emit_skip_grant.oo` | (absent) | **63** | 256 |
+| `oodac/main.oo` | 307 | 308 | still over (not this peel) |
+
+========================================================================
+ON-DISK PROVE (2026-08-12)
+========================================================================
+
+```
+wc -l oodac/c_emit_skip.oo oodac/c_emit_skip_grant.oo
+# 256 oodac/c_emit_skip.oo
+#  63 oodac/c_emit_skip_grant.oo
+
+grep -n 'fn c_emit_main_typed_cap_grants\|fn c_main_grant_ambient' oodac/*.oo
+# only c_emit_skip_grant.oo:7  pub fn c_main_grant_ambient
+# only c_emit_skip_grant.oo:21 pub fn c_emit_main_typed_cap_grants
+# caller: c_emit_fn.oo:152 c_emit_main_typed_cap_grants(mcap);
+
+timeout 20 ./oodac/oodac check oodac/c_emit_skip.oo
+# finished rc 1  ERR type undefined variable 'field_at' (helper module)
+# hang would have been FAIL
+
+timeout 20 ./oodac/oodac check oodac/c_emit_skip_grant.oo
+# finished rc 0  OK
+```
+
+========================================================================
+NOT PROVED (no FIXED)
+========================================================================
+
+- Host compiler **not** rebuilt. Product `emit-c` of main(&Cap)
+  rebind **not** dual-repro'd (before/after C dump).
+- `check` on skip is **not** a behavior test (`field_at` is a
+  compiler builtin; isolated module type-fails).
+- Combined grant+skip `check` hang (rc 124) **not** root-caused;
+  avoided by wiring import through `main.oo` instead of skip.
+- `main.oo` still >256 (308). Other F27 files not this OWN.
+- Did not touch `check_cap_util.oo`, `check_collect.oo`,
+  `check_scan.oo`, `SPRINT.oot`, `PM.oot`.

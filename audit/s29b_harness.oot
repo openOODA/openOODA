@@ -1,0 +1,55 @@
+# s29b_harness.oot — 2.9 wave-2 grouped-arg println SECRET harness pointer
+# Date: 2026-08-12
+# Scope: SPRINT 2.9 wave-2 smoke rails only (no Domain Expert product land)
+
+## Harness
+
+| Item | Path |
+|------|------|
+| Smoke | `ooda/scripts/s29_println_guard_smoke.sh` |
+| Binary | `OODAC_BIN` or `ooda/oodac/oodac` |
+| Fixtures | ephemeral under `$TMPDIR/s29_println_guard_$$` (not repo root) |
+| Product | `ooda/oodac/c_emit_secret.oo` (`check_secret_println_sinks` paren depth) + `c_emit_print.oo` (`c_emit_println`) — do not rewrite |
+| Wave-1 pointer | `audit/s29_harness.oot` (bare IDENT + string no-FP + eprintln) |
+
+## Rails (wave-2 keeps wave-1)
+
+| Kind | Case |
+|------|------|
+| FAIL-closed | `// SECRET: tok` then `println(tok)` (bare IDENT) |
+| PASS no-FP | `println("tok")` string literal when `tok` is SECRET name (no `ERR secret`) |
+| FAIL-closed | `// SECRET: tok` then `eprintln(tok)` **if product** names `eprintln` |
+| FAIL-closed (wave-2) | `// SECRET: tok` then `println((1), tok)` — grouped first arg, SECRET later IDENT. Dual-path `check` + `emit-c` must `ERR secret` |
+
+Exit 0 only if all rails hold. Wave-2 rail fails closed: missing `ERR	secret` on either path is FAIL.
+
+## Run
+
+```
+cd /home/jeryd/Projects/openOODA/ooda
+OODAC_BIN=./oodac/oodac bash scripts/s29_println_guard_smoke.sh
+```
+
+Prefer a cwd without a stale `.ooda-cache` (check-cache can false-OK).
+
+## Live prove (this host, 2026-08-12)
+
+Clean cwd, `OODAC_BIN=ooda/oodac/oodac` (ELF **07:49**; WT `c_emit_secret.oo` **12:28** has paren `depth`).
+
+| Rail | emit-c | check |
+|------|--------|-------|
+| `println(tok)` | `ERR	secret` | `ERR	secret` |
+| `println("tok")` | no `ERR secret` | no `ERR secret` |
+| `eprintln(tok)` | `ERR	secret` | `ERR	secret` |
+| `println((1), tok)` | `ERR	secret` (`oo_print_int((1LL));` then refuse; `tok` not printed) | **FN** `OK` rc=0 |
+
+Smoke **exit 1** is the fail-closed signal. Wave-2 check is **not** green on this ELF. WT walker has `depth` (`c_emit_secret.oo` L179) but the shipping host was not rebuilt. Do not treat exit 1 as a harness bug.
+
+## Residual (documented, not a fail)
+
+- **Full IFC / `#[Secret]` / interp `${}`:** path-A ident scan only; not DESIGN taint.
+- **2.9 unify:** stmt `println` may still refuse via token IDENT + `check_secret_println_sinks` rather than `c_secret_emit_guard`. This harness proves refuse/no-FP including the grouped first-arg shape, not the helper.
+- **Other grouping shapes:** concat after group, nested `f(g(), tok)`, method `RPAREN` then `+` are not this rail. Named wave-2 shape only.
+- **LLVM / wasm:** not dual-path in this smoke.
+
+end of s29b_harness.oot

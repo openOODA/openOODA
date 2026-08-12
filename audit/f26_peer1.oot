@@ -1,0 +1,91 @@
+# f26_peer1.oot — Peer Verifier 1 (Command/QA)
+# Date: 2026-08-12T20:26Z
+# Role: Zero-trust review of F26 cheap scan + F27 peels
+# Tree: /home/jeryd/Projects/openOODA
+# OWN: this audit + one stamp comment on check_scan.oo
+# No SPRINT edit. No push. No feature work.
+
+========================================================================
+VERDICT
+========================================================================
+
+| Zone | Artifact | Lines | tokenize_lines in scan? | Dup defs? | Missing pub? | Peer |
+|------|----------|------:|-------------------------|-----------|--------------|------|
+| F26 cheap scan | `oodac/check_scan.oo` (new) | 150 | **no** (comment only) | no | no | **ACCEPT** |
+| F26 wiring | `oodac/check_collect.oo` | 151 | **none** | no | `scan_fn_names` moved | **ACCEPT** |
+| F26 caller | `oodac/check_mod.oo` | 91 | unused `run_check_module_body` only | — | calls `scan_fn_names` | **ACCEPT** |
+| F27 peel | `check_cap_util.oo` + `check_cap_grant.oo` | 218 / 148 | n/a | **empty ∩** | **0 of 29 HEAD pubs** | **ACCEPT** |
+| F27 peel | `c_emit_skip.oo` + `c_emit_skip_grant.oo` | 256 / 63 | n/a | **empty ∩** | **0 of 11 HEAD pubs** | **ACCEPT** |
+
+No WAIT. Both landing zones present after poll (~10:18 scan, ~10:22–10:24 skip).
+
+F27 **umbrella still open** (not these two units): `main.oo` 308, `lex.oo` 277, `c_emit_let_ext.oo` 263, `c_emit_secret_prop.oo` 262. (`load_import.oo` 287→135 mid-poll; not assigned here.)
+
+========================================================================
+SESSION
+========================================================================
+
+| Field | Value |
+|-------|-------|
+| parent / ooda / openOODA | eaa555d / 52cc4b5 / 81f56fc |
+| Product host | `ooda/oodac/oodac` **not rebuilt** this review |
+| Hygiene | this file ≤256; stamp +1 on `check_scan.oo` only |
+| Push | **none** |
+
+========================================================================
+15-LINE SUMMARY
+========================================================================
+
+1. F26: `scan_fn_names` no longer lives in `check_collect.oo`; git diff deleted the `tokenize_lines` body.
+2. New `check_scan.oo` is a char-walk (`char_at` loop). `grep tokenize_lines` on that file + `check_collect.oo` = Darwin comment + this peer stamp only.
+3. Comments skipped via `//` → `scan_skip_line_comment` to newline. Matches `lex_comment.oo` (line comments only; no `/* */`).
+4. Strings skipped via `"` → `scan_skip_string` with `\` skip-2. Matches `token_scan_string.oo` (double-quote only).
+5. `fn` is word-bounded (`scan_is_ident_char` prev/next). Then space/tab, then ident. `"fn foo"` / `// fn foo` cannot seed extra_binds.
+6. `check_collect.oo` `import "check_scan.oo"`; `parse_import_line` + DFS collect pulls it from `main.oo` → collect. `check_mod` still calls `scan_fn_names` (now cheap).
+7. Residual, not reject: `check_mod` `run_check_module_body` still tokenizes (dead; no callers). Newline after `fn` misses the name (fail-closed). Host ELF is still the old tokenizer path until rebuild.
+8. F27 `check_cap_util.oo` 357→218. Bags/deny/grant/`is_soft_*` moved to new `check_cap_grant.oo` (148). `import "check_cap_grant.oo"` kept on util.
+9. HEAD 29 `pub fn` all exist once in the util+grant union. `check_caps.oo` still calls `cap_bag_*` / `cap_*_granted_ok` / `cap_deny`. Comment-only edit there.
+10. F27 `c_emit_skip.oo` 329→256. `c_main_grant_ambient` + `c_emit_main_typed_cap_grants` moved to `c_emit_skip_grant.oo` (63). Not a copy; ∩ of defs empty.
+11. HEAD 11 `pub fn` all exist once. Callers (`c_emit_fn.oo` grants; skip helpers elsewhere) still resolve. `main.oo` gained `import "c_emit_skip_grant.oo"` (308; F27 residual on main).
+12. Skip nested import was dropped to hit 256; flatten-from-main is enough. Did **not** stamp `c_emit_skip.oo` (would be 257).
+13. These peels do **not** close F27 CRIT. Four other oodac files still >256 (load_import peeled mid-poll).
+14. No p7 smoke this turn (source review). Docs must not drop F26 until rebuilt host + `p7_check_main_smoke.sh` exit 0.
+15. Next: rebuild host; run p7; peel main/lex/let_ext/secret_prop.
+
+========================================================================
+F26 GREP (scan path)
+========================================================================
+
+```
+check_scan.oo:    tokenize_lines  → lines 3,6 comments only
+check_collect.oo: tokenize_lines  → zero hits
+scan_fn_names:    one def (check_scan.oo:47)
+names_to_depth0_binds: one def (check_scan.oo:129)
+```
+
+`check_mod.oo:14` `tokenize_lines(body)` is **not** the name-scan path.
+
+========================================================================
+F27 PEEL INTEGRITY
+========================================================================
+
+`check_cap_util` move list (deleted from util, live in grant):
+`cap_bag_put` `cap_bag_has` `cap_deny` `is_soft_net_kind`
+`cap_net_legacy_ok` `cap_net_granted_ok` `cap_net_argflow_ok`
+`is_soft_fs_kind` `cap_fs_granted_ok` `cap_fs_argflow_ok`
+`is_soft_sys_kind` `cap_sys_granted_ok` `cap_sys_argflow_ok`
+
+`c_emit_skip` move list (deleted from skip, live in grant):
+`c_main_grant_ambient` `c_emit_main_typed_cap_grants`
+
+No duplicate `fn` names across each pair.
+
+========================================================================
+NOT DONE
+========================================================================
+
+- Host not rebuilt; F26 smoke still the prior FAIL until new ELF.
+- F27 still 4 files over 256 (`main`/`lex`/`let_ext`/`secret_prop`).
+- `cli_build.oo` now calls `ooda_auto_split.py` (other agent; not reviewed).
+
+end of f26_peer1.oot

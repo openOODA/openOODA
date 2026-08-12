@@ -1,0 +1,121 @@
+# f39_md5_sha1.oot — F39 HIGH MD5/SHA-1 honesty
+# Date: 2026-08-12T20:20:20Z
+# Role: Security Auditor (crush phalanx)
+# Tree: /home/jeryd/Projects/openOODA
+# Tips: root eaa555d / openOODA 81f56fc / ooda 52cc4b5
+# OWN: restate ooda/std/hash/{md5,sha1}.oo comments.
+#      Optional one-line in bootstrap/STDLIB_CRYPTO_MATH.oot.
+#      Write this ledger. Do not remove functions. No push.
+#      Do not edit SPRINT.oot. Do not change sha256.oo.
+
+========================================================================
+PLAIN ENGLISH (RULES 1.10)
+========================================================================
+
+**What changed**
+MD5 and SHA-1 headers used to say "real" digest and "residual: none."
+Those lines are gone. The files now say non-crypto checksum /
+legacy digest, not a security function. Residual: collisions exist;
+do not use for integrity or passwords.
+
+**Why it matters**
+MD5 (RFC 1321) and SHA-1 (RFC 3174) have known collisions.
+Calling them "real" next to `requires`/`ensures` and SECRET IFC
+looks like a security function. RULES §1.4 + §1.12 + IFC refuse that.
+
+**What is not done**
+Functions still call CHS `crypto_*_internal`. Verify blocks still
+check hex length only (32 / 40). That is not a correctness proof.
+Do not use these for integrity, passwords, or IFC seals.
+
+========================================================================
+VERDICT
+========================================================================
+
+**RESTATED.** F39 closed by comment honesty, not by deleting APIs.
+
+| Item | After this turn |
+|------|-----------------|
+| `md5.oo` "real MD5" / "residual: none" | **GONE** |
+| `sha1.oo` "real SHA-1" / "residual: none" | **GONE** |
+| Phrase `crypto security` in those two files | **ABSENT** (never present; still absent) |
+| Functions removed | **no** — kept as non-crypto checksums |
+| Verify length checks | **kept** |
+| `sha256.oo` | **untouched** (fail-closed stub; no overclaim) |
+| STDLIB checksum note | **one line added** (F39) |
+| SPRINT.oot | **not edited** (Docs own) |
+| Push | **none** |
+
+**Do not claim:** crypto hash, integrity MAC, password hash, IFC seal,
+constant-time, collision resistance, production crypto.
+
+========================================================================
+RULES + IFC
+========================================================================
+
+- **§1.4** Do not claim secure without proof. Collisions are public.
+- **§1.12** Internet rules: cite the RFC. MD5 = RFC 1321. SHA-1 = RFC 3174.
+  Those RFCs define the digest. They do **not** make it a security primitive
+  after collision breaks.
+- **IFC / SECRET:** a broken digest is not an integrity label. Do not
+  hash SECRET with MD5/SHA-1 and treat the hex as a seal.
+
+========================================================================
+OWNED FILES (disk, this turn)
+========================================================================
+
+| File | Lines | Cap 256 | Body |
+|------|------:|:-------:|------|
+| `ooda/std/hash/md5.oo` | 14 | yes | `return crypto_md5_internal(data)` |
+| `ooda/std/hash/sha1.oo` | 14 | yes | `return crypto_sha1_internal(data)` |
+| `ooda/std/hash/sha256.oo` | 14 | yes | `"UNIMPLEMENTED_RESIDUAL"` — not edited |
+| `openOODA/bootstrap/STDLIB_CRYPTO_MATH.oot` | 157 | yes | +1 F39 checksum line |
+
+Headers now:
+
+```
+// md5.oo
+// job: MD5 hex non-crypto checksum (RFC 1321 legacy digest, not a security function)
+// residual: collisions exist; do not use for integrity or passwords
+
+// sha1.oo
+// job: SHA-1 hex non-crypto checksum (RFC 3174 legacy digest, not a security function)
+// residual: collisions exist; do not use for integrity or passwords
+```
+
+Verify kept:
+
+```
+verify md5  { assert_eq!(md5("").len(), 32); }
+verify sha1 { assert_eq!(sha1("").len(), 40); }
+```
+
+========================================================================
+PROOF (must stay green)
+========================================================================
+
+```
+# 2026-08-12T20:20:20Z
+grep -e 'residual: none' -e 'crypto security' ooda/std/hash/md5.oo
+# exit 1  (no matches)
+grep -e 'residual: none' -e 'crypto security' ooda/std/hash/sha1.oo
+# exit 1  (no matches)
+grep -E 'real MD5|real SHA-1|path A honesty: real' \
+  ooda/std/hash/md5.oo ooda/std/hash/sha1.oo
+# exit 1  (no matches)
+wc -l ooda/std/hash/md5.oo ooda/std/hash/sha1.oo
+# 14 14  (≤256)
+```
+
+Both functions remain. Both verify blocks remain.
+
+========================================================================
+RESIDUAL (named, not closed)
+========================================================================
+
+1. CHS still implements the RFC digest. Implementation ≠ security.
+2. Verify is length-only (F41 class). Wrong 32/40-char hex would pass.
+3. `core/crypto.oo` still says "real SHA-256/HMAC" — other OWN (F38/F40).
+4. Docs remove F39 from SPRINT HIGH when they accept this ledger.
+
+**Round:** F39 comment restatement. Collision residual remains honest.

@@ -1,0 +1,251 @@
+# s72_runtime.oot — Machine Code / Runtime Auditor (SPRINT 7.2)
+# Date: 2026-08-12T18:50Z
+# Role: Machine Code / Runtime — emit-time .oo vs C host for `c_sys_exec_last_arg`
+# Tree: /home/jeryd/Projects/openOODA/ooda (+ openOODA/audit)
+# Tip (ooda): 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
+# Host: ooda/oodac/oodac  962960 B  mtime 2026-08-12 07:49
+#   md5 a44ee35eb344837009697e2c9d4e4662
+#   BuildID a93cfd09506ba87497379f66b6c7047dee02573d
+# OWN: prove product ELF defines `c_sys_exec_last_arg`; uses `oo_str_slice`
+#      not `oo_str_concat`; leftover stack `char[N]` in this walk; chs_rt
+#      `oo_sys_exec` not primary unless emit ABI break.
+#      Comment-only honesty. No large refactors. No push.
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Claim | Expected | Actual | VERDICT |
+|-------|----------|--------|---------|
+| Product oodac defines `c_sys_exec_last_arg` | `T` text symbol, not `U` | `nm -S`: `T` @ `0x452e10` **968** B (`0x3c8`); `readelf` FUNC GLOBAL | **PASS** |
+| `c_secret_emit_guard` calls it | one well-typed call | objdump: **1** `call c_sys_exec_last_arg` (sys_exec last-arg refuse) | **PASS** |
+| Extract uses slice, not concat | `oo_str_slice`, **0** `oo_str_concat` | product disasm: `oo_str_slice`×1, `oo_str_concat`×**0**; live emit: `OoStr out = oo_str_slice(args, last_start, n)` | **PASS** |
+| No leftover `char[N]` / stack last-arg buffer | slice, not fixed C buffer | .oo: one `str_slice`; emit: no `char[]`/`sprintf`/`strncpy`; frame `sub $0x68,%rsp` (104 B spills) | **PASS** |
+| No implicit-function-declaration | proto or prior def before use | Live `emit-c` prints `OoStr c_sys_exec_last_arg(OoStr args);` **before** the body; product proto pass | **PASS** |
+| chs_rt is not the home of this symbol | emit-time .oo only | **zero** hits in `ooda/runtime/*`; floor only supplies `oo_char_at` / `oo_str_slice` / `oo_chars_len` | **PASS** (not primary) |
+| `oo_sys_exec` emit ABI unchanged | `OoResS oo_sys_exec(long long,int,OoStr*)` | preamble + `chs_rt.h` match; lower still compound compound-literal argv — **no ABI break** | **PASS** (do not re-home last-arg into chs_rt) |
+| Current host can **re-emit** this helper | complete body | `oodac emit-c oodac/c_emit_args.oo` **exit 0**; body uses slice, 0 concat | **PASS** |
+| Per-char heap while scanning | not the 7.2 last-arg leak | walk still `oo_char_at` per visit (product: 3 calls); stored `c` released; space-skip inline `oo_char_at` unreclaimed | **PASS residual** |
+
+**OVERALL: PASS** — CRIT 7.2 on the **shipping C host** is a well-defined, non-`char[N]` last-arg extract (`str_slice` once, **zero** `oo_str_concat`). Seed `bootstrap/seed/oodac` still concats (`oo_str_concat`×1) — do **not** treat seed as 7.2 proof. chs_rt `oo_sys_exec` is the product fork+execvp floor, not a second last-arg scanner; emit ABI is intact.
+
+Do **not** greenwash seed or `c_args_strip_cr` (`out = out + c` still concat). Those are **not** this symbol.
+
+========================================================================
+METHOD
+========================================================================
+
+1. Static: `ooda/oodac/c_emit_args.oo`, `c_emit_secret_guard.oo` (call site),
+   `c_emit_lower.oo` (`sys_exec` → `oo_sys_exec`), `c_emit_preamble.oo`,
+   `c_emit_ty.oo` / `c_emit_let_ext.oo` (OoStr allowlist), `runtime/chs_rt_sys.c`,
+   `runtime/chs_rt_str.c` (`oo_str_slice`), `runtime/chs_rt.h`.
+2. Product host `ooda/oodac/oodac`: `nm -S`, `readelf -s`, `objdump -d` of
+   `c_sys_exec_last_arg` + `c_secret_emit_guard` + `c_args_drop_first`.
+3. Contrast: seed `ooda/bootstrap/seed/oodac` same symbol (still concat).
+4. Live `oodac emit-c oodac/c_emit_args.oo` (exit 0; proto + body).
+5. Implicit-decl contrast: C11 `-Werror=implicit-function-declaration`.
+6. Comment-only honesty in `c_emit_args.oo` (product ELF / chs_rt not home).
+   No product logic change.
+
+`chs_rt` inspected only as the floor behind `oo_str_slice` / `oo_char_at` and
+to confirm `oo_sys_exec` ABI was **not** broken by the last-arg close.
+
+========================================================================
+1. Well-defined symbol (no implicit decl / missing symbol)
+========================================================================
+
+### Product host — PASS
+
+| Probe | Result |
+|-------|--------|
+| `strings` | `c_sys_exec_last_arg` present |
+| `nm -S --defined-only` | `0000000000452e10 00000000000003c8 T c_sys_exec_last_arg` |
+| `readelf -s` | FUNC GLOBAL DEFAULT, size **968** |
+| Undefined in host? | **no** `U c_sys_exec_last_arg` |
+| `c_secret_emit_guard` (4738 B @ `0x461080`) | **1** direct `call c_sys_exec_last_arg` @ `0x46179b` |
+
+968 bytes is a full string-/depth-aware walker + one slice, not a stub.
+
+Sole product call site (`.oo` + ELF): `c_secret_emit_guard` sys_exec branch —
+`let last: String = c_sys_exec_last_arg(args)` then cap-ident refuse.
+
+### Emit-time declaration order — PASS
+
+`.oo` order: `c_sys_exec_last_arg` defined in `c_emit_args.oo`; callee in
+`c_emit_secret_guard.oo`. Product `cli_emit.oo` default `emit-c` is
+`protos` then `bodies`. Live emit of the args module printed, before any `{`:
+
+```
+OoStr c_sys_exec_last_arg(OoStr args);
+```
+
+then later `OoStr c_sys_exec_last_arg(OoStr args) { ... }`.
+
+`c_emit_ty.oo` / `c_emit_let_ext.oo` list `c_sys_exec_last_arg` as **OoStr** —
+this is why **this** helper re-emits on the current host (7.1 walker did not:
+untyped `let is_start` → `unknown free call oo_str_eq`).
+
+### Implicit-decl contrast — PASS (mechanism)
+
+| TU | `gcc -std=c11 -Werror=implicit-function-declaration` |
+|----|------------------------------------------------------|
+| proto present, take address of `c_sys_exec_last_arg` | **PROBE_COMPILE_OK** |
+| take address with **no** proto | **error** (`undeclared`) |
+
+Product TU shape is the first row (protos pass).
+
+========================================================================
+2. `oo_str_slice` not concat; no leftover `char[N]`
+========================================================================
+
+### Source (.oo) — PASS
+
+`c_sys_exec_last_arg` (`ooda/oodac/c_emit_args.oo` L71–131 after honesty comment):
+
+- Scanner: string-/escape-/depth-aware top-level commas; records `last_start`.
+- Extract: `let out = str_slice(args, last_start, n);`
+- **No** `out = out + char_at`.
+- **No** `char buf[N]` (language has no stack `char[]` in `.oo`).
+
+SPRINT “stack buffer” wording = do not cap the last arg in a fixed C array
+**and** do not rebuild it char-by-char. Alpha close = **one slice for the span**
+(`t1_memory.oot` M-SG3).
+
+### Product machine code — PASS
+
+`objdump` of `c_sys_exec_last_arg` (968 B):
+
+| Callee | Count | Role |
+|--------|------:|------|
+| `oo_str_lit` | 9 | `"\\"` / `"\""` / `"("` / `")"` / `","` / `" "` / empty / empty-args snippet |
+| `oo_str_eq` | 8 | same classification |
+| `oo_str_release` | 5 | stored `OoStr` temps |
+| `oo_str_retain` | 2 | return `args` / `out` |
+| `oo_char_at` | 3 | walk + space skip |
+| `oo_chars_len` | 1 | `n` |
+| `oo_str_slice` | **1** | **the last-arg span** |
+| `oo_str_concat` | **0** | — |
+
+- **Zero** `sprintf` / `strncpy` / `strcpy` / `strcat` / `memcpy` / `malloc`.
+- Entry: `sub $0x68, %rsp` — 104-byte spill frame for `OoStr` pair + callee-saves,
+  **not** a `char last[N]`.
+- `char` text in the dump is only `oo_char_at` / `oo_chars_len` names.
+
+Live `emit-c` body (exit 0) matches:
+
+```
+OoStr out = oo_str_slice(args, last_start, n);
+```
+
+No `oo_str_concat` / `char[` inside that function. (Module-level concat at
+`c_args_strip_cr` `out = out + c` is **other OWN**, not 7.2.)
+
+Adjacent `c_args_drop_first`: also `oo_str_slice`×1, **0** concat (bonus; not SPRINT 7.2).
+
+### Seed ELF contrast — honesty (not the product host)
+
+`ooda/bootstrap/seed/oodac` (`878392` B, 2026-08-11):
+
+| Probe | Result |
+|-------|--------|
+| `nm -S` | `000000000044df30 00000000000003b1 T c_sys_exec_last_arg` |
+| `oo_str_concat` in that fn | **1** |
+| `oo_str_slice` in that fn | **0** |
+
+Seed is the **old** per-char / concat last-arg. Product host at
+`ooda/oodac/oodac` is the **fixed** ELF. 7.2 proof is the latter.
+
+### Floor (chs_rt, not primary) — note only
+
+`runtime/chs_rt_str.c`:
+
+- `oo_char_at` — heap 1-char (or UTF-8 1–4 byte) `OoStr` via `oo_str_alloc_payload`.
+- `oo_str_slice` — heap copy of the `[start,end)` UTF-8 span (O(|span|)), fail-soft empty on OOB.
+
+These are the **runtime** implementations the emitted walk calls. There is
+**no** `c_sys_exec_last_arg` in `chs_rt*.c` / `chs_rt.h`.
+
+### Unreclaimed temps (residual, not 7.2 CRIT)
+
+Space-skip uses **inline** `char_at(args, j)` inside `oo_str_eq(...)` (emit L265).
+Stored loop `c` is `oo_str_release`d. Inline results are not. O(n) 1-char leak
+on whitespace after commas — not a stack overflow and not last-arg concat.
+
+========================================================================
+3. Re-emit (current host vs this .oo)
+========================================================================
+
+Live (this pass):
+
+```
+ooda/oodac/oodac emit-c ooda/oodac/c_emit_args.oo
+```
+
+- **exit 0**, ~436 lines / 15450 B (full module).
+- Preamble + protos + complete `c_sys_exec_last_arg` body with `oo_str_slice`.
+
+Honesty: **this host can re-emit its own last-arg helper.** Contrast 7.1
+(`c_guard_scan_idents` dies on untyped `let is_start`). Do not assume every
+7.x sibling re-emits.
+
+========================================================================
+4. chs_rt `sys_exec` not primary (no emit ABI break)
+========================================================================
+
+| Surface | `c_sys_exec_last_arg` | `oo_sys_exec` |
+|---------|----------------------|---------------|
+| `ooda/runtime/chs_rt*.c` / `.h` | **absent** | **definition** (`chs_rt_sys.c` L224; proto `chs_rt.h` L252) |
+| `ooda/oodac/c_emit_args.oo` | **definition** | not here |
+| `ooda/oodac/c_emit_lower.oo` | not here | emit: `oo_sys_exec(a0, (int)(sizeof((OoStr[]){rest})/sizeof(OoStr)), (OoStr[]){rest})` |
+| `ooda/oodac/c_emit_preamble.oo` | n/a | `OoResS oo_sys_exec(long long,int,OoStr*);` |
+| Product `oodac` ELF | **T** (compiler) | **T** (linked floor, 725 B) |
+
+`oo_sys_exec` is fork + `execvp` + DE1.8 env filter. `oo_sys_exec1` is
+`sh -c` argv wrapper. **Different job, different ABI** (`OoResS`, cap + argc + argv).
+
+Last-arg is **emit-time C-text** extract for SECRET refuse of the last top-level
+arg. It does **not** change how product `sys_exec` is lowered. Because emit ABI
+is unchanged, this auditor does **not** treat `chs_rt_sys.c` as a second
+implementation of 7.2 and does **not** require a runtime-sys_exec re-home.
+
+========================================================================
+5. Comment-only honesty this pass
+========================================================================
+
+File: `ooda/oodac/c_emit_args.oo` (comments only; **240** lines after this pass,
+under soft 256 / pack 300).
+
+- Product ELF: `oo_str_slice`×1, 0 concat, no `char[N]`.
+- chs_rt does not define the symbol; `oo_sys_exec` is other ABI.
+
+No logic / comma-scanner / return-path change.
+
+========================================================================
+RESIDUAL
+========================================================================
+
+| ID | Sev | Residual |
+|----|-----|----------|
+| R-S72-1 | LOW | Classification is still per-char `oo_char_at` (O(n) 1-char heap), not a last-arg concat leak |
+| R-S72-2 | LOW | Inline `oo_char_at` in post-comma space skip unreclaimed |
+| R-S72-3 | INFO | Seed `bootstrap/seed/oodac` last-arg still `oo_str_concat`×1 — stale vs product host |
+| R-S72-4 | MED (other OWN) | `c_args_strip_cr` still `out = out + c` (CR-in-argv strip; **not** 7.2) |
+| 7.1 | sibling | `c_guard_scan_idents` re-emit residual remains (`s71_runtime.oot`) |
+| 7.10 | HIGH | `c_parse_secret_env` `name = name + c` — other OWN |
+
+========================================================================
+VERDICT
+========================================================================
+
+| Bucket | Result |
+|--------|--------|
+| Well-defined `c_sys_exec_last_arg` on product oodac (no missing symbol) | **PASS** |
+| Uses `oo_str_slice`, not `oo_str_concat` | **PASS** |
+| No leftover `char[N]` in C emit / host walk | **PASS** |
+| chs_rt `sys_exec` not primary; emit ABI intact | **PASS** |
+| Re-emit of current `.oo` last-arg | **PASS** |
+| CRIT 7.2 path-A (defined + slice, not stack buffer / per-char last-arg leak) | **PASS** |
+
+**OVERALL: PASS**
+
+end of s72_runtime.oot

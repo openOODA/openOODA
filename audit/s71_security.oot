@@ -1,0 +1,295 @@
+# s71_security.oot — Security Auditor (QA) — SPRINT 7.1
+# Date: 2026-08-12
+# Role: Security Auditor — zero-trust `c_guard_scan_idents`
+# Host: product `ooda/oodac/oodac` (962960 B, md5 a44ee35eb344837009697e2c9d4e4662,
+#       mtime 2026-08-12 07:49 local; `strings` shows `c_guard_scan_idents`)
+# Surfaces: `ooda/oodac/c_emit_secret_guard.oo`, `c_emit_print.oo`,
+#            `c_emit_ident.oo`, `c_emit_lower.oo`, `c_emit_secret.oo`,
+#            `c_emit_ops_str.oo` (`c_escape_str_text`), `llvm_emit.oo` /
+#            `llvm_emit_expr.oo` / `llvm_emit_call.oo`
+# Method: source walk + live emit-c / check / emit-llvm attack matrix
+#         (ephemeral `/tmp/tmp.NqFdt1YR5S`; no product source edit)
+# Policy: fail-closed SECRET→sink via ident scan; do **not** reopen T1/T2 as 7.1
+
+---
+
+## Claim under pressure
+
+SPRINT **7.1** (CRIT): `c_guard_scan_idents` is the emit-time C-arg IDENT
+walker. Zero-trust gates for **this** close (not T1 return taint, not T2
+field/nested completeness):
+
+| # | Gate | Expectation |
+|---|------|-------------|
+| Z1 | Fail-closed SECRET to sealed sinks via ident scan | Bare SECRET IDENT in `args` → `ERR\tsecret` + rc≠0 |
+| Z2 | No fail-open if scan skipped on some **println shapes** | Stmt `println` / multi-arg / lit+ident / expr `eprintln` still refuse |
+| Z3 | Escape / string skip must **not hide** unquoted SECRET IDENT | `in_str` + `\\` skip must leave the next bare ident visible |
+| Z4 | Do not reopen T1 / T2 as 7.1 | Return/alias/field/`${}` residuals stay named; not this FAIL |
+
+Adversarial stance: treat string/escape skip as a **desync weapon** until
+proved that an unquoted SECRET after a well-formed C string still refuses.
+Treat any println shape that never refuses as **FN**.
+
+---
+
+## Surfaces reviewed
+
+| Surface | Path | Role |
+|---------|------|------|
+| Ident walker | `ooda/oodac/c_emit_secret_guard.oo` L18–112 | `c_guard_scan_idents` |
+| Guard dispatch | same file L114–199 | `c_secret_emit_guard` sealed-sink whitelist |
+| Stmt println | `ooda/oodac/c_emit_print.oo` L9–85 | token IDENT walk — **does not** call the walker |
+| Stmt dispatch | `ooda/oodac/c_emit_ident.oo` L129–131 | `println` → `c_emit_println` only |
+| Expr/free-call | `ooda/oodac/c_emit_lower.oo` L90 | `c_secret_emit_guard` (eprintln / other sinks) |
+| Method | `ooda/oodac/c_emit_call.oo` L82 | same guard |
+| Check / emit dual | `c_emit_secret.oo` `check_secret_println_sinks` | token IDENT; wired from `c_emit.oo` + `llvm_emit.oo` + `check_drive.oo` |
+| C string emit | `c_emit_ops_str.oo` `c_escape_str_text` | well-formed `"..."` + `\\` / `\"` |
+| LLVM println | `llvm_emit_expr.oo` / `llvm_emit_call.oo` | builtin `println`/`print`/`eprintln`; **no** `c_guard_scan_idents` |
+
+---
+
+## SUMMARY
+
+| # | Gate | Verdict |
+|---|------|---------|
+| Z1 | Fail-closed SECRET IDENT at sealed sinks | **PASS** |
+| Z2 | Scan skipped on stmt `println` is **not** fail-open | **PASS** (equivalent token refuse + check dual) |
+| Z3 | Escape/string skip hides unquoted SECRET | **PASS** (0 hide on live matrix) |
+| Z4 | T1/T2 not reopened | **PASS** (residuals named only) |
+| — | **7.1 security path-A** | **PASS** |
+
+**FAIL: 0** CRIT fail-open of 7.1 ident-scan contract.
+
+Do **not** claim full IFC / every log sink / LLVM `print` alias as sealed.
+Residuals below.
+
+---
+
+## How the walker can fail-open (threat model)
+
+`c_guard_scan_idents` is a **C-text** lexer, not a token stream:
+
+1. `"..."` + `\\` skip — if a closer `"` is eaten as escaped, later bare
+   idents stay `in_str` and are **never** sliced.
+2. `//` to newline / `/* */` — if `//` or unterminated `/*` appear
+   **outside** strings in lowered `args`, the rest of the arg list is
+   skipped (including SECRET).
+3. `if args != ""` + sink whitelist — a sealed **shape** that never
+   reaches this call (stmt `println`) must still refuse by another rail.
+4. Print/log family has **no** a0/a1/a2 slot refuse — emit refuse for
+   `eprintln` / `print_err` / `log` / `fprintf` / `syslog` is
+   **scanner-only** (`s71_domain_b.oot`).
+
+Z3 is therefore the 7.1-specific FN class. Z2 is the skip-shape class.
+
+---
+
+## Attack results (product host)
+
+Verdict key:
+
+- **BLOCK** = emit-c **and** check `ERR\tsecret` + rc≠0
+- **ALLOW** = both rc=0, no `ERR\tsecret` (correct for pass / FP cases)
+- **FN** = allowed when unquoted SECRET reached a sealed sink
+- **FP** = refused when secret spelling was only in a string/comment
+- **HIDE** = escape/string skip consumed a following unquoted SECRET
+
+Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`  
+Probes: `/tmp/tmp.NqFdt1YR5S/s71_*.oo` (ephemeral).
+
+### Z1 — fail-closed IDENT
+
+| # | Shape | emit-c | check | emit-llvm | Verdict |
+|---|-------|--------|-------|-----------|---------|
+| 1 | stmt `println(api_key)` | rc=1 SECRET | rc=1 SECRET | rc=1 SECRET | **BLOCK** |
+| 2 | stmt `println(n, api_key)` | rc=1 SECRET | rc=1 SECRET | rc=1 SECRET | **BLOCK** |
+| 3 | `eprintln(api_key)` (guard-scan path) | rc=1 SECRET | rc=1 SECRET | rc=1 SECRET | **BLOCK** |
+| 12 | `eprintln("k=" + api_key)` | rc=1 SECRET | rc=1 SECRET | rc=1 SECRET | **BLOCK** |
+| 17 | `write_file(fs, path, api_key)` | rc=1 SECRET | rc=1 SECRET | — | **BLOCK** |
+| 24 | `eprintln(wrap(api_key))` nested | rc=1 SECRET | rc=1 SECRET | rc=1 SECRET | **BLOCK** |
+| F | `fixtures/secret_sink_fail` | rc=1 SECRET x | rc=1 | rc=1 | **BLOCK** |
+| F | `fixtures/secret_eprintln_fail` | rc=1 SECRET tok | rc=1 | rc=1 | **BLOCK** |
+| F | `fixtures/secret_multi_arg_println_fail` | rc=1 SECRET s | rc=1 | rc=1 | **BLOCK** |
+
+**FN count on assigned IDENT sinks: 0.**
+
+### Z2 — println shapes that skip `c_guard_scan_idents`
+
+Stmt `println` is **not** routed through `c_secret_emit_guard`:
+
+```
+c_emit_ident_stmt: id == "println" → c_emit_println
+c_emit_println: per-arg token IDENT + c_secret_refuse_println_ident
+                (no c_guard_scan_idents)
+```
+
+`eprintln` / `print_err` / `log` / `fprintf` / `syslog` **do** hit the
+walker (free-call lower).
+
+| # | Shape | Uses walker? | Live refuse? |
+|---|-------|--------------|--------------|
+| stmt `println(SECRET)` | **no** | **yes** — token walk + `check_secret_println_sinks` |
+| stmt `println(n, SECRET)` | **no** | **yes** |
+| stmt `println("esc", SECRET)` | **no** | **yes** (S71-10) |
+| `eprintln(SECRET)` | **yes** | **yes** |
+| empty `println()` | n/a (no ident) | emit-c rc=0 (no leak); check type `expects at least 1 argument` |
+
+**Not fail-open:** skip of the C-text walker is covered by the token
+IDENT rail (emit stmt + check/LLVM front-door). SPRINT **2.9**
+(“println walker → full `c_secret_emit_guard`”) stays **MED residual**
+(unify rails), not a 7.1 FN.
+
+### Z3 — escape / string skip must not hide unquoted SECRET
+
+These go through **`eprintln`** so the **walker** sees lowered C
+`oo_str_lit("…"), api_key`.
+
+| # | Source shape (after SECRET tag) | emit-c | check | llvm | HIDE? |
+|---|----------------------------------|--------|-------|------|-------|
+| 5 | `eprintln("foo\\", api_key)` | BLOCK | BLOCK | BLOCK | **no** |
+| 6 | `eprintln("foo\"bar", api_key)` | BLOCK | BLOCK | BLOCK | **no** |
+| 7 | `eprintln("\\", api_key)` | BLOCK | BLOCK | BLOCK | **no** |
+| 8 | `eprintln("/* api_key */", api_key)` | BLOCK | BLOCK | — | **no** |
+| 9 | `eprintln("//", api_key)` | BLOCK | BLOCK | — | **no** |
+| 16 | `eprintln("foo\\\"x", api_key)` | BLOCK | BLOCK | — | **no** |
+| 18 | `eprintln("\"", api_key)` | BLOCK | BLOCK | BLOCK | **no** |
+| 4 | `println("api_key")` string-only | ALLOW | ALLOW | ALLOW | n/a (**no FP**) |
+| 11 | `eprintln("api_key")` string-only | ALLOW | ALLOW | — | n/a (**no FP**) |
+
+Why hide is hard on product emit: `c_escape_str_text` always emits
+well-formed C (`\\`, `\"`, `\\n`, `\\t`, 2-char controls). The walker’s
+`\` + next-char skip then matches C string rules:
+
+- even run of `\\` before `"` → `"` is closer → following ident is scanned
+- odd run (`\"`) → quote is content → next `"` closes
+
+**HIDE count: 0** on live well-formed emit text.
+
+### Controls (path A still live — not a T1/T2 reopen)
+
+| Fixture | emit-c | check | Role |
+|---------|--------|-------|------|
+| `secret_t2_real_arg_fail` | BLOCK | BLOCK | T2 real arg (already closed) |
+| `secret_t2_string_lit_arg_fp` | ALLOW | ALLOW | T2 string FP (already closed) |
+
+T1/T2 smokes were green on this host (`s71_integration.oot` /
+`s71_peer1.oot`). This audit does **not** re-litigate return taint,
+field lattice, or alias depth.
+
+---
+
+## Dual-path honesty (not 7.1 FAIL)
+
+| Probe | emit-c | check | llvm | Note |
+|-------|--------|-------|------|------|
+| `print_err(api_key)` | SECRET refuse | **type** undefined | — | emit-strong / check-type-weak |
+| `log` / `fprintf` / `syslog` | SECRET refuse | **type** undefined | llvm rc=0, **no** secret | same class as T2 `ffi_call` |
+| `print(api_key)` | rc=0, **no** secret | type undefined | llvm rc=0, **no** secret | LLVM treats `print` as println **builtin**; check sink list is only `println`/`eprintln` |
+
+`print` is **not** a typed product API (check: undefined). C emit does
+not lower it to `oo_print_*`. **LLVM `emit-llvm` will print it** without
+`ERR\tsecret` because:
+
+- `check_secret_println_sinks` does not treat `print` as a sink
+- LLVM never calls `c_guard_scan_idents`
+
+This is a **named residual** (LLVM println-shape alias), not a fail of
+the C-text walker. Check remains fail-closed on type. Do **not** promote
+to “product `print` sink In.”
+
+`${api_key}` inside a string (S71-22) **ALLOW** — correct for 7.1 (the
+name is string text). Deep interp taint is SECRET_TAINT **5.8 / `${}`**
+residual. **Not** a 7.1 FN.
+
+---
+
+## Root-cause (why Z1–Z3 hold)
+
+1. **Refuse path is dual, fail-closed on IDENT**
+   - Check/LLVM front-door: token IDENT walk (`println`/`eprintln`) +
+     `c_secret_scan_call` for other sealed sinks.
+   - Emit free-call: `c_secret_emit_guard` → `c_guard_scan_idents` →
+     `c_secret_refuse_sink_resolved` (`__sec__=="1"` only).
+   - Stmt `println`: token IDENT + `__sec__` (weaker alias resolve than
+     the walker; still refuses a bare SECRET name).
+
+2. **String skip is IDENT-only**
+   - Token path never sees STRING as IDENT.
+   - Walker `in_str` skips interiors; `c_escape_str_text` keeps C strings
+     balanced so skip cannot eat the next arg’s ident.
+
+3. **Comment skip is C-arg defense, not source lex**
+   - Product source comments are `//` (lexer drops them).
+   - `/* */` in **source** is live tokens (peer1 P05/P09) — emit fail-closed
+     on the IDENT, not a string-FP.
+   - Walker `/* */` / `//` apply only to **lowered C `args`**, which
+     product emit does not fill with comments.
+
+---
+
+## Scorecard
+
+| Metric | Count |
+|--------|------:|
+| Z1 IDENT refuse probes | **BLOCK** (0 FN) |
+| Z2 stmt-println skip fail-open | **0** |
+| Z3 escape/string HIDE | **0** |
+| String-only FP | **0** |
+| CRIT 7.1 fail-open | **0** |
+| T1/T2 reopened | **no** |
+
+**7.1 security path-A: PASS**
+
+---
+
+## Residual risks (return)
+
+| ID | Sev | Residual | Why not 7.1 FAIL |
+|----|-----|----------|------------------|
+| R1 | MED | Stmt `println` does not call `c_guard_scan_idents` (SPRINT **2.9**) | Token refuse + check dual still BLOCK; unify later |
+| R2 | MED | LLVM builtin `print` is a println **shape** that skips check sink list **and** the walker; `emit-llvm` ALLOW | `print` not a typed product API; check type-fails; C emit is not `oo_print_*` |
+| R3 | LOW | `print_err` / `log` / `fprintf` / `syslog` emit-secret / check-type-only (llvm no secret) | Same dual-path honesty as T2-4d; compile gate still rc≠0 on check |
+| R4 | LOW | Unterminated `/*` or `//` in **malformed** C `args` would hide later idents | Product emit does not put comments in `args`; well-formed strings keep `/*`/`//` inside `"..."` |
+| R5 | — | `${}` interp deep taint | SECRET_TAINT 5.8 — **not** 7.1 (string skip is correct) |
+| R6 | — | 7.10 `c_parse_secret_env` `name = name + c` | Other OWN (memory/hygiene), not a sink FN |
+| R7 | — | 7.2 `c_sys_exec_last_arg` | Sibling CRIT; not this close |
+| R8 | — | Full IFC / `#[Secret]` / interproc beyond `__fr_secret__` | Named in SECRET_TAINT; do not greenwash |
+| R9 | LOW | Check-result cache (`.ooda-cache/check`) can false-OK a refuse fixture (peer1) | Process residual; emit-c is the honest refuse rail |
+
+**Explicitly not residuals of this close:** T1 return/alias/if-taint
+(already FIXED); T2 field/args/comment-FP (already FIXED).
+
+---
+
+## Reproduce
+
+```bash
+OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
+# stmt println (token rail) + eprintln (walker rail)
+$OODAC emit-c /tmp/tmp.NqFdt1YR5S/s71_1_println_bare.oo    # ERR secret api_key
+$OODAC emit-c /tmp/tmp.NqFdt1YR5S/s71_3_eprintln_bare.oo   # ERR secret api_key
+# escape then unquoted SECRET (walker)
+$OODAC emit-c /tmp/tmp.NqFdt1YR5S/s71_6_eprint_quote.oo    # ERR secret api_key
+$OODAC emit-c /tmp/tmp.NqFdt1YR5S/s71_5_eprint_bs.oo       # ERR secret api_key
+# no FP
+$OODAC emit-c /tmp/tmp.NqFdt1YR5S/s71_4_println_str_fp.oo  # rc=0
+# floor
+$OODAC emit-c ooda/fixtures/secret_sink_fail.oo
+$OODAC emit-c ooda/fixtures/secret_eprintln_fail.oo
+bash ooda/scripts/s71_guard_scan_smoke.sh                  # exit 0
+```
+
+---
+
+## Close table
+
+| Item | Status |
+|------|--------|
+| Z1 fail-closed SECRET via ident scan | **PASS** |
+| Z2 no fail-open on skipped println shapes | **PASS** |
+| Z3 escape/string skip does not hide unquoted IDENT | **PASS** |
+| Z4 T1/T2 not reopened | **PASS** |
+| **7.1 security** | **PASS** |
+| Residuals R1–R9 | **OPEN** (named; not this FAIL) |
+
+end of s71_security.oot

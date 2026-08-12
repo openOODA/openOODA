@@ -1,0 +1,220 @@
+# s28_domain_b.oot — Domain Expert B / SPRINT 2.8 Macro-body SECRET
+# Residual: MED 2.8 — orthogonal: can `macro` / `#[]` / token-paste expand
+#           user code and hide SECRET from the sink scan?
+# Date: 2026-08-12T19:17:20Z
+# Role: Domain Expert B of 12-agent 2.8 phalanx (orthogonal to Domain A refuse)
+# Tree: /home/jeryd/Projects/openOODA
+# Tip (ooda): 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
+# Host: ooda/oodac/oodac (product, 962960 B, md5 a44ee35eb344837009697e2c9d4e4662)
+# OWN: prove whether any product `macro` / `#[]` / token-paste expands user
+#      code that can hide SECRET from `check_secret_println_sinks`. If none,
+#      document **N/A** with prove. Do not rewrite 7.x. No moonshots;
+#      no auto-push; no stub second pass (ideas I7 theater).
+#
+# ID collision: DESIGN/PM **1.4** = first-class AST macros (moonshot refuse).
+# This file is SPRINT backlog **2.8** = macro-body SECRET (or residual doc).
+
+========================================================================
+VERDICT
+========================================================================
+
+**N/A** (no product macros). No source change this turn. 7.x not rewritten.
+
+Nothing in Path A **expands** user code before the SECRET sink scan.
+Therefore a macro-body second pass has **no surface** and cannot be an
+FN-hide. Live product host:
+
+- **No expand walker:** `macro_expand` / `ast_macro` appear in `oodac/*.oo`
+  **only** in `check_residual.oo` L28–29 (name-eq refuse). Zero
+  `expand_macro` / `token_paste` / `concat_idents` / `HASHHASH` helpers.
+- **`#[]`:** lexer has **no** `#` token (`token_scan_punct.oo` returns
+  empty → `Unexpected character '#'`) — `#[Secret]`, `#define`, `#include`
+  all **lex-fail** on check / tokens / emit-c / emit-llvm.
+- **Token-paste `##`:** same `#` lex-fail. `$tok` lex-fails on `$`.
+- **`macro` is IDENT**, not `KW_*` (`keyword_kind`). `macro leak(x) {…}`
+  → `ERR\tparse\tunexpected IDENT`. Not a form.
+- **EBNF / GBNF / tree-sitter:** no `macro` / `#[]` / attribute / paste.
+- **String `"${tok}"`:** one `STRING` token; emit `oo_str_lit("${tok}")`
+  — **not** interp (5.8 residual, not 2.8 expand).
+- **Control:** `// SECRET: tok` + `println(tok)` still dual-path
+  `ERR\tsecret` (check + emit-c + emit-llvm).
+- **7.x:** not rewritten.
+
+Domain A (when landed) owns refuse-until-later + `s28_macro_secret_smoke`.
+This file owns **expansion-hide**: `#[]` / `##` / invented paste.
+
+========================================================================
+SCOPE (orthogonal to Domain A)
+========================================================================
+
+| In | Out |
+|----|-----|
+| Does any product expand rewrite toks before sink scan? | Adding / moving residual names (A / I1) |
+| `#[]` attr grammar as a hide | Implementing AST macros (I8 moonshot) |
+| Token-paste `##` / `$` / C `#define` in `.oo` | Stub second pass on same toks (I7) |
+| Invented `macro` / `println!` / `quote` / `comptime` | 7.1 / 7.2 / 7.10 walker rewrite |
+| Isolated tmp probes (not committed fixtures) | 2.10 `__sec_sink__` wrappers (not macros) |
+| | 5.8 `${}` product interp; SPRINT flip; remotes |
+
+========================================================================
+WHY EXPAND WOULD MATTER (attack class)
+========================================================================
+
+`check_secret_println_sinks` walks **source** `toks` after `tokenize_lines`
+(`c_emit.oo:86`, `check_drive.oo:62`, `llvm_emit.oo:79`). If a macro
+rewrote `HIDE!(tok)` → `println(tok)` **after** that walk, the sink IDENT
+would be invisible. Path A has **no** such rewrite, so the attack class
+is **vacuous**.
+
+========================================================================
+STATIC (tip source; B did not edit)
+========================================================================
+
+| Site | Fact |
+|------|------|
+| `token_scan_punct.oo` | No `ch == "#"`. Last arm is `^` CARET then `list_new()` |
+| `token_next.oo:26–33` | Unknown punct → `Unexpected character '…'` |
+| `token_emit.oo:10–29` | `keyword_kind`: no `"macro"` / `"comptime"` / `"quote"` |
+| `token_scan_string.oo` | `"`…`"` only; no `${}` splice |
+| `ooda.ebnf` / `ooda.gbnf` / `grammar.js` | No macro / `#[]` / paste |
+| `check_residual.oo:28–29` | `macro_expand` / `ast_macro` → `"AST_MACROS"` |
+| `check_residual.oo:72–92` | Refuse is **IDENT+LPAREN** only (ideas I6 leftover) |
+| `check_drive.oo:62,109` | SECRET walk **then** residual (check-only residual) |
+| `c_emit.oo:14–16` | `#[HITL]` **rejected**: lexer has no `#` token |
+| `c_emit.oo:86` | SECRET first-pass; **no** residual walk; **no** expand |
+| `c_emit_meta.oo:4–7` | Path-A decoys shuffle fn **order** only — no sink inject |
+| `load_import.oo` | File-text **concat**, not AST rewrite |
+| `c_emit_preamble.oo` | Compiler-owned C `#define` **after** OO SECRET scan |
+| `c_emit_secret.oo:175–192` | println walk: optional LPAREN then IDENTs to RPAREN |
+| `SECRET_TAINT.oot` | `#[Secret]` residual; **does not** name 2.8 expand |
+| `DESIGN.oot` / PM **1.4** | AST macros residual / names refused |
+
+`oodac/*.oo` grep `macro_expand|ast_macro` → **only** `check_residual.oo`.
+Helpers `expand_macro` / `token_paste` / `concat_idents` / `HASHHASH` →
+**NONE**.
+
+7.1 walker / 7.2 last-arg / 7.10 parse-env **untouched by B**.
+(Dirty-tree hunks on those files are 7.x / 2.10 / 6.1 — other OWN.)
+
+========================================================================
+LIVE MATRIX — dual-path (tmp `$TMPDIR/s28_b_probes`)
+========================================================================
+
+Dir not committed. Host `oodac` check / tokens / emit-c / emit-llvm.
+
+### Product residual names (no expand)
+
+| Probe | check | emit-c | emit-llvm | Expand? |
+|-------|-------|--------|-----------|---------|
+| product `residual_macro_fail` | **REFUSE** `ERR residual` AST_MACROS | **REFUSE** `unknown free call` `macro_expand` | **rc=0** `call i64 @macro_expand` | **no** |
+| TMPDIR `ast_macro("m")` | **REFUSE** AST_MACROS | **REFUSE** unknown `ast_macro` | (same class) | **no** |
+| `// SECRET: tok` + `macro_expand(tok)` | residual **only** (not `ERR secret`) | unknown `macro_expand` | `call @macro_expand` | **no** |
+| `ast_macro(tok);` stmt | residual | **rc=0** emits `ast_macro(tok);` | `call @ast_macro` | **no** (raw C call) |
+| tokens of `macro_expand` | IDENT `macro_expand` + STRING `"m"` | — | — | body stays a string |
+
+emit-llvm / stmt-form emit-c fail-open on residual **names** is ideas **I5**
+(not a SECRET FN). Still **no rewrite**.
+
+### `#[]` / C-preproc / token-paste (this OWN)
+
+| Probe | check / tokens | emit-c / llvm | Result |
+|-------|----------------|---------------|--------|
+| `#[Secret]` + `println(tok)` | `ERR lex` `#` at 1:1 | same lex after preamble | **no attr** |
+| `// SECRET: tok` then `#[Secret]` | lex `#` at 2:1 **before** SECRET walk | same | **cannot hide** (dies first) |
+| `let x = 1 #[Secret];` | lex `#` mid-line | — | **no attr** |
+| `#define HIDE(x) println(x)` | lex `#` at 1:1 | — | **no cpp** |
+| `#include "foo.h"` | lex `#` at 1:1 | — | **no include-expand** |
+| `println(tok ## x)` | lex `#` at paste site | — | **no `##`** |
+| `let ab = a ## b` | lex `#` | — | **no paste** |
+| `println($tok)` | lex `$` | — | **no `$` paste** |
+
+### Invented “macro” forms (not product)
+
+| Probe | tokens | check | SECRET + same form |
+|-------|--------|-------|--------------------|
+| `macro leak(x) { println(x); }` | IDENT `macro` (not KW) | `ERR parse unexpected IDENT` | parse-fail; **no expand** |
+| `println!(tok)` | IDENT `println` BANG LPAREN | OK (bang = unary `!`) | **REFUSE** `ERR secret` (println walk skips BANG) |
+| `comptime { println(tok); }` | IDENT + block | OK as stmt+block | **REFUSE** `ERR secret` (println still in toks) |
+| `quote { println(tok); }` | IDENT + block | OK | **REFUSE** `ERR secret` |
+| `"${tok}"` to println | STRING `${tok}` | OK (no FP) | emit `oo_str_lit("${tok}")` — **not** IDENT `tok` |
+
+`println!(tok)` emit-c lowers `oo_print_int((!(tok)))` — unary NOT, **not**
+a Rust bang-macro. Sink scan still sees `println` + IDENT `tok`.
+
+### Control (first-pass still live)
+
+| Probe | check | emit-c | llvm |
+|-------|-------|--------|------|
+| `// SECRET: tok` `println(tok)` | **BLOCK** `println sink refuses SECRET tok` | **BLOCK** same | **BLOCK** same |
+
+========================================================================
+RAILS
+========================================================================
+
+| Smoke | Result |
+|-------|--------|
+| `scripts/s28_macro_secret_smoke.sh` | present (A / harness I2); B did **not** rewrite |
+| product `fixtures/residual_macro_fail.oo` | check AST_MACROS (B live) |
+| `scripts/residual_path_a_floor_smoke.sh` | names `residual_macro_fail` → AST_MACROS |
+| Isolated `#[]` / `##` / `$` | B tmp only — lex unexpected |
+
+Harness N/A rail (“SECRET-in-expanded-body not claimed”) matches this
+verdict: **there is no expanded body**.
+
+========================================================================
+FILES TOUCHED
+========================================================================
+
+| File | Change |
+|------|--------|
+| `ooda/oodac/c_emit_secret.oo` (7.10 / 2.10) | **none** |
+| `ooda/oodac/c_emit_secret_guard.oo` (7.1) | **none** |
+| `ooda/oodac/c_emit_args.oo` (7.2) | **none** |
+| `ooda/oodac/check_residual.oo` | **none** |
+| `ooda/oodac/token_scan_punct.oo` | **none** |
+| `openOODA/audit/s28_domain_b.oot` | this evidence |
+
+**Not touched:** 7.1 / 7.2 / 7.10, sink list, residual names, SPRINT,
+remotes (no push).
+
+========================================================================
+RESIDUAL (honest; do not close as a second pass)
+========================================================================
+
+1. **N/A ≠ “SECRET cannot be hidden.”** User **fn wrappers**
+   (`fn leak(x) { println(x); } leak(tok)`) still miss the scan — that
+   is **2.10** `__sec_sink__`, **not** a macro. Import concat of the
+   same pattern is the same hole. B does not close 2.10.
+
+2. **emit-c / llvm residual dual-path** (I5): check refuses
+   IDENT+LPAREN; emit-c let-bind → unknown-call; **stmt**
+   `ast_macro(tok);` emit-c **rc=0** raw C call; llvm `@macro_expand`
+   rc=0. **No expand.** Not a 2.8 SECRET FN.
+
+3. **IDENT without `(`** (`let f = macro_expand`) is I6 leftover.
+   Still no expand.
+
+4. **`${}` / `#[Secret]` / full IFC** — `SECRET_TAINT.oot`. `${}` today
+   is a **string**, not an expand.
+
+5. **Reopen gate (ideas I8):** the patch that **removes**
+   `macro_expand` / `ast_macro` from `residual_feature_of` **must** add
+   a SECRET walk on **expanded** toks/AST. Until then, refuse stays.
+   Adding `#` to the lexer for `#[Secret]` is the same class: walk
+   attrs only after they exist.
+
+========================================================================
+STATUS FOR SPRINT/PM
+========================================================================
+
+| Item | Status |
+|------|--------|
+| Product macro expand that hides SECRET | **N/A** — no expander |
+| `#[]` attr expand / hide | **N/A** — `#` not a token (lex-fail) |
+| Token-paste `##` / `$` hide | **N/A** — lex-fail |
+| Invented `macro` keyword | **N/A** — IDENT + parse refuse |
+| First-pass `println(SECRET)` | **PASS** (control; dual-path + llvm) |
+| 7.1 / 7.2 / 7.10 rewrite | **not done** (not required) |
+| 2.8 Domain B contract | **N/A-with-prove** — do not claim a second pass |
+
+end of s28_domain_b.oot

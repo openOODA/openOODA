@@ -1,0 +1,171 @@
+# crush_peer1.oot
+# Peer Verifier 1 — Domain honesty (F14 / F31 / F32 / F33)
+# Date: 2026-08-12T20:12Z
+# Role: Independent Verifier. Red-team Domain after DE edit.
+# Tree: /home/jeryd/Projects/openOODA
+# OWN: this audit only. No product edit. No push.
+# Assigned: F14 files still absent? F31 missing still listed as gated?
+#           F32/F33 still claim shipped after DE edit?
+
+========================================================================
+VERDICT
+========================================================================
+
+## **REJECT** Domain honesty path-A close
+
+| CRIT | Question | Live after DE | Peer |
+|------|----------|---------------|------|
+| **F14** | files still absent? | **YES** — five net paths + `fn` names still missing | **ACCEPT honesty** |
+| **F31** | missing files still listed as gated? | **NO** — pack now marks 5 **PHANTOM**; 3 exist with `process_exit=0` | **ACCEPT restatement** |
+| **F32/F33** | still claim shipped? | **YES** in `RFC-003` (RFC-002 restated) | **REJECT** |
+
+RFC-002 is honest. RFC-003 still says `Process.Args` and `FS.Walk`
+run on the product path. DE A touched RFC-003 for F14 and **left**
+those shipped lines. Closing F32/F33 in SPRINT is Pride (SINS #3).
+
+========================================================================
+SESSION
+========================================================================
+
+| Field | Value |
+|-------|-------|
+| ROOT | `/home/jeryd/Projects/openOODA` |
+| HAS_DESIGN | yes (`openOODA/DESIGN.oot`) |
+| Product host | `ooda/oodac/oodac` 963080 B @ 2026-08-12 10:04 -1000 |
+| Host md5 | `35505fc520e997a9421089f11bdffd92` |
+| Hygiene | this file ≤256; no product `.oo` |
+| Smokes | none wired to missing modules; absence is the proof |
+| Dual-repro | two independent shells (20:09Z, 20:11Z) |
+| Push | **none** |
+
+DE artifacts read (not trusted): `f14_phantom_net_close.oot`,
+`f14_domain_a.oot`, `f31_domain_b.oot`, `f32_rfc002_honesty.oot`,
+restated `RFC-002`, `STDLIB_CRYPTO_MATH.oot`.
+
+========================================================================
+F14 — ACCEPT honesty (files still absent)
+========================================================================
+
+Severity: CRIT (doc false-success if files are claimed landed)
+Assumption destroyed: batch_2 "migrated" `http_server` / `dns_server`
+/ `mqtt` / `websocket` / `quic` under `std/src/net/`.
+Surface: `ooda/std/**/net/**`, `std/src/net/**`, RFC-003 residual, PM §3.1
+
+Repro (both runs, exit 0):
+```
+for f in http_server dns_server mqtt websocket quic; do
+  find ooda/std std/src/net -type f -name "${f}.oo"
+done
+# empty both runs
+test ! -e openOODA/audit/std_caps_batch_2.oot && echo ABSENT
+# ABSENT both runs
+grep -rln --include='*.oo' -E 'fn (http_server|dns_server|mqtt|websocket|quic)\b' \
+  ooda/std std/src
+# ZERO_FN both runs
+```
+
+Live residual only: `ooda/std/src/net/dns.oo`, `std/src/net/wireguard.oo`.
+Would smoke catch? no.
+Residual after fix? none on these five names. Do **not** invent them.
+
+DE did the right thing: restated PM + F14 residual in RFC-003; wrote
+`f14_phantom_net_close.oot`. SPRINT no longer lists F14 as open CRIT.
+
+========================================================================
+F31 — ACCEPT restatement (not listed as gated)
+========================================================================
+
+Severity: CRIT (honesty pack as load-bearing gate)
+Assumption destroyed: 8 listed paths are `process_exit(1)` stubs.
+Surface: `openOODA/bootstrap/STDLIB_CRYPTO_MATH.oot`
+
+Exact paths (both runs):
+
+| Path under `std/src/ooda/sec/crypto/` | Disk | `process_exit` | Pack now |
+|---------------------------------------|------|----------------|----------|
+| `ed25519_ops.oo` | ABSENT | n/a | **PHANTOM** |
+| `dilithium_ops.oo` | ABSENT | n/a | **PHANTOM** |
+| `groth16_ops.oo` | ABSENT | n/a | **PHANTOM** |
+| `double_ratchet_ops.oo` | ABSENT | n/a | **PHANTOM** |
+| `kyber.oo` | ABSENT | n/a | **PHANTOM** |
+| `falcon_ops.oo` | EXISTS 136 L | **0** | helpers |
+| `secp256k1_ops.oo` | EXISTS 227 L | **0** | helpers |
+| `plonk_ops.oo` | EXISTS 173 L | **0** | helpers |
+
+Sibling counts match DE B: ed25519 8, dilithium 4, groth16 4,
+double_ratchet 7, falcon_stubs 6, secp256k1_stubs 11, plonk_stubs 3.
+`std/crypto/kyber.oo` has **3** call sites (comments also say the word).
+
+Original F31 `find ooda` missed `std/`. "All 8 phantom" is false.
+The pack **no longer** lists the missing five as gates.
+
+Would smoke catch? no.
+Residual after fix? SPRINT F31 row still says "all 8 PHANTOM" (stale).
+DESIGN §4.3 still says std crypto is gated `process_exit(1)` as if
+the old 8-file set were load-bearing. Docs Writer, not this peer.
+
+Named (not a close blocker): `dilithium_sign_message` returns a
+`"DILITHIUM_SIG[…]"` string — no exit. Synthetic verify lives.
+
+========================================================================
+F32 / F33 — REJECT (RFC-003 still ships the named-gap)
+========================================================================
+
+Severity: CRIT (wrong success on a named product floor)
+Assumption destroyed: named-gap args/walk exist after DE edit.
+Surface: `RFC-002-StdLib_Completion.oot`, `RFC-003-StdLib_Audit.oot`,
+product `ooda/std/**`
+
+RFC-002 after DE: **NOT SHIPPED.** Honest. Dual-repro agrees:
+```
+grep -rln --include='*.oo' -E 'args_parse|fn process_args|Process\.Args|fn parse_args' ooda/std
+# no matches  (both runs)
+grep -rln --include='*.oo' -E 'fs_walk|FS\.Walk|fn walk\(' ooda/std
+# no matches  (both runs)
+test -f ooda/std/{args,core/args,os/args,os/fs_walk}.oo   # all absent
+```
+`os/process.oo` is spawn/wait/kill/exec. `os/fs.oo` is read/write/
+exists/size. Not a parser. Not a walk.
+
+RFC-003 **after DE A edited it** still says (live lines):
+- L15: "RFC 002 named-gap completions (string / args / walk), those
+  agentic floors are **usable**"
+- L16: regex / formatting / replacements on the product path
+- L17: `Process.Args` parses CLI + env on the product path
+- L18: `FS.Walk` recursive traversal on the product path
+- L3, L24: cite deleted `audit/t5_std_honesty.oot` and
+  `audit/std_triage_2026-08-11.oot` (deleted in `81f56fc`)
+
+Would smoke catch? no.
+Residual after fix? restate RFC-003 L15–L18 + drop dead ledger cites.
+Named-gap stays **open**. Do not mint `args.oo` / `fs_walk.oo` this
+turn to paper over the doc.
+
+DE F32 parked RFC-003 as F19 HIGH. **Wrong severity.** Same phantom
+shipped claim that made F32/F33 CRIT. A second RFC is not a
+downgrade. SPRINT "CRIT closed (honesty)" is false while RFC-003
+ships the modules.
+
+========================================================================
+ANTI-GREENWASH
+========================================================================
+
+| Claim | Truth |
+|-------|-------|
+| F14 five net servers exist | **FALSE** — still absent |
+| F31 five `_ops`/kyber are gates | **FALSE** — pack now says PHANTOM |
+| F31 all 8 phantom | **FALSE** — 3 exist (helpers) |
+| RFC-002 claims Args/Walk shipped | **FALSE now** — restated |
+| RFC-003 claims Args/Walk shipped | **TRUE leftover** — REJECT |
+| F32/F33 closed means modules exist | **FALSE** — restatement only |
+| Deleted T5 ledgers are live | **FALSE** — RFC-003 still cites them |
+
+========================================================================
+DONE WHEN
+========================================================================
+
+ACCEPT Domain honesty only after RFC-003 L15–L18 match RFC-002
+(NOT SHIPPED / named-gap open) and dead ledger cites are gone.
+F14/F31 restatements may stay. No invent. No push.
+
+end of crush_peer1.oot

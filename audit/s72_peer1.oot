@@ -1,0 +1,258 @@
+# s72_peer1.oot
+# Peer Verifier 1 (adversarial QA) — SPRINT 7.2 path-A close
+# Date: 2026-08-12
+# Role: Peer Verifier 1 (QA) — red-team sys_exec last-arg / quoted commas / empty+single / T1–T2
+# Tree: /home/jeryd/Projects/openOODA/ooda
+# OWN: this audit + live probes only (no product feature implementation)
+# Host: ooda/oodac/oodac
+#   size=962960 B  mtime=2026-08-12 07:49:59 -0700
+#   md5=a44ee35eb344837009697e2c9d4e4662
+#   strings: `c_sys_exec_last_arg` present (2 hits)
+# Tip (ooda): 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
+# Source pin: oodac/c_emit_args.oo mtime 2026-08-12 07:12 (older than host) — slice is in the live binary
+
+========================================================================
+VERDICT
+========================================================================
+
+## **ACCEPT path-A close of 7.2**
+
+SPRINT **7.2** (`c_sys_exec_last_arg` stack buffer / no per-char OoStr leak)
+is a real path-A floor on the live product host:
+
+1. Last-arg extractor is **defined** and linked (binary `strings` + sole
+   call site in `c_secret_emit_guard` for `sys_exec`).
+2. Last span is **one `str_slice(args, last_start, n)`**, not
+   `out = out + char_at`. Language has no C stack `char[]`; slice is the
+   honest alpha substitute for “stack buffer.”
+3. Assigned red-team matrix is **green dual-path** (`emit-c` + `check`)
+   from a **clean cwd** (no `.ooda-cache` poison):
+   - `sys_exec(..., secret_last)` **refuse** (`ERR\tsecret`)
+   - last arg inside quotes with commas: **no wrong split / no FP**
+   - empty args / single arg: **no crash, no secret FP**; empty fail-closed
+     on cap/arity (not secret); single SECRET emit-refuses
+4. Regression: `scripts/secret_t1_return_smoke.sh` and
+   `scripts/secret_t2_depth_smoke.sh` both **exit 0**.
+   Harness extra `scripts/s72_sys_exec_last_arg_smoke.sh` **exit 0**.
+
+Do **not** over-claim: 7.10 (`c_parse_secret_env` `name = name + c`) stays
+OPEN. `c_args_strip_cr` still per-char concat (8.6, not last-arg). Check
+path `c_secret_scan_call(..., want=1)` **misses a0 SECRET** on
+`sys_exec(tok)` (capability fail first) — emit last-arg **does** refuse.
+That is a check-path residual, not a 7.2 last-arg FN on the assigned
+`sys_exec(..., secret_last)` shape.
+
+========================================================================
+CLAIM UNDER PRESSURE
+========================================================================
+
+| Slice | Path-A claim | Peer gate |
+|-------|--------------|-----------|
+| 7.2 memory | no per-char OoStr thrash in `c_sys_exec_last_arg` | source: one `str_slice` last span; no `out = out + c` |
+| `sys_exec(..., secret_last)` | fail-closed | `ERR\tsecret` + rc≠0 on emit **and** check |
+| Last arg `"…, tok, …"` (commas + SECRET spelling) | must **not** FP / must **not** split | rc=0, no `ERR\tsecret` |
+| Earlier quoted commas + last SECRET IDENT | must still refuse (wrong-split FN hunt) | dual-path `ERR\tsecret` |
+| Empty args | no crash / no secret FP | cap/arity fail-closed |
+| Single arg (cap / SECRET) | last_start=0 path lives | cap-only no FP; SECRET emit refuse |
+| T1 / T2 smokes | stay green | `secret_t1_return_smoke` + `secret_t2_depth_smoke` exit 0 |
+
+Walker honesty (same class as 7.1):
+- Ticket says “stack buffer.” `.oo` has **no** stack `char buf[N]`.
+- Alpha close = **slice, not quadratic concat**. That land is live on host.
+
+========================================================================
+SOURCE REVIEW (7.2 — no product edit)
+========================================================================
+
+`ooda/oodac/c_emit_args.oo` (240 lines, under monofile ratchet / soft 256):
+
+```
+pub fn c_sys_exec_last_arg(args: String) -> String
+  if n == 0 → return "oo_str_lit(\"\")"
+  linear walk of C arg text
+  skip "..." with \\ escapes (in_str)
+  paren depth — commas at depth>0 do not split
+  top-level ',' → last_start = first non-space after
+  if last_start >= n → return args
+  out = str_slice(args, last_start, n)   // ONE slice
+  if out == "" → return args
+  return out
+```
+
+Static: **no** `last = last +` / `out = out + c` inside this function.
+The only `out = out + c` in the monofile is `c_args_strip_cr` (8.6 CR
+filter) — **not** 7.2.
+
+Call site (`c_emit_secret_guard.oo` L130–140):
+
+```
+if sink == "sys_exec":
+  refuse a1, a2 if present
+  last = c_sys_exec_last_arg(args)
+  if last != "" && c_arg_is_cap_ident(last):
+    c_secret_refuse_sink_resolved(env, sink, last)
+```
+
+`c_arg_is_cap_ident` rejects `"`, `(`, `)`, space, comma — so a quoted
+last span cannot last-arg-refuse. Full `c_guard_scan_idents` also walks
+`sys_exec` args (7.1) and skips strings. Dual coverage: last-arg + ident
+scan. Check dual: `c_secret_scan_call(..., want=1, eq_only=false)` walks
+token IDENTs at argi≥1 (so last IDENT after a cap is in-scope).
+
+Host vs source: `c_emit_args.oo` mtime **07:12** < host **07:49**. Slice
+comment/body predates the product binary. Later comment-only edit
+(runtime note, file now 240) does **not** change extract semantics.
+
+========================================================================
+PROBE TABLE (live product host)
+========================================================================
+
+Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`
+Probes: `/tmp/s72_peer1/probes/*.oo` (ephemeral; **not** landed in product)
+Re-prove cwd: `/tmp/s72_peer1/clean` (no `.ooda-cache`).
+
+Expect: **refuse** = rc≠0 + `ERR\tsecret` on **both** `emit-c` and `check`
+for `sys_exec(..., secret_last)`.
+Expect: **allow** = rc=0 on both and **no** `ERR\tsecret`.
+Empty/single: no SEGV; no secret FP unless last/only IDENT is SECRET.
+
+### Assigned red-team (gate)
+
+| # | Probe | Shape | Expect | emit-c | check | Verdict |
+|---|-------|-------|--------|--------|-------|---------|
+| P01 | `P01.oo` | `// SECRET: tok` + `sys_exec(sys, "sh", "-c", tok)` | refuse | rc=1 `sys_exec sink refuses SECRET tok` | rc=1 same | **PASS** |
+| P01b | `P01b.oo` | last SECRET after 4 prior (`echo,x,y,tok`) | refuse | rc=1 SECRET `tok` | rc=1 same | **PASS** |
+| P02 | `P02.oo` | last `"echo hello, tok, SECRET"` | allow (no FP) | rc=0 none | rc=0 none | **PASS** |
+| P03 | `P03.oo` | last `"a,b,c"` | allow | rc=0 none | rc=0 none | **PASS** |
+| P04 | `P04.oo` | earlier `"echo,with,commas"` + last `tok` | refuse (no wrong split FN) | rc=1 SECRET `tok` | rc=1 same | **PASS** |
+| P05 | `P05.oo` | last `"echo \"x,y,z\""` escaped + commas | allow | rc=0 none | rc=0 none | **PASS** |
+| P06 | `P06.oo` | `sys_exec()` empty | no secret FP; no crash | rc=1 **cap first-arg** (not secret) | rc=1 **ProcessCap** (not secret) | **PASS** |
+| P07 | `P07.oo` | `sys_exec(sys)` single non-secret | no secret FP | rc=0 none | rc=0 none | **PASS** |
+| P08 | `P08.oo` | `sys_exec(tok)` single SECRET | emit refuse | rc=1 SECRET `tok` | rc=1 **cap** (no `ERR secret`) | **PASS emit** / check residual (see below) |
+| R1 | `scripts/secret_t1_return_smoke.sh` | T1 return / alias-rebind / if-taint | exit 0 | — | — | **PASS** (exit 0) |
+| R2 | `scripts/secret_t2_depth_smoke.sh` | T2 field / method / args / sys_exec argv / midline | exit 0 | — | — | **PASS** (exit 0) |
+
+**Gate: assigned refuse + quoted-comma no-FP + empty/single + T1/T2 = PASS.**
+
+P08 check miss is **not** a 7.2 last-arg FN: last-arg is an **emit** helper.
+Check `want=1` skips a0 (same residual named in `s71_domain_b.oot` for
+`sys_exec(token, "echo", "ok")`). Assigned shape is `sys_exec(..., secret_last)`
+— P01/P01b/P04 dual-path refuse.
+
+### Product fixtures (control)
+
+| # | Fixture | Expect | emit-c | check | Verdict |
+|---|---------|--------|--------|-------|---------|
+| F1 | `secret_sys_exec_fail.oo` | refuse last `token` | rc=1 SECRET `token` | rc=1 | **PASS** |
+| F2 | `secret_sys_exec_pass.oo` | allow lit `"true"` | rc=0 | rc=0 | **PASS** |
+| F3 | `secret_sys_exec_argv_fail.oo` | refuse mid `token` (argi≥1 scan) | rc=1 SECRET `token` | rc=1 | **PASS** |
+| F4 | `secret_sys_exec_argv_pass.oo` | allow lits | rc=0 | rc=0 | **PASS** |
+
+### Harness extra (emit-only; independently re-run)
+
+`scripts/s72_sys_exec_last_arg_smoke.sh` **exit 0**:
+- fail-closed: `sys_exec(sys, "sh", "-c", tok)`
+- no-FP: quoted last `"echo hello, tok, SECRET"`
+
+========================================================================
+COMMAND (repro)
+========================================================================
+
+```
+OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
+cd /tmp/s72_peer1/clean
+$OODAC emit-c /tmp/s72_peer1/probes/P01.oo   # rc=1 ERR secret
+$OODAC check   /tmp/s72_peer1/probes/P01.oo
+$OODAC emit-c /tmp/s72_peer1/probes/P02.oo   # rc=0
+$OODAC emit-c /tmp/s72_peer1/probes/P04.oo   # rc=1 ERR secret
+$OODAC emit-c /tmp/s72_peer1/probes/P06.oo   # rc=1 cap, no secret
+$OODAC emit-c /tmp/s72_peer1/probes/P07.oo   # rc=0
+cd /home/jeryd/Projects/openOODA/ooda
+OODAC_BIN=./oodac/oodac bash scripts/secret_t1_return_smoke.sh          # exit 0
+OODAC_BIN=./oodac/oodac bash scripts/secret_t2_depth_smoke.sh           # exit 0
+OODAC_BIN=./oodac/oodac bash scripts/s72_sys_exec_last_arg_smoke.sh     # exit 0
+```
+
+========================================================================
+FP / FN NOTES
+========================================================================
+
+### False positives (refuse when should allow)
+
+| Probe | Result |
+|-------|--------|
+| last `"echo hello, tok, SECRET"` | **no FP** dual-path |
+| last `"a,b,c"` | **no FP** dual-path |
+| last escaped `"echo \"x,y,z\""` | **no FP** dual-path |
+| empty `sys_exec()` | **no secret FP** (cap/arity) |
+| single `sys_exec(sys)` | **no secret FP** |
+| unused SECRET + last `cmd` public ident | **no FP** (P10) |
+| last empty string lit `""` | **no FP** (P09) |
+
+**Assigned quoted-comma / empty / single FP count: 0.**
+
+### False negatives (allow when should refuse)
+
+| Probe | Result |
+|-------|--------|
+| last IDENT `tok` (4-arg) | **no FN** dual-path |
+| last IDENT after 4 prior | **no FN** dual-path |
+| earlier quoted commas + last `tok` | **no FN** (string-aware split) |
+| product `secret_sys_exec_fail` / argv_fail | **no FN** dual-path |
+| single `sys_exec(tok)` | **no emit FN**; check a0 miss (residual) |
+
+**Assigned `sys_exec(..., secret_last)` FN count: 0.**
+
+Wrong-split hunt: if last-arg treated commas inside `"echo,with,commas"`
+as top-level, last span would swallow `commas"), tok` and
+`c_arg_is_cap_ident` would skip. P04 still refused (a2 + ident scan +
+string-aware last-start). Combined rails hold.
+
+========================================================================
+RESIDUALS (honest, out of 7.2 gate)
+========================================================================
+
+1. **7.10 still OPEN** — `c_parse_secret_env` accumulates `name = name + c`.
+   Do not close 7.10 on this peer.
+2. **8.6 `c_args_strip_cr`** — same monofile still `out = out + c`. Not
+   last-arg extract.
+3. **Check a0 SECRET** — `c_secret_scan_call` want=1 skips
+   `sys_exec(tok)`. Emit last-arg + `c_guard_scan_idents` refuse. Named
+   previously (`s71_domain_b`). Not this close.
+4. **Empty `sys_exec()`** fails cap first-arg (emit) / ProcessCap (check),
+   not last-arg. Single `sys_exec(sys)` is emit/check **OK** (arity not
+   enforced here). Honesty only.
+5. **Full IFC / `${}` / `#[Secret]`** — SECRET_TAINT residual.
+6. **`ci_product.sh`** wires T1/T2 only — not `s72_sys_exec_last_arg_smoke`.
+   Process residual.
+7. **Check cache poison** — same as 7.1: cwd-relative, compiler-blind.
+   Probes used `/tmp/s72_peer1/clean`.
+
+========================================================================
+PEER OWN
+========================================================================
+
+No product compiler edit. No fixture land. No smoke change.
+Write: `openOODA/audit/s72_peer1.oot` only.
+
+Did **not** trust Domain A / Integration / Harness summaries without
+independent source review + live probes. Their green rails re-proved.
+
+========================================================================
+CLOSE TABLE
+========================================================================
+
+| Item | Status |
+|------|--------|
+| 7.2 last-arg defined + in product binary | **PASS** |
+| 7.2 no per-char OoStr concat (slice) | **PASS** source (in host) |
+| `sys_exec(..., secret_last)` fail-closed | **PASS** live dual-path |
+| Quoted last + commas no FP / no wrong split | **PASS** live dual-path |
+| Empty args / single arg | **PASS** (no crash; no secret FP; emit refuse on single SECRET) |
+| T1 smoke | **PASS** exit 0 |
+| T2 smoke | **PASS** exit 0 |
+| Harness `s72_sys_exec_last_arg_smoke` | **PASS** exit 0 (bonus) |
+| Path-A close 7.2 | **ACCEPT** |
+| 7.10 / strip_cr concat / check-a0 / CI wire | **OPEN residual** (not gate) |
+
+end of s72_peer1.oot

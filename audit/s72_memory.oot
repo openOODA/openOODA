@@ -1,0 +1,228 @@
+# s72_memory.oot — Memory Auditor / 7.2 `c_sys_exec_last_arg`
+# Date: 2026-08-12T18:49:26Z
+# Role: Memory Auditor — path-A memory floor for CRIT 7.2
+# Tip: openOODA `eaa555d` / ooda `52cc4b5`
+# Binary: `/home/jeryd/Projects/openOODA/ooda/oodac/oodac` (962960 B, mtime 2026-08-12 07:49, md5 `a44ee35eb344837009697e2c9d4e4662`)
+# OWN: audit only (no product code changes this pass)
+
+## Scope
+
+Prove or reject SPRINT **7.2** path-A memory floor:
+
+> `c_sys_exec_last_arg` same (as 7.1: stack buffer, no per-char OoStr leak)
+
+Hunts (this pass):
+
+| # | Hunt | Expected if 7.2 closed |
+|---|------|------------------------|
+| H1 | Per-char `OoStr` concat in `c_sys_exec_last_arg` | **gone** |
+| H2 | Quadratic heap on long last/shell args | no product-DoS concat buffer; time residual named |
+| H3 | Stack-buffer **claim** vs actual slice | honest mechanism |
+
+Out of scope (named residual only): 7.1 walker (already PASS `s71_memory.oot`), 7.10 `c_parse_secret_env` char concat, `c_args_strip_cr` per-char CR strip, T1/T2 taint, runtime HITL 7.4–7.8.
+
+## Verdict — path-A memory floor
+
+| Result | Meaning |
+|--------|---------|
+| **PASS** | Per-char last-arg accumulate is **gone**. Extract is **one `str_slice(args, last_start, n)`** (heap slice of the last top-level comma span, not a C stack `char[]`). Aux heap is O(1) scalars + one span copy. Measured RSS on long last-arg / in-string commas is **linear in source size**, not a growing concat buffer. |
+
+**Not claimed:** O(n) time. `char_at` / `utf8_byte_index` is still a Θ(n²) **time** tax (compiler-wide). SPRINT wording “stack buffer” is **stale** — path-A mechanism is slice, as `t1_memory.oot` M-SG3 and `s71_memory.oot` H3 already recorded for the sibling.
+
+| Slice | Result |
+|-------|--------|
+| H1 per-char concat gone | **PASS** (source; emit maps `str_slice` → `oo_str_slice`) |
+| H2 long last-arg heap / leak | **PASS** (RSS linear; one final slice) |
+| H2 long-args **time** | **RESIDUAL** Θ(n²) `char_at` (cost, not leak) |
+| H3 stack buffer vs slice | **HONEST residual** — claim ≠ mechanism; slice is the floor |
+| Functional rails (sys_exec last IDENT) | **PASS** fail-closed + last-string no-FP |
+
+---
+
+## H1 — Per-char OoStr concat (should be gone)
+
+File: `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_args.oo`
+
+Walker body (`c_sys_exec_last_arg`, L71–130):
+
+- Linear index walk of joined C arg text; string-aware (`"..."` + `\\` skip); paren `depth` so nested commas do not split.
+- Top-level `,` updates `last_start` to the first non-space after the comma (O(1) index, no copy).
+- **One** extract after the walk: `let out = str_slice(args, last_start, n);`
+- Source has **zero** `out = out + c` / `out = out + char_at` / `name = name + c` inside this function.
+- Every `+` in the body is integer cursor/`depth` arithmetic (`i = i + 1`, `i + 1 < n`, …).
+- Header comment (L121): “CRIT 7.2: one str_slice for the last arg span — no per-char OoStr thrash.”
+
+Empty / degenerate:
+
+| Case | Behavior | Heap |
+|------|----------|------|
+| `n == 0` | return literal `"oo_str_lit(\"\")"` | no scan |
+| `last_start >= n` | `return args` | no extra slice |
+| `str_slice` empty | `return args` | one empty slice then discard |
+
+Emit mapping (`c_emit_ty.oo` L12–13): `str_slice` → `oo_str_slice`. `char_at` → `oo_char_at`. There is no `+` string concat in this fn, so lowered C **cannot** emit `oo_str_concat` for last-arg rebuild.
+
+Lowered C of **this** compiler fn is not on disk this pass (`stage1_noarc.tmp.c` absent; host is the same 962960 B binary as 7.1). Honesty: H1 is source + deterministic lower, not a dumped `void c_sys_exec_last_arg`. Runtime primitive (`chs_rt_str.c` L197–212) is one `malloc` + `memcpy` of the UTF-8 span — **not** per-char concat.
+
+Contrast (still OPEN elsewhere, not 7.2):
+
+- `c_parse_secret_env` (`c_emit_secret.oo:60`) `name = name + c` — **7.10**
+- `c_args_strip_cr` (`c_emit_args.oo:188`) `out = out + c` — CR strip on **sys_exec rest** (same file, same emit path; not last-arg extract)
+- `c_emit_call_args` (`c_emit_call.oo:40`) `args = args + ", " + a` — join of the text this fn later scans
+
+**H1: PASS.** The 7.2 concat leak is gone.
+
+---
+
+## H2 — Long last-arg / many commas (heap vs time)
+
+### Mechanism (code, not slogan)
+
+`oo_char_at` (`ooda/runtime/chs_rt_str.c`):
+
+- `utf8_byte_index` rescans from byte 0 to `idx` every call.
+- Always `malloc`s a 1-char `OoStr`.
+
+Loop `i in 0..n` with `char_at(args, i)` (plus a short space-skip `char_at` at each top-level comma) ⇒ **Θ(n²) time** + n short-lived 1-char strings.
+
+`oo_str_slice(args, last_start, n)`:
+
+- `end == n` → `be = s.len` (no second full `utf8_byte_index` for end).
+- Still `oo_chars_len(args)` once (O(n)) + one `utf8_byte_index` for `last_start` + **one** heap copy of the last span.
+
+Call-in (`c_emit_secret_guard.oo` L130–140): `sys_exec` sink → `last = c_sys_exec_last_arg(args)` → if `c_arg_is_cap_ident(last)` then alias-resolved refuse. Adjacent emit (`c_emit_lower.oo` L156–162) uses `c_args_drop_first` (already **one** `str_slice`) + **`c_args_strip_cr` twice** (still per-char concat of `rest`). Do not attribute strip_cr thrash to 7.2.
+
+### Measurements (cheap emit-c of generated fixtures)
+
+Harness: ephemeral `/tmp/s72_mem_1084524/` (not landed). `oodac emit-c` of:
+
+- **last_N** — `sys_exec(sys, "sh", "-c", "x"*N)` (hits last-arg walk + **one** slice of the huge last span)
+- **strcommas_N** — last arg is N commas inside `"..."` (string-aware: must **not** update `last_start` per comma)
+- **commas_N** — N extra `"a"` argv slots then last `"Z"` (many top-level commas; last span tiny)
+- **println_N** — `println("x"*N)` control (no last-arg / no strip_cr)
+
+Isolated retimes (`/usr/bin/time` `%e` sec / `%M` maxrss KB; 1 trial):
+
+| N | last src B | last sec | last RSS KB | strcommas sec | strcommas RSS | println sec | println RSS | commas sec | commas RSS |
+|---|-----------:|---------:|------------:|--------------:|--------------:|------------:|------------:|-----------:|-----------:|
+| 200 | 289 | 0.04 | 5424 | 0.04 | 5560 | 0.03 | 4792 | 0.43 | 17852 |
+| 400 | 489 | 0.07 | 5816 | 0.07 | 5952 | 0.05 | 5176 | 1.34 | 31164 |
+| 800 | 889 | 0.19 | 6968 | 0.15 | 6968 | 0.20 | 5944 | 4.95 | 60728 |
+| 1600 | 1689 | 0.45 | 8632 | 0.79 | 8632 | 0.27 | 7480 | 27.33 | 128696 |
+| 4096 | 4185 | 1.44 | 14392 | — | — | 1.54 | 11976 | — | — |
+| 8192 | 8281 | 7.06 | 23736 | — | — | 5.71 | 19516 | — | — |
+
+Product fixtures (same binary):
+
+| Fixture | src B | sec | maxrss KB | rc | note |
+|---------|------:|----:|----------:|---:|------|
+| `secret_sys_exec_pass.oo` | 194 | 0.07 | 5944 | 0 | last is string lit |
+| `secret_sys_exec_fail.oo` | 188 | 0.02 | 4792 | 1 | last is SECRET IDENT |
+| `secret_sys_exec_argv_pass.oo` | 214 | 0.06 | 5944 | 0 | clean extra argv |
+| `secret_sys_exec_argv_fail.oo` | 232 | 0.05 | 4792 | 1 | SECRET mid-argv (walker, not last) |
+| `hello.oo` | 583 | 0.09 | 6896 | 0 | no sys_exec |
+| tiny `println(1)` | 34 | 0.05 | 4336 | 0 | control |
+
+**Read of the numbers:**
+
+1. **last_N RSS** 5.4 → 5.8 → 7.0 → 8.6 → 14.4 → 23.7 MB. Linear in source size. **Not** a quadratic concat buffer on the last span.
+2. **strcommas_N RSS matches last_N** at 200–1600. In-string commas do not allocate per comma; `last_start` stays at the last top-level span.
+3. **println_N** is ~2–4 MB leaner than last_N at the same N. The delta is sys_exec emit (`strip_cr` + last-arg walk + one slice + argv C text), not n² last-arg rebuild.
+4. **Time** 4096→8192 is ~4.9× (last) / ~3.7× (println) for 2× source. Superlinear, consistent with `char_at` + lex. last vs println at 8192 is **+1.35 s / +4 MB** — strip_cr + extra walk, **not** a second n² concat bomb (that would dwarf println).
+5. **commas_N** RSS ≈ 80 KB · N and time 0.43 → 27 s is **token list + `c_emit_call_args` join + strip_cr**, not last-arg extract (last span is `"Z"`). Do not attribute that curve to 7.2.
+
+**H2 heap: PASS.** **H2 time: residual** (same class as 7.1 / lex; 8 KiB last arg finishes; 64 KiB rail would be slow, not a new 7.2 leak).
+
+---
+
+## H3 — Stack buffer claim vs slice
+
+| Artifact | What it says / does |
+|----------|---------------------|
+| `SPRINT.oot` 7.2 | “`c_sys_exec_last_arg` **same**” as 7.1 “**stack buffer** (no per-char OoStr leak)” |
+| Source comment L121 | “one `str_slice` for the last arg span” |
+| `.oo` implementation | scalars (`i`, `j`, `n`, `last_start`, `in_str`, `depth`) + **one** `str_slice` — **no** `char buf[N]`, no `List` inside the fn |
+| Runtime | `OoStr out = oo_str_slice(args, last_start, n)` — **heap copy of the span** |
+| `t1_memory.oot` M-SG3 | already **FIXED** — `str_slice(args, last_start, n)` |
+| `s71_memory.oot` H3 | sibling: do **not** FAIL for missing C `char[]` |
+
+Honesty: the **CRIT** (no per-char leak) is met. The **mechanism name** “stack buffer” was never landed and cannot be landed in `.oo` without a byte cursor / C helper. Path-A floor = **slice**, not a C VLA.
+
+**H3: wording residual only. Do not FAIL the memory floor for missing stack `char[]`.**
+
+---
+
+## Functional rails (not memory, but prove last-arg is live)
+
+Same host binary; fixtures under `ooda/fixtures/`:
+
+| Rail | Case | Result |
+|------|------|--------|
+| FAIL-CLOSED | `// SECRET: token` + `sys_exec(sys, "sh", "-c", token)` | rc 1 · `ERR\tsecret\tsys_exec sink refuses SECRET token` |
+| NO-FP last string | same SECRET name, last argv `"true"` | emit-c rc 0 |
+| FAIL-CLOSED mid-argv | `sys_exec(..., token, "true")` | rc 1 · same `ERR\tsecret` — **7.1 full-args scan**, last span is `"true"` (not IDENT) |
+
+Honesty: last-arg extract is what makes a **trailing** bare IDENT visible to `c_arg_is_cap_ident` after a0/a1/a2. Mid-argv refuse is the 7.1 walker, not 7.2.
+
+---
+
+## Complexity (memory class)
+
+| Function | Time | Aux heap |
+|----------|------|----------|
+| `c_sys_exec_last_arg` | Θ(\|args\|²) `char_at` | O(1) scalars + **one** O(\|last\|) slice |
+| `c_args_drop_first` | Θ(\|args\|²) `char_at` | O(1) + one slice of remainder |
+| `c_args_strip_cr` | Θ(\|rest\|²) concat **and** time | growing `out` — **not 7.2** |
+| `c_count_top_args` | Θ(\|args\|²) `char_at` | O(1) scalars (no extract) |
+| `c_arg_is_cap_ident(last)` | Θ(\|last\|²) `char_at` | O(1) |
+
+Progress: outer `i` always increases (by 1 or 2). Inner space-skip sets `j = n` after one `last_start` update. No spin.
+
+---
+
+## Scorecard
+
+| ID | Sev | Site | Finding | Status |
+|----|-----|------|---------|--------|
+| S72-1 / 7.2 | CRIT | `c_sys_exec_last_arg` | Per-char `out = out + char_at` | **GONE** |
+| S72-2 / 7.2 | CRIT | same | Path-A extract is `str_slice`, not stack buf | **PASS** (slice floor) |
+| S72-3 | HIGH | `oo_char_at` walk | Θ(n²) time on long args | **RESIDUAL cost** (not leak) |
+| S72-4 | MED | SPRINT text | “stack buffer” / “same” ≠ code | **DOC residual** |
+| S72-5 | HIGH | `c_args_strip_cr` | still `out = out + c` on sys_exec rest | **OPEN adjacent** (not 7.2) |
+| S72-6 | — | `c_args_drop_first` | already one `str_slice` | **PASS adjacent** |
+| S72-7 | — | 7.10 | `c_parse_secret_env` still concat | **OPEN** (not 7.2) |
+| S72-8 | — | `c_emit_call_args` | `args = args + ", " + a` | **OPEN adjacent** |
+
+## Close bar for 7.2 (memory)
+
+Path-A **may close 7.2 as memory-floor PASS** if process accepts:
+
+1. Concat gone (proven here).
+2. Slice ≡ the alpha “buffer” (proven here; matches `t1_memory.oot` M-SG3 / 7.1 H3).
+3. `char_at` quadratic **time** stays a named residual (compiler-wide), not a 7.2 reopen.
+4. `c_args_strip_cr` per-char rebuild stays a **named adjacent** leak — do not silently fold it into 7.2 FIXED.
+
+Re-open 7.2 only if concat returns inside `c_sys_exec_last_arg`, or emit-c of ≤64 KiB **last** arg **OOMs** / RSS grows as Θ(n²) **from the last-arg extract** (not from strip_cr / token list).
+
+## Evidence paths
+
+| Item | Path |
+|------|------|
+| Last-arg / drop-first / strip_cr | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_args.oo` |
+| Call-in (sys_exec last + ident refuse) | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo` L130–140 |
+| Emit argv (strip_cr) | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_lower.oo` L151–162 |
+| `str_slice` → `oo_str_slice` | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_ty.oo` L12–13 |
+| `oo_str_slice` / `oo_char_at` | `/home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_str.c` |
+| Scale / rails (ephemeral) | `/tmp/s72_mem_1084524/` |
+| Prior | `openOODA/audit/t1_memory.oot` M-SG3; `s71_memory.oot` (sibling floor); `s71_phalanx_rollup.oot` (“7.2 claimed sliced; not that close”) |
+
+## Notes (return)
+
+1. Did **not** edit product `.oo`. Audit + ephemeral `/tmp` fixtures only.
+2. Did **not** retarget 7.10 or rewrite `c_args_strip_cr` (named adjacent).
+3. Measurements include full emit-c (lex + token list + emit), not a unit bench of last-arg alone. last-vs-println isolates extra sys_exec-path cost; commas_N is a different thrash (join / tokens).
+4. No dedicated `s72_*_smoke.sh` this pass; functional rails used existing `secret_sys_exec_{pass,fail,argv_*}` fixtures.
+
+**7.2 path-A memory floor: PASS**
+
+end of s72_memory.oot

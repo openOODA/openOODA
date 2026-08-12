@@ -1,0 +1,335 @@
+# s710_security.oot — Security Auditor (QA) — SPRINT 7.10
+# Date: 2026-08-12
+# Role: Security Auditor — zero-trust `c_parse_secret_env`
+# Host: product `ooda/oodac/oodac` (962960 B, md5 a44ee35eb344837009697e2c9d4e4662,
+#       mtime 2026-08-12 07:49 local; `strings` shows `c_parse_secret_env` +
+#       `invalid name (need ident after SECRET directive)`)
+# Source: `ooda/oodac/c_emit_secret.oo` L7–82 (mtime 2026-08-12 11:54;
+#         L65 `str_slice(src, start, k)` — concat gone)
+# Surfaces: `c_emit_secret.oo` (`c_parse_secret_env` + `check_secret_println_sinks`),
+#            `c_emit.oo` (emit merge of sec_env), `llvm_emit.oo` (same check dual),
+#            `check_drive.oo`, `runtime/chs_rt_str.c` (`oo_str_slice` fail-soft)
+# Method: source walk + live emit-c / check / emit-llvm attack matrix
+#         (ephemeral `/tmp/s710_sec_M6VBmS`; no product source edit)
+# Policy: slice must not drop/truncate SECRET names; empty ident fail-closed;
+#         non-line-start `SECRET:` is not a directive. Do **not** reopen 7.1/7.2.
+
+---
+
+## Claim under pressure
+
+SPRINT **7.10** (HIGH): `c_parse_secret_env` tags line-start `// SECRET: <ident>`
+into `__sec__name=1` / `__secref__name=1`. Path-A memory close replaces
+per-char `name = name + c` with one `str_slice`. Zero-trust gates for
+**this** close (not 7.1 walker, not 7.2 last-arg):
+
+| # | Gate | Expectation |
+|---|------|-------------|
+| Z1 | Slice must not drop / truncate SECRET names | Tagged name == full ident span; sink refuse spells that full name |
+| Z2 | Must not fail-open empty ident | `// SECRET:` with no ident → `ERR\tsecret\tinvalid name` + rc≠0 |
+| Z3 | Non-line-start `SECRET:` is not a directive | Mid-line / string / indent / `//SECRET:` / case-fold must not tag |
+| Z4 | Do not reopen 7.1 / 7.2 | Walker + last-arg stay closed; this audit does not retarget them |
+
+Adversarial stance: treat exclusive-end off-by-one, a C stack cap, and
+`oo_str_slice` OOB→`""` as **truncate / drop weapons**. Treat any skip of
+`name == ""` as **fail-open**. Treat any `SECRET:` not at column-0 after
+`\n` (or file start) as a **false directive** until proved ignored.
+
+---
+
+## Surfaces reviewed
+
+| Surface | Path | Role |
+|---------|------|------|
+| Parse-env | `ooda/oodac/c_emit_secret.oo` L7–82 | `c_parse_secret_env` |
+| Empty refuse | same L66–69 | `process_exit(1)` — **not** skip |
+| Env put | same L70–72 | `__sec__` + `__secref__` (sticky root) |
+| Check / LLVM dual | same `check_secret_println_sinks` L134+ | re-parses src, then token sinks |
+| Emit merge | `c_emit.oo` L78–86 | `sec_env` into fn_env **then** check |
+| LLVM dual | `llvm_emit.oo` L79 | `check_secret_println_sinks` after preamble |
+| Slice runtime | `runtime/chs_rt_str.c` `oo_str_slice` | `[start, end)` chars; OOB → empty |
+| 7.1 walker | `c_emit_secret_guard.oo` L105 | already `str_slice` — **not retargeted** |
+| 7.2 last-arg | `c_emit_args.oo` L127 | already `str_slice` — **not retargeted** |
+
+**Not this OWN:** 7.1 ident-scan body, 7.2 last-arg splitter, T1 return /
+alias lattice, T2 field/args completeness.
+
+Honesty on host vs source: tip **binary** is 07:49 (concat still compiled).
+Tip **source** is 11:54 (`str_slice` once). Domain A claims semantics
+unchanged. Live matrix therefore proves the **contract** (name complete /
+empty closed / line-start only). Slice exclusive-end + empty-exit are
+proved on **source**. Next seed must keep the same three gates.
+
+---
+
+## SUMMARY
+
+| # | Gate | Verdict |
+|---|------|---------|
+| Z1 | Slice / extract does not drop or truncate names | **PASS** |
+| Z2 | Empty ident fail-closed (no skip) | **PASS** |
+| Z3 | Non-line-start `SECRET:` is not a directive | **PASS** |
+| Z4 | 7.1 / 7.2 not reopened | **PASS** |
+| — | **7.10 security path-A** | **PASS** |
+
+**FAIL: 0** CRIT fail-open of the 7.10 parse-env contract.
+
+Do **not** claim full IFC / `#[Secret]` / `${}` / indented directives /
+product binary already sliced. Residuals below.
+
+---
+
+## How parse-env can fail-open (threat model)
+
+`c_parse_secret_env` is a **source-text** scanner, not a token stream:
+
+1. **Wrong ident span** — `str_slice(src, start, k)` is exclusive-end.
+   `k-1` drops the last char; `k+1` eats a trailer. Either way
+   `__sec__` key ≠ sink IDENT → **FN** (Z1).
+2. **Cap / drop** — a C `char buf[N]` or a short memcpy would truncate
+   a long SECRET name. Same FN class (Z1).
+3. **`oo_str_slice` OOB fail-soft** — runtime returns `""` when
+   `start`/`end` are out of range (`chs_rt_str.c`). If the caller
+   **skips** empty instead of `process_exit`, a bad slice **drops the
+   tag** (Z1+Z2).
+4. **Empty skip** — `if name != "" { put }` without `process_exit`
+   accepts `// SECRET:` / `// SECRET:   ` / `// SECRET: !x` and
+   continues. That is fail-open of the directive grammar (Z2).
+5. **False directive** — matching `SECRET:` mid-line, in a string, after
+   indent, or without the exact `// ` prefix tags a name the author did
+   not declare (Z3 FP) or, worse, a later agent “fixes” line-start and
+   starts tagging comments (Z3).
+
+Z1 is the span class. Z2 is the empty-ident class. Z3 is the line-start
+class.
+
+---
+
+## Attack results (product host)
+
+Verdict key:
+
+- **BLOCK** = emit-c **and** check `ERR\tsecret` + rc≠0 (llvm when run)
+- **ALLOW** = both rc=0, no `ERR\tsecret` (correct for pass / non-tag)
+- **FN** = allowed when a real line-start SECRET name reached a sink
+- **FP** = refused when `SECRET:` was not a line-start directive
+- **TRUNC** = refuse line names a prefix/suffix, not the full ident
+
+Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`  
+Probes: `/tmp/s710_sec_M6VBmS/` (ephemeral).  
+Harness: `ooda/scripts/s710_parse_secret_env_smoke.sh` **exit 0**.
+
+### Z1 — slice / extract must not drop or truncate
+
+Source close (L43–65):
+
+```
+let start = k;
+while is_al { k = k + 1 }
+let name = str_slice(src, start, k);   # exclusive [start, k)
+```
+
+`k` is the first non-alnum/`_` or EOF. Same span the old concat loop
+would have built. Ident class is still `_` / A–Z / a–z / 0–9 from the
+**first** char (not 7.1 `is_start`). No stack buffer. No max length.
+
+| # | Shape | emit-c | check | llvm | Trunc? |
+|---|-------|--------|-------|------|--------|
+| 1 | `// SECRET: api_key` → `println(api_key)` | rc=1 SECRET **api_key** | rc=1 SECRET **api_key** | rc=1 SECRET **api_key** | **no** |
+| 2 | `_tok` | SECRET **_tok** | SECRET **_tok** | — | **no** |
+| 3 | `API_Key_v2` | SECRET **API_Key_v2** | SECRET **API_Key_v2** | — | **no** |
+| 4 | `key123` | SECRET **key123** | SECRET **key123** | — | **no** |
+| 5 | `// SECRET:tok` (no space) | SECRET **tok** | SECRET **tok** | — | **no** |
+| 6 | `// SECRET:<TAB>tok` | SECRET **tok** | SECRET **tok** | — | **no** |
+| 7 | `// SECRET: tok extra junk` | SECRET **tok** (span stops) | SECRET **tok** | — | **no** |
+| 8 | directive after `main` (EOF line) | SECRET **tok** | SECRET **tok** | — | **no** |
+| 9 | two names; sink `beta_name` | SECRET **beta_name** | SECRET **beta_name** | — | **no** |
+| 10 | `// SECRET: api-key` then `println(api)` | SECRET **api** | SECRET **api** | — | **no** (hyphen not `is_al`) |
+| L32–L2048 | ident length 32 / 64 / 128 / 256 / 512 / 1024 / **2048** | SECRET full name | — | 128: full | **no** |
+| F | `fixtures/secret_sink_fail` (`x`) | SECRET **x** | cache OK (R3) | — | **no** (emit) |
+| F | `fixtures/secret_multi_name_fail` (`b`) | SECRET **b** | SECRET **b** | — | **no** |
+| H | `s710_parse_secret_env_smoke` two-name a/b | SECRET a **and** SECRET b | — | — | **no** |
+
+Python measure of refuse line vs written ident: **32…2048 all
+`refused_len == name_len` and `refused == name`.** TRUNC count: **0**.
+
+Why OOB empty cannot fire on this slice: `start` is `k` after the
+space-skip; `k` only advances while `k < sn`; `start <= k <= sn`.
+`oo_str_slice` empty-on-OOB is therefore **dead** for this call. The
+only live empty is `start == k` (no ident) — Z2.
+
+`// SECRET: 123key` **does** tag `123key` (`is_al` includes leading
+digits). Lexer will not produce IDENT `123key`; sink was `println(x)`
+→ ALLOW (unused tag). Pre-existing class; **not** a truncate FN. Do
+not “fix” to 7.1 `is_start` in this close.
+
+### Z2 — empty ident must not fail-open
+
+Caller (source, must stay):
+
+```
+if name == "" {
+    println("ERR\tsecret\tinvalid name (need ident after SECRET directive)");
+    process_exit(1);
+}
+```
+
+There is **no** `if name != "" { put; continue }`. Empty is fatal.
+
+| # | Shape | emit-c | check | llvm | Verdict |
+|---|-------|--------|-------|------|---------|
+| 1 | `// SECRET:` (fixture `secret_invalid_empty`) | invalid name | invalid name | — | **BLOCK** |
+| 2 | `// SECRET:` (ephemeral) | invalid name | invalid name | invalid name | **BLOCK** |
+| 3 | `// SECRET:   ` spaces only | invalid name | invalid name | — | **BLOCK** |
+| 4 | `// SECRET:<TABs>` | invalid name | invalid name | — | **BLOCK** |
+| 5 | `// SECRET: !notident` | invalid name | invalid name | — | **BLOCK** |
+| 6 | `// SECRET: -foo` | invalid name | invalid name | — | **BLOCK** |
+| H | smoke `empty_name.oo` | invalid name | — | — | **BLOCK** |
+
+**Empty-skip fail-open count: 0.**
+
+Preamble prints **before** parse (`c_emit.oo` HITL/preamble, llvm
+preamble). rc is still ≠0 and the last line is `ERR\tsecret\tinvalid
+name`. Not a fail-open.
+
+### Z3 — non-line-start `SECRET:` is not a directive
+
+Line-start oracle (unchanged):
+
+```
+at_line = (i == 0) || (char_at(src, i-1) == "\n")
+needle  = "// " + "SECRET:"     # exact, including the space
+```
+
+Only then: skip ` ` / `\t`, slice ident.
+
+| # | Shape | emit-c | check | llvm | Tagged? |
+|---|-------|--------|-------|------|---------|
+| 1 | `// Mention // SECRET: leaked …` (`secret_midline_safe`) | rc=0 | rc=0 | — | **no** |
+| 2 | same ephemeral midline | rc=0, no secret | rc=0 | rc=0 | **no** |
+| 3 | `let leaked = "token"; // SECRET: leaked` | rc=0, no secret | rc=0 | — | **no** |
+| 4 | `let leaked = "// SECRET: leaked"` | rc=0, no secret | rc=0 | — | **no** |
+| 5 | indented `  // SECRET: leaked` | rc=0, no secret | rc=0 | rc=0 | **no** |
+| 6 | `//SECRET: leaked` (no space after `//`) | rc=0, no secret | rc=0 | — | **no** |
+| 7 | `// secret: leaked` (case) | rc=0, no secret | rc=0 | — | **no** |
+| 8 | `SECRET: leaked` (not a comment) | parse IDENT | parse IDENT | — | **no** (not secret) |
+| 9 | `/* SECRET: leaked */` | parse SLASH | parse SLASH | — | **no** (not secret) |
+| 10 | first line `// SECRET: leaked\r\n` (CRLF) | SECRET leaked | SECRET leaked | — | **yes** (i==0; intended) |
+| 11 | CR-only before `// SECRET:` | lex CR | lex CR | — | n/a (not a secret FN) |
+
+**FP (false tag) count: 0.** Mid-line / string / indent / `//SECRET:` /
+case-fold do **not** refuse `println(leaked)`.
+
+Column-0 is the product line-start (not `^[[:space:]]*`). Indented
+`// SECRET:` is **not** a tag — T2 `secret_midline_safe` + Z3-5. That
+is the specified gate, not a 7.10 FN. Residual: authors who indent
+directives get no tag (named R2).
+
+### Z4 — 7.1 / 7.2 not reopened
+
+| Rail | Result |
+|------|--------|
+| This audit edited | **only** `openOODA/audit/s710_security.oot` |
+| `c_emit_secret_guard.oo` / `c_emit_args.oo` | not retargeted |
+| `s71_guard_scan_smoke.sh` | **exit 0** |
+| `s72_sys_exec_last_arg_smoke.sh` | **exit 0** |
+| Shared `c_ident_end` / `c_slice_ident_at` | **not** landed (would touch 7.1) |
+
+Stale `RESIDUAL 7.10: … concat` banners in s71/s72 smokes are **7.1/7.2
+OWN** — left alone on purpose.
+
+---
+
+## Root-cause (why Z1–Z3 hold)
+
+1. **One exclusive slice, same `is_al` walk**
+   - `start` captured after space/tab skip; `k` walks the same class
+     concat used; `str_slice(src, start, k)` is `[start, k)`.
+   - Live refuse lines spell the full ident through 2048 chars.
+
+2. **Empty is fatal**
+   - `name == ""` → `ERR\tsecret\tinvalid name` + `process_exit(1)`.
+   - Covers bare colon, whitespace-only, and first-char not `is_al`.
+
+3. **Directive match is column-0 + exact needle**
+   - `i==0` or previous char is `\n`.
+   - Needle is `// SECRET:` (space after `//`, capital `SECRET`).
+   - Mid-line, indent, `//SECRET:`, strings, case-fold never set `ok`.
+
+4. **Refuse is dual on tagged names**
+   - Emit: `sec_env` merge + `check_secret_println_sinks` (re-parse).
+   - Check / LLVM: same parse + token IDENT walk.
+   - A truncated key would miss both; the matrix did not miss.
+
+---
+
+## Scorecard
+
+| Metric | Count |
+|--------|------:|
+| Z1 name-complete refuse (incl. 32…2048) | **BLOCK** (0 TRUNC) |
+| Z2 empty / non-ident directive | **BLOCK** (0 skip) |
+| Z3 non-line-start false tag | **0** |
+| CRIT 7.10 fail-open | **0** |
+| 7.1 / 7.2 reopened | **no** |
+
+**7.10 security path-A: PASS**
+
+---
+
+## Residual risks (return)
+
+| ID | Sev | Residual | Why not 7.10 FAIL |
+|----|-----|----------|-------------------|
+| R1 | — | Tip **binary** still has concat until next seed | Semantics identical; live matrix is the contract; slice is source L65 |
+| R2 | LOW | Indented `// SECRET:` is not a tag (column-0 only) | Specified line-start; T2 midline rail; not a false tag |
+| R3 | LOW | Check-result cache can false-OK `secret_sink_fail` | Process residual (s71 R9); emit-c still BLOCK; ephemeral checks honest |
+| R4 | LOW | `oo_str_slice` OOB fail-soft → `""` | Dead for `0 ≤ start ≤ k ≤ sn`; empty still `process_exit` |
+| R5 | — | Leading-digit SECRET names still tagged | Pre-existing `is_al`; not 7.1 `is_start`; unused at lexer IDENT |
+| R6 | — | `${}` interp deep taint | SECRET_TAINT 5.8 — not parse-env |
+| R7 | — | Full IFC / `#[Secret]` / interproc beyond `__fr_secret__` | Named in SECRET_TAINT; do not greenwash |
+| R8 | — | 7.1 walker / 7.2 last-arg | **Already closed**; not reopened |
+| R9 | — | Shared ident helper not landed | Hygiene / copy of `is_al`; not a sink FN |
+
+**Explicitly not residuals of this close:** 7.1 ident-scan contract
+(already PASS `s71_security.oot`); 7.2 last-arg contract (already PASS
+`s72_security.oot`); T1 return/alias/if-taint; T2 field/args/comment-FP.
+
+---
+
+## Reproduce
+
+```bash
+OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
+# Z1 full name
+$OODAC emit-c /tmp/s710_sec_M6VBmS/z1_bare.oo          # ERR secret api_key
+$OODAC emit-c /tmp/s710_sec_M6VBmS/z1_len2048.oo       # ERR secret <2048-char>
+# Z2 empty
+$OODAC emit-c /tmp/s710_sec_M6VBmS/z2_empty.oo         # ERR secret invalid name
+$OODAC emit-c ooda/fixtures/secret_invalid_empty.oo
+# Z3 not a directive
+$OODAC emit-c /tmp/s710_sec_M6VBmS/z3_midline.oo       # rc=0
+$OODAC emit-c /tmp/s710_sec_M6VBmS/z3_indent.oo        # rc=0
+$OODAC emit-c ooda/fixtures/secret_midline_safe.oo     # rc=0
+# harness + do-not-reopen
+bash ooda/scripts/s710_parse_secret_env_smoke.sh       # exit 0
+bash ooda/scripts/s71_guard_scan_smoke.sh              # exit 0
+bash ooda/scripts/s72_sys_exec_last_arg_smoke.sh       # exit 0
+# source slice (no concat)
+grep -n 'str_slice\|name = name +' ooda/oodac/c_emit_secret.oo
+```
+
+---
+
+## Close table
+
+| Item | Status |
+|------|--------|
+| Z1 slice does not drop / truncate SECRET names | **PASS** |
+| Z2 empty ident fail-closed | **PASS** |
+| Z3 non-line-start `SECRET:` is not a directive | **PASS** |
+| Z4 7.1 / 7.2 not reopened | **PASS** |
+| **7.10 security** | **PASS** |
+| Residuals R1–R9 | **OPEN** (named; not this FAIL) |
+
+end of s710_security.oot

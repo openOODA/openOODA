@@ -1,0 +1,337 @@
+# s72_security.oot — Security Auditor (QA) — SPRINT 7.2
+# Date: 2026-08-12
+# Role: Security Auditor — zero-trust `c_sys_exec_last_arg`
+# Host: product `ooda/oodac/oodac` (962960 B, md5 a44ee35eb344837009697e2c9d4e4662,
+#       mtime 2026-08-12 07:49 local; `strings` shows `c_sys_exec_last_arg` ×2)
+# Surfaces: `ooda/oodac/c_emit_args.oo` (`c_sys_exec_last_arg`),
+#            `c_emit_secret_guard.oo` (sole caller), `c_emit_lower.oo`,
+#            `c_emit_call.oo` (`c_emit_call_args` join), `c_emit_secret.oo`
+#            (`c_secret_scan_call` check/LLVM), `c_emit_ops_str.oo`
+#            (`c_escape_str_text`), `llvm_emit.oo`
+# Method: source walk + last-arg replica + live emit-c / check / emit-llvm
+#         attack matrix (ephemeral `/tmp/s72_sec_1RZEDK`; no product source edit)
+# Policy: fail-closed SECRET last argv; quote-split cannot hide unquoted
+#         SECRET IDENT; no fail-open if last-arg helper returns empty.
+#         Do **not** reopen 7.1.
+
+---
+
+## Claim under pressure
+
+SPRINT **7.2** (CRIT): `c_sys_exec_last_arg` extracts the last top-level C
+arg span for `sys_exec` sink refuse (argv beyond a0/a1/a2). Zero-trust
+gates for **this** close (not 7.1 ident walker, not T1 return taint):
+
+| # | Gate | Expectation |
+|---|------|-------------|
+| Z1 | SECRET last argv fail-closed | Bare SECRET IDENT as last `sys_exec` argv → `ERR\tsecret` + rc≠0 |
+| Z2 | Quote-split cannot hide unquoted SECRET IDENT | Commas / `\\` / `\"` inside `"..."` must not move `last_start` past a following bare SECRET, nor leave that IDENT `in_str` |
+| Z3 | No fail-open if last-arg helper returns empty | Empty extract must not skip refuse when a last SECRET IDENT is present |
+| Z4 | Do not reopen 7.1 | Ident-scan walker stays closed; this audit does not retarget it |
+
+Adversarial stance: treat last-arg string/escape/depth skip as a **desync
+weapon** until proved that an unquoted SECRET after a well-formed C string
+still refuses. Treat `if last != ""` as a **fail-open skip** until the
+helper is shown never to return `""` **and** a backup rail still refuses.
+
+---
+
+## Surfaces reviewed
+
+| Surface | Path | Role |
+|---------|------|------|
+| Last-arg extract | `ooda/oodac/c_emit_args.oo` L71–130 | `c_sys_exec_last_arg` |
+| Cap-ident oracle | same file L50–67 | `c_arg_is_cap_ident` (no `() ,"` / space) |
+| Drop-first / arity | same file L133–161 | `c_args_drop_first` (emit argv, not last-arg) |
+| Guard call | `c_emit_secret_guard.oo` L130–140 | sole last-arg caller |
+| Full-args scan | same file L194–210 | `c_guard_scan_idents` on `sys_exec` (7.1; backup) |
+| Free-call emit | `c_emit_lower.oo` L90, L151–162 | guard then `oo_sys_exec` |
+| Arg join | `c_emit_call.oo` L6–50 | `args = a0 + ", " + a1 + …` |
+| Check / LLVM | `c_emit_secret.oo` `c_secret_scan_call` want=1, eq_only=false | token IDENT argi≥1 |
+| C string emit | `c_emit_ops_str.oo` `c_escape_str_text` | well-formed `"..."` + `\\` / `\"` |
+
+**Not this OWN:** 7.1 walker body, T1 return/alias lattice, 7.10
+`c_parse_secret_env` concat.
+
+---
+
+## SUMMARY
+
+| # | Gate | Verdict |
+|---|------|---------|
+| Z1 | SECRET last argv fail-closed | **PASS** |
+| Z2 | Quote-split hides unquoted SECRET | **PASS** (0 HIDE on live matrix) |
+| Z3 | Empty last-arg helper fail-open | **PASS** (helper never returns `""`; scan + check backup) |
+| Z4 | 7.1 not reopened | **PASS** |
+| — | **7.2 security path-A** | **PASS** |
+
+**FAIL: 0** CRIT fail-open of the 7.2 last-arg contract.
+
+Do **not** claim full IFC / LLVM a0-only / sink-alias / `${}` interp as
+sealed. Residuals below.
+
+---
+
+## How last-arg can fail-open (threat model)
+
+`c_sys_exec_last_arg` is a **C-text comma splitter**, not a token stream.
+Sole product use:
+
+```
+if sink == "sys_exec":
+    refuse a1 / a2 if non-empty
+    last = c_sys_exec_last_arg(args)
+    if last != "" && c_arg_is_cap_ident(last):
+        refuse last (alias-resolved, __sec__=="1" only)
+# then: c_guard_scan_idents(env, "sys_exec", args)   # 7.1 backup
+```
+
+Fail-open classes:
+
+1. **Wrong last comma** — a `,` inside `"..."` or `(…)` advances
+   `last_start` **past** an unquoted SECRET that is not a1/a2.
+   Last span no longer names the secret; last-arg rail skips.
+2. **String desync** — `\\` eats a closer `"` so a later unquoted IDENT
+   stays `in_str`. Last-arg skips (span is not a cap ident). Scan also
+   skips → **HIDE** (Z2).
+3. **Empty extract** — helper returns `""` → caller `if last != ""`
+   skips last-arg refuse. If scan also misses, **FN** (Z3).
+4. **Last is an expression** — `c_arg_is_cap_ident` false (parens /
+   quotes). Last-arg rail is **supposed** to skip; scan / check must
+   still refuse a nested SECRET IDENT.
+
+Z1 is the last-IDENT refuse class. Z2 is the quote-split HIDE class.
+Z3 is the empty-helper skip class.
+
+---
+
+## Attack results (product host)
+
+Verdict key:
+
+- **BLOCK** = emit-c **and** check `ERR\tsecret` + rc≠0
+- **ALLOW** = both rc=0, no `ERR\tsecret` (correct for pass / FP cases)
+- **FN** = allowed when unquoted SECRET reached `sys_exec` argv
+- **FP** = refused when secret spelling was only in a string
+- **HIDE** = quote/escape skip consumed a following unquoted SECRET
+
+Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`  
+Probes: `/tmp/s72_sec_1RZEDK/z*.oo` (ephemeral).  
+Harness: `ooda/scripts/s72_sys_exec_last_arg_smoke.sh` **exit 0**.
+
+### Z1 — SECRET last argv fail-closed
+
+| # | Shape | emit-c | check | emit-llvm | Verdict |
+|---|-------|--------|-------|-----------|---------|
+| 1 | `sys_exec(sys, "sh", "-c", tok)` last IDENT | rc=1 SECRET tok | rc=1 SECRET tok | rc=1 SECRET tok | **BLOCK** |
+| 2 | `sys_exec(sys, "echo", tok)` last = a2 | rc=1 SECRET tok | rc=1 SECRET tok | rc=1 SECRET tok | **BLOCK** |
+| 3 | `sys_exec(sys, tok)` last = a1 | rc=1 SECRET tok | rc=1 SECRET tok | rc=1 SECRET tok | **BLOCK** |
+| 4 | `sys_exec(sys, "sh", "-c", tok, "true")` mid argv | rc=1 SECRET tok | rc=1 SECRET tok | rc=1 SECRET tok | **BLOCK** (scan/check; not last-span) |
+| 5 | `let x = tok; sys_exec(..., x)` alias last | rc=1 SECRET x | rc=1 SECRET x | rc=1 SECRET x | **BLOCK** |
+| 6 | `sys_exec(..., "echo " + tok)` concat last | rc=1 SECRET tok | rc=1 SECRET tok | rc=1 SECRET tok | **BLOCK** (scan; last not cap-ident) |
+| 7 | `sys_exec(..., wrap(tok))` nested | rc=1 SECRET tok | rc=1 SECRET tok | rc=1 SECRET tok | **BLOCK** (scan) |
+| 8 | `sys_exec(p, "sh", "-c", tok)` `&ProcessCap` | rc=1 SECRET tok | rc=1 SECRET tok | rc=1 SECRET tok | **BLOCK** |
+| F | `fixtures/secret_sys_exec_fail` | rc=1 SECRET token | rc=1 SECRET token | rc=1 SECRET token | **BLOCK** |
+| F | `fixtures/secret_sys_exec_argv_fail` | rc=1 SECRET token | rc=1 SECRET token | rc=1 SECRET token | **BLOCK** |
+| C | `fixtures/secret_sys_exec_pass` public last | rc=0 | rc=0 | rc=0 | **ALLOW** |
+| C | `fixtures/secret_sys_exec_argv_pass` | rc=0 | rc=0 | rc=0 | **ALLOW** |
+
+**FN count on assigned last-IDENT argv: 0.**
+
+Why last-arg exists: a1/a2 are only the first two C args after the cap.
+`sys_exec(sys, "sh", "-c", tok)` lowers to
+`sys, oo_str_lit("sh"), oo_str_lit("-c"), tok` — tok is **a3**.
+Last-arg + full-args scan are the emit rails for that slot. Check/LLVM
+use token `c_secret_scan_call(..., want=1, eq_only=false)` (any argi≥1).
+
+### Z2 — quote-split cannot hide unquoted SECRET
+
+Product join is `", "` between lowered args. Last-arg and the 7.1 walker
+share the same `in_str` + `\\` skip + paren `depth` rules. Live shapes
+go through `sys_exec` so **both** last-arg and scan see the text.
+
+| # | Source shape (after SECRET tag) | emit-c | check | llvm | HIDE? |
+|---|----------------------------------|--------|-------|------|-------|
+| Q0 | last `"echo hello, tok, SECRET"` (no IDENT) | ALLOW | ALLOW | ALLOW | n/a (**no FP**) |
+| Q1 | `"echo,foo"` then last `tok` | BLOCK | BLOCK | BLOCK | **no** |
+| Q2 | `"a,b" + "c,d"` then last `tok` | BLOCK | BLOCK | BLOCK | **no** |
+| Q3 | `"foo\\"` then last `tok` | BLOCK | BLOCK | BLOCK | **no** |
+| Q4 | `"foo\"bar"` then last `tok` | BLOCK | BLOCK | BLOCK | **no** |
+| Q5 | `"\\"` then last `tok` | BLOCK | BLOCK | BLOCK | **no** |
+| Q6 | `"/* tok */"` then last `tok` | BLOCK | BLOCK | BLOCK | **no** |
+| Q7 | `"//"` then last `tok` | BLOCK | BLOCK | BLOCK | **no** |
+| Q8 | `"foo\\\"x"` then last `tok` | BLOCK | BLOCK | BLOCK | **no** |
+| Q9 | `"\""` then last `tok` | BLOCK | BLOCK | BLOCK | **no** |
+| Q10 | `sys_exec(sys, "tok")` string-only last | ALLOW | ALLOW | ALLOW | n/a (**no FP**) |
+
+Python replica of the last-arg walker on product-shaped C text
+(`sys, oo_str_lit("echo,foo"), tok` and every Q3–Q9 escape) always
+returns `tok` as the last span (cap-ident). Quoted last with interior
+commas returns the whole `oo_str_lit("…")` (not a cap-ident) → last-arg
+rail skips; scan stays `in_str` → no FP.
+
+Why hide is hard on product emit: `c_escape_str_text` always emits
+well-formed C (`\\`, `\"`, `\\n`, `\\t`, 2-char controls). Even
+backslash run before `"` closes the string; odd run (`\"`) is content.
+Following `", tok` is outside the string. Nested `f(a, b)` commas sit
+at `depth>0` and do not move `last_start`.
+
+**HIDE count: 0** on live well-formed emit text.
+
+### Z3 — no fail-open if last-arg helper returns empty
+
+Caller skip (the hole if live):
+
+```
+let last = c_sys_exec_last_arg(args);
+if last != "" && c_arg_is_cap_ident(last) { refuse(last); }
+```
+
+Helper returns (source + replica):
+
+| Input | Return | Empty? |
+|-------|--------|--------|
+| `n == 0` | `"oo_str_lit(\"\")"` placeholder | **no** |
+| `last_start >= n` | `args` (full) | only if `args == ""` (already handled) |
+| `str_slice` empty | `args` | same |
+| otherwise | `str_slice(args, last_start, n)` | **no** for `last_start < n` |
+
+`last_start` starts at 0 and is assigned only to a `j < n` (first
+non-space after a top-level comma). So `last_start >= n` and
+`out == ""` are **dead** for `n > 0`. Replica over empty / trailing
+comma / all-spaces / `,,,` / quoted commas: **0 empty returns**.
+
+If the helper **did** return `""` with `args != ""`:
+
+- last-arg rail would skip (`if last != ""`)
+- `c_guard_scan_idents` still walks full `args` (7.1 backup; not reopened)
+- check/LLVM token walk still refuses last IDENT (argi≥1)
+
+Live proof that skip of the last-arg rail is not a FN: concat / wrap
+last spans are **not** cap-idents (`c_arg_is_cap_ident` false) — same
+skip as empty — and still **BLOCK** on emit-c + check + llvm.
+
+`sys_exec(sys)` (no argv): helper returns `sys` (single span, not empty).
+No SECRET in args → ALLOW. (Arity residual: `c_args_drop_first` with no
+comma returns the cap as argv — **not** a secret FN.)
+
+**Empty-helper fail-open count: 0.**
+
+### Controls (path A still live — not a 7.1 / T1 / T2 reopen)
+
+| Fixture / smoke | Result | Role |
+|-----------------|--------|------|
+| `s72_sys_exec_last_arg_smoke.sh` | **exit 0** | last IDENT refuse + quoted-commas no-FP |
+| `secret_sys_exec_{fail,pass}` | BLOCK / ALLOW | floor last argv |
+| `secret_sys_exec_argv_{fail,pass}` | BLOCK / ALLOW | mid-argv (T2 scan) |
+
+This audit does **not** retarget `c_guard_scan_idents` (7.1) or T1/T2
+return/field lattices.
+
+---
+
+## Dual-path honesty (not 7.2 FAIL)
+
+| Probe | emit-c | check | llvm | Note |
+|-------|--------|-------|------|------|
+| `sys_exec(tok)` only (SECRET a0) | SECRET refuse (last=tok) | **cap** ProcessCap first-arg | rc=0, **no** secret | check want=1 skips a0; LLVM has no last-arg |
+| `let f = sys_exec; f(..., tok)` | abort (tcache) | abort | abort | sink-alias crash; not last-arg FN |
+| `sys_exec(..., "echo ${tok}")` | ALLOW | ALLOW | ALLOW | name is string text (SECRET_TAINT **5.8**) |
+
+LLVM **never** calls `c_sys_exec_last_arg`. It shares the check token
+scanner. Assigned last-IDENT shapes still BLOCK on llvm via that scanner.
+a0-only SECRET is a **named residual** (check is fail-closed on cap).
+Do **not** promote to “product last-arg FN.”
+
+`${tok}` ALLOW is correct for 7.2 (last span is a string lit). Deep interp
+taint is **5.8**, not this close.
+
+---
+
+## Root-cause (why Z1–Z3 hold)
+
+1. **Last span is string- and depth-aware**
+   - Top-level `,` only (`depth == 0` and not `in_str`).
+   - `\\` skips the next char inside `"..."` (same class as 7.1).
+   - Product `c_escape_str_text` keeps C strings balanced.
+
+2. **Refuse is dual, fail-closed on last IDENT**
+   - Emit: last-arg cap-ident refuse **plus** full `args` ident scan.
+   - Check/LLVM: token IDENT at any argi≥1.
+   - Alias last (`x = tok`) resolves via `__sec__` / `__alias__`.
+
+3. **Empty extract cannot fire**
+   - Helper never returns `""` for `n > 0`; `n == 0` is a placeholder.
+   - Even a skip (`last` not cap-ident) leaves scan + check intact.
+
+---
+
+## Scorecard
+
+| Metric | Count |
+|--------|------:|
+| Z1 last-IDENT refuse probes | **BLOCK** (0 FN) |
+| Z2 quote-split HIDE | **0** |
+| Z2 string-only / quoted-commas FP | **0** |
+| Z3 helper empty returns (replica) | **0** |
+| Z3 empty-skip live FN | **0** |
+| CRIT 7.2 fail-open | **0** |
+| 7.1 reopened | **no** |
+
+**7.2 security path-A: PASS**
+
+---
+
+## Residual risks (return)
+
+| ID | Sev | Residual | Why not 7.2 FAIL |
+|----|-----|----------|------------------|
+| R1 | — | `${}` interp deep taint (`"echo ${tok}"` ALLOW) | SECRET_TAINT 5.8 — last span is a string (correct skip) |
+| R2 | MED | `let f = sys_exec; f(...)` aborts (heap) | 2.4 sink-alias / compiler crash; not last-arg miss |
+| R3 | LOW | Check `c_secret_scan_call` want=1 skips a0; LLVM ALLOW on `sys_exec(tok)` | Emit last-arg still refuses; check cap-fails; not assigned last-argv shape |
+| R4 | LOW | Caller `if last != ""` would skip if helper ever returned `""` | Structurally dead; scan + check backup |
+| R5 | LOW | Last expression (`concat` / `wrap`) skips last-arg rail | Scan + check still BLOCK (proved live) |
+| R6 | LOW | `sys_exec(sys)` uses cap as argv (`c_args_drop_first` no-comma) | Arity/honesty, not secret; unused SECRET not in args |
+| R7 | — | 7.10 `c_parse_secret_env` `name = name + c` | Other OWN (memory), not a sink FN |
+| R8 | — | Full IFC / `#[Secret]` / interproc beyond `__fr_secret__` | Named in SECRET_TAINT; do not greenwash |
+| R9 | — | 7.1 walker body | **Already closed**; backup only; not reopened |
+
+**Explicitly not residuals of this close:** 7.1 ident-scan contract
+(already PASS `s71_security.oot`); T1 return/alias/if-taint; T2
+field/args/comment-FP.
+
+---
+
+## Reproduce
+
+```bash
+OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
+# last IDENT (Z1)
+$OODAC emit-c /tmp/s72_sec_1RZEDK/z1_last_ident.oo     # ERR secret tok
+$OODAC check  /tmp/s72_sec_1RZEDK/z1_last_ident.oo     # ERR secret tok
+# quote-split then unquoted SECRET (Z2)
+$OODAC emit-c /tmp/s72_sec_1RZEDK/z2_earlier_comma_then_last.oo
+$OODAC emit-c /tmp/s72_sec_1RZEDK/z2_bs.oo
+$OODAC emit-c /tmp/s72_sec_1RZEDK/z2_quote.oo
+# no FP
+$OODAC emit-c /tmp/s72_sec_1RZEDK/z2_quoted_commas_fp.oo  # rc=0
+$OODAC emit-c /tmp/s72_sec_1RZEDK/z2_str_only.oo          # rc=0
+# floor + harness
+$OODAC emit-c ooda/fixtures/secret_sys_exec_fail.oo
+bash ooda/scripts/s72_sys_exec_last_arg_smoke.sh          # exit 0
+```
+
+---
+
+## Close table
+
+| Item | Status |
+|------|--------|
+| Z1 fail-closed SECRET last argv | **PASS** |
+| Z2 quote-split does not hide unquoted IDENT | **PASS** |
+| Z3 no fail-open if last-arg helper returns empty | **PASS** |
+| Z4 7.1 not reopened | **PASS** |
+| **7.2 security** | **PASS** |
+| Residuals R1–R9 | **OPEN** (named; not this FAIL) |
+
+end of s72_security.oot

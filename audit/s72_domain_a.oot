@@ -1,0 +1,168 @@
+# s72_domain_a.oot — Domain Expert A / residual 7.2
+# Residual: CRIT 7.2 `c_sys_exec_last_arg` stack buffer / no per-char OoStr leak
+# Date: 2026-08-12
+# Role: Domain Expert A of 12-agent 7.2 phalanx
+# Tree: /home/jeryd/Projects/openOODA
+# Host: ooda/oodac/oodac (product)
+# OWN: prove or finish last leak in `c_sys_exec_last_arg`; no 7.1 reopen;
+#      monofile ≤600 (soft 256); no moonshots; no auto-push
+
+========================================================================
+VERDICT
+========================================================================
+
+**ALREADY_FIXED** (path-A). No source change this turn.
+
+`c_sys_exec_last_arg` walks C arg text with `char_at` for comma/string/depth
+classification only, then takes **one** `str_slice(args, last_start, n)`
+for the last top-level span. There is no `last = last + c` / per-char
+OoStr concat in the last-arg extract. `.oo` has no char stack array; the
+alpha honesty for “stack buffer” is slice-once-per-span (same close as
+`t1_memory.oot` M-SG3 and 7.1 `str_slice` per ident).
+
+Source comment at `c_emit_args.oo` L121–125 already claimed this;
+**source matches the claim.**
+
+Monofile `c_emit_args.oo` = **238** lines (≤600; under soft 256).
+
+========================================================================
+DIAGNOSIS (prove)
+========================================================================
+
+### Last-arg body (product host source)
+
+File: `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_args.oo`
+
+- L69–130: `pub fn c_sys_exec_last_arg(args: String) -> String`
+- L76: `let mut last_start = 0;` — index only, no growing buffer
+- L80–120: linear `while i < n` over `chars_len(args)`
+- L82–97: skip `"..."` (escape-aware); L98–103: paren depth
+- L104–116: top-level `,` updates `last_start` to first non-space after
+- **L125:** `let out = str_slice(args, last_start, n);`  ← one slice
+- L122–128: empty-span fallbacks return `args` (no rebuild)
+
+Static grep of this function for `last = last +`, `last + c`: **no hits**.
+Only string-build in the last-arg fn is the single `str_slice` at L125.
+
+Same file L188 `out = out + c` lives in **`c_args_strip_cr`** (8.6 CR
+strip), **not** 7.2 last-arg. Adjacent L153 `c_args_drop_first` already
+slices remainder (M-SG4; not this OWN).
+
+### Call sites (all)
+
+| Site | Role |
+|------|------|
+| `c_emit_secret_guard.oo:137` | **sole caller** — `sys_exec` sink: last C arg after a1/a2 refuse |
+| `c_emit_secret_guard.oo:130–140` | refuse last only if `c_arg_is_cap_ident(last)` |
+| `c_emit_secret_guard.oo:198` | full `args` ident scan also covers `sys_exec` (7.1 walker) |
+| `c_emit_lower.oo:90` | free-call emit → `c_secret_emit_guard(...)` |
+| `c_emit_lower.oo:151–162` | `sys_exec` lower uses `c_args_drop_first` + `c_args_strip_cr` — **does not** call last-arg |
+| `c_emit_call.oo:82` | method emit → same guard |
+| `c_emit_ty.oo:134` | name whitelist (not a call) |
+| `c_emit_let_ext.oo:162` | infer-kind whitelist (not a call) |
+
+No second last-arg walker, no generated duplicate with concat.
+
+### Stack / buffer honesty
+
+| Layer | What happens | Class |
+|-------|----------------|-------|
+| Last-arg accumulate | `str_slice` once for `[last_start, n)` | **path-A** — no O(arg²) concat |
+| Runtime `oo_str_slice` | one alloc + memcpy of the span | O(\|last\|) heap, honest |
+| Walk `char_at` | runtime 1-char `OoStr` per visit | O(\|args\|) 1-byte temps — **language floor**, not 7.2 leak |
+| C stack `char buf[N]` | not expressible in `.oo` | not required for alpha close |
+
+Complexity: time O(|args|) char visits; aux = O(1) scalars (`i`, `in_str`,
+`depth`, `last_start`) + one final slice. No growing concat buffer.
+
+### Out of OWN (do not claim closed here)
+
+- **7.1** closed ALREADY_FIXED (`c_guard_scan_idents` slice). **Not reopened.**
+- **7.10 HIGH** still OPEN: `c_parse_secret_env` (`name = name + c`).
+- **8.6** `c_args_strip_cr` still `out = out + c` (CR filter, not last-arg).
+
+========================================================================
+FILES TOUCHED
+========================================================================
+
+| File | Change |
+|------|--------|
+| `ooda/oodac/c_emit_args.oo` | **none** (already path-A) |
+| `ooda/oodac/c_emit_secret_guard.oo` | **none** (call site only; 7.1 OWN) |
+| `openOODA/audit/s72_domain_a.oot` | this evidence |
+
+**Not touched:** 7.1 walker, T1–T2 taint, sink lists, smokes, SPRINT table,
+`c_parse_secret_env` (7.10), remotes (no push).
+
+========================================================================
+PROVE COMMANDS
+========================================================================
+
+```bash
+cd /home/jeryd/Projects/openOODA/ooda
+export OODAC_BIN=./oodac/oodac
+
+# Static: no per-char concat in last-arg; one str_slice
+# (expect: L125 str_slice; L188 is c_args_strip_cr only)
+grep -n 'str_slice\|last = last\|out = out +' oodac/c_emit_args.oo
+wc -l oodac/c_emit_args.oo   # 238
+
+# Secret smokes that touch sys_exec (timeout ≤90s each)
+timeout 90 bash scripts/secret_t2_depth_smoke.sh
+# observed: EXIT 0
+#   secret_sys_exec_argv_fail emit refuses
+#   secret_sys_exec_argv_pass emit OK
+
+timeout 90 bash scripts/secret_sink_enforce_smoke.sh
+# observed: EXIT 1  — ALL sys_exec rails OK:
+#   secret_sys_exec_fail emit refuses
+#   secret_sys_exec_pass emit OK
+#   FAIL secret_file_size_pass (unrelated: "unknown free call needs
+#   annotation oo_file_size") — not last-arg / not 7.2
+```
+
+`sys_exec` last-arg + argv-ident refuse/allow **green**. Floor fail is
+**file_size emit annotation**, not last-arg heap.
+
+========================================================================
+RESIDUAL HONESTY (do not claim closed)
+========================================================================
+
+1. **7.10 `c_parse_secret_env` per-char concat** — still `name = name + c`
+   in `ooda/oodac/c_emit_secret.oo`. Different function. Leave for 7.10 OWN.
+
+2. **`char_at` 1-char temps** — every visit allocates a 1-byte `OoStr`.
+   Inherent to `.oo` string model. Not quadratic last-arg leak.
+
+3. **`c_args_strip_cr` `out = out + c`** — same monofile L188; 8.6 CR
+   filter on argv emit. Not 7.2 last-arg extract. Did not rewrite.
+
+4. **`secret_sink_enforce_smoke` EXIT 1** — `secret_file_size_pass`
+   annotation miss (`unknown free call needs annotation oo_file_size`).
+   sys_exec fail/pass rails green. **Not 7.2.** Did not patch (out of OWN).
+
+5. **SPRINT row 7.2** — still listed CRIT open in `SPRINT.oot`. This audit
+   recommends flip to **FIXED (path-A prove)** after peer confirm. Domain A
+   does not edit SPRINT.
+
+6. **String-skip duplication** — `in_str` / escape walk copied with
+   `c_count_top_args` and 7.1 ident walker (`s71_ideas` I4). Hygiene only;
+   not a leak. No shared-helper moonshot this turn.
+
+========================================================================
+STATUS FOR SPRINT/PM
+========================================================================
+
+| Item | Status |
+|------|--------|
+| 7.2 `c_sys_exec_last_arg` no per-char OoStr concat | **ALREADY_FIXED** |
+| 7.2 C stack buffer rewrite | **not needed** (slice is path-A) |
+| T2 `secret_sys_exec_argv_*` | **green** |
+| sink_enforce `secret_sys_exec_{fail,pass}` | **green** |
+| sink_enforce overall exit | **red on file_size_pass annotation** (not 7.2) |
+| 7.1 ident walker | **not reopened** |
+| 7.10 parse-secret-env concat | **OPEN** (other ID) |
+
+Recommend SPRINT 7.2 mark **FIXED** with pointer to this file.
+
+end of s72_domain_a.oot

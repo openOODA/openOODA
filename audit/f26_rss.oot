@@ -1,0 +1,77 @@
+# f26_rss.oot — F26 Memory Auditor (ONE RSS measure)
+# Date: 2026-08-12T20:50:08Z
+# Role: Memory Auditor. No push. Did not edit SPRINT.oot.
+# Own: one /usr/bin/time -v timeout 90 /tmp/oodac_f26 check of oodac/main.oo.
+# Did not start a second check. Did not start emit fanout.
+# Tip: super eaa555d / ooda 52cc4b5 / openOODA 81f56fc
+# F26 is NOT closed.
+
+## 8-line summary
+
+1. F26 **OPEN**. One measure only. No second check. No emit fanout. No push. No SPRINT edit.
+2. **Old hang** (`audit/f26_p7_integration.oot` L16, L128–136): `timeout 120 oodac check oodac/main.oo` rc=124; 0 bytes out; stack `tokenize_lines` ← `scan_fn_names`; RSS 0.58→**1.82 GiB** at t=110s then kill.
+3. **This host** `/tmp/oodac_f26` 967784 B @ 10:35:47 -1000; md5 `8c315422495e07ef4b9436d53faff06f`; BuildID `f13b4c9aafa8dd27217694d9a83d255daa5b3330` (same bytes as `f26_isolated_prove.oot`).
+4. **Command** (exact, 20:48:59Z–20:50:08Z, load 5.14 29.13 35.20): `/usr/bin/time -v timeout 90 /tmp/oodac_f26 check /home/jeryd/Projects/openOODA/ooda/oodac/main.oo`
+5. **Finish, not hang:** wall **68.57s** < 90s; timeout did **not** fire; stdout `ERRtypeType error at 36:5: return type String does not match declared Bool`; `time` exit status **1** (oodac rc=1).
+6. **Max RSS = 2443592 kbytes = 2386.32 MiB = 2.330 GiB.** vs old **1.82 GiB** hang: **+0.51 GiB (~+28%)**. Not << 1.8 GiB. Cheap scan unblocked the hang; peak heap is **worse**.
+7. **Not a close:** p7 45s smoke still shorter than 68.57s finish; check is not rc=0; residual `np>12` second loop still tokenizes every module (`run_check_core_binds`). Isolated prove's "cheap scan WON" is finish-only — RSS was unmeasured until now.
+8. **Do not raise p7** on this number (`crush_ideas2.oot`: raise IFF finish **and** RSS << 1.8GiB). Finish yes, RSS no. F26 stays CRIT.
+
+## Measure (verbatim)
+
+Start 2026-08-12T20:48:59Z. End 2026-08-12T20:50:08Z. One process. No competing `oodac check` (only unrelated f26d `emit-c`).
+
+```
+ERRtypeType error at 36:5: return type String does not match declared Bool
+Command exited with non-zero status 1
+Command being timed: "timeout 90 /tmp/oodac_f26 check /home/jeryd/Projects/openOODA/ooda/oodac/main.oo"
+User time (seconds): 64.75
+System time (seconds): 1.86
+Percent of CPU this job got: 97%
+Elapsed (wall clock) time (h:mm:ss or m:ss): 1:08.57
+Maximum resident set size (kbytes): 2443592
+Major (requiring I/O) page faults: 0
+Minor (reclaiming a frame) page faults: 610310
+Voluntary context switches: 3
+Involuntary context switches: 6256
+Swaps: 0
+File system inputs: 0
+File system outputs: 0
+Page size (bytes): 4096
+Exit status: 1
+```
+
+## vs old tokenize hang
+
+| Item | Old (f26_p7_integration.oot) | This measure (/tmp/oodac_f26) |
+|------|------------------------------|-------------------------------|
+| Host | `ooda/oodac/oodac` 963080 B md5 `35505fc5…` | `/tmp/oodac_f26` 967784 B md5 `8c315422…` |
+| Scan in ELF | `scan_fn_names` **calls** `tokenize_lines` | cheap char-walk in source; `scan_fn_names` + `tokenize_lines` both still **in** ELF |
+| Command | `timeout 120 oodac check oodac/main.oo` | `timeout 90 /tmp/oodac_f26 check …/oodac/main.oo` |
+| Wall | ~110s then kill | **68.57s** finished |
+| rc | **124** | **1** (type ERR, not timeout) |
+| stdout | **0 bytes** | type mismatch 36:5 String vs Bool |
+| Stack at hang | `tokenize_lines` ← `scan_fn_names` | n/a (finished) |
+| Peak RSS | **1.82 GiB** (t=110s) | **2443592 KB = 2.330 GiB** |
+
+Conversion: GNU `time` kbytes / 1024 / 1024 → GiB. 2443592 / 1048576 = **2.330**. Old 1.82 GiB ≈ 1_908_326 KB. Delta **+535_266 KB**.
+
+## What this does / does not prove
+
+- **Proves:** isolated host **exits** the name-scan hang and prints a type ERR inside 90s.
+- **Proves:** Max RSS on that finish is **2.33 GiB**, larger than the old 1.82 GiB kill-peak.
+- **Does not prove:** product `ooda/oodac/oodac` is fixed (not this ELF; did not overwrite).
+- **Does not prove:** p7 smoke green (45s < 68.57s).
+- **Does not close F26.** Smoke-0 + RSS << 1.8GiB both still missing.
+
+Residual named in `f26_memory.oot` still live: modular `np>12` second loop = N× `run_check_core_binds` → `lex_all` + `tokenize_lines` → `List[String]`. Cheap scan only removed the first-loop token List. That is enough to finish; not enough to shrink RSS.
+
+## Process
+
+- Did **not** start a second `oodac check`.
+- Did **not** start emit fanout / rebuild / `/tmp/oodac_f26b`.
+- Did **not** overwrite `ooda/oodac/oodac`.
+- Did **not** edit `SPRINT.oot` or product `.oo`.
+- Did **not** push.
+
+end of f26_rss.oot

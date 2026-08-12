@@ -1,0 +1,175 @@
+# crush_peer2.oot
+# Peer Verifier 2 — F10–F12 live prove (check path)
+# Date: 2026-08-12T20:08Z
+# Role: Independent Verifier. Own this audit only. No product edit. No push.
+# Tree: /home/jeryd/Projects/openOODA
+# Assigned: FsReadCap + write_file deny; HttpCap + sock_raw deny.
+# Also proved F11 (FsWriteCap + read_file) because SPRINT lists F10–F12 as one set.
+# Ledger: openOODA/audit/audit_2026-08-12_run.oot F10/F11/F12 (HIGH).
+# SWARM: solo (single-file audit; no product overlap).
+
+========================================================================
+VERDICT
+========================================================================
+
+**F10–F12 check-path least privilege: PASS.** No peer fix. No push.
+
+Product `oodac check` fail-closes wrong-granular tokens:
+
+| Finding | Claim under pressure | Live | Dual-repro |
+|---------|----------------------|------|------------|
+| **F10** | FsReadCap must not authorize `write_file` | rc=1 requires `&FsWriteCap` | rc=1 ×2 |
+| **F11** | FsWriteCap must not authorize `read_file` | rc=1 requires `&FsReadCap` | rc=1 ×2 |
+| **F12** | HttpCap must not authorize `sock_raw` | rc=1 requires `&NetCap` | rc=1 ×2 |
+
+Original ledger line numbers are **stale**. Current `cap_fs_granted_ok` is
+`check_cap_util.oo:151` (not `:62`). Current `:62` is a NetCap comment.
+`cap_net_granted_ok` (`:106`) does **not** treat HttpCap as NetCap.
+
+========================================================================
+SESSION
+========================================================================
+
+| Field | Value |
+|-------|-------|
+| ROOT | `/home/jeryd/Projects/openOODA` |
+| HAS_DESIGN | yes (`openOODA/DESIGN.oot`) |
+| Tip | `eaa555d` `fix(r2): Resolve scope poisoning, multi-import deduplication, and enforce 256-line hygiene` |
+| Product host | `ooda/oodac/oodac` 963080 B @ 2026-08-12 10:04 -1000 |
+| Host md5 | `35505fc520e997a9421089f11bdffd92` |
+| Host BuildID | `abf4360f72e58b5b12366e1322428f01f808dad4` |
+| Prove path | `oodac check` (same flag users get) |
+| Fixtures | `/tmp/crush_peer2/*.oo` (ephemeral; not committed) |
+| Smokes (suspects) | `cap_g2_fs_granular_smoke.sh` PASS; `cap_g1_net_granular_smoke.sh` PASS |
+| Hygiene | this file ≤256; no product edit |
+
+Sibling `oodac/oodac` (962888 B @ 04:43, md5 `e8e78a9e…`) also denied F10 and F12
+(rc=1). Gate host is the in-tree product binary above.
+
+========================================================================
+METHOD
+========================================================================
+
+1. Read F10–F12 in the 2026-08-12 ledger + SPRINT + CAPS path-A map.
+2. Read `oodac/check_cap_util.oo` and `oodac/check_caps.oo` (one layer below).
+3. Independent fixtures under `/tmp/crush_peer2/` (not corpus copies).
+4. Live `oodac check` with unmasked `$?`. Deny cases run twice (clean state).
+5. Positive controls so a total-broken checker cannot look green.
+6. Missing-cap + alias + method extras. Corpus used only as a cross, not proof.
+
+Would fail if the old bug still existed: FsReadCap+`write_file` or
+HttpCap+`sock_raw` would print `OK` and exit 0.
+
+========================================================================
+LIVE MATRIX
+========================================================================
+
+Command:
+```
+OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
+$OODAC check /tmp/crush_peer2/<fixture>.oo
+echo exit=$?
+```
+
+| Fixture | Expect | r1 | r2 | Prefer-kind | Verdict |
+|---------|--------|----|----|-------------|---------|
+| `f10_fsread_write_deny` | DENY | 1 | 1 | `&FsWriteCap` | **PASS** |
+| `f11_fswrite_read_deny` | DENY | 1 | 1 | `&FsReadCap` | **PASS** |
+| `f12_http_sock_raw_deny` | DENY | 1 | 1 | `&NetCap` | **PASS** |
+| `f10b` `fs_write` alias | DENY | 1 | — | `&FsWriteCap` | **PASS** |
+| `f10c` `fs.write_file` method | DENY | 1 | — | `&FsWriteCap` | **PASS** |
+| `f11b` `path_exists` | DENY | 1 | — | `&FsReadCap` | **PASS** |
+| `f11c` `file_size` | DENY | 1 | — | `&FsReadCap` | **PASS** |
+| `f12b` `raw_socket` alias | DENY | 1 | — | `&NetCap` | **PASS** |
+| `f12c` TcpCap + `sock_raw` | DENY | 1 | — | `&NetCap` | **PASS** |
+| `neg_no_cap_write` | DENY | 1 | — | `&FsWriteCap` | **PASS** |
+| `neg_no_cap_sock_raw` | DENY | 1 | — | `&NetCap` | **PASS** |
+| `pos_fsread_read_allow` | ALLOW | 0 | — | — | **PASS** |
+| `pos_fswrite_write_allow` | ALLOW | 0 | — | — | **PASS** |
+| `pos_http_fetch_allow` | ALLOW | 0 | — | — | **PASS** |
+| `pos_net_sock_raw_allow` | ALLOW | 0 | — | — | **PASS** (check only) |
+| `pos_fscap_write_allow` | ALLOW | 0 | — | — | **PASS** (legacy) |
+
+F10 deny sample (tab fields; both runs same):
+```
+ERR<TAB>capability<TAB>Security Capability Violation: Function 'bad' calls
+sealed effectful builtin 'write_file' which requires a &FsWriteCap parameter,
+but none was declared at line 3, col 13. Default-deny: grant the capability
+token explicitly.
+```
+
+F12 deny sample (both runs same):
+```
+… sealed effectful builtin 'sock_raw' which requires a &NetCap parameter …
+```
+
+Corpus cross (suspects, not proof): `wrong_granular_fsread_for_write.oo`,
+`wrong_granular_fswrite_for_read.oo`, `wrong_granular_http_for_tcp.oo` all rc=1.
+
+========================================================================
+SOURCE (one layer below)
+========================================================================
+
+`sealed_fs_kind_of` (`:128`): `write_file`/`fs_write` → FsWriteCap;
+`read_file`/`fs_read`/`path_exists`/`file_size` → FsReadCap.
+
+`cap_fs_granted_ok` (`:151`): exact preferred **or** legacy FsCap.
+FsReadCap in the bag does not match preferred FsWriteCap. Soft supersede
+is FsCap only. So FsReadCap ↛ write.
+
+`sealed_net_kind_of` (`:63`): `sock_raw`/`raw_socket` → **NetCap** (hard).
+`is_soft_net_kind` (`:88`) is Http/Tcp/Udp/Bind only. NetCap is not soft.
+
+`cap_net_granted_ok` (`:106`): exact preferred **or** NetCap supersede of
+**soft** kinds. preferred=NetCap + bag=HttpCap → no exact, no soft supersede
+→ deny. HttpCap cannot stand in for `sock_raw`.
+
+`check_caps.oo` (`:111–113`) calls those helpers. Wrong granular is the
+same deny path as a missing token.
+
+========================================================================
+RESIDUAL / HONESTY
+========================================================================
+
+1. **Check path only.** This peer does not claim runtime OS isolation,
+   landlock, or seccomp. Runtime: `oo_cap_require_fswrite` / `oo_cap_require_net`.
+   Product `oo_sock_raw` still returns Err ("SOCK_RAW not product") after require.
+2. **F12 smoke hole:** `cap_g1_net_granular_smoke.sh` has no `sock_raw` fixture.
+   No corpus `wrong_granular_*sock_raw*`. Smoke would **not** catch F12.
+   F10/F11 **are** in `cap_g2_fs_granular_smoke.sh`. Live prove is the F12 bar.
+3. **Ledger line stale:** F10 cited `:62`. That line is now a comment.
+   Behavior is the live prove, not the old line number.
+4. **`check_cap_util.oo` = 357 lines** (F27 CRIT). Out of this peer. Not a
+   least-privilege hole.
+5. **Emit / grant inject (DE1)** residual: type→`grant_fsread` / `grant_http`
+   not re-proved. Writes still use `OODA_FS_WRITEDIR` at run time.
+6. **Legacy supersede kept:** `&FsCap` still writes; `&NetCap` still check-allows
+   `sock_raw`. Path-A says that is one-wave compat, not a new hole.
+7. **Not claimed:** unforgeable object-caps; hostile rewrite of the checker;
+   full std SysCap/NetCap purge.
+
+========================================================================
+ANTI-SYNTHETIC
+========================================================================
+
+| Probe §7 | This prove |
+|----------|------------|
+| Same binary users get? | yes — `ooda/oodac/oodac` |
+| Same product flags? | yes — `check` |
+| Exit unmasked? | yes — `rc` files under `/tmp/crush_peer2/` |
+| Would fail if bug lived? | yes — ALLOW would be rc=0 `OK` |
+| One layer below? | yes — grant helpers + sealed maps |
+| Missing / wrong / allow? | all three covered |
+
+========================================================================
+DONE WHEN / NEXT
+========================================================================
+
+Peer2 assigned live prove is **done**. F10–F12 are **not** open fail-open
+holes on this host.
+
+Next (not this peer): add a corpus fail fixture `HttpCap`+`sock_raw` and
+wire it into `cap_g1_net_granular_smoke.sh` so F12 cannot regress silently.
+Ledger owner may mark F10–F12 closed with this file as witness.
+
+end of crush_peer2.oot

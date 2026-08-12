@@ -1,0 +1,125 @@
+# f10_cap_stale.oot — F10/F11/F12 NOT_A_BUG (stale line map)
+# Date: 2026-08-12T20:10Z
+# Role: Security/Cap verifier (crush swarm). OWN F10 F11 F12.
+# Tree: /home/jeryd/Projects/openOODA
+# Host: ooda/oodac/oodac 963080 B @ 10:04 md5 35505fc520e997a9421089f11bdffd92
+# No product edit. No push.
+
+========================================================================
+VERDICT
+========================================================================
+
+**NOT_A_BUG.** Crush claimed `check_cap_util.oo:62` `cap_fs_granted_ok`
+grants write under FsReadCap, FsWriteCap grants read, HttpCap grants
+`sock_raw`. Live file is the opposite. Line map is stale.
+
+| Id | Crush claim | Live |
+|----|-------------|------|
+| F10 | `:62` `cap_fs_granted_ok` lets FsRead write | `:62` is a **comment** on `sealed_net_kind_of`. `cap_fs_granted_ok` is **`:151`**: exact preferred **or** FsCap |
+| F11 | `:~120` FsWrite grants read/path/size | `:120` is `cap_net_argflow_ok` NetCap:id. Fs read ops prefer **FsReadCap** (`:129–132`) |
+| F12 | `cap_net_granted_ok` accepts HttpCap for raw | `:106` exact preferred **or** NetCap **if soft**. `sock_raw` preferred **NetCap** (`:78`); NetCap is **not** soft |
+
+========================================================================
+SESSION
+========================================================================
+
+| Field | Value |
+|-------|-------|
+| ROOT | `/home/jeryd/Projects/openOODA` |
+| HAS_DESIGN | yes |
+| SWARM | solo — this audit + SPRINT/ledger close; no `.oo` edit |
+| Product check | `ooda/oodac/oodac check` (user path) |
+| Sibling | `oodac/oodac` @ 04:43 also deny F10/F12 |
+| Smokes | `cap_g1_net_granular_smoke.sh` PASS; `cap_g2_fs_granular_smoke.sh` PASS |
+| Peer | `audit/crush_peer2.oot` check-only PASS (independent) |
+
+========================================================================
+STALE LINE MAP
+========================================================================
+
+```
+:62   // Legacy: NetCap supersedes … via cap_net_legacy_ok
+:63   pub fn sealed_net_kind_of
+:78   sock_raw → "NetCap"
+:88   is_soft_net_kind = Http/Tcp/Udp/Bind only
+:106  cap_net_granted_ok = exact OR (soft && bag has NetCap)
+:128  sealed_fs_kind_of
+:151  cap_fs_granted_ok = exact preferred OR bag has FsCap
+```
+
+FsReadCap in bag + preferred FsWriteCap → no exact, no FsCap → deny.
+HttpCap in bag + preferred NetCap → no exact, NetCap not soft → deny.
+
+========================================================================
+LIVE PROVE (dual-repro)
+========================================================================
+
+Product `oodac check` (rc unmasked). Deny ran twice.
+
+| Fixture | Expect | r1 | r2 | Prefer-kind |
+|---------|--------|----|----|-------------|
+| corpus `wrong_granular_fsread_for_write.oo` | DENY | 1 | 1 | `&FsWriteCap` |
+| corpus `wrong_granular_fswrite_for_read.oo` | DENY | 1 | 1 | `&FsReadCap` |
+| corpus `wrong_granular_fswrite_for_path.oo` | DENY | 1 | — | `&FsReadCap` |
+| ephemeral FsWrite + `file_size` | DENY | 1 | — | `&FsReadCap` |
+| ephemeral HttpCap + `sock_raw` | DENY | 1 | 1 | `&NetCap` |
+| ephemeral TcpCap + `sock_raw` | DENY | 1 | — | `&NetCap` |
+| `main(fs: &FsReadCap){ write_file }` | DENY | 1 | 1 | `&FsWriteCap` |
+| `main(http: &HttpCap){ sock_raw }` | DENY | 1 | — | `&NetCap` |
+| corpus `ok_fs_read_cap_read.oo` | ALLOW | 0 | — | — |
+| corpus `ok_fs_write_cap_write.oo` | ALLOW | 0 | — | — |
+| corpus `ok_fs_cap_read_write.oo` | ALLOW | 0 | — | — (legacy FsCap) |
+| ephemeral NetCap + `sock_raw` | ALLOW | 0 | — | — (check only) |
+
+F10 sample: `write_file` requires `&FsWriteCap` … none was declared.
+F12 sample: `sock_raw` requires `&NetCap` … none was declared.
+
+Would fail if crush were right: those checks would print `OK` rc=0.
+
+========================================================================
+EMIT-C / RUNTIME (one layer below check)
+========================================================================
+
+`cli_emit.oo` **does not** run check. emit-c of
+`main(fs: &FsReadCap){ write_file(fs, "/tmp/f10_cap_pwn", "PWNED") }`
+succeeds and **rebinds** `fs = oo_cap_grant_fsread()` then
+`oo_write_file(fs, …)`.
+
+gcc + run (dual-repro):
+
+| Binary | r1 | r2 | stderr | `/tmp/f10_cap_pwn` |
+|--------|----|----|--------|--------------------|
+| main_fsread_write | 1 | 1 | `write_file: missing or forged capability` | **ABSENT** |
+| main_fswrite_read | 1 | 1 | `read_file: missing or forged capability` | — |
+| main_fsread_read (control) | 0 | — | (no cap ERR) | — |
+
+Runtime: `oo_cap_require_fswrite` accepts `g_tok_fswrite` **or** `g_tok_fs`
+only (`chs_rt_sys.c`). `oo_sock_raw` calls `oo_cap_require_net` (NetCap
+only), then residual Err.
+
+emit-c of `sock_raw` itself: `ERR c_emit unknown free call needs
+annotation oo_sock_raw` even with NetCap. Residual emit, not F12.
+
+========================================================================
+RESIDUAL (named, not this hole)
+========================================================================
+
+1. emit-c skips check (CAP-G3 honesty). Runtime still deny on wrong token.
+2. Main still injects ambient `grant_fs`/`grant_fswrite`/`grant_net`.
+   Typed param **rebinds** `fs` to fsread — write uses that token.
+3. `cap_g1_net_granular_smoke.sh` has **no** sock_raw fixture (F12 smoke
+   hole). F10/F11 **are** in `cap_g2_fs_granular_smoke.sh`.
+4. `check_cap_util.oo` = 357 lines (F27). Not a grant inversion.
+5. Not claimed: landlock, seccomp, unforgeable object caps.
+
+========================================================================
+DOCS
+========================================================================
+
+| Doc | Action |
+|-----|--------|
+| `SPRINT.oot` | F10–F12 removed from HIGH open; HIGH-closed NOT_A_BUG |
+| `audit_2026-08-12_run.oot` | F10–F12 status NOT_A_BUG → this file |
+| `crush_peer2.oot` | independent check-path witness |
+
+end of f10_cap_stale.oot

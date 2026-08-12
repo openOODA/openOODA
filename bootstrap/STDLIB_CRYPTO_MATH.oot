@@ -1,80 +1,168 @@
-# Std crypto math — gate-only, math not audited
+# Std crypto math — restated residual honesty
 
-**Status:** residual honesty (load-bearing gate). PM **4.3** / DESIGN §4.3.
+**Status:** residual honesty. Math not audited. Not an 8-file `process_exit` set.
 **Marker:** `STDLIB_CRYPTO_MATH_RESIDUAL`
-**Status:** `[STATUS: residual — math not audited]`
+**Restated:** 2026-08-12 (F31 + F38 + F23 MUST-GATE). No crypto math this turn.
 
 ---
+
+========================================================================
+MUST-GATE (F23) — future listed `_ops` only
+========================================================================
+If anyone later **creates** a listed crypto `_ops` file, every public
+body MUST be `process_exit(1)` — not silent success, not a string stub.
+Listed phantoms (do **not** create this turn): `ed25519_ops.oo`,
+`dilithium_ops.oo`, `groth16_ops.oo`, `double_ratchet_ops.oo`.
+Live helpers stay ungated (F31): `falcon_ops` / `secp256k1_ops` /
+`plonk_ops`. `"UNIMPLEMENTED_RESIDUAL"` is **not** this gate.
+========================================================================
 
 ## What is true today
 
-Product std crypto ships **gate-only** `.oo` files. Public entry points compile
-and are callable, but the real math bodies are fail-closed `process_exit(1)`
-stubs. The gate is **load-bearing**: callers that hit a "real" function do not
-get crypto — they get an immediate process exit. No silent fall-through.
+The old table listed **8** files as load-bearing `process_exit(1)` stubs.
+That set was **false**.
 
-The math has **not been audited**. Treat every gated `.oo` below as
-**unverified**, regardless of the file name.
+- **3 listed paths exist.** None of them call `process_exit`. They are
+  helpers, constructors, or toy field ops — **not** gates.
+- **5 listed paths are phantom.** An import fails to resolve. It does
+  **not** exit(1). Citing them as gates is itself a phantom claim.
+- Product `ooda/std` hash/crypto uses **other** gate shapes: the string
+  `"UNIMPLEMENTED_RESIDUAL"` and CHS internals. Named below.
 
----
-
-## Gated files (8 std crypto "real" implementations)
-
-Each file pairs a public surface with a `process_exit(1)` body. Math is not
-audited; gate is the only thing keeping callers honest.
-
-| File | Family | Gate shape |
-|------|--------|------------|
-| `std/src/ooda/sec/crypto/ed25519_ops.oo` | EdDSA / X25519 | `_ops` bodies `process_exit(1)` |
-| `std/src/ooda/sec/crypto/dilithium_ops.oo` | PQC sig (Dilithium) | `_ops` bodies `process_exit(1)` |
-| `std/src/ooda/sec/crypto/groth16_ops.oo` | zkSNARK (Groth16) | `_ops` bodies `process_exit(1)` |
-| `std/src/ooda/sec/crypto/double_ratchet_ops.oo` | Signal ratchet | `_ops` bodies `process_exit(1)` |
-| `std/src/ooda/sec/crypto/falcon_ops.oo` | PQC sig (Falcon) | `_ops` bodies `process_exit(1)` |
-| `std/src/ooda/sec/crypto/kyber.oo` | PQC KEM (Kyber) | top-level bodies `process_exit(1)` |
-| `std/src/ooda/sec/crypto/secp256k1_ops.oo` | ECDSA / secp256k1 | `_ops` bodies `process_exit(1)` |
-| `std/src/ooda/sec/crypto/plonk_ops.oo` | zkSNARK (Plonk) | `_ops` bodies `process_exit(1)` |
-
-Each also has paired `_types.oo`, `_engine.oo`, `_stubs.oo` — only `_ops` /
-top-level bodies carry the gate; types/engines/stubs may carry partial surfaces.
+Treat every live `.oo` below as **unverified**. Do not ship as crypto.
 
 ---
 
-## Known math gaps (Round 1 audit)
+## Exist (only these 3 of the old 8)
 
-Math-level gaps observed during Round 1 review. None are closed; none are
-products. Listed so agents do not treat gated files as if they implement
-the named primitive correctly.
+Paths under `std/src/ooda/sec/crypto/`. `process_exit` count is **0**.
 
-- **X25519 clamp** — scalar clamping per RFC 7748 §5 not verified in
-  `ed25519_ops.oo`. Cofactor / small-subgroup behaviour unverified.
-- **On-curve validation** — Ed25519 / secp256k1 point decoding does not
-  enforce on-curve check; mixed-coordinate edge cases unverified.
-- **Constant-time** — no side-channel audit. Timing-leak posture unknown.
-  No `CT-` / `volatile` / barrier markers in any gated `_ops` body.
-- **Dilithium sampling** — rejection sampling + NTT domain not verified;
-  polynomial arithmetic unverified.
-- **Falcon sampler** — Gaussian / NTT sampler unverified; signature
-  rejection loop unverified.
-- **Groth16 / Plonk** — pairing arithmetic, R1CS encoding, and
-  quotient-polynomial reduction unverified.
-- **Double Ratchet** — DH ratchet step + symmetric ratchet key derivation
-  unverified; root-key / chain-key chain unverified.
-- **Kyber** — CPA-PKE → CCA-KEM transform (FO transform) unverified.
+| File | Family | What the file is |
+|------|--------|------------------|
+| `falcon_ops.oo` | Falcon | Schoolbook mul, norms, params, checksum |
+| `secp256k1_ops.oo` | secp256k1 | Point/key constructors; length-only `is_valid: true` |
+| `plonk_ops.oo` | Plonk | Host `Int` mod add/mul/pow/inv + gate structs |
+
+Primitive exits for these three families live in **stubs**, not ops:
+
+| File | `process_exit` | What exits |
+|------|----------------|------------|
+| `falcon_stubs.oo` | 6 | NTT, FFT sampler, NTRU, LDL, sign |
+| `secp256k1_stubs.oo` | 11 | Point add/mul, ECDSA, Schnorr, ECDH |
+| `plonk_stubs.oo` | 3 | KZG pairing, FFT, plookup |
+
+---
+
+## Phantom (5 of the old 8)
+
+Do **not** cite these as gates. They are **not on disk**.
+
+| Claimed path (`std/src/ooda/sec/crypto/`) | Disk | Sibling that exists |
+|------------------------------------------|------|---------------------|
+| `ed25519_ops.oo` | **PHANTOM** | `ed25519.oo` (8× `process_exit` on hash/clamp/sign/verify) |
+| `dilithium_ops.oo` | **PHANTOM** | `dilithium.oo` (4× `process_exit` on NTT/sample only) |
+| `groth16_ops.oo` | **PHANTOM** | `groth16.oo` (4× `process_exit` on pairing/MSM/prove) |
+| `double_ratchet_ops.oo` | **PHANTOM** | `double_ratchet.oo` (7× `process_exit` on KDF/DH/AEAD/send/recv) |
+| `kyber.oo` | **PHANTOM** | `std/crypto/kyber.oo` (3× `process_exit` facade; **other tree**) |
+
+There is **no** `std/src/ooda/sec/crypto/kyber.oo`.
+
+---
+
+## Gate shapes (named)
+
+The old pack named only `process_exit(1)`. Live shapes:
+
+### A. `process_exit(1)`
+
+Caller dies. Used in `*_stubs.oo`, some monofile primitive entries,
+and `std/crypto/kyber.oo`. Fail-closed **where it exists**.
+
+### B. `"UNIMPLEMENTED_RESIDUAL"`
+
+String return (22 chars). Product `ooda/std/hash/sha256.oo` does
+`return "UNIMPLEMENTED_RESIDUAL"`. Caller gets a string, **not** an
+exit. The verify block asserts that exact string.
+
+### C. CHS internal
+
+Product `ooda/std/core/crypto.oo` `sha256` / `hmac_sha256` call
+`crypto_*_internal`. `ooda/std/hash/md5.oo` and `sha1.oo` same. AES
+returns the C-runtime string `STUB_FAIL_CLOSED` (not an exit).
+**F39:** `md5.oo` / `sha1.oo` are non-crypto checksums (RFC 1321 / 3174); collisions exist.
+
+### D. No gate (named so nobody pretends it exits)
+
+Live `*_ops.oo` helpers. Also fail-open / synthetic:
+
+- `dilithium_sign_message` / `dilithium_verify_signature` — djb-style
+  hash + string `"sig"`; verify can return `is_valid: true`
+- `groth16_verifier_verify_structural` — sets `is_valid: true` and
+  `pairing_satisfied: true` on format checks
+- `secp256k1_point_create` — `is_valid: true` on 32-byte length
+- `plonk_verifier_verify_proof` — `Int` modular theatre; can return true
+
+---
+
+## Two trees (scope)
+
+| Tree | Role |
+|------|------|
+| `ooda/std/` | Product importable floor |
+| `std/src/ooda/sec/crypto/` | Org sibling. **Not** the pure-path floor (`ooda/std/README.oot`) |
+
+F31's original `find ooda` missed `std/`. That is why the audit said
+"all 8 phantom." Wrong search root. Not all 8 are phantom. Five are.
+
+---
+
+## Name collision (F38b)
+
+`ooda/std/core/crypto.oo` and `ooda/std/hash/sha256.oo` both declare
+`fn sha256(String) -> String`. Bodies differ (CHS vs
+`UNIMPLEMENTED_RESIDUAL`). Residual: which import wins.
+
+---
+
+## Known gaps (files that exist only)
+
+None closed. None are products.
+
+- **Falcon ops** — schoolbook `Int` mul; NTT/sign exit in stubs.
+  Sampler / NTT not in this file.
+- **secp256k1 ops** — no on-curve check; `is_valid` is length + flag.
+  ECDSA/ECDH exit in stubs.
+- **Plonk ops** — host `Int` field, not BN254. Pairing/FFT exit in stubs.
+- **Ed25519 monofile** — clamp / point-mul / sign / verify exit.
+  RFC 7748 clamp and on-curve not implemented.
+- **Dilithium monofile** — public sign/verify **not** exited (D above).
+- **Groth16 monofile** — pairing exits; structural verify is synthetic.
+- **Double ratchet monofile** — KDF / DH / AEAD / send / recv exit.
+- **Kyber** — only the `std/crypto/` facade exists; FO transform absent.
+- **Constant-time** — no side-channel audit on any live body.
 
 ---
 
 ## What we do **not** claim
 
-- No audited, production-grade crypto math in the product std surface.
-- No constant-time guarantee on any gated body.
-- No X25519 clamping, on-curve check, or NTT correctness.
+- No audited, production-grade crypto math.
+- No 8-file load-bearing `process_exit` set.
+- No constant-time guarantee.
+- No Kyber at the listed `sec/crypto/kyber.oo` path.
+- `"UNIMPLEMENTED_RESIDUAL"` is **not** `process_exit(1)`.
 
-## Path A product floor (alpha) — gate only
+## Path A product floor (alpha)
 
-- **In:** gate (`process_exit(1)`) is load-bearing; callers that reach a
-  "real" function exit the process.
-- **Residual:** the math itself — not audited, not shipped as crypto.
+- **In:** this restated ledger. Where `process_exit(1)` exists, the
+  caller dies. Where the string residual exists, it is named.
+- **Residual:** the math; string vs exit drift; CHS scope; synthetic
+  verify; `sha256` name collision.
 
----
+## Docs
 
-**Round:** 2.5 closeout. Math audit remains residual.
+Remove **F31** and **F38** from `SPRINT.oot` CRIT after this
+restatement. Do not create the five phantom files this turn. Do not
+implement crypto math. DESIGN §4.3 "gated (`process_exit(1)`)" is now
+over-simple — Docs may narrow that one line to this pack.
+
+**Round:** F31/F38 restatement + F23 MUST-GATE. Math audit residual.

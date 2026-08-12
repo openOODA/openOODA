@@ -1,0 +1,214 @@
+# s71_runtime.oot — Machine Code / Runtime Auditor (SPRINT 7.1)
+# Date: 2026-08-12T18:43Z
+# Role: Machine Code / Runtime — emit-time .oo vs C host for `c_guard_scan_idents`
+# Tree: /home/jeryd/Projects/openOODA/ooda (+ openOODA/audit)
+# Tip (ooda): 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
+# Host: ooda/oodac/oodac  962960 B  mtime 2026-08-12 07:49
+#   md5 a44ee35eb344837009697e2c9d4e4662
+#   BuildID a93cfd09506ba87497379f66b6c7047dee02573d
+# OWN: prove emitted C still calls a well-defined `c_guard_scan_idents`
+#      (no implicit decl / missing symbol); leftover stack char[N] in this walk;
+#      chs_rt not primary. Comment-only honesty. No large refactors. No push.
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Claim | Expected | Actual | VERDICT |
+|-------|----------|--------|---------|
+| Product oodac defines `c_guard_scan_idents` | `T` text symbol, not `U` | `nm -S`: `T` @ `0x45fb90` **5354** B (`0x14ea`); `readelf` FUNC GLOBAL | **PASS** |
+| `c_secret_emit_guard` calls it | one well-typed call | objdump: **1** `call c_guard_scan_idents` (plus a1/a2 resolved refuse) | **PASS** |
+| No implicit-function-declaration | proto or prior def before use | Product emit-c = **protos then bodies**; live emit printed `void c_guard_scan_idents(OoStr,OoStr,OoStr);` **before** the body. Helpers also defined **before** `c_secret_emit_guard` in the .oo | **PASS** |
+| No leftover `char[N]` / stack ident buffer | slice, not fixed C buffer | .oo: `str_slice` once / ident; product disasm: `oo_str_slice`×1, **no** `sprintf`/`strncpy`; frame `sub $0x98,%rsp` (152 B spills, not `char buf[N]`) | **PASS** |
+| chs_rt is not the home of this symbol | emit-time .oo only | **zero** hits in `ooda/runtime/*`; floor only supplies `oo_char_at` / `oo_str_slice` / `oo_chars_len` | **PASS** (not primary) |
+| Current host can **re-emit** this walker | complete body | `oodac emit-c oodac/c_emit_secret_guard.oo` dies mid-`let is_start` with `ERR\tc_emit\tunknown free call needs annotation\too_str_eq` (`c_emit_let_untyped_ty`) | **FAIL residual** (rebuild) |
+| Per-char heap while classifying | not the 7.1 ident leak | walk still `oo_char_at` per visit (product: 6 calls); stored binds released; inline `/* */` `oo_char_at` temps unreclaimed | **PASS residual** |
+
+**OVERALL: PASS with residual** — CRIT 7.1 on the **shipping C host** is a well-defined, non-`char[N]` walker (`str_slice` ident + proto/def). Residual is **re-emit** of the untyped giant `==`/`||` classification lets, plus O(n) 1-char `oo_char_at` temps (not quadratic ident concat). chs_rt is not in scope as a second implementation.
+
+Do **not** greenwash: a future self-host of this `.oo` on **this** host will not reproduce the walker body until `let is_start`/`is_cont` emit is typed or `oo_str_eq` is recognized as Bool. The **existing** ELF remains complete (127 `oo_str_eq` / 127 `oo_str_lit` in the function — full alphabet tables).
+
+========================================================================
+METHOD
+========================================================================
+
+1. Static: `ooda/oodac/c_emit_secret_guard.oo`, `c_emit.oo` / `c_emit_fn.oo` proto pass, `cli_emit.oo`, `scripts/oodac_pure_build.sh` proto extract, `c_emit_let_ext.oo` unknown-call gate, `runtime/chs_rt_str.c` slice/char_at.
+2. Product host `ooda/oodac/oodac`: `nm -S`, `readelf -s`, `objdump -d` of `c_guard_scan_idents` + `c_secret_emit_guard`.
+3. Live `oodac emit-c` / `EMIT_NO_CONCAT=1 emit-c` of `c_emit_secret_guard.oo` (no imports).
+4. Contrast compile: C11 `-Werror=implicit-function-declaration` with vs without a prototype.
+5. Comment-only honesty in `c_emit_secret_guard.oo` (helper-order + 7.1 residual). No product logic change.
+
+`chs_rt` inspected only as the floor behind `oo_str_slice` / `oo_char_at`. Hygiene this session deleted `oodac/stage1_noarc.tmp.c` (observed mid-audit: body @ L46259, call-before-def dead-code leak @ L17886, **no** proto in that single-pass dump).
+
+========================================================================
+1. Well-defined symbol (no implicit decl / missing symbol)
+========================================================================
+
+### Product host — PASS
+
+| Probe | Result |
+|-------|--------|
+| `strings` | `c_guard_scan_idents` present |
+| `nm -S --defined-only` | `000000000045fb90 00000000000014ea T c_guard_scan_idents` |
+| `readelf -s` | FUNC GLOBAL DEFAULT, size **5354** |
+| Undefined in host? | **no** `U c_guard_scan_idents` |
+| `c_secret_emit_guard` (4738 B) | **1** direct `call c_guard_scan_idents` |
+
+5354 bytes is a full walker, not a stub. Inlined refuse path inside the scan (gcc -O2): `c_secret_resolve_alias`×1 + `c_secret_refuse_sink_ident`×1 (matches `.oo` `c_secret_refuse_sink_resolved` body).
+
+### Emit-time declaration order — PASS
+
+`.oo` order (helpers first):
+
+1. `c_secret_refuse_sink_resolved`
+2. `c_guard_scan_idents`
+3. `c_secret_emit_guard` → sole source call site
+
+Product `cli_emit.oo` default `emit-c` (no `EMIT_NO_CONCAT`): `c_emit_stream_mode(src, "protos")` then `"bodies"`. `c_emit_fn_mode(..., "protos")` prints `ret name(args);` for every non-`main` fn.
+
+Live emit of the guard module (failed later on the body — §3) **did** print, before any `{`:
+
+```
+void c_secret_refuse_sink_resolved(OoStr env, OoStr t, OoStr name);
+void c_guard_scan_idents(OoStr env, OoStr sink, OoStr args);
+void c_secret_emit_guard(OoStr env, OoStr t, OoStr a0, OoStr a1, OoStr a2, OoStr args);
+```
+
+`oodac_test_build.tmp.c` L550 still holds the same proto (protos-only artifact).
+
+`oodac_pure_build.sh` extracts `ret name(args);` from the first `ret name(args) {` per symbol and concatenates **preamble + protos + bodies** — so even per-file `all` emit is re-prototyped before link.
+
+Single-pass `all` without that extract still sees a **definition** of `c_guard_scan_idents` before `c_secret_emit_guard` calls it (helper-before-callee). Comment in `.oo` updated this pass: that order is belt-and-suspenders, not the product proto mechanism.
+
+### Implicit-decl contrast — PASS (mechanism)
+
+| TU | `gcc -std=c11 -Werror=implicit-function-declaration` |
+|----|------------------------------------------------------|
+| proto present, take address of `c_guard_scan_idents` | **PROBE_COMPILE_OK** |
+| call with **no** proto | **error** (implicit declaration of `c_guard_scan_idents`) |
+
+Product TU shape is the first row (protos pass). Missing-symbol link fail is what t1_memory M-SG1 recorded when the walker had call sites and **no** body; that hole is closed on this ELF.
+
+========================================================================
+2. No leftover stack buffer / fixed char[N] in C emit of this walk
+========================================================================
+
+### Source (.oo) — PASS
+
+`c_guard_scan_idents` (after comment-only honesty):
+
+- Ident extract: `let name = str_slice(args, start, i);` then `c_secret_refuse_sink_resolved`.
+- **No** `name = name + char_at`.
+- **No** `char buf[N]` / `char ident[...]` (language has no stack `char[]` in `.oo`).
+
+SPRINT “stack buffer” wording = do not cap the ident in a fixed C array **and** do not rebuild it char-by-char. Alpha close = **one slice per span** (`t1_memory.oot` M-SG1/M-SG2; rollup ALREADY_FIXED).
+
+### Product machine code — PASS
+
+`objdump` of `c_guard_scan_idents` (5354 B):
+
+| Callee | Count | Role |
+|--------|------:|------|
+| `oo_str_lit` | 127 | letter / digit / punct tables |
+| `oo_str_eq` | 127 | same |
+| `oo_str_release` | 7 | stored `OoStr` temps |
+| `oo_char_at` | 6 | classification + comment skip |
+| `oo_chars_len` | 1 | `n` |
+| `oo_str_slice` | 1 | **the ident** |
+| `c_secret_resolve_alias` | 1 | refuse (inlined helper) |
+| `c_secret_refuse_sink_ident` | 1 | refuse |
+
+- **Zero** `sprintf` / `strncpy`.
+- Entry: `sub $0x98, %rsp` — 152-byte spill frame for `OoStr` pairs + callee-saves, **not** a `char ident[N]`.
+- `char` text in the dump is only `oo_char_at` / `oo_chars_len` names.
+
+### Floor (chs_rt, not primary) — note only
+
+`runtime/chs_rt_str.c`:
+
+- `oo_char_at` — heap 1-char (or UTF-8 1–4 byte) `OoStr` via `oo_str_alloc_payload`.
+- `oo_str_slice` — heap copy of the `[start,end)` span (O(|ident|)), fail-soft empty on OOB.
+
+These are the **runtime** implementations the emitted walk calls. There is **no** `c_guard_scan_idents` in `chs_rt*.c` / `chs_rt.h`.
+
+### Unreclaimed temps (residual, not 7.1 CRIT)
+
+Emitted (and `.oo`) block-comment skip uses **inline** `char_at(args, i)` / `char_at(args, i+1)` inside `oo_str_eq(...)` — product shows those as 2 of the 6 `oo_char_at` sites. Stored `c` / `n1` / `d` are `oo_str_release`d. Inline results are not. O(n) leak on `/* */` spans in **arg text**, not a stack overflow and not per-char ident concat.
+
+========================================================================
+3. Re-emit residual (current host vs this .oo)
+========================================================================
+
+Live (this pass):
+
+```
+ooda/oodac/oodac emit-c ooda/oodac/c_emit_secret_guard.oo
+```
+
+- Prints preamble + **three protos** + complete `c_secret_refuse_sink_resolved` + start of `c_guard_scan_idents`.
+- Dies at the untyped `let is_start = c == "_" || c == "a" || …` chain:
+
+```
+ERR	c_emit	unknown free call needs annotation	oo_str_eq
+```
+
+Gate: `c_emit_let_ext.oo` `c_emit_let_untyped_ty` — `c_rhs_call_name` sees lowered `oo_str_eq(...)` and `oo_str_eq` is **not** on the String/Int allowlist → `process_exit(1)`.
+
+`if c == "\""` earlier in the same fn **does** emit (`if` is not an untyped `let`). Same failure with `EMIT_NO_CONCAT=1`.
+
+Honesty: **this host cannot re-emit its own walker**. The shipping ELF was produced by a prior emit that accepted the same giant `||` as `long long`. Rebuild of oodac from **this** `.oo` on **this** host will fail-closed (ERR line / emit abort), not silently drop the symbol.
+
+Out of scope this auditor (comment-only): annotate `let is_start: Bool` / `let is_cont: Bool`, or allowlist `oo_str_eq` as Int, or use `char_is_alpha` / `char_is_digit` (preamble already declares them).
+
+========================================================================
+4. chs_rt not primary
+========================================================================
+
+| Surface | `c_guard_scan_idents` |
+|---------|----------------------|
+| `ooda/runtime/chs_rt*.c` / `.h` | **absent** |
+| `ooda/oodac/c_emit_secret_guard.oo` | **definition + call** |
+| Product `oodac` ELF | **T** (compiler, not runtime) |
+
+chs_rt only implements the string floor the walk lowers to. No second C copy of the ident scanner.
+
+========================================================================
+5. Comment-only honesty this pass
+========================================================================
+
+File: `ooda/oodac/c_emit_secret_guard.oo` (comments only; **217** lines after this pass, under soft 256 / pack 300).
+
+- Helper-before-callee: product proto pass + pure_build extract named; chs_rt does not define the symbol.
+- 7.1: slice ≠ `char[N]`; `char_at` classification residual; re-emit `oo_str_eq` residual named.
+
+No logic / control-flow / sink-list change.
+
+========================================================================
+RESIDUAL
+========================================================================
+
+| ID | Sev | Residual |
+|----|-----|----------|
+| R-S71-1 | HIGH (rebuild) | Current host re-emit of `c_guard_scan_idents` abort: untyped `let is_start`/`is_cont` → `unknown free call oo_str_eq` |
+| R-S71-2 | MED | Classification is still per-char `oo_char_at` (O(n) 1-char heap), not `char_is_alpha`/`char_is_digit`. Not the 7.1 ident concat leak |
+| R-S71-3 | LOW | Inline `oo_char_at` in `/* */` skip unreclaimed |
+| R-S71-4 | LOW | Single-pass dumps without proto + post-`return` body leak (old `stage1_noarc.tmp.c`, hygiene-scrubbed) can theoretically see a call before def if proto pass is skipped |
+| 7.10 | HIGH | `c_parse_secret_env` `name = name + c` — other OWN (not this walk) |
+| 7.2 | CRIT sibling | `c_sys_exec_last_arg` slice — not re-audited here |
+
+========================================================================
+VERDICT
+========================================================================
+
+| Bucket | Result |
+|--------|--------|
+| Well-defined `c_guard_scan_idents` on product oodac (no missing symbol) | **PASS** |
+| No implicit decl on product emit path (protos + helper order) | **PASS** |
+| No leftover `char[N]` in C emit / host walk | **PASS** |
+| chs_rt not primary | **PASS** |
+| Re-emit of current `.oo` walker | **FAIL residual** |
+| CRIT 7.1 path-A (defined + slice, not stack buffer / per-char ident leak) | **PASS** |
+
+**OVERALL: PASS with residual**
+
+end of s71_runtime.oot

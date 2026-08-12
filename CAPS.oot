@@ -8,13 +8,13 @@
 
 The core principle is **least privilege at the compiler**. Every capability is checked at compile time and enforced at run time.
 
-Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `DESIGN.oot` §V2 Architecture counts **18** new granular tokens that fractured `SysCap`/`NetCap`. The list below shows **27** entries because it keeps the 2 legacy broad tokens for compat plus 7 related tokens (`EnvCap`, `MemCap`, `FfiCap`, etc.) that DESIGN groups under §3. **`is_cap_type` accepts all 27.** Use granular tokens for **new** `std/` and product code. **Type accept ≠ sealed product path.**
+Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `DESIGN.oot` §V2 Architecture counts **18** new granular tokens that fractured `SysCap`/`NetCap`. The list below shows **28** entries because it keeps the 2 legacy broad tokens for compat plus 8 related tokens (`EnvCap`, `MemCap`, `FfiCap`, `CryptoCap`, etc.) that DESIGN groups under §3. **`is_cap_type` accepts all 28.** Use granular tokens for **new** `std/` and product code. **Type accept ≠ sealed product path.**
 
 ### Path-A honesty (do not greenwash)
 
 | Layer | What is true today |
 |-------|--------------------|
-| **Type accept** | All 27 names below are valid `&Cap` types in check (`oodac/check_cap_util.oo`). |
+| **Type accept** | All 28 names below are valid `&Cap` types in check (`oodac/check_cap_util.oo`). |
 | **Sealed ops (net / CAP-G1)** | **path-A:** `sealed_net_kind_of` returns preferred Http/Tcp/Udp/Bind/NetCap; check accepts exact preferred **or** legacy NetCap; wrong granular denied (HttpCap↛`tcp_bind`). Smoke: `cap_g1_net_granular_smoke.sh`. |
 | **Sealed ops (fs / CAP-G2)** | **path-A:** `sealed_fs_kind_of` returns preferred FsReadCap/FsWriteCap; check accepts exact preferred **or** legacy FsCap supersede; wrong granular denied (FsWriteCap↛`read_file`; FsReadCap↛`write_file`). Helpers: `cap_fs_granted_ok` / `cap_fs_argflow_ok`. |
 | **Sealed ops (sys / CAP-G4)** | **FIXED path-A:** `sys_exec`/`sys_spawn`/`sys_wait`/`sys_kill` prefer **ProcessCap**; SysCap supersede. Hard **SysCap only:** `python_embed`, `async_join`, `sys_epoll_create`/`sys_inotify_init`/`sys_prctl`. |
@@ -89,6 +89,7 @@ Here is the master list of `&Cap` tokens in the V2 ecosystem. **Count note:** `D
 ### 6. Audit & Security
 * **`&AuditCap`**: Write to the append-only, cryptographic audit trail. Residual (type accept; grant/require bodies residual vs link checklist).
 * **`&SignCap`**: Use the host Secure Enclave (TPM/HSM) to sign payloads. **Residual-only (CAP-G3):** grant + exact `oo_cap_require_sign` stub; **no** sealed op matrix.
+* **`&CryptoCap`**: Enforces cryptographic operations. Required for `oo_cg_sign` and `oo_cg_verify`.
 * **`&HitlCap`** (Human-In-The-Loop): Residual as Cap type; product HITL path-A is `verify_human` under Env+Fs (not HitlCap seal).
 * **`&TimeCap`**: Read the system clock. Without it, you cannot measure time (helps limit timing side channels). Product sealed.
 * **`&RandCap`**: Read from `/dev/urandom` (cryptographically secure random). Product sealed.

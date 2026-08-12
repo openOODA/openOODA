@@ -1,0 +1,168 @@
+# f32_rfc002_honesty.oot — F32+F33 RFC-002 named-gap honesty
+# Date: 2026-08-12T20:09Z
+# Role: Domain Expert (RFC) — crush CRIT swarm
+# OWN: F32+F33. Restate RFC-002. Do **not** ship args_parse / fs_walk products.
+#      Named-gap stays **open**. Write this ledger. Remove F32/F33 from SPRINT
+#      when honest. **No push.**
+
+========================================================================
+PLAIN ENGLISH (RULES 1.10)
+========================================================================
+
+**What changed**
+RFC-002 used to say the swarm created `Process.Args` and `FS.Walk`.
+Those modules are not in the tree. The RFC now says they were **not**
+shipped. The named-gap is still open.
+
+**Why it matters**
+A closed RFC that names missing modules is pride (SINS #3). Agents
+would try to import floors that do not exist.
+
+**What is not done**
+No args parser. No directory walk. No refuse stubs this turn (not
+needed for a doc restatement). RFC-003 still repeats the old claim
+(F19). String regex/templating still overclaimed until F35 closes.
+No push.
+
+========================================================================
+SESSION
+========================================================================
+
+| Field | Value |
+|-------|-------|
+| ROOT | `/home/jeryd/Projects/openOODA` |
+| HAS_DESIGN | yes (`openOODA/DESIGN.oot`) |
+| SWARM plan | solo — RFC + SPRINT + this ledger; no product `.oo` |
+| Hygiene | `wc -l` on owned files; cap 256 |
+| Smokes (suspects) | none — phantom-module CRIT; absence is the proof |
+| Push | **none** |
+
+========================================================================
+SUMMARY
+========================================================================
+
+| # | Claim | Expected if RFC-002 old text true | Actual | VERDICT |
+|---|--------|-------------------------------------|--------|---------|
+| 1 | `Process.Args` shipped | `args.oo` / `args_parse` on product path | **absent** (grep exit=1 ×2) | F32 **PHANTOM** |
+| 2 | `FS.Walk` shipped | `fs_walk.oo` / `fn walk(` on product path | **absent** (grep exit=1 ×2) | F33 **PHANTOM** |
+| 3 | RFC-002 restated | docs say NOT shipped; named-gap open | honesty banner + §Resolution | **HONEST** |
+| 4 | Product this turn | none (unless 20-line refuse stub) | no stubs; no product | **PASS** |
+| 5 | SPRINT F32/F33 | removed from open CRIT when honest | closed-by-honesty note | **PASS** |
+| 6 | Push | none | none | **PASS** |
+
+**OVERALL: HONEST RESIDUAL PASS** — F32/F33 closed by restatement, **not**
+by shipping modules. Named-gap **still open**.
+
+**Do not claim:** args product, walk product, RFC-002 complete, RFC-003
+honest, string regex/templating, beta.
+
+========================================================================
+FINDING F32 (CRIT) — closed by honesty
+========================================================================
+
+Severity: CRIT (doc false-success on named-gap floor)
+Assumption destroyed: RFC-002 §Resolution "Created a `Process.Args` module."
+Surface: `openOODA/RFC-002-StdLib_Completion.oot`; product `ooda/std/**`
+Would smoke catch?: no — no smoke is wired to a missing module.
+Residual after fix?: **named-gap still open.** No `Process.Args`. Future
+owner may land `args_parse` or a ≤20-line refuse stub. This pass: restate.
+
+Repro (shell, dual independent):
+
+```
+# run 1 2026-08-12T20:08:21Z
+# run 2 2026-08-12T20:08:55Z
+grep -rln "args_parse\|fn process_args\|Process\.Args\|fn parse_args" ooda/std
+# (no matches) exit=1 both runs
+test -f ooda/std/args.oo; echo $?   # 1
+test -f ooda/std/core/args.oo; echo $?  # 1
+test -f ooda/std/os/args.oo; echo $?    # 1
+test -f std/src/args.oo; echo $?        # 1
+```
+
+False-friends (not a parser): `ooda/std/os/process.oo` is spawn/wait/kill/
+exec + syscall residual. No CLI flag / env struct ingest.
+
+========================================================================
+FINDING F33 (CRIT) — closed by honesty
+========================================================================
+
+Severity: CRIT (doc false-success on named-gap floor)
+Assumption destroyed: RFC-002 §Resolution "Developed a robust, asynchronous
+`FS.Walk` module."
+Surface: same RFC; `ooda/std/os/fs.oo` (read/write/exists/size only)
+Would smoke catch?: no.
+Residual after fix?: **named-gap still open.** No `FS.Walk`. Async claim
+is also moot (F22/F37): path-A concurrency refuses channels/actors; no
+walk to be async.
+
+Repro (shell, dual independent):
+
+```
+# run 1 2026-08-12T20:08:21Z
+# run 2 2026-08-12T20:08:55Z
+grep -rln "fs_walk\|FS\.Walk\|fn walk(" ooda/std
+# (no matches) exit=1 both runs
+test -f ooda/std/os/fs_walk.oo; echo $?  # 1
+test -f ooda/std/src/fs_walk.oo; echo $? # 1
+test -f std/src/fs_walk.oo; echo $?      # 1
+```
+
+Live `os/fs.oo` symbols: `fs_write_file`, `fs_read_file`, `fs_path_exists`,
+`fs_file_size`. Header residual already says "no unrestricted dir walk."
+
+Org `std/` same hunt: no `Process.Args` / `FS.Walk` / `args_parse` /
+`fs_walk` hits in `*.oo`. Product `ooda/std` = **31** `.oo` files. None
+are args or walk.
+
+========================================================================
+DOCS THIS PASS
+========================================================================
+
+| Doc | Change |
+|-----|--------|
+| `openOODA/RFC-002-StdLib_Completion.oot` | Honesty residual: Args/Walk **NOT shipped**; named-gap **open**; string partial (F35) |
+| `openOODA/SPRINT.oot` | F32/F33 removed from open CRIT; closed-by-honesty |
+| This audit | ledger + dual-repro |
+
+**Not edited (residual):** `RFC-003-StdLib_Audit.oot` still says Args/Walk
+are usable on the product path. That is F19 (HIGH), not this OWN.
+
+**Not created:** `ooda/std/**/args.oo`, `fs_walk.oo`, refuse stubs.
+
+Prior phantom ledgers cited by old RFC-002 header
+(`audit/t5_std_honesty.oot`, `audit/std_batches_landed.oot`) are **absent**.
+Do not cite them as live. This file is the F32/F33 ledger.
+
+========================================================================
+ANTI-GREENWASH
+========================================================================
+
+| Claim | Truth |
+|-------|-------|
+| "Process.Args shipped" | **FALSE** — no module |
+| "FS.Walk shipped" | **FALSE** — no module |
+| "RFC-002 closed three agentic gaps" | **FALSE** — named only; args/walk open |
+| "F32/F33 closed means args/walk exist" | **FALSE** — closed by restatement |
+| "async FS.Walk" | **FALSE** — no walk; path-A refuse |
+| "string regex + templating" | **FALSE** — basic `str.oo` only (F35) |
+| "RFC-003 is honest on args/walk" | **FALSE** — still overclaims (F19) |
+| "beta / std complete" | **FALSE** — alpha; residual open |
+
+========================================================================
+HYGIENE
+========================================================================
+
+Owned files must stay ≤256 lines. No product `.oo`. No push.
+No secrets. No temps.
+
+========================================================================
+NEXT
+========================================================================
+
+1. Peer: re-run the two greps; read RFC-002 banner; confirm SPRINT has
+   no open F32/F33 CRIT rows.
+2. F19: restate RFC-003 args/walk bullets (same phantom, other RFC).
+3. F35: string regex/templating still residual.
+4. Product owner (later sprint): real `args_parse` / `fs_walk` **or**
+   explicit ≤20-line refuse stubs. Not this turn.

@@ -1,0 +1,240 @@
+# s72_domain_b.oot — Domain Expert B / residual 7.2
+# Residual: CRIT 7.2 `c_sys_exec_last_arg` — string/comma/paren-depth + SECRET last argv
+# Date: 2026-08-12T18:50:00Z
+# Role: Domain Expert B of 12-agent 7.2 phalanx (orthogonal to Domain A slice)
+# Tree: /home/jeryd/Projects/openOODA
+# Host: ooda/oodac/oodac (product, 962960 B, md5 a44ee35eb344837009697e2c9d4e4662)
+# OWN: prove last-arg is string / comma / paren-depth aware (commas inside
+#      quotes do not split); prove SECRET last argv refuse. Do not rewrite
+#      7.1 or 7.10. No moonshots; no auto-push; monofile ≤600.
+
+========================================================================
+VERDICT
+========================================================================
+
+**PASS** (last-arg contract holds). No source change this turn.
+
+`c_sys_exec_last_arg` still walks lowered C arg text with `in_str` +
+escape skip + paren `depth`. A comma updates `last_start` **only** when
+`!in_str && depth == 0`. Live product host:
+
+- **Refuse (no FN):** SECRET bare IDENT as last `sys_exec` argv →
+  `ERR\tsecret` + rc≠0 (emit-c; check dual-path on non-nested forms)
+- **Split (no steal):** quoted comma / nested-call comma / `)` or `(`
+  inside a previous string do **not** steal the last span
+- **Skip (no FP):** SECRET *spelling* only inside `"..."` last/mid args
+  (including commas) → no `ERR\tsecret`
+- **7.1 / 7.10:** not rewritten
+- **Monofile:** `c_emit_args.oo` = **240** lines (≤600)
+
+Domain A (`s72_domain_a.oot`) owns slice / no per-char thrash. This file
+owns split-awareness + last-argv SECRET refuse.
+
+========================================================================
+SCOPE (orthogonal to Domain A)
+========================================================================
+
+| In | Out |
+|----|-----|
+| Last span is top-level comma (string + paren-depth) | Slice / heap (A) |
+| Commas inside `"..."` do not split | 7.1 `c_guard_scan_idents` rewrite |
+| `(` / `)` inside strings do not desync depth | 7.10 `c_parse_secret_env` |
+| SECRET last argv refuse via last-arg + wire | Check-path token walk rewrite |
+| Isolated probes that stress last span | `c_args_drop_first` / `c_args_strip_cr` |
+| | SPRINT flip, remotes, moonshots |
+
+========================================================================
+STATIC (tip source, no edit)
+========================================================================
+
+File: `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_args.oo`
+
+| Site | Fact |
+|------|------|
+| L69–70 | comment: string-aware; commas inside `"..."` / escapes do not split |
+| L78–79 | `in_str = false`, `depth = 0` |
+| L82–94 | in-string: `\\` skips next char; `"` ends string; else advance |
+| L95–97 | `"` starts string (only when `!in_str`) |
+| L98–103 | `(` / `)` adjust depth only when `!in_str` |
+| L104–116 | `,` updates `last_start` **iff** `depth == 0` (and we are `!in_str`) |
+| L127 | one `str_slice(args, last_start, n)` — A's OWN; not re-proved |
+
+Comma cannot fire while `in_str` is true: that arm is in the `else if`
+chain **after** the in-string / quote arms. So:
+
+1. **String-aware:** `,` inside `"echo,foo"` is not a split.
+2. **Escape-aware:** `\"` does not end the string, so a later `,` stays
+   inside.
+3. **Paren-depth:** `,` inside `wrap(a, b)` is at `depth > 0` — not a split.
+4. **Both required:** product strings lower as `oo_str_lit("...")`, so a
+   quoted comma is usually also inside parens. String-skip is **not**
+   redundant: a `)` or `(` **inside** the C string would desync a
+   paren-only walker (oracle below).
+
+Wire (last-arg is **not** used for argv emit — only secret refuse):
+
+| Caller | Role |
+|--------|------|
+| `c_emit_secret_guard.oo:130–140` | `sys_exec`: a1/a2 refuse, then `last = c_sys_exec_last_arg(args)`; refuse iff `c_arg_is_cap_ident(last)` |
+| `c_emit_secret_guard.oo:213–225` | full `args` scan (`c_guard_scan_idents`) also covers `sys_exec` — 7.1 backstop |
+| `c_emit_lower.oo:90` | free-call → `c_secret_emit_guard` |
+| `c_emit_call.oo:82` | method → same |
+| `c_emit_lower.oo:151–162` | `sys_exec` C lower uses `c_args_drop_first` + `c_args_strip_cr` — **does not** call last-arg |
+| `c_emit.oo:86` | `check_secret_println_sinks` first; `sys_exec` via `c_secret_scan_call(..., 1, false)` (argi ≥ 1) |
+
+`c_arg_is_cap_ident` (L50–67) rejects last spans containing `(` `)` space
+`,` `"`. So last-arg refuse is **bare last IDENT only** (the SECRET last
+argv case). Quoted last / call last never take this arm.
+
+7.1 walker (`c_emit_secret_guard.oo` L18–112 / L105 `str_slice`) and 7.10
+`c_parse_secret_env` (`c_emit_secret.oo:60` `name = name + c`) **untouched**.
+
+========================================================================
+ORACLE (independent reimplementation of L71–131)
+========================================================================
+
+Python mirror of the exact state machine vs expected last span.
+Paren-only sibling (no `in_str`) shown when it diverges.
+
+| Input (C `args` text) | Aware last | Naive (depth only) |
+|-----------------------|------------|--------------------|
+| `` | `oo_str_lit("")` | same |
+| `sys` | `sys` | same |
+| `sys, oo_str_lit("sh"), oo_str_lit("-c"), token` | `token` | same |
+| `sys, oo_str_lit("echo,foo"), token` | `token` | same (comma also in parens) |
+| `sys, oo_str_lit("echo"), oo_str_lit("hello,world")` | `oo_str_lit("hello,world")` | same |
+| `sys, oo_str_lit("a)b,c"), token` | `token` | **`c"), token`** — stolen |
+| `sys, oo_str_lit("a,b("), token` | `token` | **`oo_str_lit("a,b("), token`** — miss |
+| `sys, wrap(oo_str_lit("a"), oo_str_lit("b")), token` | `token` | same |
+| `sys, wrap(oo_str_lit("a"), oo_str_lit("b"))` | `wrap(...)` | same |
+| `sys, oo_str_lit("say \"hi, there\""), token` | `token` | same |
+| `sys, oo_str_lit("echo"), oo_str_lit("hello,token")` | `oo_str_lit("hello,token")` | same |
+
+**Oracle 12/12 match.** Distinguishing cases (string-aware ≠ paren-only):
+`"a)b,c"` and `"a,b("`. Those are why L82–97 exist beside L98–103.
+
+========================================================================
+LIVE MATRIX — product fixtures (emit-c + check)
+========================================================================
+
+| Fixture | Last span | emit-c | check | Result |
+|---------|-----------|--------|-------|--------|
+| `secret_sys_exec_fail` | `token` SECRET | **BLOCK** `sys_exec sink refuses SECRET token` | **BLOCK** same | **PASS** last argv |
+| `secret_sys_exec_argv_fail` | `"true"` lit; SECRET is mid | **BLOCK** (scanner / check) | **BLOCK** | **PASS** mid (not last-arg arm) |
+| `secret_sys_exec_pass` | `"true"` lit | rc=0, no secret | rc=0 | **PASS** |
+| `secret_sys_exec_argv_pass` | `"ok"` lit | rc=0, no secret | rc=0 | **PASS** |
+
+Product last-argv FN=0, FP=0. Dual-path on the last-ident fail fixture.
+
+========================================================================
+LIVE MATRIX — isolated last-arg probes (tmp)
+========================================================================
+
+Dir: `$TMPDIR/s72_b_probes` (not committed). Host `oodac emit-c` / `check`.
+
+### Refuse — SECRET last argv (no FN)
+
+| Probe | C-level last (oracle) | emit-c | check | Note |
+|-------|------------------------|--------|-------|------|
+| `sys_exec(sys, "sh", "-c", token)` | `token` | **BLOCK** | **BLOCK** | last-arg + a? no (a1/a2 lits) + scanner + check |
+| `sys_exec(sys, "echo,foo", token)` | `token` | **BLOCK** | **BLOCK** | quoted comma in prev `oo_str_lit` |
+| `sys_exec(sys, "a)b,c", token)` | `token` | **BLOCK** | **BLOCK** | string `)` must not desync depth |
+| `sys_exec(sys, "a,b(", token)` | `token` | **BLOCK** | **BLOCK** | string `(` must not inflate depth |
+| `sys_exec(sys, wrap("a","b"), token)` | `token` | **BLOCK** | **OK (miss)** | paren-depth last span; see residual 1 |
+| `sys_exec(sys, "say \"hi, there\"", token)` | `token` | **BLOCK** | **BLOCK** | escape stay in-string |
+| `sys_exec(sys, "sh", "-c", "echo", token)` | `token` | **BLOCK** | **BLOCK** | last beyond a1/a2 slots |
+| `sys_exec(sys, "sh", "-c", token, "true")` | lit `"true"` | **BLOCK** | **BLOCK** | mid SECRET = scanner/check, not last-arg |
+
+a1/a2 on the 5-arg last-token probe are `"sh"` / `"-c"` (lits). Last-arg
++ scanner are the emit refuse; last-arg is the dedicated last-span IDENT
+arm Domain A named.
+
+### Allow — no FP (SECRET spelling not last IDENT)
+
+| Probe | Claim | emit-c | Result |
+|-------|-------|--------|--------|
+| `sys_exec(sys, "echo", "hello,token")` | last is string with comma + name | rc=0, no `ERR secret` | **PASS** |
+| `sys_exec(sys, "echo", "a)b,token")` | last string `)`+comma+name | rc=0 | **PASS** |
+| `sys_exec(sys, "token,ok", "true")` | name only in prev string | rc=0 | **PASS** |
+| `sys_exec(sys, "echo", public_arg)` | last public ident | rc=0 | **PASS** |
+
+Isolated last-arg **FN=0, FP=0** on emit-c.
+
+Honesty: a last-position SECRET IDENT is also visible to 7.1
+`c_guard_scan_idents`. Emit refuse is therefore last-arg **and/or**
+scanner. Last-arg is still the named last-span IDENT refuse
+(`c_arg_is_cap_ident`). Nested `wrap(...)` check-miss (below) shows emit
+is not check-redundant.
+
+========================================================================
+RAILS
+========================================================================
+
+| Smoke | Result |
+|-------|--------|
+| `scripts/secret_t2_depth_smoke.sh` | **PASS** exit 0 (`secret_sys_exec_argv_{fail,pass}` green) |
+| `scripts/secret_eprintln_smoke.sh` | **PASS** exit 0 (not last-arg; 7.1 hold) |
+| `scripts/secret_sink_enforce_smoke.sh` | **exit 1** — `secret_sys_exec_{fail,pass}` **OK**; **FAIL** `secret_file_size_pass` (`unknown free call needs annotation oo_file_size`). Same as Domain A. **Not 7.2.** |
+
+========================================================================
+FILES TOUCHED
+========================================================================
+
+| File | Change |
+|------|--------|
+| `ooda/oodac/c_emit_args.oo` | **none** |
+| `ooda/oodac/c_emit_secret_guard.oo` (7.1) | **none** |
+| `ooda/oodac/c_emit_secret.oo` (7.10) | **none** |
+| `openOODA/audit/s72_domain_b.oot` | this evidence |
+
+**Not touched:** 7.1 walker, 7.10 parse-env, sink list, check-path,
+smokes, SPRINT, remotes (no push).
+
+========================================================================
+RESIDUAL (honest; do not close)
+========================================================================
+
+1. **Check-path not paren-depth aware.**
+   `c_secret_scan_call` stops at the **first** `RPAREN`. Isolated
+   `sys_exec(sys, wrap("a", "b"), token)` : emit-c **BLOCK** (last-arg
+   extracts `token`; scanner also sees IDENT `token`); `oodac check`
+   prints `OK` (no `ERR\tsecret`). Fail-closed on emit. Dual-path secret
+   does **not** hold when a previous argv is a call. Out of 7.2 last-arg
+   OWN (would be check-path). Did not patch.
+
+2. **Last-arg refuse is IDENT-only.**
+   `c_arg_is_cap_ident` rejects quotes/parens. `sys_exec(sys, "sh", last)`
+   with `last` a SECRET-bearing **call** (`wrap(token, x)`) is scanner
+   (7.1), not this arm. Product last-argv contract for **bare IDENT**
+   holds.
+
+3. **7.1 scanner is a backstop** on full `args`. Last-arg is still the
+   dedicated last-span IDENT refuse Domain A wired. B did not merge them.
+
+4. **7.10** — `c_parse_secret_env` `name = name + c` still OPEN.
+
+5. **`c_args_drop_first` is not string-aware** (same file L133–161).
+   Used for `sys_exec` argv emit, not last-arg refuse. Not 7.2 OWN.
+
+6. **`secret_sink_enforce_smoke` EXIT 1** — `secret_file_size_pass`
+   annotation miss. sys_exec rails green. Same residual as Domain A.
+
+7. **Full IFC / `${}` interp / macro-body SECRET** — `SECRET_TAINT.oot`.
+   Not this last-arg contract.
+
+========================================================================
+STATUS FOR SPRINT/PM
+========================================================================
+
+| Item | Status |
+|------|--------|
+| last-arg string-aware (`,` in `"..."`) | **PASS** (static + oracle + live) |
+| last-arg paren-depth (`,` in `f(a,b)`) | **PASS** |
+| last-arg escape / `()`-in-string | **PASS** (oracle distinguish + live refuse) |
+| SECRET last argv refuse | **PASS** emit-c (+ check on non-nested) |
+| no FP on quoted last/mid SECRET spelling | **PASS** |
+| 7.1 / 7.10 rewrite | **not done** (not required) |
+| monofile ≤600 | **240** |
+| 7.2 Domain B contract | **PASS** — recommend 7.2 FIXED after peer confirm with A |
+
+end of s72_domain_b.oot

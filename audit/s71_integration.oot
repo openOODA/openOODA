@@ -1,0 +1,233 @@
+# s71_integration.oot — Compiler Integration Tester (SPRINT 7.1)
+# Date: 2026-08-12T18:35:53Z
+# Worker: Grok Build (Compiler Integration Tester — 7.1)
+# Cwd: /home/jeryd/Projects/openOODA/ooda
+# Scope: live tip oodac secret rails after 7.1 `c_guard_scan_idents` (str_slice, no per-char OoStr)
+# Policy: no push; no seed_pure_multi; run listed smokes (90s each); run Domain/Harness extras if present
+
+## Verdict (honest)
+
+| Layer | Result | Exit | Notes |
+|-------|--------|------|-------|
+| **`secret_t1_return_smoke.sh`** | **PASS** | **0** | return / alias / if-taint refuse+allow + CI wire |
+| **`secret_t2_depth_smoke.sh`** | **PASS** | **0** | field/method/args/dlopen/sys_exec/comment-skip + CI wire |
+| **`secret_sink_enforce_smoke.sh`** | **FAIL** | **1** | **all emit rails OK**; fail = missing `bootstrap/SECRET_TAINT.md` (tree has `.oot`) |
+| **`secret_product_floor_smoke.sh`** | **FAIL** | **1** | sink-enforce fail (doc) + residual smoke `ERR_NO_DOC`; LLVM dual-path **OK** |
+| **`r2_multi_import_tc_smoke.sh`** (regression) | **PASS** | **0** | 3 pass + 5 fail-closed; Issue #9 LINE residual named |
+| **`s71_guard_scan_smoke.sh`** (Harness extra) | **PASS** | **0** | println IDENT refuse + write_file payload refuse + string-lit no-FP |
+| **`scripts/secret_71_*`** | **SKIP** | — | not present |
+| **Push** | **NOT DONE** | — | human-gated |
+
+**7.1 path-A emit/scan claim:** `c_guard_scan_idents` is live on tip host. Fail-closed IDENT sinks + string-literal no-FP + T1/T2 secret matrices **GREEN**. Source uses one `str_slice(args, start, i)` per ident — no per-char concat (CRIT 7.1).
+
+**Assigned script battery:** **RED** (2 of 5 listed smokes exit 1). Failures are **doc-path hygiene** (`SECRET_TAINT.md` vs `SECRET_TAINT.oot`), **not** emit refuse/allow.
+
+**Overall 7.1 integration status: RED** (battery) / **GREEN** (7.1 scan rails)
+
+Do **not** greenwash: residual 7.10 `c_parse_secret_env` char concat remains OPEN; full IFC / `#[Secret]` / `${}` interp not claimed.
+
+---
+
+## TIP SHA / binary
+
+```
+git rev-parse --short HEAD → eaa555d
+git log -1 --oneline       → eaa555d fix(r2): Resolve scope poisoning, multi-import deduplication, and enforce 256-line hygiene
+date -u                    → 2026-08-12T18:35:53Z
+```
+
+| Item | Value |
+|------|--------|
+| Product tip | `ooda/oodac/oodac` **962960** bytes @ 2026-08-12 07:49 local |
+| md5 | `a44ee35eb344837009697e2c9d4e4662` |
+| BuildID | `a93cfd09506ba87497379f66b6c7047dee02573d` |
+| Side / older | `oodac/oodac` 962888 (07:43); `ooda/oodac_new` 956688 (03:56) — **not** used |
+| Seed | `bootstrap/seed/oodac` present — pure multi **not** re-run this pass |
+| Host used | `OODAC_BIN=/home/jeryd/Projects/openOODA/ooda/oodac/oodac` |
+
+---
+
+## 0) DE / Harness landing observed
+
+| Path | Role |
+|------|------|
+| `ooda/oodac/c_emit_secret_guard.oo` (200) | `c_guard_scan_idents` — CRIT 7.1 comment + `str_slice` per ident; string/`//`/`/* */` skip |
+| `ooda/scripts/s71_guard_scan_smoke.sh` | Harness extra (landed this session); ephemeral TMPDIR fixtures |
+| `openOODA/audit/s71_harness.oot` | harness pointer |
+| `ooda/bootstrap/SECRET_TAINT.oot` | residual honesty + `SECRET_TAINT_RESIDUAL_ALPHA` |
+| `ooda/scripts/secret_{t1,t2,sink,product}_*.sh` | listed integration rails |
+| `ooda/scripts/r2_multi_import_tc_smoke.sh` | R2 regression |
+
+No `scripts/secret_71_*`. Only extra: `scripts/s71_guard_scan_smoke.sh`.
+
+Source (tip) — 7.1 slice, not char concat:
+
+```
+// CRIT 7.1: walk C arg text for bare idents; refuse SECRET (alias-resolved).
+// Ident spans via str_slice once per token — no per-char OoStr thrash.
+let name = str_slice(args, start, i);
+c_secret_refuse_sink_resolved(env, sink, name);
+```
+
+---
+
+## 1) Primary smokes — exit codes
+
+All runs: `cd ooda && OODAC_BIN=./oodac/oodac` ; `timeout 90s`. Logs under `/tmp/s71_integration/`.
+
+### 1a) secret_t1_return_smoke — exit 0
+
+```
+OK secret_function_return_fail emit refuses (rc=1)
+OK secret_function_return_pass emit OK
+OK secret_alias_rebind_pass emit refuses (rc=1)
+OK secret_alias_rebind_fail emit OK (sticky cleared)
+OK secret_if_taint_fail emit refuses (rc=1)
+OK secret_if_taint_pass emit OK
+OK ci_product wires secret_t1_return_smoke
+OK secret_t1_return_smoke
+```
+
+Log: `/tmp/s71_integration/secret_t1_return_smoke.out`
+
+### 1b) secret_t2_depth_smoke — exit 0
+
+```
+OK secret_field_assign_fail emit refuses (rc=1)
+OK secret_field_assign_pass emit OK
+OK secret_method_return_fail emit refuses (rc=1)
+OK secret_method_return_pass emit OK
+OK secret_call_arg_fail emit refuses (rc=1)
+OK secret_multi_arg_println_fail emit refuses (rc=1)
+OK secret_multi_name_fail emit refuses (rc=1)
+OK secret_multi_name_pass emit OK
+OK secret_dlopen_arg_fail emit refuses (rc=1)
+OK secret_dlopen_arg_pass emit OK
+OK secret_sys_exec_argv_fail emit refuses (rc=1)
+OK secret_sys_exec_argv_pass emit OK
+OK secret_midline_safe emit OK
+OK comment-skip fixture shape (no line-start SECRET directive)
+OK ci_product wires secret_t2_depth_smoke
+OK secret_t2_depth_smoke
+```
+
+Log: `/tmp/s71_integration/secret_t2_depth_smoke.out`
+
+### 1c) secret_sink_enforce_smoke — exit 1
+
+Emit matrix **all OK** (sink/assign/chain/concat/call/write_file/fetch/sys_exec/env_get/multi-arg/invalid_empty).
+
+Then:
+
+```
+FAIL missing SECRET_TAINT.md
+```
+
+Script hard-requires `$ROOT/bootstrap/SECRET_TAINT.md` + marker `SECRET_TAINT_RESIDUAL_ALPHA`. Tree has **`bootstrap/SECRET_TAINT.oot`** (marker present L3; fetch/write_file/sys_exec named). **Not a 7.1 emit fail.**
+
+Log: `/tmp/s71_integration/secret_sink_enforce_smoke.out`
+
+### 1d) secret_product_floor_smoke — exit 1
+
+Wraps sink-enforce + residual + LLVM dual-path:
+
+```
+FAIL secret_sink_enforce_smoke.sh          # same .md miss
+ERR_NO_DOC: …/ooda/bootstrap/SECRET_TAINT.md
+FAIL secret_taint_residual_smoke.sh
+OK llvm secret_sink_fail refuses
+OK llvm secret_sink_pass
+secret_product_floor_smoke: FAILED
+```
+
+LLVM dual-path **GREEN**. Residual honesty script also pins `.md`.
+
+Log: `/tmp/s71_integration/secret_product_floor_smoke.out`
+
+### 1e) r2_multi_import_tc_smoke — exit 0 (regression)
+
+```
+OK pass: 2file_import_call
+OK pass: struct_type_across_import
+OK pass: chain_import_3file
+OK fail-closed: arg_type_mismatch_across_import
+OK fail-closed: missing_import_fail_closed
+OK fail-closed: arity_mismatch_across_import
+OK fail-closed: multiarg_ret_type_across_import
+OK fail-closed: multiarg_call_as_arg_type
+r2_multi_import_tc_smoke: ALL OK
+RESIDUAL Issue #9: multi-import expanded LINE offsets
+```
+
+Log: `/tmp/s71_integration/r2_multi_import_tc_smoke.out`
+
+### 1f) s71_guard_scan_smoke (Harness) — exit 0
+
+```
+OK fail-closed: secret_tok_println_ident
+OK fail-closed: secret_tok_write_file_payload
+OK no-FP: secret_tok_println_string_lit
+s71_guard_scan_smoke: ALL OK
+RESIDUAL full IFC / #[Secret] / string-interp ${}
+RESIDUAL 7.10: c_parse_secret_env still char-by-char name concat
+RESIDUAL interproc SECRET beyond path-A __fr_secret__
+```
+
+Log: `/tmp/s71_integration/s71_guard_scan_smoke.out`
+
+---
+
+## 2) Exit-code scoreboard
+
+| Script | Timeout | Exit | Color |
+|--------|---------|------|-------|
+| `ooda/scripts/secret_t1_return_smoke.sh` | 90s | **0** | GREEN |
+| `ooda/scripts/secret_t2_depth_smoke.sh` | 90s | **0** | GREEN |
+| `ooda/scripts/secret_sink_enforce_smoke.sh` | 90s | **1** | RED |
+| `ooda/scripts/secret_product_floor_smoke.sh` | 90s | **1** | RED |
+| `ooda/scripts/r2_multi_import_tc_smoke.sh` | 90s | **0** | GREEN |
+| `ooda/scripts/s71_guard_scan_smoke.sh` | 90s | **0** | GREEN |
+| `ooda/scripts/secret_71_*` | — | **SKIP** | — |
+
+Listed 5: **3 GREEN / 2 RED**. With Harness extra: **4 GREEN / 2 RED / 1 SKIP**.
+
+---
+
+## 3) What RED is (and is not)
+
+| Claim | Status |
+|-------|--------|
+| 7.1 `c_guard_scan_idents` defined on tip | **YES** (`c_emit_secret_guard.oo` L18–111) |
+| Ident extract is `str_slice` (no `name = name + c`) | **YES** (L104–106) |
+| String-literal no-FP (`println("tok")` while `tok` SECRET) | **YES** (s71 no-FP rail) |
+| T1 return / alias / if taint | **YES** (exit 0) |
+| T2 field / method / full-args / comment skip | **YES** (exit 0) |
+| Sealed-sink emit refuse matrix | **YES** (sink-enforce emit rows all OK) |
+| LLVM same refuse as emit-c | **YES** |
+| R2 multi-import TC regression | **YES** (exit 0) |
+| Product-floor / residual **script** green | **NO** — stale `.md` path |
+| 7.10 `c_parse_secret_env` char concat | **OPEN** (not this OWN) |
+| Full IFC / `#[Secret]` / `${}` | **residual** |
+
+---
+
+## 4) Follow-ups (not this worker)
+
+1. Point `secret_sink_enforce_smoke.sh` + `secret_taint_residual_smoke.sh` at `SECRET_TAINT.oot` (or ship a `.md` alias). That unblocks product-floor GREEN without touching 7.1 emit.
+2. 7.2 / 7.10 remain next residual-queue items (handoff).
+3. Do not treat battery RED as a 7.1 scan-logic regression.
+
+---
+
+## Evidence paths
+
+| Item | Path |
+|------|------|
+| This audit | `/home/jeryd/Projects/openOODA/openOODA/audit/s71_integration.oot` |
+| Harness pointer | `/home/jeryd/Projects/openOODA/openOODA/audit/s71_harness.oot` |
+| Guard source | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo` |
+| Residual doc (live) | `/home/jeryd/Projects/openOODA/ooda/bootstrap/SECRET_TAINT.oot` |
+| Smoke logs | `/tmp/s71_integration/*.out` + `*.rc` |
+| Prior memory close | `openOODA/audit/t1_memory.oot` (M-SG1/M-SG2) |
+
+end of s71_integration.oot

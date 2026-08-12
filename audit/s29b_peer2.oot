@@ -1,0 +1,327 @@
+# s29b_peer2.oot
+# QA Peer Verifier 2 — SPRINT 2.9 wave-2 (parity)
+# Date: 2026-08-12T19:34Z
+# Role: Peer Verifier 2 (orthogonal to Peer 1 assigned-shape / harness rail)
+#       OWN = stmt `println` vs free-call `eprintln` on **nested-paren** shapes
+# Tree: /home/jeryd/Projects/openOODA
+# Write: this audit only. No product/std/oodac edits. No push. No rebuild.
+
+========================================================================
+VERDICT
+========================================================================
+
+## **REJECT** stmt println vs eprintln nested-paren parity
+
+Assigned question: **Does stmt `println` miss any nested-paren shape
+that free-call `eprintln` catches?**
+
+**YES.** Live emit-c on the product host (clean cwd, dual-repro):
+
+| Shape (after `// SECRET: tok`) | stmt `println` | free-call `eprintln` |
+|--------------------------------|----------------|----------------------|
+| `(("x") + tok)` grouping then `+` | **FN** rc=0, emits `oo_print_str(oo_str_concat((oo_str_lit("x")), tok))` | **BLOCK** `ERR	secret	eprintln sink refuses SECRET tok` |
+| `((1) + tok)` int grouping then `+` | **FN** rc=0, emits `oo_print_int((((1LL) + tok)))` | **BLOCK** same secret |
+| `f(g(), tok)` nested call, secret after inner `RPAREN` | **FN** rc=0, emits `oo_print_str(f(g(), tok))` | **BLOCK** same secret |
+| `f((1), tok)` inner group then SECRET arg | **FN** rc=0, emits `oo_print_str(f((1LL), tok))` | **BLOCK** same secret |
+| `"x".len() + tok` method `RPAREN` then `+` | **FN** rc=0, **DROP** — emits only `oo_print_str(oo_str_lit("x"))` | **BLOCK** same secret |
+
+Root cause (source + ELF, unchanged vs wave-1 on this rail):
+
+Stmt `println` is special-cased (`c_emit_ident.oo` L129–131 →
+`c_emit_print.oo`). Its IDENT scan **stops at the first `COMMA` /
+`RPAREN` / `SEMI` with no paren depth**. Free-call `eprintln` is **not**
+special-cased: `c_emit_expr_c` → `c_secret_emit_guard` →
+`c_guard_scan_idents` on the **full lowered C args**, which still sees
+`tok` after a nested `)`.
+
+`id == "eprintln"` is **absent** from `c_emit_ident.oo`.
+`c_secret_emit_guard(` is **absent** from `c_emit_print.oo`.
+`c_emit_print.oo` / `c_emit_ident.oo` are **HEAD-clean**.
+
+Wave-2 did **not** close this OWN:
+
+1. Harness rail is only `println((1), tok)` (SECRET as a **later
+   top-level** arg after a grouped first arg). That is **emit-c BLOCK
+   on both names** (stmt scan resumes after the first arg). It is
+   **not** the same-arg nested-`RPAREN` class above. `s29b_harness.oot`
+   names concat-after-group / `f(g(), tok)` / method `RPAREN` then `+`
+   as **not this rail**.
+2. WT `check_secret_println_sinks` now has paren `depth` (`c_emit_secret.oo`
+   L178–199). The **shipping ELF does not**: host is still 07:49.
+   Live `oodac check` is FN on these shapes for **both** names.
+3. Even a rebuild would refuse via the **front-door**, not by giving
+   stmt `println` the eprintln guard. The stmt scan is still
+   first-`)`. That is not 2.9 unify and is not this parity land.
+
+Do **not** ACCEPT 2.9 nested-paren parity from `s29_println_guard_smoke.sh`
+(bare IDENT + string no-FP + later-arg only). Do **not** treat
+`s29b_integration.oot` “GREEN refuse / not fail-open” as this OWN —
+that battery never printed `(("x") + tok)`.
+
+========================================================================
+SUMMARY TABLE
+========================================================================
+
+| # | Probe | eprintln (guard) | println (stmt) | VERDICT |
+|---|--------|------------------|----------------|---------|
+| 1 | bare `sink(tok)` | BLOCK dual | BLOCK dual | **PASS** parity |
+| 2 | multi `sink("n", tok)` | BLOCK dual | BLOCK dual | **PASS** parity |
+| 3 | concat `sink("k=" + tok)` (no grouping) | BLOCK dual | BLOCK dual | **PASS** parity |
+| 4 | string `sink("tok")` | ALLOW dual | ALLOW dual | **PASS** no-FP |
+| 5 | wrap `sink(f(1, tok))` (IDENT before any `RPAREN`) | BLOCK dual | BLOCK dual | **PASS** parity |
+| 6 | `tok + ("x")` (SECRET **before** first `RPAREN`) | BLOCK dual | BLOCK dual | **PASS** parity |
+| 7 | `(tok)` grouping only | BLOCK emit-c; check SECRET | BLOCK emit-c; check TYPE arity | **OPEN** check parser |
+| 8 | `sink((1), tok)` later top-level (harness wave-2) | BLOCK emit-c; check FN | BLOCK emit-c; check FN | **PASS** emit parity; check hole both |
+| 9 | `(("x") + tok)` | emit-c **BLOCK**; check **FN** | emit-c **FN leak**; check **FN** | **REJECT** |
+| 10 | `((1) + tok)` | emit-c **BLOCK**; check **FN** | emit-c **FN leak**; check TYPE | **REJECT** |
+| 11 | `f(g(), tok)` defined helpers | emit-c **BLOCK**; check **FN** | emit-c **FN leak**; check **FN** | **REJECT** |
+| 12 | `f((1), tok)` | emit-c **BLOCK**; check **FN** | emit-c **FN leak**; check **FN** | **REJECT** |
+| 13 | `"x".len() + tok` | emit-c **BLOCK**; check **FN** | emit-c **FN DROP**; check **FN** | **REJECT** |
+| 14 | emit-llvm on 9–13 | **FN both** (no guard) | **FN both** | LLVM parity of a hole |
+| 15 | `s29_println_guard_smoke.sh` (170 L, wave-2 rail) | — | — | **exit 1** check FN on later-arg |
+| 16 | official sink / eprintln / multi / string-FP fixtures | BLOCK / ALLOW as named | same | **PASS** floor |
+
+**OVERALL: REJECT** (stmt println misses ≥5 live emit-c nested-paren
+shapes the eprintln guard catches; four of them emit C that still
+names `tok`).
+
+========================================================================
+METHOD
+========================================================================
+
+1. Static split: `c_emit_ident_stmt` `id == "println"` only;
+   `eprintln` falls through to `c_emit_expr_c` → `c_secret_emit_guard`
+   (`c_emit_lower.oo` L90). HEAD check walk (what the ELF has) treats
+   both names the same and is **not** paren-depth aware. WT added
+   `depth` on the check walk — **source only**.
+2. Live product host only: `ooda/oodac/oodac`. Clean cwd
+   `/tmp/s29b_peer2_1169707` (no `.ooda-cache`). Dual-repro emit-c.
+3. Ephemeral fixtures only. No product rebuild. No push.
+4. Did **not** trust wave-1 `s29_peer2.oot`, `s29b_harness.oot`, or
+   `s29b_integration.oot` (RULES §1.9). Re-proved the nested-paren
+   class independently.
+
+========================================================================
+HOST / TIP / WT
+========================================================================
+
+| Item | Value |
+|------|--------|
+| When (UTC) | 2026-08-12T19:34Z |
+| ooda tip | `52cc4b5` — `fix(r2): multi-import typecheck path-A + digit-0 import names` |
+| openOODA tip | `81f56fc` + WIP SPRINT **2.9 still OPEN** |
+| Product host | `ooda/oodac/oodac` **962960** B @ 2026-08-12 07:49:59 -0700 |
+| Host md5 | `a44ee35eb344837009697e2c9d4e4662` |
+| Host BuildID | `a93cfd09506ba87497379f66b6c7047dee02573d` |
+| `c_emit_print.oo` | HEAD-clean **87** L, md5 `b3b53cbe97c77cbd1dbe4f6744b69162` |
+| `c_emit_ident.oo` | HEAD-clean **228** L, md5 `ce738529e56a16c06d636e5817d95064` |
+| `c_emit_lower.oo` | HEAD-clean **241** L, md5 `16d3971c99cdbd06fe41f74958288dd8` |
+| `c_emit_secret.oo` | WT 7.10/2.10 + check `depth`, **219** L, md5 `e8d9ff2dbe66940b8d4c7dbce2c7443b` (mtime 12:28) |
+| `c_emit_secret_guard.oo` | WT 2.10, **228** L, md5 `ef9029995324d31aeb26748afe21e75b` |
+| Host symbols | `T c_emit_println` @ `0x4651b0`; `T c_secret_emit_guard` @ `0x461080`; `T c_guard_scan_idents` @ `0x45fb90`; `T check_secret_println_sinks` @ `0x475c50` |
+| Peer OWN | audit only |
+
+Same ELF as wave-1 `s29_peer2.oot`. Stmt rail files are the same
+bytes. Check-walker `depth` is **newer than the ELF**.
+
+========================================================================
+MECHANISM (why eprintln sees it and stmt println does not)
+========================================================================
+
+Stmt rail (`c_emit_print.oo` L19–30):
+
+```
+while sp < n {
+    sk = token
+    if COMMA || RPAREN || SEMI { break }   # no depth
+    if IDENT && __sec__sn == "1" { refuse }
+    sp++
+}
+# then c_emit_expr_c — emit only; no second refuse
+```
+
+`println(("x") + tok)` tokens after LPAREN:
+`LPAREN STRING RPAREN PLUS IDENT(tok) RPAREN`
+
+Scan hits the **grouping** `RPAREN` and stops. Never looks at `tok`.
+`c_emit_expr_c` then lowers the full `(("x") + tok)` and prints it.
+
+HEAD / ELF check rail (`c_emit_secret.oo` as compiled into 07:49):
+
+```
+optional skip LPAREN
+while tokens:
+    if RPAREN { stop }          # no depth
+    if IDENT { refuse_resolved }
+```
+
+Same first-`)` stop. Live `check` rc=0 `OK` on the hole shapes.
+
+WT check rail (12:28, **not in this ELF**):
+
+```
+depth = 1
+LPAREN → depth++
+RPAREN → depth--; stop only if depth <= 0
+IDENT  → refuse_resolved
+```
+
+That would close **check** (and therefore emit-c front-door) for both
+names **after a rebuild**. It does **not** change the stmt scan. This
+peer did not rebuild. Live ELF still first-`)`.
+
+Free-call rail (`c_emit_lower.oo` L90 + guard L213–226):
+
+```
+args = joined C text   # e.g. oo_str_concat((oo_str_lit("x")), tok)
+c_secret_emit_guard(..., "eprintln", ..., args)
+c_guard_scan_idents  # string-aware; still slices bare ident tok
+```
+
+That is the only rail that still sees `tok` after a nested `)` on
+this host.
+
+`println((1), tok)` is **not** this miss: after `c_emit_expr_c`
+consumes `(1)`, the **next** arg scan sees `tok`. Check still FN both
+on the ELF. That is the harness wave-2 rail, not this REJECT.
+
+========================================================================
+LIVE (product host)
+========================================================================
+
+Probes: `/tmp/s29b_peer2_1169707/` (ephemeral; not committed).
+
+```
+# FN — stmt println prints SECRET (or drops the secret expr)
+oodac emit-c p_groupplus.oo   # rc=0  oo_print_str(oo_str_concat((oo_str_lit("x")), tok))
+oodac emit-c p_igroup.oo      # rc=0  oo_print_int((((1LL) + tok)))
+oodac emit-c p_nest.oo        # rc=0  oo_print_str(f(g(), tok))
+oodac emit-c p_fgroup.oo      # rc=0  oo_print_str(f((1LL), tok))
+oodac emit-c p_method.oo      # rc=0  oo_print_str(oo_str_lit("x"));  # DROP +tok
+oodac check  p_groupplus.oo   # rc=0  OK   (front-door miss)
+
+# TP — free-call eprintln guard
+oodac emit-c e_groupplus.oo   # rc=1  ERR	secret	eprintln sink refuses SECRET tok
+oodac emit-c e_igroup.oo      # rc=1  same
+oodac emit-c e_nest.oo        # rc=1  same
+oodac emit-c e_fgroup.oo      # rc=1  same
+oodac emit-c e_method.oo      # rc=1  same
+oodac check  e_groupplus.oo   # rc=0  OK   (same front-door miss; emit-only save)
+
+# dual-repro (second run, same host)
+p_groupplus emit-c rc=0
+e_groupplus emit-c rc=1 ERR	secret	eprintln sink refuses SECRET tok
+p_nest      emit-c rc=0
+e_nest      emit-c rc=1 ERR	secret	eprintln sink refuses SECRET tok
+p_method    emit-c rc=0
+e_method    emit-c rc=1 ERR	secret	eprintln sink refuses SECRET tok
+p_fgroup    emit-c rc=0
+e_fgroup    emit-c rc=1 ERR	secret	eprintln sink refuses SECRET tok
+
+# later-arg (harness wave-2 — NOT this miss)
+oodac emit-c p_later.oo / e_later.oo   # rc=1 SECRET both
+oodac check  p_later.oo / e_later.oo   # rc=0 OK both
+
+# LLVM: no c_guard_scan_idents — both FN on hole shapes
+oodac emit-llvm p_groupplus.oo / e_groupplus.oo
+# rc=0, @.str.0 = c"s3cret", call @oo_print_str of concat; no ERR secret
+
+# smoke / floor (not this OWN)
+scripts/s29_println_guard_smoke.sh                 # exit 1
+#   bare + string + eprintln OK; check FN on println((1), tok)
+fixtures/secret_sink_fail.oo                       # emit-c/check rc=1 SECRET x
+fixtures/secret_eprintln_fail.oo                   # emit-c/check rc=1 SECRET tok
+fixtures/secret_multi_arg_println_fail.oo          # emit-c/check rc=1 SECRET s
+fixtures/secret_t2_string_lit_arg_fp.oo            # emit-c/check rc=0
+```
+
+Minimal recreate (same-arg grouping hole):
+
+```
+// SECRET: tok
+pub fn main() {
+    let tok = "s";
+    println(("x") + tok);   # emit-c FN — prints tok
+    # eprintln(("x") + tok);  # emit-c BLOCK
+}
+```
+
+========================================================================
+WHAT STILL HAS PARITY (do not over-claim the REJECT)
+========================================================================
+
+Bare IDENT, top-level multi-arg, ungrouped concat, wrap where SECRET
+IDENT is **before** any `RPAREN`, `tok + ("x")`, string-lit no-FP, and
+official fixtures all **BLOCK or ALLOW together**.
+
+`println((1), tok)` / `eprintln((1), tok)` **emit-c BLOCK together**.
+That is harness wave-2, not a stmt miss vs eprintln. Check is FN on
+**both** (ELF first-`)`).
+
+`println((tok))` emit-c BLOCK both. Check TYPE on println (inner
+`RPAREN` stolen as closer) vs SECRET on eprintln — arity desync, not
+required for this REJECT.
+
+========================================================================
+NAMED RESIDUALS (not this REJECT)
+========================================================================
+
+R1. **Check front-door** is FN on the same `RPAREN` class for **both**
+    names on this ELF. Dual-path secret is **emit-only** for eprintln.
+    WT `depth` is unhosted. Fixing only stmt println does not close
+    live `oodac check` until the ELF matches.
+R2. **emit-llvm** has no `c_guard_scan_idents`. Hole shapes ALLOW on
+    both names and still embed `c"s3cret"`. LLVM `print` alias already
+    named in `s71_security.oot` R2.
+R3. **2.9 unify still OPEN.** This REJECT is the **parity FN**, not
+    only “call site missing.”
+R4. Wave-2 harness / smoke do **not** cover same-arg nested parens.
+    Smoke exit 1 is the later-arg **check** hole, not this OWN.
+R5. `${}` / `#[Secret]` / full IFC — 5.8 / SECRET_TAINT. Not this OWN.
+R6. `println((tok))` check TYPE vs eprintln check SECRET. Separate
+    arity-desync.
+R7. Method shape **DROP** (`"x".len() + tok` → print `"x"` only) is a
+    refuse FN and a wrong emit, not a byte leak of `tok`. Still a miss
+    vs eprintln.
+
+========================================================================
+VS SIBLINGS (independent; do not rubber-stamp)
+========================================================================
+
+| Sibling | Their claim | This OWN |
+|---------|-------------|----------|
+| `s29_peer2` (wave-1) | REJECT same four shapes | **re-proved** on the same ELF; plus `f((1), tok)` |
+| `s29b_harness` | later-arg rail; other grouping **not this rail**; smoke exit 1 honest | **agree** later-arg is not this miss; **this OWN is the named leftover** |
+| `s29b_integration` | smoke PASS / 157 L / “not fail-open” / walker body unchanged | **disagree**: live smoke is **170 L exit 1**; WT walker **did** add `depth`; same-arg nested **is** fail-open on stmt emit-c |
+| `s29_domain_a` | ALREADY_FIXED dual refuse; no hole class | **false** on this class — eprintln guard refuses what stmt println emits |
+| `s29_security` Z2 | later-arg check/llvm FN; emit-c BLOCK | **true** for `(1), tok`; **incomplete** for same-arg concat/nest |
+
+========================================================================
+FILES
+========================================================================
+
+| Path | Role |
+|------|------|
+| `openOODA/audit/s29b_peer2.oot` | this report (OWN) |
+| `/tmp/s29b_peer2_1169707/` | ephemeral probes (not committed) |
+
+No product / std / oodac / SPRINT edits. No push. No host rebuild.
+
+========================================================================
+FINAL
+========================================================================
+
+**REJECT** 2.9 wave-2 walker vs guard parity on nested-paren shapes.
+Stmt `println` **does** miss shapes that free-call `eprintln` catches:
+any SECRET IDENT that appears **after a nested `RPAREN` still inside
+the same sink argument**. Live emit-c prints `tok` (or drops the
+secret expr). The eprintln guard refuses the same source. Wave-2
+later-arg smoke is not a substitute for this rail. WT check `depth`
+is not in the 07:49 ELF and would not give stmt `println` the guard.
+
+Fix (not this worker): stop special-casing stmt `println`, **or** give
+`c_emit_println` a depth-aware scan / `c_secret_emit_guard` on joined
+arg text; **and** ship a host that actually runs the depth-aware
+check walker (or check stays FN).
+
+end of s29b_peer2.oot

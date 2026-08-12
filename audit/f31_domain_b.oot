@@ -1,0 +1,157 @@
+# f31_domain_b.oot — Domain Expert B / F31+F38 STDLIB_CRYPTO_MATH
+# Date: 2026-08-12T20:08:43Z
+# Role: Domain Expert B of crush CRIT swarm
+# Tree: /home/jeryd/Projects/openOODA
+# Tips: root eaa555d / openOODA 81f56fc / std 77fb876 / ooda 52cc4b5
+# OWN: restate bootstrap/STDLIB_CRYPTO_MATH.oot honestly.
+#      Write this evidence. Do not implement crypto math.
+#      Do not edit SPRINT. No push.
+#
+# ID: F31 (CRIT) listed 8 files as phantom. F38 (CRIT) gate-shape drift.
+
+========================================================================
+VERDICT
+========================================================================
+
+**RESTATED.** F31 as written ("all 8 phantom") is **false**. F38 as
+written (pack names only `process_exit`; product uses other shapes)
+is **true** and is now named in the pack.
+
+| Finding | After restatement |
+|---------|-------------------|
+| F31 "all 8 phantom" | **Wrong as a set.** 3 exist, 5 phantom |
+| F31 "honesty pack is itself phantom" | **Closed** — pack no longer cites missing paths as gates |
+| F38a gate-shape drift | **Named** — `process_exit` vs `"UNIMPLEMENTED_RESIDUAL"` vs CHS |
+| F38b `fn sha256` collision | **Named residual** — not fixed (product code; not this OWN) |
+| F38c pack scope | **Named** — `ooda/std` product vs `std/src/ooda/sec/crypto` org |
+| Crypto math | **not implemented** (forbidden this turn) |
+| SPRINT F31/F38 rows | **Docs** remove when they accept this restatement |
+
+No product `.oo` edited. No push.
+
+========================================================================
+REPRO (disk, this turn)
+========================================================================
+
+Claimed root: `std/src/ooda/sec/crypto/` (not `ooda/`).
+
+| Claimed file | Disk | `process_exit` in that file |
+|--------------|------|------------------------------|
+| `ed25519_ops.oo` | **PHANTOM** | n/a |
+| `dilithium_ops.oo` | **PHANTOM** | n/a |
+| `groth16_ops.oo` | **PHANTOM** | n/a |
+| `double_ratchet_ops.oo` | **PHANTOM** | n/a |
+| `kyber.oo` | **PHANTOM** | n/a |
+| `falcon_ops.oo` | EXIST 136 L | **0** |
+| `secp256k1_ops.oo` | EXIST 227 L | **0** |
+| `plonk_ops.oo` | EXIST 173 L | **0** |
+
+`find ooda -name '*ed25519*'` (F31 original) is empty. That search
+missed `std/`. Wrong root, not "no crypto surface."
+
+Kyber live path is **`std/crypto/kyber.oo`** (41 L, 3× `process_exit`).
+Not the listed `sec/crypto/kyber.oo`.
+
+========================================================================
+SIBLINGS (not the listed `_ops`; do not invent `_ops`)
+========================================================================
+
+| Live file | L | `process_exit` | Honesty |
+|-----------|---|----------------|---------|
+| `ed25519.oo` | 723 | 8 | hash/clamp/sign/verify exit; constructors live |
+| `dilithium.oo` | 684 | 4 | NTT/sample exit; **sign/verify ungated synthetic** |
+| `groth16.oo` | 709 | 4 | pairing/MSM/prove exit; **structural verify `is_valid: true`** |
+| `double_ratchet.oo` | 677 | 7 | KDF/DH/AEAD/send/recv exit |
+| `falcon_stubs.oo` | 89 | 6 | NTT/sign gate for the live Falcon family |
+| `secp256k1_stubs.oo` | 182 | 11 | ECDSA/ECDH gate |
+| `plonk_stubs.oo` | 27 | 3 | KZG/FFT gate |
+
+Monofiles break RULES §1.7 (>>256). Named only. Split is not this OWN.
+
+========================================================================
+F38 GATE SHAPES (product `ooda/std`)
+========================================================================
+
+| File | Body | Shape |
+|------|------|-------|
+| `ooda/std/hash/sha256.oo` | `return "UNIMPLEMENTED_RESIDUAL"` | **B** string residual |
+| `ooda/std/core/crypto.oo` `sha256` | `crypto_sha256_internal` | **C** CHS |
+| `ooda/std/core/crypto.oo` `hmac_sha256` | `crypto_hmac_sha256_internal` | **C** CHS |
+| `ooda/std/core/crypto.oo` `aes_encrypt` | `crypto_aes_encrypt_internal` → `"STUB_FAIL_CLOSED"` | **C** string, not exit |
+| `ooda/std/hash/md5.oo` | `crypto_md5_internal` | **C** CHS |
+| `ooda/std/hash/sha1.oo` | `crypto_sha1_internal` | **C** CHS |
+
+F38a: pack now names A/B/C/D. F38b: both `fn sha256(String) -> String`
+still collide. F38c: pack now states the two-tree scope.
+
+`"UNIMPLEMENTED_RESIDUAL"` is **not** `process_exit(1)`. A caller can
+store or print the string. That is the drift.
+
+========================================================================
+WHY F31 WAS CRIT AND WHAT CLOSED
+========================================================================
+
+CRIT was: the honesty pack cited missing files as load-bearing gates.
+Import would 404, not exit. Two stacked phantoms (pack + files).
+
+Close used here: **restate the pack**. Only exist files are in the
+exist table. Phantom paths are labeled PHANTOM. No new stubs created
+(user: do not implement crypto math).
+
+Not closed by creating the five missing `_ops` files.
+
+========================================================================
+FILES TOUCHED
+========================================================================
+
+| File | Change |
+|------|--------|
+| `openOODA/bootstrap/STDLIB_CRYPTO_MATH.oot` | restated exist/phantom + gate shapes |
+| `openOODA/audit/f31_domain_b.oot` | this evidence |
+| product crypto `.oo` | **none** |
+| `SPRINT.oot` | **none** (Docs) |
+
+========================================================================
+DOCS ACTION
+========================================================================
+
+Documentation Writer: when this restatement is accepted,
+
+1. Remove **F31** and **F38** from `SPRINT.oot` §3 CRIT list.
+2. Leave F23 HIGH (if someone later creates a listed file, body must
+   not be a silent success). Re-scope F23 off "8 phantom ops."
+3. F24 / F25 stay moot.
+4. Optional: DESIGN §4.3 one-liner still says all std crypto is
+   `process_exit(1)`. Narrow it to this pack. Not done here.
+5. Do **not** flip F39 / F40 / F41 / F42. Those are other OWN.
+
+========================================================================
+RESIDUAL (honest)
+========================================================================
+
+1. Live `*_ops` have **zero** `process_exit`. Helpers can look like
+   crypto. secp256k1 `is_valid: true` on length is greenwash.
+2. Dilithium / Groth16 / Plonk public verify can return true without
+   lattice / pairing math.
+3. `fn sha256` collision (F38b) still live.
+4. CHS real MD5/SHA-1 vs RULES §1.12 (F39) not this OWN.
+5. AES `STUB_FAIL_CLOSED` string vs exit (F40) not this OWN.
+6. `t5_peer1_crypto.oot` still says `ed25519_ops` has 18 exits. Stale.
+   Cite this file + the restated pack.
+7. Math not audited. No production crypto claim.
+
+========================================================================
+STATUS FOR SPRINT/PM
+========================================================================
+
+| Item | Status |
+|------|--------|
+| F31 pack cites phantom files as gates | **CLOSED** by restatement |
+| F31 "all 8 missing" fact | **corrected** (3 exist / 5 phantom) |
+| F38 shapes + scope named | **CLOSED** in pack |
+| F38b name collision fix | **RESIDUAL** |
+| Crypto math land | **not done** (forbidden) |
+| SPRINT row removal | **Docs** |
+| Domain B contract | **PASS** — restated; no push |
+
+end of f31_domain_b.oot

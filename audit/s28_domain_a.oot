@@ -1,0 +1,200 @@
+# s28_domain_a.oot — Domain Expert A / residual 2.8
+# Residual: MED 2.8 Macro-body SECRET second pass (or residual doc)
+# Date: 2026-08-12
+# Role: Domain Expert A of 12-agent 2.8 phalanx
+# Tree: /home/jeryd/Projects/openOODA
+# Host: ooda/oodac/oodac (product, 962960 B, md5 a44ee35eb344837009697e2c9d4e4662)
+# Tip (ooda): 52cc4b5 + WIP residual docs / s28 smoke
+# OWN: prove or finish path-A — macros as product? if no: honest residual
+#      + smoke fail-closed or N/A. If expand exists without SECRET second
+#      pass: implement path-A or name residual. Do not reopen 6.1 / 7.x.
+#      No moonshots. No push. Monofile ≤600.
+
+========================================================================
+VERDICT
+========================================================================
+
+**ALREADY_FIXED** (path-A residual close). No product `.oo` this turn.
+
+AST macros are **not** a product feature. There is **no** expand walker
+and **no** macro-body SECRET second pass — and none is needed.
+
+`oodac check` default-denies `macro_expand` / `ast_macro` (`ERR residual`
+`AST_MACROS`). `emit-c` does **not** expand (unknown-free-call).
+`emit-llvm` may rc=0 emit `call @macro_expand` — **no rewrite**; link
+residual, not a SECRET hole. Invented `macro` keyword is parse/type
+refuse. Source tokens = executable semantics; first-pass
+`check_secret_println_sinks` is exhaustive for Path A.
+
+`s28_macro_secret_smoke.sh` **exit 0** on this host. Residual doc
+`MACRO_SECRET_RESIDUAL.oot` (`MACRO_SECRET_RESIDUAL_ALPHA`) is honest
+about check vs emit vs llvm. 6.1 / 7.x **not reopened.**
+
+Monofile `check_residual.oo` = **93** (≤600; under soft 256). Unchanged.
+
+========================================================================
+DIAGNOSIS (prove)
+========================================================================
+
+### Product question: do macros exist?
+
+| Surface | Fact |
+|---------|------|
+| EBNF / GBNF / tree-sitter | **no** `macro` production |
+| `oodac/*.oo` `macro_expand` / `ast_macro` | **only** `check_residual.oo` L28–29 |
+| Expand helper (`fn macro_expand`, AST splice) | **absent** |
+| `load_expand` / `collect_expand` | **import graph**, not AST rewrite |
+| C `#define` in emit | compiler-internal (max-cycles / asserts), not `.oo` macros |
+| DESIGN / PM 1.4 | names refused; real macros later |
+
+SPRINT 2.8 allows **residual doc**. Path-A close is **refuse-until-later**,
+not a walker. A stub second pass on the same unexpanded toks would be
+theater (ideas I7). Implementing AST_MACROS to justify a walk is a
+moonshot (I8). **Neither landed.**
+
+### Refuse / no-expand (live host ELF 07:49)
+
+File: `/home/jeryd/Projects/openOODA/ooda/oodac/check_residual.oo`
+
+- L28–29: `macro_expand` / `ast_macro` → `"AST_MACROS"`
+- L48–53: `is_residual_forbidden`
+- L73–93: `check_residual_free_calls` — IDENT + LPAREN only
+- Wired from `check_drive.oo` L109 (**check only**; not emit)
+
+| Probe | check | emit-c | emit-llvm |
+|-------|-------|--------|-----------|
+| `macro_expand("m")` | rc=1 `ERR residual` `AST_MACROS` | rc=1 `unknown free call … macro_expand` | rc=0 `call i64 @macro_expand` — **no expand** |
+| `ast_macro("m")` | rc=1 `ERR residual` `AST_MACROS` | rc=1 `unknown free call … ast_macro` | (same class) |
+| `macro dump(x) {…}` | rc≠0 parse/type | rc≠0 | — |
+| `// SECRET: tok` + `macro_expand("println(tok)")` | rc=1 **residual**, **not** `ERR secret` | rc=1 unknown-call | string stays `@.str` `"println(tok)"`; **no** `call void @oo_println` |
+| `// SECRET: tok` + `println(tok)` (floor) | rc=1 `ERR secret` | rc=1 `ERR secret` | — |
+| `let f = macro_expand; f("m")` | **rc=0 OK** (no `(` on name) | rc=1 unknown-call `f` | — |
+| `comptime(1)` | rc=1 `undefined variable` | — | — |
+
+String-wrapped `println(tok)` **not** secret-refusing is the no-expand
+proof: the body never becomes a sink IDENT.
+
+`residual_path_a_floor_smoke.sh` **PASSED** (`residual_macro_fail` →
+AST_MACROS). `ooda check` same refuse as `oodac check`.
+
+### SECRET first pass (unchanged; not a second pass)
+
+`check_secret_println_sinks` (`c_emit_secret.oo` L134) walks **source**
+toks. Called from check (`check_drive.oo` L62), emit-c (`c_emit.oo` L86),
+emit-llvm (`llvm_emit.oo` L79). No pre-expand stage exists, so there is
+nothing for a second pass to re-walk.
+
+### Residual docs (SPRINT pin)
+
+| File | Marker | Role |
+|------|--------|------|
+| `bootstrap/MACRO_SECRET_RESIDUAL.oot` | `MACRO_SECRET_RESIDUAL_ALPHA` | **canonical** (SPRINT-cited); dual-path honesty + reopen gate |
+| `bootstrap/MACRO_SECRET_PASS.oot` | `MACRO_SECRET_PASS_RESIDUAL` | sibling — leave |
+| `bootstrap/MACRO_BODY_SECRET.oot` | `MACRO_BODY_SECRET_RESIDUAL_ALPHA` | sibling — leave |
+| `audit/issue_2_8_macro_secret_residual.oot` | — | security residual (rogue name; leave) |
+
+This turn **tightened** `MACRO_SECRET_RESIDUAL.oot` (was 23L overclaim
+“compiler refuses before any execution”; now 46L names check / emit-c /
+llvm / IDENT-no-`(` / reopen). Marker unchanged.
+
+========================================================================
+FILES TOUCHED
+========================================================================
+
+| File | Change |
+|------|--------|
+| `ooda/bootstrap/MACRO_SECRET_RESIDUAL.oot` | honest dual-path + smoke + reopen gate |
+| `ooda/scripts/s28_macro_secret_smoke.sh` | I2 rails: static names-only, string-body not secret, llvm no-expand |
+| `openOODA/audit/s28_domain_a.oot` | this evidence |
+
+**Not touched:** `check_residual.oo`, `c_emit_secret*.oo`, 6.1 / 7.1 / 7.2
+/ 7.10 walkers, SPRINT table, remotes (no push). Did **not** add emit
+`check_residual_free_calls` (I5 — not 2.8). Did **not** implement expand
+or a stub second pass.
+
+Harness already landed the smoke skeleton (`s28_harness.oot`). Domain A
+completed the no-expand prove rails.
+
+========================================================================
+PROVE COMMANDS
+========================================================================
+
+```bash
+cd /home/jeryd/Projects/openOODA/ooda
+export OODAC_BIN=./oodac/oodac
+
+# Static: names only in residual refuse (expect check_residual.oo L28–29)
+grep -n 'macro_expand\|ast_macro' oodac/*.oo
+wc -l oodac/check_residual.oo   # 93
+
+timeout 90 bash scripts/s28_macro_secret_smoke.sh
+# observed: EXIT 0
+#   residual-refuse check macro_expand / ast_macro
+#   emit-c fail-closed (unknown free call)
+#   invented macro keyword fail-closed
+#   SECRET floor println(tok) still refuses
+#   string-body not secret (no expand)
+#   static names only in check_residual.oo
+#   emit-llvm no-expand (named residual rc=0 @macro_expand)
+#   MACRO_SECRET_RESIDUAL.oot marker honest
+
+timeout 90 bash scripts/residual_path_a_floor_smoke.sh
+# observed: EXIT 0  (includes residual_macro_fail → AST_MACROS)
+```
+
+T1/T2 / 7.x smokes **not re-run** as OWN (integration already green on
+7.1/7.2/7.10; 6.1 check dual-path is **other ID**).
+
+========================================================================
+RESIDUAL HONESTY (do not claim closed)
+========================================================================
+
+1. **No second-pass walker** — unneeded until AST_MACROS ships. Do not
+   treat absence as a SECRET FN on Path A.
+
+2. **emit-llvm `call @macro_expand` rc=0** — no expand; undefined symbol
+   at link. Dual-path residual refuse (I5) is **not** this close.
+
+3. **Bare IDENT `let f = macro_expand`** — check OK (IDENT+LPAREN only).
+   Still no expand. I6 later; not 2.8.
+
+4. **`${}` interp (5.8)** — adjacent expand-like surface. **Not** 2.8.
+
+5. **`ast_macros_residual_smoke.sh`** still wants `AST_MACROS.md` (file
+   is `.oot`). Pack hygiene; path-A refuse rail is `residual_path_a_floor`
+   + `s28_macro_secret_smoke`. Not rewritten.
+
+6. **Triple residual docs** — siblings left (hygiene). Canonical is
+   `MACRO_SECRET_RESIDUAL.oot`.
+
+7. **`SECRET_TAINT.oot`** has no 2.8 row (optional I3; not this turn).
+
+8. **6.1 / 7.x** — **not reopened.** Host ELF not rebuilt.
+
+9. **SPRINT 2.8** already **FIXED** path-A documented. This audit
+   **proves** refuse + no-expand. Domain A does not edit SPRINT.
+
+10. **ci_product.sh** does not wire `s28_*` (same as s61/s71/s72/s710).
+    Optional harness; not required for residual-doc close.
+
+========================================================================
+STATUS FOR SPRINT/PM
+========================================================================
+
+| Item | Status |
+|------|--------|
+| 2.8 macro-body SECRET second pass | **unneeded** (no expand) |
+| Path-A check refuse `macro_expand` / `ast_macro` | **ALREADY_FIXED** (live) |
+| Path-A emit expand | **absent** (emit-c unknown-call; llvm call-not-expand) |
+| Residual doc (`MACRO_SECRET_RESIDUAL.oot`) | **honest** (this turn) |
+| `s28_macro_secret_smoke` | **green** exit 0 |
+| `residual_path_a_floor_smoke` | **green** exit 0 |
+| Product monofile | **93** `check_residual.oo` (untouched) |
+| 6.1 / 7.x | **not reopened** |
+
+Recommend SPRINT 2.8 stay **FIXED** (path-A refuse-until-later + prove),
+wording: **not** “second pass shipped.” Reopen only when AST_MACROS
+leaves refuse — then second pass on **expanded** toks is mandatory
+(same patch).
+
+end of s28_domain_a.oot

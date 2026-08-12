@@ -1,0 +1,240 @@
+# s28_runtime.oot — Machine Code / Runtime Auditor (SPRINT 2.8)
+# Date: 2026-08-12T19:15Z
+# Role: Machine Code / Runtime — emit/runtime vs AST-macro expansion
+# Tree: /home/jeryd/Projects/openOODA/ooda (+ openOODA/audit)
+# Tip (ooda): 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
+# Host: ooda/oodac/oodac  962960 B  mtime 2026-08-12 07:49
+#   md5 a44ee35eb344837009697e2c9d4e4662
+#   BuildID a93cfd09506ba87497379f66b6c7047dee02573d
+# OWN: prove emit/runtime do **not** expand AST macros; name residual refuse
+#      (`macro_expand` / `ast_macro`); C `#define`s are not OO macros.
+#      Comment-only honesty. No product logic change. No push.
+#      Tmp prove only (`/tmp/s28_runtime_prove`).
+#
+# ID: SPRINT **2.8** = "Macro-body SECRET second pass (or residual doc)".
+# Do not mix with import `load_expand` (R2) or C preprocessor macros.
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Claim | Expected | Actual | VERDICT |
+|-------|----------|--------|---------|
+| Backend-C emit expands AST macros | **no** rewriter | no `macro_expand`/`ast_macro` lower; `c_emit*.oo` never rewrite toks | **PASS** (no expand) |
+| `chs_rt` expands / implements macros | **no** symbol | **zero** `macro_expand`/`ast_macro`/`oo_macro*` in `runtime/*` and host ELF | **PASS** |
+| Residual refuse names | `macro_expand`, `ast_macro` → `AST_MACROS` | `check_residual.oo` L28–29; live `oodac check` `ERR\tresidual` | **PASS** |
+| Host ELF carries refuse names | rodata + `residual_feature_of` | VMA `macro_expand` `0x4c474b`; `ast_macro` `0x4c4763`; `AST_MACROS` `0x4c4758`; `T residual_feature_of` @ `0x411c60` 1456 B | **PASS** |
+| `oodac check` / `run` default-deny | refuse before exec | `fixtures/residual_macro_fail.oo` + `ast_macro` tmp → rc=1 residual; `run` same | **PASS** |
+| `emit-c` uses residual tag | same `ERR\tresidual` | **does not** call `check_residual`; `let r = macro_expand(...)` → `ERR\tc_emit\tunknown free call`; stmt `macro_expand(...)` → C call | **FAIL residual** (skip-check) |
+| `emit-llvm` expands macros | **no** | `call i64 @macro_expand(%OoStr)` / `@ast_macro` — external, no body | **PASS** (no expand) / skip residual |
+| `emit-bc` / VM expands macros | **no** | `CALL macro_expand 1`; **not** `is_vm_builtin`; missing fn falls through | **PASS** (no expand) |
+| `emit-wasm` expands macros | **no** | `run_check_core` first → residual refuse; no wasm text | **PASS** |
+| Product `build` + gcc | fail-closed if skip-check emit | stmt-form: implicit-decl `macro_expand`; `ERR\tbuild\tgcc linking failed` | **PASS** (link closed) |
+| SECRET 2nd pass over expanded body | only if expand exists | no expand; `check_secret_println_sinks` walks **source toks** (`c_emit.oo` L86; `llvm_emit.oo` L79) | **PASS** (unneeded) |
+| C `#define`s are OO AST macros | **no** | HITL / `OO_MC_LIMIT` / `OO_ENS_CHECK` / assert / Some/None; runtime SHA/TLS/slots | **N/A** (C preprocessor) |
+| `emit-bc` SECRET dual-path | same refuse as emit-c | **skips** secret + residual; `secret_stmt` → `CALL macro_expand` + `CALL println` | **FAIL residual** (bc smoke) |
+
+**OVERALL: PASS (scope)** — emit and `chs_rt` **do not expand** first-class AST macros.
+Residual refuse names are **`macro_expand`** and **`ast_macro`** (`AST_MACROS`), live at
+**check / run / emit-wasm**. A macro-body SECRET second pass is **unneeded** on path A.
+
+Do **not** greenwash: product `emit-c` / `emit-llvm` / `emit-bc` **skip** residual
+refuse. Stmt-form becomes an **unresolved C/LLVM/BC call**, not an expander.
+`macro_expand` is **not** a SECRETSINK. `oodac build` still dies at gcc.
+
+========================================================================
+METHOD
+========================================================================
+
+1. Static: `check_residual.oo`, `check_drive.oo`, `c_emit.oo` /
+   `c_emit_let_ext.oo` / `c_emit_preamble.oo` / `c_emit_secret.oo`,
+   `llvm_emit.oo` / `llvm_emit_call.oo`, `bc_emit*.oo`, `vm_builtin.oo` /
+   `vm_exec.oo`, `main.oo` (`run`/`emit-wasm`/`emit-bc`/`emit-llvm`),
+   `cli_build.oo`, `runtime/chs_rt*.c`, `bootstrap/AST_MACROS.oot`,
+   `MACRO_SECRET_RESIDUAL.oot`, `RESIDUAL_PATH_A.oot`.
+2. Product host `ooda/oodac/oodac`: `nm -S`, `readelf -s`, `strings`,
+   file-off→VMA for refuse names; `nm` has **zero** `macro*` text symbols.
+3. Live: `check` / `run` / `emit-c` / `emit-llvm` / `emit-wasm` / `emit-bc`
+   / `build` on `fixtures/residual_macro_fail.oo` + tmp `ast_macro` /
+   SECRET / stmt / `pub fn macro_expand` (not landed).
+4. gcc + `chs_rt.c` link of stmt-form emit (implicit-decl fail).
+5. No `chs_rt` / emit logic edits.
+
+========================================================================
+1. Residual refuse names
+========================================================================
+
+Path-A names (DESIGN / `RESIDUAL_PATH_A.oot` / `AST_MACROS.oot`):
+
+| Free name | Feature tag |
+|-----------|-------------|
+| `macro_expand` | `AST_MACROS` |
+| `ast_macro` | `AST_MACROS` |
+
+`residual_feature_of` (`oodac/check_residual.oo` L28–29) + IDENT+LPAREN walk
+in `check_residual_free_calls`. Wired from `check_drive.oo` L109 (after type).
+`oodac run` and `emit-wasm` call `run_check_core` first (`main.oo` L263, L277).
+
+Live (`oodac/oodac`, tabs present in bytes):
+
+```
+ERR\tresidual\tResidual product refuse (path A): free call 'macro_expand'
+  names DESIGN surface AST_MACROS … line 1, col 25.
+```
+
+Same for `ast_macro` (col 25). Fixture: `fixtures/residual_macro_fail.oo`
+(`let r = macro_expand("m")`). `ast_macro` has **no** dedicated fixture
+(only `ast_macros_marker.oo` comment). Defining `pub fn macro_expand(...)`
+also matches IDENT+LPAREN → check refuse (col 8).
+
+Host ELF:
+
+| Probe | Result |
+|-------|--------|
+| `nm -S residual_feature_of` | `T` @ `0x411c60` size `0x5b0` (1456) |
+| `check_residual_free_calls` | `T` @ `0x4123f0` size `0x2dc` (732) |
+| `residual_deny` | `T` @ `0x412270` size `0x17a` (378) |
+| `is_residual_forbidden` | `T` @ `0x412210` size `0x51` (81) |
+| rodata `macro_expand\0` | file `0xc474b` VMA `0x4c474b` |
+| rodata `AST_MACROS\0` | file `0xc4758` VMA `0x4c4758` |
+| rodata `ast_macro\0` | file `0xc4763` VMA `0x4c4763` |
+| `oo_macro_expand` / `oo_ast_macro` | **absent** |
+| `nm` `macro*` text | **empty** |
+
+Seed `bootstrap/seed/oodac` also contains the three strings (not this proof).
+
+========================================================================
+2. Emit does **not** expand macros
+========================================================================
+
+No OO rewriter: grep of `oodac/*.oo` finds `macro_expand`/`ast_macro` **only**
+in `check_residual.oo`. `c_emit_lower.oo` has no special case. Import
+`load_expand` (`test_expand.oo`) concatenates modules — **not** AST macros.
+
+### emit-c (product floor)
+
+| Form | rc | What printed |
+|------|----|----------------|
+| `let r = macro_expand("m")` | 1 | `ERR\tc_emit\tunknown free call needs annotation\tmacro_expand` (`c_emit_let_ext.oo` L190) |
+| `macro_expand("m");` stmt | 0 | `macro_expand(oo_str_lit("m"));` — **C call**, no body |
+| `ast_macro("m");` stmt | 0 | `ast_macro(oo_str_lit("m"));` |
+| `pub fn macro_expand(x: String)` | 0 | emits `OoStr macro_expand(OoStr x)` as a **user fn** |
+
+`cli_emit.oo` / `cli_build.oo` never call `check_residual`. Skip-check emit
+is **not** expansion: the ident is treated as an ordinary C symbol.
+
+`oodac build` + gcc on stmt-form:
+
+```
+implicit declaration of function ‘macro_expand’
+ERR\tbuild\tgcc linking failed
+```
+
+Link is fail-closed because `chs_rt` has no such symbol.
+
+### emit-llvm (smoke)
+
+```
+%t0 = call %OoStr @oo_str_lit(...)
+%t1 = call i64 @macro_expand(%OoStr %t0)
+```
+
+`llvm_emit_call_expr` uses the source ident as `@name` (`llvm_emit_call.oo`
+L139+). No declare of a product expander. `llvm_emit.oo` L79 **does** run
+`check_secret_println_sinks` (sinks only — residual names not gated).
+
+### emit-bc / VM
+
+```
+PUSH_STR m
+CALL macro_expand 1
+STORE_LOCAL 0
+```
+
+`is_vm_builtin` (`vm_builtin.oo`) lists println/list/str/fs — **not**
+macro names. `vm_exec.oo` CALL: builtin else lookup user fn; miss →
+fall through (no expand, no residual ERR). `oodac run` never reaches VM
+because check refuses first.
+
+### emit-wasm
+
+`run_check_core` then `wasm_emit_stream`. Residual refuse; **no** wasm
+body. Dual-path stronger than emit-c.
+
+========================================================================
+3. Runtime (`chs_rt`) — not a macro host
+========================================================================
+
+`grep` of `ooda/runtime/*.{c,h}`: **zero** `macro_expand` / `ast_macro`.
+
+C `#define`s that **do** exist are implementation constants, not OO
+expansion: `OO_ALLOC_BYTES_MAX`, `OO_THREAD_SLOTS`, SHA `ROTR`/`CH`,
+TLS `SSL_set_tlsext_host_name` → `SSL_ctrl`, etc.
+
+Emitted-C macros (also **not** 2.8):
+
+| Macro | Home | Role |
+|-------|------|------|
+| `OODA_HITL_REQUIRED` | `c_emit.oo` | compile-time HITL gate constant |
+| `OO_MC_LIMIT` | `c_emit.oo` | max-cycles budget |
+| `OO_ENS_CHECK` | `c_emit_contract.oo` | ensures wrapper |
+| `Some`/`None` / `assert*` | `c_emit_preamble.oo` | C sugar |
+| `OO_FLIGHT_RECORDER_LOG` | **commented out** (`c_emit_call.oo` L112–114) | dead |
+
+SECRET runs on **OO tokens** before these `#define`s exist.
+
+========================================================================
+4. SECRET second pass — unneeded (2.8)
+========================================================================
+
+Issue: if macros rewrote AST, a pre-expansion token scan could miss
+`println(secret)` hidden in a body.
+
+Because **nothing expands**:
+
+- `c_emit_stream_mode` tokenizes `src` and calls
+  `check_secret_println_sinks(src, toks)` on that stream (`c_emit.oo` L86).
+- LLVM same (`llvm_emit.oo` L79).
+- Tokens == executable surface for path-A Backend-C.
+
+Live: `let r = macro_expand(token); println(r)` with `// SECRET: token`
+→ check **and** emit-c print `ERR\tsecret\tprintln sink refuses SECRET r`
+(T2 call-arg / assign prop on **source** names). Never reaches an expander.
+
+Stmt `macro_expand(token)` is **not** a sealed sink → emit-c/llvm **accept**
+(rc=0) and print `macro_expand(token)` / `call @macro_expand`. That is
+unknown-call / skip-residual honesty, **not** a hidden expanded sink.
+gcc still fails. check still residual-refuses.
+
+`emit-bc` of the same SECRET stmt prints `CALL macro_expand` with **no**
+secret refuse (bc has no `check_secret_println_sinks`). Residual smoke
+only — not product floor.
+
+========================================================================
+RESIDUAL (named, not 2.8 blockers)
+========================================================================
+
+| ID | Kind | Note |
+|----|------|------|
+| R-emit-skip | dual-path | `emit-c`/`emit-llvm`/`emit-bc` do not call `check_residual` |
+| R-stmt-call | skip-check | stmt-form emits unresolved `macro_expand(...)` C/IR |
+| R-user-fn | skip-check | emit-c will emit a user `fn macro_expand` if check is skipped |
+| R-not-sink | SECRET | residual names are **not** SECRETSINK |
+| R-bc-secret | smoke | `emit-bc` skips SECRET + residual |
+| R-fixture | rails | no `residual_ast_macro_fail.oo` |
+| R-product-cli | env | `bin/ooda check` → `ERR_NO_PRODUCT_SCRIPT` here; proved via `oodac` |
+| R-c-pp | honesty | do not call emit/runtime `#define`s AST macros |
+
+If `AST_MACROS` is ever implemented, 2.8 **reopens**: second-pass SECRET
+on **expanded** toks/AST (see `MACRO_SECRET_RESIDUAL.oot`).
+
+========================================================================
+VERDICT
+========================================================================
+
+**SPRINT 2.8 (runtime auditor): PASS.**
+
+Q1. Does emit/runtime expand macros? **No.**
+Q2. Residual refuse names? **`macro_expand`**, **`ast_macro`** (`AST_MACROS`).
+
+end of s28_runtime.oot

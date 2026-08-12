@@ -1,0 +1,293 @@
+# s61_integration.oot — Compiler Integration Tester (SPRINT 6.1)
+# Date: 2026-08-12T19:03:20Z
+# Worker: Grok Build (Compiler Integration Tester — 6.1)
+# Cwd: /home/jeryd/Projects/openOODA/ooda
+# Scope: live tip oodac secret rails; SPRINT 6.1 `env_set` SECRETSINK re-prove
+# Policy: no push; no seed_pure_multi; run listed smokes (90s each); run any s61_*
+
+## Verdict (honest)
+
+| Layer | Result | Exit | Notes |
+|-------|--------|------|-------|
+| **`secret_t1_return_smoke.sh`** | **PASS** | **0** | return / alias / if-taint refuse+allow + CI wire |
+| **`secret_t2_depth_smoke.sh`** | **PASS** | **0** | field/method/args/dlopen/sys_exec argv/comment-skip + CI wire |
+| **`s71_guard_scan_smoke.sh`** (7.1 regression) | **PASS** | **0** | println IDENT refuse + write_file payload refuse + string-lit no-FP |
+| **`s72_sys_exec_last_arg_smoke.sh`** (7.2 regression) | **PASS** | **0** | last-arg IDENT refuse + quoted commas/SECRET-spelling no-FP |
+| **`s710_parse_secret_env_smoke.sh`** (7.10 regression) | **PASS** | **0** | println IDENT + two-name + empty-name fail-closed |
+| **`s61_env_set_secretsink_smoke.sh`** (Harness extra) | **PASS** | **0** | env_set IDENT refuse + setenv IDENT refuse + string-lit no-FP |
+| **extra emit-c `env_set` probes** | **PASS/residual** | **1** | SECRET key/value refuse; allow = no `ERR secret` then unlowered |
+| **`oodac check` dual-path `env_set`** | **RESIDUAL** | **1** | type-undefined `env_set`/`setenv` before secret walk |
+| **alias `let f = env_set`** | **RESIDUAL** | **134** | host abort `oo_vemalloc(): unaligned tcache chunk` (not a harness rail) |
+| **Push** | **NOT DONE** | — | human-gated |
+
+**6.1 path-A SECRETSINK claim:** `env_set` is **in** the emit SECRETSINK set on tip source **and** on the shipping host (already landed with CRIT 2.3 / HIGH 6.1). Live `emit-c` refuse rails for bare SECRET IDENT at `env_set` and sibling `setenv` are **GREEN**. String-literal spelling of a SECRET name is **no-FP**. T1/T2 + 7.1/7.2/7.10 secret matrices remain **GREEN**.
+
+**Assigned script battery:** **GREEN** (5 of 5 listed + 1 landed `s61_*`). No RED emit refuse/allow on the assigned rails.
+
+**Overall 6.1 integration status: GREEN** (assigned + harness rails) / **not a new product op** (`env_set` still unlowered; `check` type-first; no `oo_env_set`)
+
+Do **not** greenwash: this is a **re-prove** of a 2.3 land, not a new slice. There is **no** product `oo_env_set` / `c_emit_lower` branch. Clean `env_set(...)` dies `ERR\tc_emit\tunknown free call needs annotation\tenv_set` (CAPS_MATRIX residual). `oodac check` never prints `ERR\tsecret` for these names. Full IFC / `#[Secret]` / `${}` not claimed. DESIGN/PM **6.1** (metamorphic vs deterministic) is a **different ID**. `ci_product.sh` wires T1/T2 only — **not** s61/s71/s72/s710.
+
+---
+
+## TIP SHA / binary
+
+```
+git rev-parse --short HEAD → 52cc4b5
+git log -1 --oneline       → 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
+date -u                    → 2026-08-12T19:03:20Z
+```
+
+| Item | Value |
+|------|--------|
+| Product tip | `ooda/oodac/oodac` **962960** bytes @ 2026-08-12 07:49 local |
+| md5 | `a44ee35eb344837009697e2c9d4e4662` |
+| BuildID | `a93cfd09506ba87497379f66b6c7047dee02573d` |
+| Side / older | `oodac/oodac` 962888 (07:43) — **not** used |
+| Seed | `bootstrap/seed/oodac` present — pure multi **not** re-run this pass |
+| Host used | `OODAC_BIN=/home/jeryd/Projects/openOODA/ooda/oodac/oodac` |
+| Working tree | dirty: `c_emit_secret*.oo` + `c_emit_args.oo` + untracked `scripts/s61_env_set_secretsink_smoke.sh`, `s71_guard_scan_smoke.sh`, `s72_sys_exec_last_arg_smoke.sh`, `s710_parse_secret_env_smoke.sh` |
+
+Host ELF is the **same** 07:49 binary used by s71/s72/s710 integration. 6.1 `env_set` strings are **already** in this ELF (2.3 land). Dirty `c_emit_secret*.oo` hunks this wave are **not** a 6.1 rewrite.
+
+---
+
+## 0) DE / Harness landing observed
+
+| Path | Role |
+|------|------|
+| `ooda/oodac/c_emit_secret_guard.oo` (228) | emit guard: `env_set` in a1 family (L117), 2.3/6.1 a1+a2 family (L157–165), full-args scan (L214–215) |
+| `ooda/oodac/c_emit_secret.oo` (264) | `check_secret_println_sinks` L238–242: `sid == "env_set"` → `c_secret_scan_call(..., 1, false, sid)` |
+| `ooda/oodac/c_emit_secret_alias.oo` (157) | `c_secret_is_sink_name` L16: `env_get` \|\| `env_set` \|\| `setenv` \|\| `unsetenv` |
+| `ooda/oodac/check_cap_util.oo` L243–245 | `is_sealed_env` lists `env_set` — **EnvCap**, adjacent, not SECRETSINK |
+| `ooda/scripts/s61_env_set_secretsink_smoke.sh` | Harness extra (untracked); ephemeral TMPDIR fixtures |
+| `openOODA/audit/s61_harness.oot` | harness pointer |
+| `openOODA/audit/s61_runtime.oot` | runtime auditor: 6.1 is emit SECRET, not `chs_rt` env filter |
+| `ooda/scripts/secret_{t1,t2}_*.sh` | listed T1/T2 integration rails |
+| `ooda/scripts/s71_guard_scan_smoke.sh` | 7.1 regression |
+| `ooda/scripts/s72_sys_exec_last_arg_smoke.sh` | 7.2 regression |
+| `ooda/scripts/s710_parse_secret_env_smoke.sh` | 7.10 regression |
+| `ooda/fixtures/secret_setenv_{fail,pass}.oo` | product-floor **setenv** fixtures (no in-tree `secret_env_set_*.oo`) |
+| `ooda/bootstrap/SECRET_TAINT.oot` L24 | setenv/env_set/unsetenv **In (partial; re-prove rails)** |
+
+**No** other `scripts/s61_*`. Only extra: `scripts/s61_env_set_secretsink_smoke.sh`.
+
+Source (committed HEAD `52cc4b5`, live) — 6.1 already in SECRETSINK:
+
+```
+// CRIT 2.3 / HIGH 6.1: env + OS/mmap sinks (cap-first → scan a1/a2)
+if sink == "setenv" || sink == "env_set" || sink == "unsetenv" || sink == "mmap"
+    || sink == "mprotect" || sink == "shmat" || sink == "pwrite" || sink == "sendfile"
+    || sink == "splice" || sink == "tee" {
+    if a1 != "" { c_secret_refuse_sink_resolved(env, sink, a1); }
+    if a2 != "" { c_secret_refuse_sink_resolved(env, sink, a2); }
+}
+```
+
+Check-path sibling (`c_emit_secret.oo` L238–242): `c_secret_scan_call(..., want=1, eq_only=false)` — refuse any IDENT at argi ≥ 1 (key and value; cap is argi 0).
+
+`c_emit_lower.oo` lowers `env_get` → `oo_env_get`. **No** `env_set` / `setenv` / `unsetenv` lower. `nm` on tip host: `T oo_env_get` present; **`oo_env_set` absent**.
+
+---
+
+## 1) Primary smokes — exit codes
+
+All runs: `cd ooda && OODAC_BIN=./oodac/oodac` ; `timeout 90s`. Logs under `/tmp/s61_integration/`.
+
+`bash -n` **OK** on all six scripts.
+
+### 1a) secret_t1_return_smoke — exit 0
+
+```
+OK secret_function_return_fail emit refuses (rc=1)
+OK secret_function_return_pass emit OK
+OK secret_alias_rebind_pass emit refuses (rc=1)
+OK secret_alias_rebind_fail emit OK (sticky cleared)
+OK secret_if_taint_fail emit refuses (rc=1)
+OK secret_if_taint_pass emit OK
+OK ci_product wires secret_t1_return_smoke
+OK secret_t1_return_smoke
+```
+
+Log: `/tmp/s61_integration/secret_t1_return_smoke.out`
+
+### 1b) secret_t2_depth_smoke — exit 0 (includes sys_exec argv)
+
+```
+OK secret_field_assign_fail emit refuses (rc=1)
+OK secret_field_assign_pass emit OK
+OK secret_method_return_fail emit refuses (rc=1)
+OK secret_method_return_pass emit OK
+OK secret_call_arg_fail emit refuses (rc=1)
+OK secret_multi_arg_println_fail emit refuses (rc=1)
+OK secret_multi_name_fail emit refuses (rc=1)
+OK secret_multi_name_pass emit OK
+OK secret_dlopen_arg_fail emit refuses (rc=1)
+OK secret_dlopen_arg_pass emit OK
+OK secret_sys_exec_argv_fail emit refuses (rc=1)
+OK secret_sys_exec_argv_pass emit OK
+OK secret_midline_safe emit OK
+OK comment-skip fixture shape (no line-start SECRET directive)
+OK ci_product wires secret_t2_depth_smoke
+OK secret_t2_depth_smoke
+```
+
+Log: `/tmp/s61_integration/secret_t2_depth_smoke.out`
+
+### 1c) s71_guard_scan_smoke (7.1 regression) — exit 0
+
+`bash -n` **OK** (123 lines).
+
+```
+OK fail-closed: secret_tok_println_ident
+OK fail-closed: secret_tok_write_file_payload
+OK no-FP: secret_tok_println_string_lit
+s71_guard_scan_smoke: ALL OK
+RESIDUAL full IFC / #[Secret] attr / string-interp ${} deep taint — not claimed closed
+RESIDUAL 7.10: c_parse_secret_env still char-by-char name concat (not this OWN)
+RESIDUAL interproc SECRET beyond path-A __fr_secret__ (cross-file return taint)
+```
+
+Log: `/tmp/s61_integration/s71_guard_scan_smoke.out`
+
+### 1d) s72_sys_exec_last_arg_smoke (7.2 regression) — exit 0
+
+`bash -n` **OK** (111 lines).
+
+```
+OK fail-closed: secret_tok_sys_exec_last_ident
+OK no-FP: secret_tok_sys_exec_last_quoted_commas
+s72_sys_exec_last_arg_smoke: ALL OK
+RESIDUAL full IFC / #[Secret] attr / string-interp ${} deep taint — not claimed closed
+RESIDUAL 7.10: c_parse_secret_env still char-by-char name concat (not this OWN)
+RESIDUAL last-arg slice hygiene is product (c_sys_exec_last_arg); this smoke proves emit rails only
+```
+
+Log: `/tmp/s61_integration/s72_sys_exec_last_arg_smoke.out`
+
+### 1e) s710_parse_secret_env_smoke (7.10 regression) — exit 0
+
+`bash -n` **OK** (119 lines).
+
+```
+OK fail-closed: secret_tok_println_ident
+OK fail-closed: secret_two_names_refuse_a
+OK fail-closed: secret_two_names_refuse_b
+OK fail-closed: secret_empty_invalid_name
+s710_parse_secret_env_smoke: ALL OK
+RESIDUAL full IFC / #[Secret] attr / string-interp ${} deep taint — not claimed closed
+RESIDUAL 7.10 concat hygiene is product (c_parse_secret_env name = name + c); this smoke proves parse/refuse rails only
+```
+
+Log: `/tmp/s61_integration/s710_parse_secret_env_smoke.out`
+
+Honesty: **source** `c_parse_secret_env` on this tree is already `str_slice(src, start, k)` (no `name = name + c`). Host ELF was **not** rebuilt after that slice. Smoke residual banner is **stale** vs working-tree source; parse/refuse rails still hold either way.
+
+### 1f) s61_env_set_secretsink_smoke (Harness extra) — exit 0
+
+`bash -n` **OK** (150 lines). Landed mid-pass (was absent at first `find`).
+
+```
+OK fail-closed: secret_tok_env_set_ident
+OK fail-closed: secret_tok_setenv_ident
+OK no-FP: secret_tok_env_set_string_lit (no ERR secret; env_set product-lower residual)
+s61_env_set_secretsink_smoke: ALL OK
+RESIDUAL full IFC / #[Secret] attr / string-interp ${} deep taint — not claimed closed
+RESIDUAL env_set product lower (link-time) is CAPS residual; this smoke proves emit refuse/no-FP only
+```
+
+Log: `/tmp/s61_integration/s61_env_set_secretsink_smoke.out`
+
+Harness no-FP correctly treats `unknown free call … env_set` as **not** a secret false positive.
+
+---
+
+## 2) Extra emit-c / check probes (6.1 re-prove, not a landed smoke)
+
+Ephemeral fixtures: `/tmp/s61_integration/probes/` (not repo root). Same host ELF.
+
+| Probe | emit-c | check | SECRET? |
+|-------|--------|-------|---------|
+| `env_set(envc, token)` `// SECRET: token` (2-arg key) | rc=1 `ERR\tsecret\tenv_set sink refuses SECRET token` | rc=1 `ERR\ttype\tundefined variable 'env_set'` | emit **TP** |
+| `env_set(envc, public)` unused SECRET `token` | rc=1 `unknown free call … env_set` (**no** `ERR secret`) | type undefined | emit **no FP**; unlowered |
+| `env_set(envc, "KEY", token)` SECRET value | rc=1 `ERR\tsecret\tenv_set sink refuses SECRET token` | type undefined | emit **TP** |
+| `env_set(envc, "KEY", "public")` unused SECRET | rc=1 `unknown free call … env_set` (no secret) | type undefined | emit **no FP**; unlowered |
+| `env_set(envc, "token")` string-lit spelling | rc=1 unknown-call (no secret) | — | emit **no FP** |
+| `fixtures/secret_setenv_fail.oo` | rc=1 `ERR\tsecret\tsetenv sink refuses SECRET token` | type undefined `setenv` | emit **TP** |
+| `fixtures/secret_setenv_pass.oo` | rc=1 `unknown free call … setenv` (no secret) | type undefined | emit **no FP** |
+| `fixtures/secret_env_get_fail.oo` (control, lowered) | rc=1 `ERR\tsecret\tenv_get sink refuses SECRET token` | — | emit **TP** (product op) |
+| `let f = env_set; f(envc, token)` | **rc=134 abort** `oo_vemalloc(): unaligned tcache chunk detected` | — | **not** a 6.1 rail; host heap residual |
+| `let f = env_set; f(envc, "KEY", token)` | **rc=134** same abort | — | same |
+
+`timeout 15s` on both alias probes; both dumped core. Integration **does not** claim alias-to-`env_set` is green. `c_secret_is_sink_name` lists the name; live alias emit did not reach a printed `ERR secret`.
+
+`secret_sink_enforce_smoke.sh` will rail `secret_setenv_{fail,pass}` when present. **Allow** `setenv` cannot be emit-OK until a lower exists — not run as an assigned 6.1 gate this pass.
+
+---
+
+## 3) Exit-code scoreboard
+
+| Script | Timeout | Exit | Color |
+|--------|---------|------|-------|
+| `ooda/scripts/secret_t1_return_smoke.sh` | 90s | **0** | GREEN |
+| `ooda/scripts/secret_t2_depth_smoke.sh` | 90s | **0** | GREEN |
+| `ooda/scripts/s71_guard_scan_smoke.sh` | 90s | **0** | GREEN |
+| `ooda/scripts/s72_sys_exec_last_arg_smoke.sh` | 90s | **0** | GREEN |
+| `ooda/scripts/s710_parse_secret_env_smoke.sh` | 90s | **0** | GREEN |
+| `ooda/scripts/s61_env_set_secretsink_smoke.sh` | 90s | **0** | GREEN |
+
+Listed 5 + any s61: **6 GREEN / 0 RED / 0 SKIP**.
+
+---
+
+## 4) What GREEN is (and is not)
+
+| Claim | Status |
+|-------|--------|
+| T1 return / alias / if taint | **YES** (exit 0) |
+| T2 field/method/args/dlopen/sys_exec/comment-skip | **YES** (exit 0) |
+| 7.1 ident-scan regression | **YES** (s71 exit 0) |
+| 7.2 last-arg regression | **YES** (s72 exit 0) |
+| 7.10 parse-env rails (println / multi-name / empty) | **YES** (s710 exit 0) |
+| `env_set` named in emit SECRETSINK (guard + check walk + alias set) | **YES** (committed + host ELF) |
+| Live emit refuse SECRET IDENT at `env_set` (key and value) | **YES** (s61 + extra probes) |
+| Live emit refuse SECRET IDENT at sibling `setenv` | **YES** |
+| String-lit `"tok"` no-FP at `env_set` | **YES** (s61 no-FP rail) |
+| Dedicated `s61_*` smoke | **YES** — `s61_env_set_secretsink_smoke.sh` exit 0 |
+| Product `oo_env_set` / emit lower | **NO** — CAPS_MATRIX unlowered residual |
+| `oodac check` prints `ERR secret` for `env_set` | **NO** — type-undefined first |
+| Alias `let f = env_set` refuse | **NO** — host abort rc=134 (residual) |
+| In-tree `secret_env_set_*.oo` | **NO** |
+| `ci_product.sh` wires s61/s71/s72/s710 | **NO** — T1/T2 only (`ci_product.sh` L157–158) |
+| Full IFC / `#[Secret]` / `${}` | **residual** |
+| DESIGN/PM 6.1 metamorphic-vs-det | **different ID** (not this OWN) |
+
+---
+
+## 5) Follow-ups (not this worker)
+
+1. Optional: land in-tree `secret_env_set_{fail,pass}.oo` once product wants a dual-path floor like `env_get`. Pass cannot be emit-OK until a lower exists — do **not** invent `oo_env_set` under this ID.
+2. `oodac check` type-undefined vs secret walk: dual-path SECRET for unlowered names is **open**. Not a 6.1 list miss.
+3. Alias-to-`env_set` host abort (`oo_vemalloc` tcache) is a **host-heap residual**, not a SECRETSINK list miss. Do not greenwash.
+4. Wire s61 (and s71/s72/s710) into `ci_product.sh` if product wants those rails in CI. Harness scripts are **untracked** until human commit.
+5. Refresh s71/s72/s710 residual banners: working-tree `c_parse_secret_env` is `str_slice`; host ELF still 07:49.
+6. Do not mix SPRINT 6.1 (`env_set` SECRETSINK) with DESIGN/PM 6.1 (metamorphic vs deterministic).
+
+---
+
+## Evidence paths
+
+| Item | Path |
+|------|------|
+| This audit | `/home/jeryd/Projects/openOODA/openOODA/audit/s61_integration.oot` |
+| Harness pointer | `/home/jeryd/Projects/openOODA/openOODA/audit/s61_harness.oot` |
+| Runtime layer split | `/home/jeryd/Projects/openOODA/openOODA/audit/s61_runtime.oot` |
+| Guard source | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo` |
+| Check walk | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret.oo` |
+| Sink-name set | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_alias.oo` |
+| Residual doc | `/home/jeryd/Projects/openOODA/ooda/bootstrap/SECRET_TAINT.oot` |
+| Smoke logs | `/tmp/s61_integration/*.out` + `*.rc` |
+| Extra probes | `/tmp/s61_integration/probes/` |
+| Sprint row | `openOODA/SPRINT.oot` ID **6.1** HIGH |
+
+end of s61_integration.oot

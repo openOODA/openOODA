@@ -1,0 +1,155 @@
+# s71_domain_a.oot — Domain Expert A / residual 7.1
+# Residual: CRIT 7.1 `c_guard_scan_idents` stack buffer / no per-char OoStr leak
+# Date: 2026-08-12
+# Role: Domain Expert A of 12-agent 7.1 phalanx
+# Tree: /home/jeryd/Projects/openOODA
+# Host: ooda/oodac/oodac (product)
+# OWN: prove or finish last leak in `c_guard_scan_idents`; no T1–T2 thrash;
+#      monofile ≤600 (soft 256); no moonshots; no auto-push
+
+========================================================================
+VERDICT
+========================================================================
+
+**ALREADY_FIXED** (path-A). No source change this turn.
+
+`c_guard_scan_idents` walks C arg text with `char_at` for classification
+only, then takes **one** `str_slice(args, start, i)` per ident span.
+There is no `name = name + c` / per-char OoStr concat in the ident walk.
+`.oo` has no char stack array; the alpha honesty for “stack buffer”
+is slice-once-per-token (same close as `t1_memory.oot` M-SG1/M-SG2).
+
+Monofile `c_emit_secret_guard.oo` = **200** lines (≤600; under soft 256).
+
+========================================================================
+DIAGNOSIS (prove)
+========================================================================
+
+### Walker body (product host source)
+
+File: `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo`
+
+- L18–112: `pub fn c_guard_scan_idents(env, sink, args)`
+- L22–110: linear `while i < n` over `chars_len(args)`
+- L24–69: skip `"..."` (escape-aware), `//` line comments, `/* */` blocks (2.7)
+- L81–103: ident start `_`/alpha; cont alnum/`_`; advance `i` only
+- **L105:** `let name = str_slice(args, start, i);`  ← one slice per token
+- L106: `c_secret_refuse_sink_resolved(env, sink, name);`
+
+Static grep of this file for `name = name +`, `out = out +`,
+`ident = ident +`, `+ c`, `+ d`: **no hits**. Only string-build is
+the single `str_slice` at L105.
+
+Comments at L15–17 already claimed this; **source matches the claim**.
+
+### Call sites (all)
+
+| Site | Role |
+|------|------|
+| `c_emit_secret_guard.oo:197` | sole caller of `c_guard_scan_idents` — full `args` after a0/a1/a2 refuse, sealed-sink list |
+| `c_emit_lower.oo:90` | free-call emit → `c_secret_emit_guard(env, t, a0, a1, a2g, args)` |
+| `c_emit_call.oo:82` | method emit → `c_secret_emit_guard(env, mname, a0, a1, a2, margs)` |
+
+No second walker, no generated duplicate with concat.
+
+### Stack / buffer honesty
+
+| Layer | What happens | Class |
+|-------|----------------|-------|
+| Ident accumulate | `str_slice` once per span | **path-A** — no O(token²) concat |
+| Runtime `oo_str_slice` (`chs_rt_str.c:197`) | one `oo_str_alloc_payload` + `memcpy` of the span | O(\|ident\|) heap, honest |
+| Walk `char_at` | runtime 1-char `OoStr` per visit (`oo_char_at`) | O(\|args\|) 1-byte temps — **language floor**, not 7.1 concat leak |
+| C stack `char buf[N]` | not expressible in `.oo` | not required for alpha close |
+
+Complexity: time O(|args|) char visits; aux = O(1) scalars + one token
+slice at a time. No growing concat buffer.
+
+### Out of OWN (do not claim closed here)
+
+- **7.10 HIGH** still OPEN: `c_parse_secret_env` in `c_emit_secret.oo:60`
+  (`name = name + c`) — different function.
+- **7.2 CRIT** claimed slice on `c_sys_exec_last_arg` — sibling residual,
+  not re-owned.
+
+========================================================================
+FILES TOUCHED
+========================================================================
+
+| File | Change |
+|------|--------|
+| `ooda/oodac/c_emit_secret_guard.oo` | **none** (already path-A) |
+| `openOODA/audit/s71_domain_a.oot` | this evidence |
+
+**Not touched:** T1–T2 taint logic, sink lists, smokes, SPRINT table,
+`c_parse_secret_env` (7.10), remotes (no push).
+
+========================================================================
+PROVE COMMANDS
+========================================================================
+
+```bash
+cd /home/jeryd/Projects/openOODA/ooda
+export OODAC_BIN=./oodac/oodac
+
+# Static: no per-char concat in walker; one str_slice per ident
+# (expect: only L105 str_slice; no name=name+c)
+grep -n 'str_slice\|name = name +\|out = out +' oodac/c_emit_secret_guard.oo
+wc -l oodac/c_emit_secret_guard.oo   # 200
+
+# Existing secret smokes (timeout ≤90s each)
+timeout 90 bash scripts/secret_t1_return_smoke.sh
+# observed: EXIT 0  (return/alias/if-taint rails + ci wire)
+
+timeout 90 bash scripts/secret_t2_depth_smoke.sh
+# observed: EXIT 0  (field/method/multi-arg/dlopen/sys_exec/comment-skip)
+
+timeout 90 bash scripts/secret_sink_enforce_smoke.sh
+# observed: EXIT 1  — ALL emit rails OK; FAIL missing SECRET_TAINT.md
+#   (doc lives at bootstrap/SECRET_TAINT.oot; smoke still names .md)
+
+timeout 90 bash scripts/secret_product_floor_smoke.sh
+# observed: EXIT 1  — sink rails + llvm dual-path OK;
+#   FAIL via secret_sink_enforce_smoke + secret_taint_residual_smoke
+#   (same stale SECRET_TAINT.md path)
+```
+
+T1/T2 emit floors that exercise `c_guard_scan_idents` (multi-arg println,
+dlopen args, sys_exec argv) **green**. Floor fail is **doc filename**,
+not ident-scan heap.
+
+========================================================================
+RESIDUAL HONESTY (do not claim closed)
+========================================================================
+
+1. **7.10 `c_parse_secret_env` per-char concat** — still `name = name + c`
+   in `ooda/oodac/c_emit_secret.oo`. Not this walker. Leave for 7.10 OWN.
+
+2. **`char_at` 1-char temps** — every visit allocates a 1-byte `OoStr`
+   (`chs_rt_str.c`). Inherent to `.oo` string model. Not quadratic ident
+   leak. Close only if a byte-index / C-buffer walk is later in-language.
+
+3. **Smoke doc path `.md` vs `.oot`** — `secret_sink_enforce_smoke.sh` L11
+   and `secret_taint_residual_smoke.sh` L6 still require
+   `bootstrap/SECRET_TAINT.md`. Product doc is `SECRET_TAINT.oot` (marker
+   `SECRET_TAINT_RESIDUAL_ALPHA` present). T4/hygiene residual; **not 7.1**.
+   Did not patch smokes (out of OWN; would look like T4 thrash).
+
+4. **SPRINT row 7.1** — still listed CRIT open in `SPRINT.oot`. This audit
+   recommends flip to **FIXED (path-A prove)** after peer confirm. Domain A
+   does not edit SPRINT.
+
+========================================================================
+STATUS FOR SPRINT/PM
+========================================================================
+
+| Item | Status |
+|------|--------|
+| 7.1 `c_guard_scan_idents` no per-char OoStr concat | **ALREADY_FIXED** |
+| 7.1 C stack buffer rewrite | **not needed** (slice is path-A) |
+| T1/T2 secret emit smokes | **green** (do not re-open) |
+| product_floor / sink_enforce exit | **red on doc .md path only** |
+| 7.10 parse-secret-env concat | **OPEN** (other ID) |
+
+Recommend SPRINT 7.1 mark **FIXED** with pointer to this file.
+
+end of s71_domain_a.oot

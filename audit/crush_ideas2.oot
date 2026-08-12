@@ -1,0 +1,174 @@
+# crush_ideas2.oot — Idea Fairy 🧚 NEXT 5 after F26 smoke
+# Date: 2026-08-12
+# Role: ideas only. No product. No SPRINT. No push. Ignore moonshots.
+# Scope: rank after cheap scan_fn_names WON. Rebuild in flight — not a close.
+#        Honesty F19/F34/F36/F39 already closed. Last I2 landed in source.
+
+## 12-line summary
+
+1. Cheap `scan_fn_names` WON vs tokenize (`check_scan.oo`). Do **not** rebuild-as-close.
+2. `/tmp/oodac_f26` is in flight (src snapshot exists). Smoke still owns F26.
+3. Open CRIT: F26 p7, F27 size. F19/F34/F36/F39 honesty is done — do not reopen.
+4. Last fairy blocked F27 peel because tokenize scan. That reason is **weaker**.
+5. Live `wc` now: **5 >256**, **2 at 256** (`c_emit_skip`, `bc_emit_expr`). Board “6” is stale-ish.
+6. If p7=0 on a host that **contains** `check_scan`: F26 closable. Next = one-seam F27.
+7. If loop1 cheap but **150× `run_check_core_binds` still >45s**: Darwin I11. Measure first.
+8. **Skip typecheck = FAIL-OPEN / REJECT.** Secret + 25 TC + residual free-calls would print OK.
+9. Cache-per-module does **not** green cold p7. Weak key (body only) is also fail-open.
+10. Raise p7 to **measured** finish is honest IFF finite + RSS << 1.8GiB. Blind raise = theater.
+11. Cheap belt: drop probe `lex_all` (`tokenize_lines` already fail-closes). ~2× lex gone.
+12. Off: Args/Walk, new TC, 8 `_ops`, peel-all-6, mid-fn `lex`/`let_ext`, I9 doc-FIXED.
+
+## Constraints
+
+1. Path A. This file only. DE owns land + prove.
+2. Do not start a second `/tmp/oodac_f26` as the close.
+3. No mid-fn chops. `lex_all` / `c_emit_let_untyped_ty` are one fn each.
+4. No new `line = line + c`. Use `str_slice` (load_import already).
+5. p7 already accepts **finished** rc≠0. Hang class = 45s kill. Cost class needs a written wall.
+6. `np>12` never `check_cache_put` today. Tree cache is the small-graph path only.
+
+## Darwin axes (0–10). Sum/5 ≈ rank. Losers pruned.
+
+| Axis | Meaning |
+|------|---------|
+| **Close** | Moves live F26 smoke and/or honest F27 |
+| **Honest** | No rebuild lie; no skip-TC OK; no peel theater |
+| **Smoke** | p7 + `wc` + existing rails |
+| **Entropy** | Lowers S (stale hang, six-file campaign) |
+| **Ship** | ≤ few files; no new architecture |
+
+---
+
+## Required Darwin — loop1 cheap, 150× binds still >45s
+
+Loop2 (`check_mod.oo`): every non-empty body → `run_check_core_binds` =
+`lex_all` **then** `tokenize_lines` (lex again + List) + secret + **25** TC
+walks. Graph ~153. p7 is **cold** (`timeout 45`).
+
+| Path | Close | Hon | Smoke | Ent | Ship | Avg | Verdict |
+|------|------:|----:|------:|----:|-----:|----:|---------|
+| **A cache / module** | 4 | 8 | 4 | 7 | 8 | **6.2** | Belt. Not p7 close. |
+| **B raise to measured** | 8 | 9 | 9 | 8 | 10 | **8.8** | Winner **iff** measured. |
+| **C skip typecheck** | 6 | 0 | 3 | 0 | 7 | **3.2** | **FAIL-OPEN / REJECT** |
+
+### A — cache per module
+
+`check_cache_mod_key` exists. After a **full** binds check, put
+`m_<hash(body)+hash(binds)>`. Hit skips that body.
+
+Why A loses as close: cold p7 still pays 153× tokenize+TC. Body-only key
+= **FAIL-OPEN** when `extra_binds` change (undef / import names). Warm
+hit can **hide a hang** (Pride). Smoke must not use `.ooda-cache`.
+
+### B — raise smoke to measured finish
+
+Isolated `timeout 180 check oodac/main.oo`. Write **wall + peak RSS**.
+If it **finishes** and RSS **<< 1.8GiB**: p7 timeout = measured×1.2.
+Hang → named **cost**. Harness already forbids a raise with no wall
+(`f26_harness.oot`).
+
+Reject B if no finish, or RSS ≈ 1.8GiB (old tokenize host — **wait the
+in-flight rebuild**, do not start another).
+
+### C — skip typecheck / skip loop2
+
+**FAIL-OPEN / REJECT.** That function **is** the type + secret +
+`check_residual_free_calls` floor. “Names only” / “keep secret, drop TC”
+still prints OK without the type floor. Same class as silent stubs.
+SCIENCE: fail-closed. SINS #3 Pride.
+
+**Ship if loop2 >45s:** measure → try **I12** first (may beat 45s) →
+**B** if still finite+bounded → **A** as warm belt (strong key). **C dies.**
+
+---
+
+## Next 5 (after F26 smoke)
+
+If p7 already 0, I11 is done — start at I13.
+
+### 1. I11 — Measure loop2; Darwin A / B / C ⭐
+**Pair:** B measured raise vs A cache vs C skip.
+**Score 1–10:** **9** (must if p7 red). C = **1**.
+**Darwin:** Close 9 · Honest 10 · Smoke 10 · Entropy 9 · Ship 9 → **9.4**
+
+### 2. I12 — Drop probe `lex_all` in `run_check_core_binds` ⭐
+**Pair:** drop probe vs keep double-lex.
+`tokenize_lines` already lexes and fail-closes. Probe = 2nd full lex × 153.
+Not last-wave I3 (names no longer tokenize).
+**Score:** **8**. May make B unnecessary.
+**Darwin:** Close 8 · Honest 9 · Smoke 8 · Entropy 8 · Ship 9 → **8.4**
+Winner: drop. Keep-both = waste.
+
+### 3. I13 — F27 peel **one** seam (reason weaker) ⭐
++1 module is noise on cheap scan. Loop2 +1 tokenize is noise vs 153.
+
+**Pair:** one seam vs peel-all vs leave-all vs mid-fn chop.
+
+| File | Live | Seam? | This turn |
+|------|-----:|-------|-----------|
+| `c_emit_secret_prop.oo` | 262 | 3 fns; peel `*_scan` | **WINNER** |
+| `load_import.oo` | 287 | path helpers | later |
+| `main.oo` | 308 | 118 imports + 1 `main` | **no** import-barrel |
+| `lex.oo` | 277 | **one** `lex_all` | leave |
+| `c_emit_let_ext.oo` | 263 | **one** fn | leave |
+| `c_emit_skip.oo` | **256** | grant already moved | ratchet (f26src still 329) |
+
+Peel-all-6 **REJECT** (campaign; mid-fn pressure). Chop **REJECT**.
+Leave-all = honest if I13 slips; `wc` must not grow.
+**Score:** one-seam **8**. Peel-all **3**. Chop **2**.
+**Darwin (one-seam):** Close 7 · Honest 8 · Smoke 8 · Entropy 8 · Ship 8 → **7.8**
+
+### 4. I14 — Wire `check_cache_mod` on `np>12` (warm)
+**Pair:** strong key (body+binds) vs tree-only vs body-only.
+Body-only = **FAIL-OPEN**. Tree-only = status quo.
+**Score:** **7**. Not a p7 close.
+**Darwin:** Close 5 · Honest 8 · Smoke 5 · Entropy 7 · Ship 8 → **6.6**
+After I11. Smoke empties `.ooda-cache`.
+
+### 5. I15 — `collect_*` / `strip_import_lines` → `str_slice`
+**Pair:** slice vs leave `line = line + c` (collect L30 / L104 / L146).
+Not the 1.8GiB killer. After smoke. No new file mid-rebuild.
+**Score:** **7**.
+**Darwin:** Close 4 · Honest 8 · Smoke 7 · Entropy 7 · Ship 8 → **6.8**
+
+---
+
+## Rank
+
+| Rank | ID | /10 | Verdict |
+|-----:|----|----:|---------|
+| **1** | **I11** | 9 | **WINNER if p7 red** — measure; B over A; C REJECT |
+| **2** | **I12** | 8 | **WINNER belt** — drop double lex |
+| **3** | **I13** | 8 | **WINNER F27** — one seam (`secret_prop` scan) |
+| **4** | I14 | 7 | Warm cache, strong key; not smoke |
+| **5** | I15 | 7 | collect slice after smoke |
+| — | C skip TC | 1 | **FAIL-OPEN / REJECT** |
+| — | rebuild-as-close / peel-all / chop | 2–3 | REJECT |
+| — | blind raise / I9 doc-FIXED | ≤3 | REJECT |
+| — | Args/Walk / new TC / 8 `_ops` | <2 | moonshot — ignore |
+
+If p7=0 on `check_scan` host: ship **I13 + I12**, then I14/I15.
+
+## Pocket card
+
+```
+After F26 source win (rebuild in flight — NOT a close):
+
+  IF  p7=0 on host with check_scan     → F26 closable
+  IF  loop1 cheap AND 150× binds >45s  → MEASURE wall+RSS
+      THEN  drop probe lex (I12) first
+      THEN  raise p7 to measured×1.2 IFF finish + RSS << 1.8GiB  (B)
+      BELT  cache/module, key=hash(body)+hash(binds)             (A)
+      NEVER skip typecheck / skip loop2                         (C FAIL-OPEN)
+  THEN F27: peel ONE seam (secret_prop scan). Leave lex/let_ext.
+       Ratchet skip+bc_emit at 256. No peel-all. No import-barrel.
+  THEN collect slice (I15). Warm cache (I14). Not smoke.
+
+  STOP second rebuild-as-close. STOP I9. STOP Args/Walk / new TC.
+```
+
+Path-A: **prove loop2 (measure; never skip TC)** then **one F27 seam**.
+Not another rebuild. Not a six-file peel.
+
+end of crush_ideas2.oot

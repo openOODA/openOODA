@@ -1,0 +1,231 @@
+# s29b_phalanx_rollup.oot — 2.9 wave-2 RPAREN hole (12-agent phalanx)
+# Date: 2026-08-12
+# Role: Documentation Writer / Close rollup
+# Decision: **OPEN** — **not FIXED**. Peer1 **REJECT** on the RPAREN hole.
+# Policy: no push; no moonshots; do not flip SPRINT 2.9
+# Wave-1 pointer: `audit/s29_*.oot` (bare dual refuse; unify OPEN)
+
+## Close criteria
+
+| # | Criterion | Result |
+|---|-----------|--------|
+| 1 | Peer1 ACCEPT on RPAREN hole (`check` **and** `emit-c` `ERR	secret`) | **FAIL** — `audit/s29b_peer1.oot` **REJECT** (3 of 4 MUST miss) |
+| 2 | Dedicated smoke green (`s29_println_guard_smoke.sh` wave-2 rails) | **FAIL** exit 1 (Docs Writer re-prove) |
+| 3 | T1/T2 secret emit floors still green | **PASS** exit 0 |
+| 4 | 2.8 / 7.1 regression | **PASS** exit 0 (`s28` + `s71`) |
+| 5 | Host ELF implements paren depth | **FAIL** — same 07:49 ELF; WT depth **unshipped** |
+| 6 | Harness rails defined | **PASS** — `audit/s29b_harness.oot` + smoke (honest fail-closed) |
+| 7 | Honesty residuals named (not greenwashed) | **YES** — WT ≠ ELF; unify OPEN; H-same leak |
+| 8 | Push after green | **NO** (no close; no push) |
+
+## Decision honesty
+
+**SPRINT 2.9 stays OPEN.** Wave-2 does **not** close 2.9.
+
+Standing order this turn: do **not** mark 2.9 FIXED unless Peer1
+**ACCEPT**s the RPAREN hole. Peer1 did **not**. Docs Writer independently
+re-proved the same four MUST probes on the same host. Dual-path
+`ERR	secret` fails on three grouping / nest shapes.
+
+Wave-2 question (not wave-1 bare refuse): a SECRET IDENT that appears
+**after an inner `RPAREN` still inside** `println` / `eprintln` args
+must be refused on **both** `oodac check` and `oodac emit-c`.
+
+| Fact | Evidence |
+|------|----------|
+| Wave-1 floor | bare `println(tok)` / string no-FP / `eprintln(tok)` / `println(n, tok)` still **dual SECRET** |
+| Live hole | `println((n), tok)` check **OK**; `println((("x")+tok))` emit-c **prints `tok`**; `eprintln(id(1), tok)` check **OK** |
+| WT source | `c_emit_secret.oo` Int `depth` (check + `c_secret_scan_call`); `c_emit_print.oo` Int `d` (stmt scan) |
+| Shipping ELF | `ooda/oodac/oodac` **962960** B @ 07:49 — **HEAD first-`RPAREN` stop**. Depth is **not** in this binary |
+| Unify | stmt `println` still does **not** call `c_secret_emit_guard` (SPRINT wording). Wave-2 is **depth**, not that helper |
+| DE2.9 table | still **false** — L175–200 is a token walk, not `c_secret_emit_guard(env, id, …)` |
+
+**Still not claimed (do not greenwash):**
+
+| Residual | Status |
+|----------|--------|
+| Peer1 RPAREN ACCEPT | **REJECT** — gate for FIXED |
+| Host rebuilt with WT depth | **no** — 07:49 ELF |
+| `s29_println_guard_smoke` wave-2 | **exit 1** — check FN on `(1), tok`; emit-c FN on groupplus |
+| `println((("x")+tok))` emit-c leak | **live** on this ELF (`oo_print_int`/`oo_print_str` of concat(`tok`)) |
+| LLVM / wasm / bc on hole shapes | **FN / DROP / no walker** (named; not the Peer1 bar) |
+| Helper unify (`c_secret_emit_guard` from stmt/check) | **OPEN** — ideas I5/I9 rejected |
+| Full IFC / `#[Secret]` / `${}` / 2.10 wrappers | residual |
+| Formal `s29b_domain_*.oot` | not landed at rollup time — product hunks observed |
+
+Path-A 2.9 wave-2 ≠ “bare dual refuse already holds.”
+Path-A 2.9 wave-2 ≠ source-only `depth` with a stale host.
+**FIXED is forbidden until Peer1 ACCEPT on a rebuilt host.**
+
+## Prove (Documentation Writer host re-prove)
+
+| Gate | Result |
+|------|--------|
+| Host | `ooda/oodac/oodac` **962960** B · md5 `a44ee35eb344837009697e2c9d4e4662` |
+| BuildID | `a93cfd09506ba87497379f66b6c7047dee02573d` |
+| ooda tip | `52cc4b5` `fix(r2): multi-import typecheck path-A + digit-0 import names` |
+| Host mtime | 2026-08-12 07:49 local — **same bytes** as wave-1 |
+| WT check walker | `c_emit_secret.oo` **219** L — `depth` at L97 + L179 (**unshipped**) |
+| WT stmt belt | `c_emit_print.oo` **97** L — `d` at L19–33 (**unshipped**; ELF is 87-L HEAD) |
+| Guard call in print / secret | **none** |
+| `scripts/s29_println_guard_smoke.sh` | exit **1** (206 L; grouped + groupplus rails) |
+| `scripts/secret_t1_return_smoke.sh` | exit **0** |
+| `scripts/secret_t2_depth_smoke.sh` | exit **0** |
+| `scripts/s28_macro_secret_smoke.sh` | exit **0** |
+| `scripts/s71_guard_scan_smoke.sh` | exit **0** |
+
+### Peer1 MUST rails (Docs Writer re-prove — `/tmp/s29b_docs_must`)
+
+Expect refuse = rc≠0 + `ERR	secret` on **check and emit-c**.
+
+| # | Shape | check | emit-c | Dual SECRET? |
+|---|-------|-------|--------|--------------|
+| 1 | `println((n), tok)` | rc=0 `OK` | rc=1 `ERR	secret` after `oo_print_int((n));` | **NO** |
+| 2 | `println((("x")+tok))` | rc=1 `ERR	type` arity (no `ERR	secret`) | rc=0 **leak** `oo_print_*` of concat(`tok`) | **NO** |
+| 3 | `eprintln(id(1), tok)` | rc=0 `OK` | rc=1 `ERR	secret` eprintln | **NO** |
+| 4 | `println(n, tok)` | rc=1 `ERR	secret` | rc=1 same | **YES** |
+
+Matches `audit/s29b_peer1.oot`. `ERR	type` is **not** a SECRET seal.
+
+### Smoke rails (current script)
+
+| Kind | Case | Result on this ELF |
+|------|------|--------------------|
+| FAIL-closed | `println(tok)` | **OK** dual |
+| NO-FP | `println("tok")` | **OK** dual |
+| FAIL-closed | `eprintln(tok)` | **OK** dual |
+| FAIL-closed wave-2 | `println((1), tok)` | emit-c **OK**; **check accepts** |
+| FAIL-closed wave-2 | `println((("x") + tok))` | **emit-c accepted** (leak) |
+| NO-FP | `println((1), 2)` unused SECRET | **OK** |
+
+## 12-agent phalanx summary
+
+Composition per `SWARM.oot` §6. Wave-2 owns the first-`RPAREN` class
+named by wave-1 `s29_peer2.oot` / `s29_security.oot`. Formal Domain
+`.oot` still landing at rollup time; product hunks + live host hold.
+
+### I. Engineering Core (3)
+
+| Agent | Evidence | Verdict |
+|-------|----------|---------|
+| Domain Expert A/B | WT `c_emit_secret.oo` depth + `c_emit_print.oo` `d` (no `s29b_domain_*.oot` yet) | **source land only** — not in ELF |
+| Machine Code / Runtime | `audit/s29b_runtime.oot` | **FAIL host** — ELF first-`)`; WT depth PASS source |
+
+### II. Adversarial QA Wing (4)
+
+| Agent | Evidence | Verdict |
+|-------|----------|---------|
+| Peer1 (MUST matrix) | `audit/s29b_peer1.oot` | **REJECT** — 3/4 miss dual `ERR	secret` |
+| Peer2 (parity) | `audit/s29b_peer2.oot` | **REJECT** — stmt println still misses nested-paren vs eprintln |
+| Security Auditor | `audit/s29b_security.oot` | **FAIL** Z2 (F1 + same-arg leak); Z1/Z3/Z4 PASS |
+| Memory Auditor | `audit/s29b_memory.oot` | **PASS** — Int depth / `d`; no new concat |
+
+### III. Integration Wing (3)
+
+| Agent | Evidence | Verdict |
+|-------|----------|---------|
+| Compiler Integration | `audit/s29b_integration.oot` | **GREEN** wave-1 rails @ 19:31Z (157 L smoke) — **stale vs** later grouped rails |
+| Test Harness | `audit/s29b_harness.oot` + smoke | **PASS rails**; live prove **exit 1** (honest) |
+| Hygiene Enforcer | `audit/s29b_hygiene.oot` | **PASS** monofile; host stale named |
+
+### IV. Command Wing (2)
+
+| Agent | Evidence | Verdict |
+|-------|----------|---------|
+| Idea Fairy | `audit/s29b_ideas.oot` | I1+I2 winner — depth walk + RPAREN matrix; **no** fake `args` |
+| Documentation Writer | this rollup | **OPEN** — no SPRINT flip |
+
+### Support / ephemeral
+
+| Artifact | Role |
+|----------|------|
+| `/tmp/s29b_docs_must/` | Docs Writer Peer1 MUST re-prove |
+| `/tmp/s29b_docs_reprove/` | extra grouping / nest / eprintln matrix |
+| `/tmp/s29b_peer1_1149255/` | Peer1 probes |
+| `/tmp/s29b_peer2_1169707/` | Peer2 nested-paren |
+| `/tmp/s29b_sec_1171526/` | Security Z2 matrix |
+| `/tmp/s29b_runtime_prove/` | ELF disasm + run matrix |
+| `/tmp/s29b_integration/` | integration logs (pre-grouped smoke) |
+
+## Peer / support audits (landed)
+
+| Audit | Role | Verdict |
+|-------|------|---------|
+| `s29b_peer1.oot` | RPAREN MUST gate | **REJECT** |
+| `s29b_peer2.oot` | stmt vs eprintln nest | **REJECT** |
+| `s29b_security.oot` | Z2 every-shape | **FAIL** |
+| `s29b_runtime.oot` | ELF vs WT depth | **host STALE / live FN** |
+| `s29b_memory.oot` | no concat in depth | **PASS** (source) |
+| `s29b_hygiene.oot` | line-lock / names | **PASS** |
+| `s29b_harness.oot` | smoke pointer | **PASS rails**; ELF red |
+| `s29b_integration.oot` | T1/T2/s28/s71 | **GREEN floors**; smoke snapshot **stale** |
+| `s29b_ideas.oot` | Darwin I1+I2 | support — rebuild + prove required |
+| Wave-1 `s29_peer1.oot` | bare FN=0; unify REJECT | still true for **assigned** wave-1 shapes |
+
+## Product land (this wave — not a close)
+
+| Repo | Surface | What |
+|------|---------|------|
+| **ooda** | `oodac/c_emit_secret.oo` | WT paren `depth` on check walk + `c_secret_scan_call` (mixed 7.10/2.10 hunk) |
+| **ooda** | `oodac/c_emit_print.oo` | WT Int `d` on stmt IDENT scan (87→97) |
+| **ooda** | `scripts/s29_println_guard_smoke.sh` | wave-2 grouped / groupplus / public-group rails (untracked) |
+| **openOODA** | `audit/s29b_*.oot` | wave-2 evidence |
+| **openOODA** | `SPRINT.oot` | Docs Writer **did not** flip 2.9 FIXED. Concurrent rewrite dropped the numeric backlog table; 2.9 is **not** listed FIXED there |
+| **ooda** | host `oodac/oodac` | **not rebuilt** |
+
+No remotes. No seed rebuild. Depth in source is **not** product close.
+
+## Cap map (N/A) / secret-scan map (wave-2 truth)
+
+| Surface | This ELF | WT source |
+|---------|----------|-----------|
+| `check_secret_println_sinks` | first `RPAREN` stops | Int `depth` |
+| `c_secret_scan_call` | first `RPAREN` returns | Int `depth`; COMMA at `depth==1` |
+| `c_emit_println` IDENT scan | first COMMA/RPAREN/SEMI | Int `d`; break only at `d<=0` |
+| `c_secret_emit_guard` | eprintln / free-call only | same — **not** stmt/check |
+| LLVM / wasm refuse | check front-door only | same (need ELF rebuild) |
+| `chs_rt` print | raw `fwrite` | not a SECRET seal |
+
+Two FN subclasses (do not collapse):
+
+| ID | Shape | ELF today |
+|----|-------|-----------|
+| **H-later** | `println((n), tok)` / `eprintln(id(1), tok)` | check/llvm/wasm FN; stmt emit-c BLOCK |
+| **H-same** | `println((("x")+tok))` / `f(g(), tok)` | check FN or TYPE; stmt emit-c **leaks `tok`**; eprintln emit-c BLOCK (guard) |
+
+## Residual (not a 2.9 FIXED)
+
+| Item | Status |
+|------|--------|
+| Peer1 RPAREN ACCEPT | **open** — rebuild host + dual `ERR	secret` on all four MUST |
+| WT depth in ELF | **open** |
+| H-same emit-c leak | **open** on this ELF (stmt depth unshipped) |
+| LLVM / wasm / bc hole shapes | **open** (bc has no walker) |
+| 2.9 unify → `c_secret_emit_guard` | **open** — not this wave’s machine |
+| DE2.9 “walker calls emit_guard” | **false** — drop that sentence when 2.9 does close |
+| `print` / `print_err` / `log` family | leftover (`s29_domain_b.oot`) |
+| 6.1 check type-first | not 2.9 |
+| Formal domain `.oot` | may land after this rollup — does **not** override Peer1 |
+
+## Next (not this writer)
+
+1. Rebuild product host from WT depth (check + stmt). Do **not** claim FIXED from source grep.
+2. Re-run Peer1 four MUST probes. ACCEPT only if **both** `check` and `emit-c` print `ERR	secret` on all four. `ERR	type` is FAIL.
+3. `s29_println_guard_smoke.sh` exit 0 on **that** ELF (virgin TMPDIR cwd).
+4. Then — and only then — a later rollup may flip SPRINT 2.9. Wording: **depth-aware IDENT walk (RPAREN class) + prove**. Not “walker → `c_secret_emit_guard`.”
+
+## Reproduce
+
+```bash
+cd /home/jeryd/Projects/openOODA/ooda
+export OODAC_BIN=./oodac/oodac
+# static: WT has depth; ELF does not implement it until rebuild
+grep -n 'depth\|let mut d' oodac/c_emit_secret.oo oodac/c_emit_print.oo
+# live host (07:49) still FN on grouped later-arg:
+#   check println((1), tok) → OK
+#   emit-c println((("x")+tok)) → oo_print_* of tok
+bash scripts/s29_println_guard_smoke.sh
+# expect: FAILED (exit 1) until host matches WT
+```
+
+end of s29b_phalanx_rollup.oot

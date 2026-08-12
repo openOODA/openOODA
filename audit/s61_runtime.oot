@@ -1,0 +1,218 @@
+# s61_runtime.oot — Machine Code / Runtime Auditor (SPRINT 6.1)
+# Date: 2026-08-12T19:02Z
+# Role: Machine Code / Runtime — chs_rt_sys env filter vs emit/check SECRET refuse
+# Tree: /home/jeryd/Projects/openOODA/ooda (+ openOODA/audit)
+# Tip (ooda): 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
+# Host: ooda/oodac/oodac  962960 B  mtime 2026-08-12 07:49
+#   md5 a44ee35eb344837009697e2c9d4e4662
+#   BuildID a93cfd09506ba87497379f66b6c7047dee02573d
+# OWN: document that 6.1 is emit/check SECRET (SECRETSINK lists env_set),
+#      not the runtime process-policy env filter. Confirm emit lists env_set.
+#      No product logic change. No push. No fixture land (tmp prove only).
+#
+# ID collision honesty: DESIGN / PM **6.1** = metamorphic vs deterministic
+# (residual policy). This file is SPRINT backlog **6.1** =
+# "Confirm env_set in SECRETSINK (partially landed with 2.3 — re-prove)".
+# Do not mix the two.
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Claim | Expected | Actual | VERDICT |
+|-------|----------|--------|---------|
+| 6.1 home is emit/check SECRET | refuse `// SECRET:` idents at `env_set` / `setenv` | Source + host + live `emit-c` print `ERR\tsecret\tenv_set sink refuses SECRET …` | **PASS** |
+| 6.1 is **not** runtime env filter | `chs_rt_sys` does not implement SECRET / `env_set` | **zero** `env_set` / `oo_env_set` in `ooda/runtime/*`; runtime env = prefix GET + exec inherit | **PASS** (different layer) |
+| Emit SECRETSINK lists `env_set` | name in guard + check walk + alias set | `c_emit_secret_guard.oo` **3** sites; `c_emit_secret.oo:239`; `c_emit_secret_alias.oo:16` | **PASS** |
+| Shipping ELF lists `env_set` | rodata + refs from secret fns | unique `env_set\0` @ VMA `0x4c454d`; refs: `c_secret_is_sink_name`×2, `c_secret_emit_guard`×6, `check_secret_println_sinks`×2 | **PASS** |
+| Live emit refuse (SECRET value) | `env_set(..., token)` refuses | `/tmp/s61_runtime_prove/env_set_fail.oo` → `ERRsecretenv_set sink refuses SECRET token` rc=1 | **PASS** |
+| Live emit refuse (SECRET key) | `env_set(..., k, …)` refuses | `env_set_key_fail.oo` → `… refuses SECRET k` rc=1 | **PASS** |
+| Sibling `setenv` emit refuse | same 2.3/6.1 branch | `fixtures/secret_setenv_fail.oo` → `ERRsecretsetenv sink refuses SECRET token` | **PASS** |
+| Runtime `oo_env_set` product op | none (not 6.1) | **absent**; `nm` has `T oo_env_get` only; lower has `env_get`→`oo_env_get`, **no** `env_set` | **PASS residual** (unlowered) |
+| Check dual-path on `env_set` | `check_secret_println_sinks` refuse | `oodac check` dies first: `ERR\ttype\tundefined variable 'env_set'` (same for `setenv`) | **FAIL residual** (type before secret) |
+| Runtime policy getenv / exec filter | T3 / DE1.8, **not** 6.1 | `oo_process_policy_getenv` + `oo_sys_exec` OODA_/OO_ inherit; `setenv("PATH",…)` only | **N/A** (do not re-home 6.1 here) |
+
+**OVERALL: PASS (scope)** — SPRINT **6.1** is **emit/check SECRET**. The C runtime env surface is a **different** floor (`oo_process_policy_getenv` + exec child inherit + `oo_env_get`). Emit **does** list `env_set` (source, ELF, live refuse).
+
+Do **not** greenwash: there is **no** product `oo_env_set`. Clean `env_set` calls die at `ERR\tc_emit\tunknown free call needs annotation\tenv_set` (fail-closed residual, CAPS_MATRIX). `oodac check` on those fixtures never reaches `ERR\tsecret` because `env_set` is not a typed product symbol. `diag_json.oo` help text still omits `env_set`.
+
+========================================================================
+METHOD
+========================================================================
+
+1. Static: `runtime/chs_rt_sys.c` (`oo_process_policy_getenv`, `oo_sys_exec`
+   child filter, `oo_cap_require_env`), `runtime/chs_rt_fs.c` (`oo_env_get`),
+   `runtime/chs_rt.h`, `oodac/c_emit_secret_guard.oo`, `c_emit_secret.oo`,
+   `c_emit_secret_alias.oo`, `c_emit_lower.oo`, `check_cap_util.oo`
+   (`is_sealed_env`), `check_drive.oo` / `c_emit.oo` / `llvm_emit.oo` wire,
+   `bootstrap/SECRET_TAINT.oot`, `bootstrap/CAPS_MATRIX.oot`, SPRINT 6.1 row.
+2. Product host: `strings`, `nm -S`, `readelf -S`, objdump VMA refs for
+   `env_set` inside `c_secret_is_sink_name` / `c_secret_emit_guard` /
+   `check_secret_println_sinks`. Confirm **no** `oo_env_set`.
+3. Live `oodac emit-c` + `oodac check`: existing `secret_setenv_{fail,pass}.oo`
+   + tmp `env_set_{fail,pass,key_fail}.oo` (not landed). Control:
+   `secret_env_get_{fail,pass}.oo` (product-lowered dual-path).
+4. Contrast runtime `setenv("PATH", "/usr/bin:/bin", 1)` in sys/ffi (DE1.8)
+   vs SECRET sink name `setenv`/`env_set`.
+
+No `chs_rt_*.c` edits. 6.1 is not a runtime patch.
+
+========================================================================
+1. Layer split — runtime env filter ≠ 6.1 SECRET
+========================================================================
+
+### Runtime (chs_rt) — process policy + EnvCap GET
+
+`chs_rt_sys.c` `oo_process_policy_getenv` (L119–127):
+
+- Fail-closed **GET** for keys not prefixed `OODA_` / `OO_`.
+- Comment: product `env_get` still requires EnvCap via `oo_env_get`.
+- Used by FS writedir, FFI allowdir, HITL, list quota, TLS insecure, meta
+  morph flags — **host policy keys**, not `// SECRET:` taint.
+
+`oo_sys_exec` child block (L245–281, DE1.8 / T3 / ID 1.8):
+
+- Snapshot parent `environ` keys with `OODA_` / `OO_` prefix **before**
+  `clearenv`.
+- Then install filtered env + `setenv("PATH", "/usr/bin:/bin", 1)`.
+- Same PATH `setenv` exists in `chs_rt_ffi.c` (dlopen child). That libc
+  `setenv` is **not** the language sink and is **not** SECRET-aware.
+
+`chs_rt_fs.c` `oo_env_get` (L208–219):
+
+- `oo_cap_require_env(cap, "env_get")` then `oo_process_policy_getenv`.
+- **Only** product env op. `nm`: `T oo_env_get` @ `0x40a1f0` (162 B).
+- **`oo_env_set` / `env_set` : zero hits under `ooda/runtime/`.**
+
+`c_emit_lower.oo` lowers `env_get` → `oo_env_get(a0, a1)` (cap-first).
+**No** `env_set` / `setenv` / `unsetenv` branch.
+
+CAPS_MATRIX (honest residual):
+
+> Aliases sealed but not product-lowered: … `env_set`/`getenv` (Env) —
+> check deny without cap; emit leaves name as-is → link fail if used
+> (fail-closed residual).
+
+That is **cap/lower** debt. It is **not** SPRINT 6.1.
+
+### Emit / check — SECRET refuse (this ID)
+
+SPRINT 6.1 + DE2.3 / CRIT 2.3: named OS/env sinks refuse SECRET idents.
+
+`check_secret_println_sinks` is wired from `c_emit.oo:86`,
+`check_drive.oo:106`, `llvm_emit.oo:79` (same token walk).
+
+`is_sealed_env` (`check_cap_util.oo:243–249`) listing `env_set` is
+**EnvCap check**, not SECRETSINK. Adjacent, not 6.1.
+
+========================================================================
+2. Emit lists `env_set` (source inventory)
+========================================================================
+
+| File | Line | Role |
+|------|-----:|------|
+| `oodac/c_emit_secret_guard.oo` | 117 | cap-first family: `env_get` **\|\| `env_set`** \|\| `fetch` … scan **a1** |
+| `oodac/c_emit_secret_guard.oo` | 157–165 | comment `CRIT 2.3 / HIGH 6.1`; `setenv` \|\| **`env_set`** \|\| `unsetenv` \|\| mmap-family; scan **a1 and a2** |
+| `oodac/c_emit_secret_guard.oo` | 214–225 | full `args` `c_guard_scan_idents` includes **`env_set`** (and `setenv`/`unsetenv`) |
+| `oodac/c_emit_secret.oo` | 238–242 | `check_secret_println_sinks`: same 2.3/6.1 `sid` list; `c_secret_scan_call(..., 1, false, sid)` (any argi ≥ 1) |
+| `oodac/c_emit_secret_alias.oo` | 16 | `c_secret_is_sink_name`: `env_get` \|\| **`env_set`** \|\| `setenv` \|\| `unsetenv` |
+
+`c_secret_refuse_sink_ident` prints
+`ERR\tsecret\t<sink> sink refuses SECRET <name>` then `process_exit(1)`.
+
+Guard runs from `c_emit_lower.oo` (free call) and `c_emit_call.oo:82`
+(method). Alias resolve (`c_secret_resolve_alias`) means
+`let f = env_set; f(secret)` is still a sink **if** emit reaches the call.
+
+========================================================================
+3. Shipping host lists `env_set` (machine code)
+========================================================================
+
+| Symbol | `nm -S` | Size |
+|--------|---------|-----:|
+| `c_secret_is_sink_name` | `T` @ `0x45c1c0` | 1492 |
+| `c_secret_emit_guard` | `T` @ `0x461080` | 4738 |
+| `check_secret_println_sinks` | `T` @ `0x475c50` | 5316 |
+| `c_guard_scan_idents` | `T` @ `0x45fb90` | 5354 |
+| `oo_env_get` | `T` @ `0x40a1f0` | 162 |
+| `oo_process_policy_getenv` | `T` @ `0x405460` | 91 |
+| `oo_env_set` | — | **absent** |
+
+`.rodata` `[14]` VMA `0x4c39c0` / file `0xc39c0`. Unique `env_set\0` at
+file `0xc454d` → VMA **`0x4c454d`** (packed `env_set\0getenv\0`).
+
+Objdump immediates of that VMA:
+
+| Function | `$0x4c454d` / `# 0x4c454d` hits |
+|----------|--------------------------------:|
+| `c_secret_is_sink_name` | 2 |
+| `c_secret_emit_guard` | 6 |
+| `check_secret_println_sinks` | 2 |
+
+Host `strings` also contains bare `env_set` (and libc `setenv@GLIBC_2.2.5`
+from the DE1.8 PATH install — **not** the sink table).
+
+Help-string residual (`diag_json.oo:81`, also in host strings): SECRET
+advice lists `env_get` but **not** `env_set`. Doc-only; refuse path is live.
+
+========================================================================
+4. Live prove (product host 07:49 ELF)
+========================================================================
+
+Tmp fixtures under `/tmp/s61_runtime_prove/` (not in-tree).
+
+| Case | emit-c | check | SECRET? |
+|------|--------|-------|---------|
+| `env_set(envc, "KEY", token)` `// SECRET: token` | rc=1 `ERR\tsecret\tenv_set sink refuses SECRET token` | rc=1 `ERR\ttype\tundefined variable 'env_set'` | emit **TP**; check **type-first** |
+| `env_set(envc, k, "public")` `// SECRET: k` | rc=1 `… env_set sink refuses SECRET k` | same type undefined | emit **TP**; check type-first |
+| `env_set(envc, "KEY", "public")` `// SECRET: token` unused | rc=1 `ERR\tc_emit\tunknown free call needs annotation\tenv_set` (**no** `ERR\tsecret`) | type undefined | emit **no FN**; unlowered residual |
+| `fixtures/secret_setenv_fail.oo` | rc=1 `ERR\tsecret\tsetenv sink refuses SECRET token` | type undefined `setenv` | emit **TP** |
+| `fixtures/secret_setenv_pass.oo` | rc=1 `unknown free call … setenv` (no secret) | type undefined | emit **no FP** |
+| `fixtures/secret_env_get_fail.oo` (control, lowered) | rc=1 `ERR\tsecret\tenv_get sink refuses SECRET token` | **same** `ERR\tsecret` | **dual-path PASS** |
+| `fixtures/secret_env_get_pass.oo` | rc=0 | rc=0 `OK` | **dual-path PASS** |
+
+Conclusion: **emit lists and enforces `env_set` as a SECRET sink.**
+Check **source** lists it (`c_emit_secret.oo:239`) and the ELF
+`check_secret_println_sinks` references `env_set`, but the **product
+`check` CLI** type-rejects the unlowered name before the secret walk
+reports. Dual-path SECRET is green for **`env_get`** (real op), not for
+**`env_set`** (alias / residual name).
+
+`scripts/secret_sink_enforce_smoke.sh` rails `secret_setenv_{fail,pass}`
+when present; there is **no** in-tree `secret_env_set_*.oo`. SECRET_TAINT
+still says setenv/env_set/unsetenv are **In (partial; re-prove rails)**.
+
+========================================================================
+5. What this auditor will not claim
+========================================================================
+
+- Runtime `env_set` / libc `setenv` of user keys (no product op).
+- Runtime filtering of SECRET values in the process environment (none).
+- Full IFC / `#[Secret]` / `${}` interp (SECRET_TAINT residual).
+- DESIGN/PM 6.1 metamorphic-vs-deterministic (different ID).
+- Closing CAPS_MATRIX unlowered `env_set` (emit annotation / `oo_env_set`)
+  — that would be a **new** product op, not this re-prove.
+- That `oodac check` currently prints `ERR\tsecret` for `env_set` fixtures.
+
+========================================================================
+RESIDUAL (named, not 6.1 blockers)
+========================================================================
+
+| ID | Kind | Note |
+|----|------|------|
+| R-lower | fail-closed | `env_set` / `setenv` / `unsetenv` not lowered; clean calls `unknown free call` |
+| R-check | dual-path | `check` type-undefined before secret; ELF still contains the sid test |
+| R-help | hygiene | `diag_json` SECRET hint omits `env_set` |
+| R-fixture | rails | no `secret_env_set_fail.oo`; setenv fixtures exist; SECRET_TAINT "re-prove rails" |
+| R-runtime | honesty | do not invent `oo_env_set`; T3 prefix filter stays GET/exec-inherit only |
+
+========================================================================
+VERDICT
+========================================================================
+
+**SPRINT 6.1 re-prove (runtime auditor): PASS.**
+
+6.1 is **emit/check SECRET**. Emit **lists `env_set`**. `chs_rt_sys` env
+filter is **not** this item (T3 / DE1.8 / `oo_env_get` policy).
+
+end of s61_runtime.oot
