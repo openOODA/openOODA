@@ -1,0 +1,292 @@
+# r2_memory.oot — Memory Auditor (R2 Multi-Import Type Check)
+# Date: 2026-08-12T14:41:06Z
+# Role: Memory Auditor — path-A memory floor for multi-import check
+# Tip (workspace): openOODA `f418f11` / ooda `92ecf15`
+# Binary: `/home/jeryd/Projects/openOODA/ooda/oodac/oodac` (962680 B, mtime 2026-08-12)
+# OWN: audit only (no product code changes this pass)
+
+## Scope
+
+Hunt for R2 multi-import **memory / cost honesty** on product path A:
+
+| # | Hunt | Sites |
+|---|------|-------|
+| H1 | Expanded source **1MiB** limit honesty | `check_drive.oo`, `check_mod.oo`, `lex.oo`, `main.oo` (64KiB root), `load_import.oo` |
+| H2 | Quadratic typecheck / string-bind thrash on large multi | `load_import.oo`, `tc_names.oo`, `tc_scope.oo`, `tc_tables.oo`, `token_fmt.oo`, `check_drive.oo` |
+| H3 | List/token memory on ~150-module oodac tree | `token_stream.oo` / `tokenize_lines`, `run_check_core` |
+| H4 | Leaks on check path | `chs_rt_str.c` (`char_at` alloc), ARC release, token `List` lifetime |
+
+Out of scope (document only): emit/build memory, full incremental check design, fixing R2.
+
+## Verdict — path-A memory floor
+
+| Result | Meaning |
+|--------|---------|
+| **FAIL** | Advertised multi-import size rails are **not honest end-to-end**; large multi DoS/thrash is product-real; 150-module self-check is not a memory floor pass. |
+
+**PASS slices (kept):** root **64KiB** gate fires; tiny multi-import check works; ambient List quota + ARC prevent unbounded *process* heap growth on short hangs (RSS flat while CPU burns).
+
+**FAIL slices:** import-path **64KiB claim false**; **1MiB expanded** practically unreachable before thrash; **O(n²)** load/lex and superlinear multi-module RSS/time; oodac **150-module / ~832 KiB** self-check times out; `"\0"` import check compiled as digit **`0`** (false reject).
+
+Residual R4/R5 in `ooda/bootstrap/AUDIT_RESIDUAL.oot` remains accurate — this audit **measures** them.
+
+---
+
+## H1 — Expanded 1MiB limit honesty
+
+### Code claims
+
+| Site | Claim / gate | Limit |
+|------|----------------|-------|
+| `main.oo` | per-file before read; comment: “lex is O(n²) char_at — 64KiB max” | `file_size(root) > 65536` → `ERR load source exceeds 64KiB per-file limit` |
+| `check_drive.oo` | “H6: expanded source bound (import concat); per-file is 64KiB at load” | `chars_len(src) > 1048576` → `ERR check source exceeds 1MiB expanded limit` |
+| `check_mod.oo` | same expanded message on module body | 1048576 |
+| `lex.oo` | `lex_all` | `n > 1048576` → Err `"source exceeds 1MiB limit"` |
+| `load_import.oo` | DFS concat imports → one expanded `String` | **no size gate** on import files or running expanded size |
+
+### Measurements
+
+| Probe | Result | time | maxrss |
+|-------|--------|------|--------|
+| Root file 70000 B (`a`×70000) | **FAIL-CLOSED** `ERR load source exceeds 64KiB per-file limit` | 0.00 s | 3840 KB |
+| Root small + import **70043 B** (`// x`×70000) | **No 64KiB reject** — `timeout 3` **124** (CPU thrash) | ≥3 s | ~7 MB |
+| Multi expand **~1.03 MiB** (18×~60 KiB alpha modules, no digit `0` in names) | **timeout 20 s** — never printed 1MiB ERR | 20.00 s | 10468 KB |
+| Multi expand **~0.80 MiB** (14 modules) | **timeout 15 s** — under limit, still hang | 15.01 s | 8036 KB |
+| oodac `main.oo` expand (see H3) | **831.8 KiB < 1 MiB** — hang without limit trip | ≥20–30 s | see H3 |
+
+### Honesty scorecard
+
+| Claim | Live truth | Score |
+|-------|------------|-------|
+| Root ≤64 KiB | Enforced on **entry path only** | **PASS** |
+| “Per-file is 64KiB at load” (imports) | `load_expand` / `read_file` **no** `file_size` gate | **FAIL (dishonest comment)** |
+| Expanded ≤1 MiB | Gate exists **after** full concat + only if check is reached | **PARTIAL code / FAIL practical** |
+| 1 MiB protects multi trees | Load/lex **O(n²)** thrash dominates; 0.8–1.0 MiB multi **times out first** | **FAIL as safety rail** |
+| Single-file 1 MiB lex path | Unreachable: root blocked at 64 KiB first | **N/A (dead rail for monofile)** |
+
+**H1 residual (OK if documented):** true per-import 64 KiB in `load_expand`; running expanded byte counter abort before O(n²) concat; or incremental/per-file check (R5 close).
+
+---
+
+## H2 — Quadratic typecheck / string-bind thrash
+
+### Mechanisms (code)
+
+1. **`char_at` = alloc + O(idx) UTF-8 scan** (`chs_rt_str.c` `oo_char_at` → `utf8_byte_index`).  
+   Loop `i in 0..n` with `char_at(src,i)` ⇒ **Θ(n²) time** + n short-lived strings (ARC frees → RSS can stay flat).
+2. **`load_import` line/body build:** `line = line + c`, `body = body + line` — classic **string concat thrash** on expand.
+3. **Double lex on check:** `run_check_core` → `lex_all(src)` then `tokenize_lines` → `lex_all` again + `collect_tokens`.
+4. **`check_mod.run_check_module_body`:** `tokenize_lines` then `run_check_core` (third lex / second token list) if modular path used.
+5. **String-encoded binds:** `binds = binds + name + "@" + depth + "\t"` (`tc_names.oo`); **`drop_depth`** rebuilds with per-char `entry = entry + char_at` (`tc_scope.oo`) — **O(|binds|²)** per RBRACE.
+6. **~28 typecheck/check passes** over full `toks` (`check_drive.oo`); **46** `list_len(toks)` sites across `tc_*.oo` — multi full scans × `field_at` (linear scan of each token line).
+7. **Import name `"\0"` bug:** emitted C compares to **`oo_str_lit("0")`** not NUL — rejects any import path containing digit **`0`** (`stage1_noarc.tmp.c` `reject_bad_import_name`). Blocks numbered synthetic trees; functional R2 residual, not pure heap.
+
+### Source-size cost (import bypass, single large dep)
+
+| Import body size (B) | check time | maxrss KB | notes |
+|---------------------:|-----------:|----------:|-------|
+| 2043 | 0.08 s | 7280 | OK |
+| 8043 | 0.88 s | 10412 | OK |
+| 20043 | 5.25 s | 16636 | OK |
+| 70043 | ≥3 s timeout | ~7204 | hang; no 64KiB gate |
+
+**Fit:** `time / n² ≈ 13–19×10⁻⁹` s/B² → **Θ(n²)** in expanded source length (lex/load dominated).  
+Extrapolate n=831740 (oodac expand): ~**(831740/20043)² × 5.25 ≈ 2.5×10³ s** order — matches observed multi-minute hang class.
+
+### Module-count cost (tiny alpha modules, no digit `0`)
+
+Chain `root → m_a → m_b → …` (payload ~70 B/module):
+
+| N modules (excl. root) | expand bytes | time | maxrss KB | RSS/N |
+|-----------------------:|-------------:|-----:|----------:|------:|
+| 5 | 385 | 0.21 s | 10056 | ~2011 |
+| 10 | 721 | 0.22 s | 15236 | ~1524 |
+| 20 | 1401 | 0.32 s | 26664 | ~1333 |
+| 40 | 2803 | 1.38 s | 56920 | ~1423 |
+| 80 | 5643 | 7.72 s | **143320** | ~1792 |
+
+- **RSS ~1.3–2 MB per module** for near-empty sources → token list + multi-pass TC tables dominate, not raw source.
+- **Time superlinear in N** (40→80: ×2 modules, ×5.6 time).
+- Tiny multi path A **works** (N≤80 OK under 60 s here); cost is **not** acceptable at oodac scale when combined with large source.
+
+### Small product multi (control)
+
+| Tree | Result | time | maxrss |
+|------|--------|------|--------|
+| `tmp_multi_import/main_import.oo` (3 files) | OK | 0.01 s | ~5824 KB |
+| same ×10 sequential | OK | 0.25 s total | ~5832 KB |
+| `test_bug/main.oo` | OK | 0.01 s | ~5592 KB |
+
+**H2 residual:** rope/slice expand; byte-index lex; single lex pass; bind map not string; fewer TC passes / shared tables; incremental per-module check.
+
+---
+
+## H3 — List/token memory on 150-module oodac tree
+
+### Tree facts (static)
+
+| Metric | Value |
+|--------|------:|
+| Modules reachable from `ooda/oodac/main.oo` | **150** |
+| Sum of `.oo` bytes (approx expand) | **851740** (~**831.8 KiB**) |
+| Under advertised 1 MiB expand? | **yes** (limit does not trip) |
+| Any single file >64 KiB? | **0** (largest ~13.7 KiB `check_cap_util.oo`) |
+
+### Live product check
+
+| Command | Wall | maxrss / samples | Exit |
+|---------|------|------------------|------|
+| `timeout 20 oodac check ooda/oodac/main.oo` | 20 s | VmRSS **flat ~2268 KB** for 19 samples | **124** |
+| `timeout 30 oodac check ooda/oodac/main.oo` | 30 s | maxrss **92508 KB** (prior sample) | **124** |
+| `timeout 15 oodac tokens ooda/oodac/main.oo` | 15 s | maxrss **84020 KB** | **124** |
+
+Interpretation:
+- Early phase is **CPU-bound expand/lex thrash** (low RSS if ARC churns temps).
+- Longer runs can climb to **~80–90 MB** without finishing — token materialization / bind strings if load progresses.
+- **No OK** within 30 s; aligns with AUDIT_RESIDUAL **R4** (“>120s”) / **R5**.
+
+### Token / list model
+
+- `tokenize_lines` → `collect_tokens`: `List[String]` of TSV `kind\tline\tcol\text` rows; grows with every token.
+- `list_push` path allocates new list buffers under ambient quota (`chs_rt_list.c`, default **64 MiB** ambient; `OO_LIST_AMBIENT_QUOTA`).
+- Check path does **not** free `toks` explicitly after passes; process exit reclaims. Short CLI lifetime mitigates (R6 residual honesty).
+- For N=80 tiny multi, **143 MB** RSS with only **5.6 KB** source shows list+string **constant factors** and multi-pass retention dominate.
+
+**H3 residual:** per-file tokenize + merge symbols; stream tokens; drop intermediate lists; raise honesty that full expanded check of oodac is **not** path-A green.
+
+---
+
+## H4 — Leaks on check path
+
+| Class | Finding | Sev | Status |
+|-------|---------|-----|--------|
+| L1 | `oo_char_at` **always mallocs** a 1-char `OoStr` | MED cost | Structural; ARC `oo_str_release` on reassign keeps RSS flat in hang samples |
+| L2 | Expand/lex concat thrash = alloc churn, not classic unbounded leak | HIGH DoS | **CPU DoS** / timeout; residual |
+| L3 | Token `List` + bind `String` live for entire `run_check_core` (~28 passes) | MED | By design; no mid-check free |
+| L4 | `run_check_module_body` double materialize (`tokenize` + `run_check_core`) | MED | Dead weight if modular path enabled |
+| L5 | No `list_free` on check success path | LOW | Process-exit reclaim; **R6** ambient string/list lifetime residual |
+| L6 | Ambient list quota fail-closed (`ERR cap ambient List memory quota exceeded`) | PASS rail | Exists; not hit on oodac hang (CPU first) |
+| L7 | `"\0"` → `"0"` import reject | HIGH functional | **Bug**; any import name with digit `0` hard-fails |
+
+Hang samples (20 s check main): **VmRSS constant ~2.2 MB** → no runaway *leak* in that window; failure mode is **thrash/DoS**, not heap balloon alone. Longer runs **can** grow to ~90 MB without completing — still not an infinite leak proof, but **unbounded relative to source** for multi-module TC.
+
+---
+
+## Complexity summary (path A multi-import check)
+
+| Phase | Time class | Aux live memory class |
+|-------|------------|------------------------|
+| `load_expand` | Θ(expand²) char_at + concat | O(expand) final body + churn |
+| `lex_all` / `collect_tokens` | Θ(expand²) + Θ(tokens) | O(tokens) list of lines |
+| Each `typecheck_*` | Θ(tokens · field_scan · binds_ops) | O(binds string) growing |
+| `drop_depth` | Θ(|binds|²) per RBRACE | rebuild string |
+| Full `run_check_core` | many × above | holds full `toks` |
+
+**Not** O(modules) incremental. **Not** bounded by 1 MiB in practice for multi.
+
+---
+
+## Path-A memory floor — decision table
+
+| Floor requirement | Evidence | Pass? |
+|-------------------|----------|-------|
+| Root oversize fail-closed fast | 70 KiB root → 64KiB ERR, 0.00 s | **YES** |
+| Import oversize fail-closed at 64 KiB | 70 KiB import accepted → thrash | **NO** |
+| Expanded 1 MiB fail-closed before thrash | 0.8–1.0 MiB multi timeouts first | **NO** |
+| Small multi (≤~10 files, tiny) usable | 0.01–0.3 s, ≤30 MB | **YES** |
+| Medium multi (80 empty modules) bounded | 7.72 s, **143 MB** for 5.6 KB src | **WEAK** (works, heavy) |
+| 150-module oodac self-check floor | timeout 20–30 s, no OK | **NO** |
+| No silent unbounded heap leak (short CLI) | ARC + flat early RSS | **YES (partial)** |
+| Documented residual matches product | R4/R5 still true | **YES honesty** |
+
+### Overall: **FAIL** path-A memory floor for R2 multi-import
+
+R2 remains **residual** (`PM.oot` / `SPRINT.oot`). Memory floor is **not** closed: limits are incomplete/unpractical; cost is quadratic; oodac-scale check is not a product green floor.
+
+---
+
+## Residuals (explicit; OK documented)
+
+1. **R4/R5** — full expanded check on oodac-scale trees times out; pure build may need `PURE_SKIP_CHECK=1`.
+2. **Per-import size gate missing** — fix in `load_expand` before `read_file` body use.
+3. **1 MiB gate too late** — check after concat; move to running counter in expand or pre-sum `file_size`.
+4. **O(n²) char_at / concat** — need byte cursor lex + non-quadratic expand.
+5. **String bind tables** — replace with list/map; fix `drop_depth` per-char rebuild.
+6. **Double/triple lex** — one probe, reuse tokens.
+7. **`"\0"` escape → `"0"`** — import NUL check is digit-zero reject; fix string lit escapes or compare raw byte.
+8. **R6** — process-lifetime strings/lists; CLI exit is the free.
+9. **Multi-import LINE:COL** expanded-stream residual (`tc_diag.oo` / Issue #9) — orthogonal to memory, still residual.
+
+---
+
+## Prove commands (repro)
+
+```bash
+OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
+cd /home/jeryd/Projects/openOODA
+
+# H1 root 64KiB
+python3 -c "open('/tmp/r2_64k.oo','w').write('a'*70000)"
+$OODAC check /tmp/r2_64k.oo
+# expect: ERR load source exceeds 64KiB per-file limit
+
+# H1 import bypass (expect timeout or slow OK — not 64KiB ERR)
+# (construct root+70KiB import as in audit body)
+
+# H3 oodac tree
+/usr/bin/time -f 'elapsed=%e maxrss_kb=%M' timeout 20 \
+  $OODAC check ooda/oodac/main.oo
+# expect: exit 124; no OK
+
+# H2 module scaling (alpha names, no digit 0) — see table N=5..80
+
+# \0 / digit-0 bug
+# import "a0.oo" → ERR import NUL in name rejected
+# import "a1.oo" → OK
+```
+
+Static expand size:
+
+```bash
+# 150 modules, ~831.8 KiB sum from ooda/oodac/main.oo import closure
+```
+
+Emitted proof of `"\0"` → `"0"`:
+
+```text
+ooda/oodac/stage1_noarc.tmp.c  reject_bad_import_name:
+  oo_str_eq(oo_char_at(imp, j), oo_str_lit("0"))
+```
+
+---
+
+## Files reviewed (read-only)
+
+| Path | Role |
+|------|------|
+| `/home/jeryd/Projects/openOODA/ooda/oodac/load_import.oo` | multi expand; no size gate; concat thrash |
+| `/home/jeryd/Projects/openOODA/ooda/oodac/check_drive.oo` | 1MiB + multi TC orchestration |
+| `/home/jeryd/Projects/openOODA/ooda/oodac/check_mod.oo` | modular double tokenize |
+| `/home/jeryd/Projects/openOODA/ooda/oodac/main.oo` | root 64KiB |
+| `/home/jeryd/Projects/openOODA/ooda/oodac/lex.oo` | 1MiB lex gate |
+| `/home/jeryd/Projects/openOODA/ooda/oodac/tc_names.oo` | string binds |
+| `/home/jeryd/Projects/openOODA/ooda/oodac/tc_scope.oo` | drop_depth thrash |
+| `/home/jeryd/Projects/openOODA/ooda/oodac/token_fmt.oo` / `token_stream.oo` | token list |
+| `/home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_str.c` | char_at alloc O(idx) |
+| `/home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_list.c` | ambient list quota |
+| `/home/jeryd/Projects/openOODA/ooda/bootstrap/AUDIT_RESIDUAL.oot` | R4/R5 prior residual |
+
+## Files touched
+
+| Path | Action |
+|------|--------|
+| `openOODA/audit/r2_memory.oot` | this report |
+
+---
+
+## Return line
+
+**R2 path-A memory floor: FAIL**  
+(residual documented; small multi OK; oodac-scale multi-import check not memory/cost floor-green)
+
+end of r2_memory.oot

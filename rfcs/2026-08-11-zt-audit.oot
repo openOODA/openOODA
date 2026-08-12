@@ -29,7 +29,7 @@ Zero Trust is the security claim we ship to the agents that will be openOODA's p
 - **A1. Red-Team Cap Forger.** Tries to mint a cap from inside user code: bitcast, reflection, `unsafe`, union punning, raw pointer aliasing, FFI escape. Each successful forge is a P0 finding.
 - **A2. Taint Launderer.** Crafts a span that enters via a "safe" surface (literal constant, compile-time `const`) and tries to make it influence a lower to a privileged sink. Probes string interning, `CoW` slices, and `Box<str>` -> `&str` paths.
 - **A3. Secrets-in-Memory Hunter.** Allocates a signing key, lets it flow through HMAC, then reads `/proc/self/mem`, `gcore`, and GC heap dumps. If the key bytes appear, the zeroize residual from round 1 is exploitable, not theoretical.
-- **A4. Spec-vs-Impl Differ.** Loads `DESIGN.md` and `rfcs/*.oot`, asserts every claimed property (`"unforgeable"`, `"statically checked"`, `"fail-closed"`, `"constant-time"`, `"zeroized"`), and produces a diff for any claim that the implementation does not back.
+- **A4. Spec-vs-Impl Differ.** Loads `DESIGN.oot` and `rfcs/*.oot`, asserts every claimed property (`"unforgeable"`, `"statically checked"`, `"fail-closed"`, `"constant-time"`, `"zeroized"`), and produces a diff for any claim that the implementation does not back.
 
 *Integration (3) — owns the seams between axes.*
 
@@ -59,7 +59,7 @@ The audit is read-only. No code is changed. This means findings are *observation
 ## ❓ Unresolved Questions
 
 - **The 8 std monofiles.** The stdlib contains 8 files that exceed the power-law split target but were left intact under the round-1..5 cohesion rule. E3 must decide whether to audit them as monofiles (slower, more thorough) or to split them first and audit the shards (faster, but the split itself is a code change and this RFC is read-only). Default: audit as monofiles; flag a `split-required` note per finding that would have been easier on shards.
-- **The 610 untracked std files.** `tools/std-audit` does not index ~610 files in `std/`. They are not covered by the cap-emit checker. Do we (a) refuse to audit them and report "uncovered surface" as one P0 finding, (b) have A4 diff them against `DESIGN.md` as a best-effort pass, or (c) pause this RFC until the index lands? Default: (b), with the explicit caveat that the audit claim is partial until the index closes.
+- **The 610 untracked std files.** `tools/std-audit` does not index ~610 files in `std/`. They are not covered by the cap-emit checker. Do we (a) refuse to audit them and report "uncovered surface" as one P0 finding, (b) have A4 diff them against `DESIGN.oot` as a best-effort pass, or (c) pause this RFC until the index lands? Default: (b), with the explicit caveat that the audit claim is partial until the index closes.
 - **Conflicting `[STATUS: residual]` claims.** The round-1..5 closure RFC documents four honest residuals (HMAC inner-pad, atomic-rename host-side, `ct_eq_int` early-out, string zeroize). A1, A3, and A4 may produce findings that *contradict* a residual claim — e.g., A3 may show the string-zeroize residual is exploitable today, not merely theoretical. C1 will not silently overwrite the residual label; each conflict is recorded as `residual:contested` and routed to a follow-up decision in `RFC 2026-08-11-ZT-FIX`.
 
 ## 🚀 Future Work

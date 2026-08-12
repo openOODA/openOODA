@@ -1,0 +1,164 @@
+# cap_process_peer1.oot — QA Peer 1: Process facade least privilege
+# Date: 2026-08-12T14:08Z
+# Role: QA Peer 1 (PROBE + RULES 1.9) — check / signature honesty
+# Trees: /home/jeryd/Projects/openOODA/ooda + openOODA/audit
+# OWN: prove ProcessCap least privilege on process facades + sealed map;
+#      fix **only** critical facade bugs. No push.
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Claim | Expected | Actual | VERDICT |
+|-------|----------|--------|---------|
+| 1. `process_exec` / `sys_exec` with **ProcessCap** allows (check) | rc=0 | dual-repro **rc=0** | **PASS** |
+| 2. `process_prctl` / `sys_prctl` with **ProcessCap only** denies | check deny | dual-repro **rc=1** Capability Violation | **PASS** |
+| 3. `process_prctl` / `sys_prctl` with **SysCap** allows | rc=0 | dual-repro **rc=0** | **PASS** |
+| 4. **SysCap supersedes** `process_exec` / `sys_exec` | rc=0 | dual-repro **rc=0** | **PASS** |
+| Product facade map least-privilege | spawn/wait/kill/exec → ProcessCap; epoll/inotify/prctl → SysCap | `ooda/std/os/process.oo` exact | **PASS** |
+| `cap_g4_process_smoke.sh` | exit 0 | **PASSED** | **PASS** |
+| Critical facade fix this peer | only if wrong cap on facade | **none** (signatures already correct) | **PASS** |
+| Push | none | none | **PASS** |
+
+**OVERALL: PASS** (check least-privilege + facade signatures).  
+Product **run** path residual for `process_exec` named below (emit string escape) — **not** a facade signature bug; not fixed this peer (scope: critical facade only).
+
+========================================================================
+HOST / CONTEXT
+========================================================================
+
+| Item | Value |
+|------|--------|
+| Product host | `/home/jeryd/Projects/openOODA/ooda/oodac/oodac` **962680** B @ 2026-08-12 06:41 |
+| Host md5 | `7e1ce7df9bd366b607f35724e0efe80b` |
+| Probe time | 2026-08-12T14:08Z |
+| No push | **confirmed** |
+
+### CAP-G4 preferred map (product truth)
+
+| Preferred | Sealed ops | Runtime |
+|-----------|------------|---------|
+| **ProcessCap** (soft; SysCap supersedes) | `sys_exec`, `exec`, `spawn_process`, `async_spawn_internal`, `sys_spawn`, `sys_wait`, `sys_kill` | `oo_cap_require_process` (ProcessCap **or** SysCap) |
+| **SysCap** (hard) | `sys_prctl`, `sys_epoll_create`, `sys_inotify_init`, `python_embed*`, `async_join*` | `oo_cap_require_sys` only |
+
+Sources: `oodac/check_cap_util.oo` `sealed_sys_kind_of` / `cap_sys_granted_ok`; `runtime/chs_rt_sys.c` `oo_sys_exec`; `runtime/chs_rt_libfloor.c` spawn/wait/kill/prctl.
+
+========================================================================
+METHOD (RULES 1.9 — do not trust prior claim)
+========================================================================
+
+1. Read product facade `ooda/std/os/process.oo` signatures (not summaries).
+2. Read sealed map + runtime requires (check_cap_util + chs_rt_*).
+3. Dual-repro (run1 + run2) four check fixtures on product host.
+4. Re-run `scripts/cap_g4_process_smoke.sh`.
+5. Cross-check facade-shaped wrappers (process_exec / process_prctl bodies).
+6. Fix only if critical **facade** wrong-cap (none found).
+
+========================================================================
+PROVE MATRIX (dual-repro)
+========================================================================
+
+### Core four (sealed builtins — check)
+
+| # | Fixture body | run1 | run2 | Expect | VERDICT |
+|---|--------------|------|------|--------|---------|
+| 1 | `fn main(p: &ProcessCap) { let _ = sys_exec(p, "true"); }` | rc=0 OK | rc=0 OK | allow | **PASS** |
+| 2 | `fn main(p: &ProcessCap) { let _ = sys_prctl(p, 0); }` | rc=1 | rc=1 | deny | **PASS** |
+| 3 | `fn main(sys: &SysCap) { let _ = sys_prctl(sys, 0); }` | rc=0 OK | rc=0 OK | allow | **PASS** |
+| 4 | `fn main(sys: &SysCap) { let _ = sys_exec(sys, "true"); }` | rc=0 OK | rc=0 OK | supersede | **PASS** |
+
+Deny witness (claim 2):
+```
+ERRcapabilitySecurity Capability Violation: Function 'main' calls sealed
+effectful builtin 'sys_prctl' which requires a &SysCap parameter, but none
+was declared … Default-deny: grant the capability token explicitly.
+```
+
+### Facade-shaped wrappers (same host)
+
+| Case | Result | Notes |
+|------|--------|-------|
+| `process_exec(p: &ProcessCap)` → `sys_exec` | check **OK** | least-privilege path |
+| `process_prctl(sys: &SysCap)` → `sys_prctl` | check **OK** | hard Sys residual |
+| sealed `sys_prctl` with ProcessCap only | check **deny** | ProcessCap ↛ prctl |
+| sealed `sys_exec` with SysCap | check **OK** | supersede intact |
+
+### CAP-G4 smoke
+
+```
+OK static CAP-G4 markers
+OK deny process_prctl (rc=1)
+OK allow process_exec
+OK allow sys_exec
+OK allow sys_prctl
+OK corpus ok_process_cap_sys_exec.oo
+OK corpus ok_sys_cap_sys_exec.oo
+OK corpus deny wrong_granular_process_for_prctl.oo
+cap_g4_process_smoke: PASSED
+```
+
+### Product facade inventory — `ooda/std/os/process.oo`
+
+| Fn | Cap param | Sealed callee | Class |
+|----|-----------|---------------|-------|
+| `process_spawn` | **&ProcessCap** | `sys_spawn` | GRANULAR preferred |
+| `process_wait` | **&ProcessCap** | `sys_wait` | GRANULAR preferred |
+| `process_kill` | **&ProcessCap** | `sys_kill` | GRANULAR preferred |
+| `process_exec` | **&ProcessCap** | `sys_exec` | GRANULAR preferred |
+| `process_epoll_create` | **&SysCap** | `sys_epoll_create` | HARD residual |
+| `process_inotify_init` | **&SysCap** | `sys_inotify_init` | HARD residual |
+| `process_prctl` | **&SysCap** | `sys_prctl` | HARD residual |
+
+`oodac check std/os/process.oo` → **OK** rc=0  
+Honesty main: `main(p: &ProcessCap, sys: &SysCap)` — ProcessCap for spawn/exec; SysCap for epoll residual.
+
+**Critical facade bug scan:** no ProcessCap on prctl/epoll/inotify; no SysCap-only force on exec/spawn/wait/kill. **No fix required this peer.**
+
+========================================================================
+RUNTIME / SOURCE CROSS-CHECK (not greenwash)
+========================================================================
+
+| Gate | Evidence |
+|------|----------|
+| `sys_exec` require | `chs_rt_sys.c`: `oo_cap_require_process(cap, "sys_exec")` accepts `g_tok_process` **or** `g_tok_sys` |
+| `sys_prctl` require | `chs_rt_libfloor.c`: `oo_cap_require_sys` only |
+| spawn/wait/kill | `require_process` |
+| epoll/inotify | `require_sys` |
+
+========================================================================
+RESIDUALS (honest — not fixed this peer)
+========================================================================
+
+| ID | Severity | Finding | Why not fixed here |
+|----|----------|---------|-------------------|
+| R1 | **CRIT product-run** | Host emit string escape corrupts `r`/`f` in C string lits (`"true"` → `t\rue`, `"exec-err"` → `exec-e\r\r`). Breaks `process_exec` **runtime** argv and residual smoke greps (`epoll-esidual-ok`). Root: host `c_escape_str_text` / `\r` `\f` handling when compiled. | **Not a facade signature bug.** Rebuild/escape fix is emit-scope; peer limited to critical facade. |
+| R2 | MED check | User-fn arg cap types not enforced: `fn f(sys: &SysCap)` called with `&ProcessCap` / `&HttpCap` still **check OK**; sealed op inside `f` may pass if param is typed SysCap. Runtime token still fail-closed on require. | Broader TC/argflow residual; not process.oo signature. |
+| R3 | LOW smoke | `sys_syscall_path_a_smoke` / `libfloor_process_smoke` forge sed zeros ambient `sys = grant` then main reassigns `sys = oo_cap_grant_sys()` — false "forge not denied". Require path itself not fail-open. | Smoke harness residual; R1 also breaks residual greps. |
+| R4 | residual | Domain `std/async.oo` / `python.oo` still SysCap; ProcessCap std outside product `process.oo` incomplete. | CAP-G6/G7 residual named in CAPS. |
+
+Do **not** claim: full product-run process_exec green on this host; full std ProcessCap migration; user-fn cap type soundness.
+
+========================================================================
+FIXES THIS PEER
+========================================================================
+
+**None.** Facade already least-privilege path-A:
+
+- ProcessCap on spawn/wait/kill/exec
+- SysCap hard residual on epoll/inotify/prctl
+
+No push.
+
+========================================================================
+PLAIN ENGLISH
+========================================================================
+
+What we proved:
+1. A program that only has the **process** token may call **run a command** (check allows).
+2. That same process-only token may **not** call **prctl** (check denies).
+3. The full **system** token may call prctl (check allows).
+4. The full system token may still call run-a-command (legacy supersede works).
+
+The product wrapper file already asks for the small process token for run/spawn and keeps the big system token only for hard OS leftovers (prctl/epoll). No signature fix was needed.
+
+What is still broken (named residual): the compiler’s C output currently mangles letter “r” in strings, so **running** process_exec on this host can fail even when check is green. That is an emit bug, not a wrong capability on the facade.

@@ -1,0 +1,111 @@
+# cap_g6_process_facades.oot — Docs Cartographer residual
+# Date: 2026-08-12
+# Role: Docs Cartographer (ProcessCap product facades)
+# OWN: docs honesty only. No product feature work. **No push.** No SPRINT C2 re-close.
+
+========================================================================
+PLAIN ENGLISH (RULES 1.10)
+========================================================================
+
+**What changed**
+Process helpers that start or stop programs now ask for a smaller
+permission token (`ProcessCap`) instead of the broad OS token (`SysCap`).
+That matches the rule already used at compile time for spawn and exec.
+
+**Why it matters**
+Callers can grant only “run a process,” not full OS control.
+The AI/python bridge still needs the broad OS token on purpose.
+
+**What still is not done**
+Many domain libraries still pass the broad OS token (~571 places).
+That bulk is named residual, not cleaned up in this wave.
+Full OS isolation is not claimed.
+
+**What to do next (if anything)**
+Optional later waves: domain SysCap stubs where a sealed process op exists.
+Do not move python_embed to ProcessCap.
+Human gate for push. Docs Cartographer does not push.
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Topic | VERDICT | Notes |
+|-------|---------|-------|
+| ProcessCap product facades | **GREEN path-A** | spawn/wait/kill/exec + async spawn |
+| python facade | **stays SysCap** | hard residual; do not migrate |
+| async join | **stays SysCap** | hard residual |
+| process epoll/inotify/prctl | **stays SysCap** | ProcessCap alone must fail closed |
+| Smoke `cap_process_facade_smoke` | **exit 0** | re-proved this pass |
+| CAPS.oot / CAPS_MATRIX / STATIC | **ALIGNED** | ProcessCap facades named |
+| SPRINT residual note | **ALIGNED** (no C2 thrash) | CAP-G6 residual row + pin; Close Coordinator owns formal close |
+| Full SysCap purge | **NOT claimed** | inventory ~571 under `std/src` |
+| Push | **none this pass** | Docs Cartographer: no push |
+
+OVERALL: **HONEST RESIDUAL PASS** — facades green; python SysCap honesty held.
+
+========================================================================
+1. LIVE RECHECK (2026-08-12)
+========================================================================
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/cap_process_facade_smoke.sh
+# exit 0
+# OK process_exec ProcessCap; process_prctl SysCap
+# OK python load_model SysCap (ooda + external std)
+# OK ProcessCap alone ↛ python_embed
+# OK async spawn ProcessCap / join SysCap (ooda + external std)
+# cap_process_facade_smoke: PASSED
+
+OODAC_BIN=./oodac/oodac bash scripts/cap_g4_process_smoke.sh   # exit 0
+OODAC_BIN=./oodac/oodac bash scripts/cap_g6_std_migrate_smoke.sh  # exit 0
+./oodac/oodac check std/os/process.oo   # OK
+./oodac/oodac check std/os/async.oo     # OK
+./oodac/oodac check std/os/python.oo    # OK
+```
+
+Product signatures (truth):
+
+| File | Cap |
+|------|-----|
+| `ooda/std/os/process.oo` | ProcessCap: spawn/wait/kill/exec; SysCap: epoll/inotify/prctl |
+| `ooda/std/os/async.oo` + `std/async.oo` | ProcessCap spawn; SysCap join |
+| `ooda/std/os/python.oo` + `std/python.oo` | **SysCap only** |
+
+========================================================================
+2. DOCS TOUCHED THIS PASS
+========================================================================
+
+| Doc | Change |
+|-----|--------|
+| `openOODA/CAPS.oot` | STATUS + CAP-G6 row + SysCap/ProcessCap notes + residual links + footer |
+| `ooda/bootstrap/CAPS_MATRIX.oot` | M166 product table: process/async/python; smoke + honesty |
+| `ooda/bootstrap/STATIC_CAPS.oot` | M166 samples: process dual-cap; async split; python SysCap |
+| `openOODA/SPRINT.oot` | residual note only (pin + CAP-G6 row already green); **no C2 re-close** |
+| This audit | plain-English residual ledger |
+
+Close evidence (product prove, not this role): `audit/cap_process_facade_rollup.oot`.
+
+========================================================================
+3. ANTI-GREENWASH
+========================================================================
+
+| Claim | Truth |
+|-------|-------|
+| "process.oo is ProcessCap for spawn/exec" | **TRUE** — green smoke |
+| "python is ProcessCap" | **FALSE** — stays SysCap |
+| "async join is ProcessCap" | **FALSE** — stays SysCap |
+| "full std SysCap migration done" | **FALSE** — bulk residual ~571 |
+| "OS isolation product complete" | **FALSE** — process-local tokens only |
+
+========================================================================
+4. LEAVE-OFF
+========================================================================
+
+- ProcessCap product facades: **green**.
+- **Python stays SysCap.** Join stays SysCap. Hard Sys ops stay SysCap.
+- Domain SysCap bulk residual remains open (inventory).
+- SPRINT residual note matches; Docs Cartographer did **not** run C2 close.
+- **No push** this Docs Cartographer pass.
+
+end of cap_g6_process_facades.oot
