@@ -1,0 +1,62 @@
+# cap_g6_syscap_inventory.oot — SysCap residual bulk (CAP-G6 honesty)
+# Date: 2026-08-12
+# Role: inventory only — not a claim that SysCap migration is complete
+
+## Decision
+
+**Net + fs product facades** migrate to granular tokens this wave.
+**SysCap residual bulk remains** — documented here so CAP-G6 can close net+fs
+without greenwashing full std least-privilege.
+
+## Counts (host tip, 2026-08-12)
+
+| Surface | Token | Approx lines |
+|---------|-------|--------------|
+| `ooda/std` | `&SysCap` | **16** across 3 files |
+| `std` (external monorepo) | `&SysCap` | **~578** lines |
+| `std` | `&ProcessCap` | **0** |
+| `std` | `&NetCap` | ~17 (post net wave residual) |
+| `std` | `&HttpCap` | ~7 |
+| `std` | `&FsReadCap` / `&FsWriteCap` | ~6 each |
+| `std` | legacy `&FsCap` | ~6 residual |
+
+## Product ooda/std — named residual files
+
+| File | Why still SysCap |
+|------|------------------|
+| `std/os/process.oo` | `process_spawn` / `wait` / `kill` / `exec` still take `&SysCap`. CAP-G4 path-A **prefers** ProcessCap at sealed ops (`sys_exec` et al.) with SysCap supersede; **facade not yet ProcessCap**. Hard residual: `process_epoll_create` / `inotify_init` / `prctl` **must** stay SysCap (ProcessCap ↛ hard Sys). |
+| `std/os/async.oo` | `spawn_task` / `join_task` → `async_spawn_internal` / join. Spawn path can accept ProcessCap at runtime (CAP-G4); **join is hard SysCap-only**. Facade still SysCap. |
+| `std/os/python.oo` | `load_model` → `python_embed_internal` — **hard SysCap only** (CAP-G4 map). |
+
+## External std — residual bulk by domain (top)
+
+| Domain (under `std/src/ooda/`) | ~SysCap hits | Notes |
+|-------------------------------|--------------|-------|
+| `sec/crypto` | ~134 | HSM/PKCS, SPHINCS, zkstark stubs — SysCap as default-deny gate, not ProcessCap |
+| `sec/sys` | ~105 | landlock/enclave/audit/CFI stubs — OS residual; often correctly SysCap |
+| `auto` / `aero` | ~46 / ~38 | domain stubs |
+| `sec/net` | ~37 | WAF/JWT/mTLS residual — some TcpCap migration this wave (mTLS session) |
+| `crypto` | ~28 | keys/HSM hardware paths |
+| `robot` / `edge` / `bio` / `quantum` / `grid` / `3d` / `gui` / … | remainder | comment + param stubs; many pure math already cap-free |
+
+Top single files (illustrative): `hsm_pkcs.oo`, `edge/ota.oo`, audit/enclave/landlock stubs.
+
+## What CAP-G6 net+fs wave does **not** claim
+
+- Full std migration off SysCap / NetCap / FsCap
+- ProcessCap facades for `process_spawn`/`exec` (next residual wave)
+- HW/UI product sealed ops (CAP-G3 residual-only still holds)
+- OS isolation / seccomp (CAP-G5 residual honesty)
+
+## Next residual waves (not this close)
+
+1. `ooda/std/os/process.oo` — spawn/wait/kill/exec → `&ProcessCap`; keep epoll/inotify/prctl on SysCap
+2. `async.oo` — split spawn (ProcessCap) vs join (SysCap) honesty
+3. Domain std SysCap stubs — only where a sealed op prefers ProcessCap; do not invent ProcessCap for pure stubs
+4. Remaining NetCap call sites outside product facades (`std/src/net/dns` residual, etc.)
+
+## Evidence cross-links
+
+- CAP-G4 map: `audit/cap_g4_phalanx_rollup.oot`
+- CAP-G6 close: `audit/cap_g6_phalanx_rollup.oot`
+- Smoke: `ooda/scripts/cap_g6_std_migrate_smoke.sh`

@@ -1,0 +1,299 @@
+# cap_g6_hygiene.oot — Hygiene Enforcer (CAP-G6 std granular migration)
+# Date: 2026-08-12T13:46:53Z
+# Role: Hygiene Enforcer — CAP-G6
+# Tree: /home/jeryd/Projects/openOODA  (ooda/ + std/ + openOODA/)
+# Tip (ooda): aa97009 (working tree dirty — CAP-G6 WIP on std/os fs+net)
+# Tip (std):  7ec1a61 (working tree dirty — CAP-G6 WIP on src/fs+net+wireguard)
+# Tip (openOODA): 8532787
+# OWN: line-lock edited std facades (product ooda/std/os + external std/src);
+#      bash -n related CAP-G / std smokes; no /tmp secrets; no mass deletes; no push
+# WRITE: this audit only
+# POLICY: RULES §1.7 / PROBE MAX_LINES = 256 (soft); pack watch 300; hard ban >600
+#         No mass peels/deletes this pass (DE mid-flight on CAP-G6)
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Check | VERDICT | Notes |
+|-------|---------|-------|
+| Soft lock ≤256 (OWN five dirty) | **PASS** | worst `ooda/std/os/net.oo` **76** (−180 headroom) |
+| Pack pressure ≤300 | **PASS** | 0/5 over 300 |
+| Hard ban >600 | **PASS** | 0 OWN files >600 |
+| Split this pass | **NOT needed** | all far under soft; no peel |
+| `bash -n` new CAP-G6 smoke | **N/A** | no `cap_g6_*.sh` yet (honest residual) |
+| `bash -n` related CAP-G / std smokes | **PASS** | 20/20 syntax clean |
+| `/tmp` secrets in OWN + smokes | **PASS** | ZERO secrets; OWN free of `/tmp`; G smokes use `$HOME/.cache/ooda-tmp` |
+| Mass deletes | **none** | charter |
+| Push | **no** | charter |
+
+OVERALL: **HONEST RESIDUAL PASS** (OWN line-lock green; bash -n green; CAP-G6 product residual named — not closed)
+
+========================================================================
+SCOPE + METHOD
+========================================================================
+
+OWN units (CAP-G6 surface — SPRINT: continue **std** migration to granular caps):
+
+  Dirty this wave (DE WIP — measured live):
+
+  `ooda/std/os/fs.oo`            — FsReadCap / FsWriteCap preferred facades
+  `ooda/std/os/net.oo`           — Http/Tcp/Udp/Bind preferred facades
+  `std/src/fs.oo`                — external-std twin (FsRead/FsWrite)
+  `std/src/net.oo`               — external-std twin (HttpCap fetch facades)
+  `std/src/net/wireguard.oo`     — UdpCap preferred residual VPN facade
+
+  Observe (legacy residual — not dirty for this CAP-G6 wave):
+
+  `ooda/std/os/process.oo`       — still `&SysCap` (ProcessCap migrate residual)
+  `ooda/std/os/async.oo`         — still `&SysCap`
+  `ooda/std/os/python.oo`        — still `&SysCap`
+  `ooda/std/src/net/dns.oo`      — still `&NetCap`
+  `ooda/std/os/sync.oo` / `thread.oo` — already `&ThreadCap` (pre-G6 path-A)
+
+Related (bash -n only — no new G6 smoke):
+
+  `scripts/cap_g{1..5}_*.sh` + caps/std/fs/runtime floor smokes (20 total)
+
+Commands:
+
+  `wc -l` + cap-token inventory on OWN five + observe set
+  `git diff` HEAD vs working for migration honesty
+  `bash -n` on 20 related smokes
+  `grep` secret-pattern + `/tmp` scan on OWN dirty five
+  no mass delete; no push
+
+Thresholds:
+
+| Threshold | Meaning |
+|-----------|---------|
+| **256** | RULES §1.7 / PROBE MAX_LINES — soft lock |
+| **300** | Pack monofile pressure (flag for DE peel) |
+| **600** | Path-A hard ban — still green for OWN |
+
+========================================================================
+LINE LOCK — OWN FIVE DIRTY (live)
+========================================================================
+
+Measured under monorepo at tips ooda=`aa97009`+WIP, std=`7ec1a61`+WIP
+(2026-08-12T13:46Z).
+
+| File | Lines | ≤256 | ≤300 | ≤600 | Headroom 256 | Headroom 300 | Split? |
+|------|------:|:----:|:----:|:----:|-------------:|-------------:|:------:|
+| `ooda/std/os/fs.oo` | **36** | PASS | PASS | PASS | +220 | +264 | NO |
+| `ooda/std/os/net.oo` | **76** | PASS | PASS | PASS | +180 | +224 | NO |
+| `std/src/fs.oo` | **19** | PASS | PASS | PASS | +237 | +281 | NO |
+| `std/src/net.oo` | **19** | PASS | PASS | PASS | +237 | +281 | NO |
+| `std/src/net/wireguard.oo` | **67** | PASS | PASS | PASS | +189 | +233 | NO |
+| **OWN total** | **217** | — | — | — | — | — | — |
+
+Committed baselines (HEAD only, for delta):
+
+| File | HEAD lines | Working | Δ | HEAD caps → WORK caps |
+|------|----------:|--------:|--:|------------------------|
+| `ooda/std/os/fs.oo` | 34 | 36 | **+2** | 5×FsCap → FsRead×4 + FsWrite×2 (+ FsCap comment) |
+| `ooda/std/os/net.oo` | 72 | 76 | **+4** | 13×NetCap → Http/Tcp/Udp/Bind + NetCap sock_raw only |
+| `std/src/fs.oo` | 17 | 19 | **+2** | 2×FsCap → FsRead/FsWrite preferred |
+| `std/src/net.oo` | 18 | 19 | **+1** | 2×NetCap → HttpCap preferred |
+| `std/src/net/wireguard.oo` | 58 | 67 | **+9** | 3×NetCap → UdpCap preferred (+ honesty banner) |
+
+Delta notes (CAP-G6 land pressure on dirty trees):
+
+- **fs product +2 / external +2**: CAP-G6 banner + preferred
+  `FsReadCap`/`FsWriteCap` on read/probe/size vs write facades. Soft-lock
+  trivial. Legacy `&FsCap` remains supersede-compat (comment only on product).
+- **net product +4**: CAP-G6 / CAP-G1 banner + per-op preferred tokens
+  (`HttpCap` fetch facades, `TcpCap` connect/IO/tls, `BindCap` tcp_bind,
+  `UdpCap` bind/recv, hard `NetCap` for `sock_raw` only). Growth cheap.
+- **wireguard +9**: UdpCap preferred param + residual honesty block
+  (process_exit crypto gate unchanged — **not** greenwashed as crypto).
+- Diffstat: ooda std/os **+43/−37**; external std facades **+30/−18**.
+
+Observe set (legacy residual — all under soft):
+
+| File | Lines | Caps | CAP-G6 residual? |
+|------|------:|------|------------------|
+| `ooda/std/os/process.oo` | 54 | 9×SysCap | **yes** — ProcessCap preferred for exec/spawn/wait/kill (CAP-G4 product + G6 migrate) |
+| `ooda/std/os/async.oo` | 26 | 4×SysCap | yes (spawn/join still Sys) |
+| `ooda/std/os/python.oo` | 19 | 3×SysCap | yes (embed stays Sys hard) |
+| `ooda/std/src/net/dns.oo` | 16 | 1×NetCap | yes (next net migrate wave) |
+| `ooda/std/os/sync.oo` | 34 | 5×ThreadCap | already granular (pre-G6) |
+| `ooda/std/os/thread.oo` | 27 | 5×ThreadCap | already granular (pre-G6) |
+
+Repo-wide monofile residual under external `std/` (not this OWN set):
+
+- **12** files >600 (hard ban residual) — mostly `src/ooda/sec/crypto/*`
+  monofile debt (tss 964, tpm 931, zkstark 854, …) + robot/slam, quantum/gates,
+  fin/credit. Pre-existing M172 / domain debt — **not** CAP-G6 facade OWN.
+- **62** files >256 soft under `std/`. Hygiene does **not** peel this pass
+  (charter: no mass deletes / no mass peel; DE mid-flight on G6 facades only).
+- Product `ooda/std/**` monofile: **0** over soft 256 (largest toml 144).
+
+========================================================================
+SPLIT GATE (not exercised this pass)
+========================================================================
+
+Rule: if OWN unit over soft lock and peel is **trivial + DE-authorized**,
+split at functional seams. Charter this pass: **no mass deletes / no mass peel**.
+
+| Unit | Over? | Trivial peel? | Action |
+|------|:-----:|:-------------:|--------|
+| all OWN five | no | n/a | none — max 76 lines |
+| std domain monofiles >600 | yes (12) | not trivial mass | **out of OWN**; residual M172 / crypto honesty — not G6 facade |
+
+Suggested DE (when authorized, not this hygiene pass):
+
+1. `process.oo` → prefer `&ProcessCap` on spawn/wait/kill/exec facades;
+   keep hard SysCap for prctl/epoll/inotify/python_embed (CAP-G4 map).
+2. `dns.oo` + remaining external net call sites still on `&NetCap`.
+3. Do **not** claim crypto monofile peel as CAP-G6 progress.
+
+========================================================================
+CAP-G6 SURFACE SNAPSHOT (hygiene observe — not prove)
+========================================================================
+
+Product facades (`ooda/std/os`) — dirty WIP migration:
+
+| Facade | Preferred (work tree) | Legacy residual |
+|--------|----------------------|-----------------|
+| `fs.oo` | FsReadCap (read/exists/size), FsWriteCap (write) | FsCap supersede (compat comment) |
+| `net.oo` | Http/Tcp/Udp/Bind per op | NetCap **only** `net_sock_raw` |
+| `process.oo` | **not migrated** | all SysCap |
+| `sync`/`thread` | ThreadCap (already) | — |
+
+External `std` twins:
+
+| Facade | Preferred (work tree) | Note |
+|--------|----------------------|------|
+| `src/fs.oo` | FsReadCap / FsWriteCap | mirrors product |
+| `src/net.oo` | HttpCap for http_get/net_get | mirrors product fetch facades |
+| `src/net/wireguard.oo` | UdpCap | fail-closed `process_exit(1)`; **not** product crypto |
+
+Honesty cross-check vs prior batch audits (`audit/std_caps_batch_2.oot`):
+
+- Batch-2 claimed migrate of `http_server` / `dns_server` / `mqtt` /
+  `websocket` / `quic` under `std/src/net/`.
+- **Live tree:** those five paths are **absent** from std tip `7ec1a61`
+  (`src/net/` contains only `wireguard.oo`). Hygiene records this as
+  **audit-vs-tree residual** — do not re-claim those five as landed.
+- Live CAP-G6 progress that **is** present: product `std/os/{fs,net}` +
+  external `src/{fs,net,net/wireguard}` dirty migration above.
+
+No new smoke `scripts/cap_g6_*.sh` on tree. Product prove remains G1/G2
+smokes + future DE G6 facade smoke (integration/peer lane). Hygiene only
+`bash -n`s existing related smokes.
+
+SPRINT honesty residual (not closed by this hygiene pass):
+
+- CAP-G6 = continue std migration to granular caps with honesty notes.
+  Partial facade migrate (fs+net product + external twins) is **WIP progress**,
+  not SPRINT FIXED.
+- `process.oo` still SysCap; dns + broad domain libs still legacy.
+- External std monofile >600 crypto/domain debt orthogonal (no greenwash
+  evaluate-success as crypto — wireguard still process_exit).
+- No push; no claim beta/T5 close.
+
+========================================================================
+bash -n (related CAP-G / std smokes — no new G6)
+========================================================================
+
+```
+# No NEW cap_g6_*.sh present (honest residual)
+
+# CAP-G1..G5 + caps floors
+bash -n scripts/cap_g1_net_granular_smoke.sh  # OK  105
+bash -n scripts/cap_g2_fs_granular_smoke.sh   # OK  112
+bash -n scripts/cap_g3_grant_inject_smoke.sh  # OK  130
+bash -n scripts/cap_g4_process_smoke.sh       # OK   66
+bash -n scripts/cap_g5_seccomp_honesty_smoke.sh # OK  35
+bash -n scripts/caps_matrix_smoke.sh          # OK  240
+bash -n scripts/caps_product_floor_smoke.sh   # OK   29
+bash -n scripts/cap_forge_path_a_smoke.sh     # OK   80
+
+# std + fs + runtime floors (CAP-G6-adjacent)
+bash -n scripts/fs_writedir_smoke.sh          # OK  142
+bash -n scripts/runtime_zt_t3_smoke.sh        # OK  284
+bash -n scripts/hygiene_t4_smoke.sh           # OK  114
+bash -n scripts/std_smoke.sh                  # OK   47
+bash -n scripts/std_archive_smoke.sh          # OK   80
+bash -n scripts/std_markup_smoke.sh           # OK   91
+bash -n scripts/std_semver_smoke.sh           # OK   73
+bash -n scripts/std_split_residual_smoke.sh   # OK   14
+bash -n scripts/tcp_io_smoke.sh               # OK   65
+bash -n scripts/libfloor_net_smoke.sh         # OK  181
+bash -n scripts/sys_exec_env_filter_smoke.sh  # OK  125
+bash -n scripts/sys_syscall_path_a_smoke.sh   # OK  133
+# all present: exit 0
+```
+
+ALL_BASHN_OK = true (20/20)
+NEW_CAP_G6_SMOKE_SH = **none** (recommend DE add `cap_g6_std_facade_smoke.sh`
+when landing: static preferred-cap markers on `std/os/{fs,net}.oo` + soft
+oodac check fixtures under `$HOME/.cache/ooda-tmp`)
+
+========================================================================
+/tmp + SECRETS
+========================================================================
+
+### OWN dirty five
+
+Scan secret-like patterns (`password=`, `BEGIN *PRIVATE`, api keys) + `/tmp`:
+
+  - `ooda/std/os/fs.oo` — **clean**
+  - `ooda/std/os/net.oo` — **clean**
+  - `std/src/fs.oo` — **clean**
+  - `std/src/net.oo` — **clean**
+  - `std/src/net/wireguard.oo` — **clean** (empty `private_key: ""` in residual
+    struct init is **not** a secret material leak; process_exit gate remains)
+
+### Related CAP-G smokes
+
+G1/G2/G4/G5 prefer non-/tmp temps:
+
+  `export TMPDIR="${TMPDIR:-$HOME/.cache/ooda-tmp}"`
+
+No password/key/token material in script bodies (syntax-only pass this lane).
+
+VERDICT `/tmp` secrets: **PASS**
+
+========================================================================
+ACTIONS / NON-ACTIONS THIS PASS
+========================================================================
+
+| Action | Result |
+|--------|--------|
+| Measure OWN five line locks | **done** — 36/76/19/19/67 all under soft |
+| Flag soft/pack residual on OWN | **none** (OWN all under soft+pack) |
+| Note external monofile >600 residual | **named** (12 files; not OWN peel) |
+| Split oversize OWN units | **none** (not over; no peel) |
+| Mass deletes (bak, /tmp, domain monofiles) | **none** |
+| `bash -n` new CAP-G6 smoke | **N/A** (none present) |
+| `bash -n` related smokes | **20/20 OK** |
+| Purge `/tmp` secrets from committed surface | already clean; no edit |
+| Product / std source edits | **none** (hygiene audit only) |
+| Mark SPRINT CAP-G6 closed | **no** (partial facade WIP; process/dns residual) |
+| Push | **no** |
+| Audit write | **this file only** |
+
+========================================================================
+RETURN — COMPACT
+========================================================================
+
+```
+SCOPE   CAP-G6 OWN five dirty  ooda=aa97009+WIP  std=7ec1a61+WIP  openOODA=8532787
+OWN     os/fs=36  os/net=76  std/fs=19  std/net=19  wireguard=67  total=217
+ΔHEAD   fs=+2  net=+4  std/fs=+2  std/net=+1  wg=+9  (granular preferred dirty)
+>600    0 OWN   PASS hard ban  (12 external domain monofiles residual, not OWN)
+>300    0 OWN   PASS pack
+>256    0 OWN   PASS soft  (worst net +180 headroom)
+BASHN   no new cap_g6 smoke; related 20/20 OK
+/tmp    PASS  no secrets; G smokes use ~/.cache/ooda-tmp
+SPLIT   none (under soft)
+PUSH    no
+CAP-G6  residual — product fs+net facades WIP granular; process still SysCap;
+        dns NetCap; batch2 five net paths absent from tip (audit honesty);
+        wireguard UdpCap + process_exit (not crypto); hygiene measure only
+OVERALL HONEST RESIDUAL PASS
+```
+
+end of cap_g6_hygiene.oot

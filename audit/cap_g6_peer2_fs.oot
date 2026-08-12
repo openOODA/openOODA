@@ -1,0 +1,277 @@
+# cap_g6_peer2_fs.oot
+# QA Peer 2 — FS Migration Verify (CAP-G6)
+# Date: 2026-08-12T13:46Z
+# Role: QA Peer Verifier 2 (FS Migration Verify)
+# Tree: ooda/std/os/fs.oo + std/src/fs.oo + oodac sealed map + runtime
+# OWN: prove fs_read→FsReadCap, fs_write→FsWriteCap, **no FsRead on write**.
+#      Write this audit only. No product/std edits. No push.
+# Mandate (SPRINT CAP-G6): continue std migration to granular caps; land with
+#   honesty notes; CAP-G2 floor must stay green under migration.
+
+========================================================================
+SUMMARY
+========================================================================
+
+| # | Claim | Expected | Actual | VERDICT |
+|---|--------|----------|--------|---------|
+| 1 | **fs_read / read path uses FsReadCap** | sig + sealed map + live allow | `fs_read_file(fs: &FsReadCap)` both trees; `sealed_fs_kind_of("fs_read"\|"read_file")→FsReadCap`; check ALLOW dual-repro | **PASS** |
+| 2 | **fs_write / write path uses FsWriteCap** | sig + sealed map + live allow | `fs_write_file(fs: &FsWriteCap)` both trees; `sealed_fs_kind_of("fs_write"\|"write_file")→FsWriteCap`; check ALLOW dual-repro | **PASS** |
+| 3 | **No FsRead on write** | write never typed/authorized by FsReadCap | static: zero `FsReadCap` on write sigs; check DENY `FsReadCap`+`write_file`/`fs_write` (dual-repro rc=1 prefer `&FsWriteCap`); runtime `require_fswrite` rejects `g_tok_fsread` | **PASS** |
+| 4 | CAP-G2 floor still green under CAP-G6 WT | smoke exit 0 | `cap_g2_fs_granular_smoke.sh` **PASSED** | **PASS** |
+| 5 | Probe/size also FsReadCap (ooda std) | path_exists/file_size → FsReadCap | `fs_path_exists`/`fs_file_size` take `&FsReadCap`; live path_size ALLOW/DENY | **PASS** |
+
+**OVERALL: PASS** — CAP-G6 FS thin-wrapper migration matches CAP-G2 preferred map.
+**No peer code fix required. No push.**
+
+CRIT dual-repro: FsReadCap↛write (prefer FsWriteCap) and FsWriteCap↛read (prefer FsReadCap)
+both rc=1 twice.
+
+========================================================================
+METHOD
+========================================================================
+
+1. Static read of migrated WT files:
+   - `/home/jeryd/Projects/openOODA/ooda/std/os/fs.oo` (dirty vs tip)
+   - `/home/jeryd/Projects/openOODA/std/src/fs.oo` (dirty vs tip)
+2. Static sealed map: `ooda/oodac/check_cap_util.oo` `sealed_fs_kind_of`.
+3. Static runtime: `chs_rt_fs.c` op→require; `chs_rt_sys.c` require bodies.
+4. Live `oodac check` matrix under `/tmp/cap_g6_peer2_fs/` (product host).
+5. Dual-repro deny fixtures (two runs each).
+6. Regression: `OODAC_BIN=./oodac/oodac bash scripts/cap_g2_fs_granular_smoke.sh`.
+7. Honesty residual scan: `fs_read`/`fs_write` free-name vs product `read_file`/`write_file`.
+
+No ooda/std/openOODA product edits by this peer. No push.
+
+========================================================================
+HOST / TIP / WT CONTEXT
+========================================================================
+
+| Item | Value |
+|------|--------|
+| ooda tip | `aa97009` `fix(cap-g5): remove dead non-compiling seccomp stub from emit preamble` |
+| std tip | `7ec1a61` (WT dirty: `src/fs.oo` CAP-G6 migrate) |
+| openOODA tip | `8532787` |
+| Product host | `ooda/oodac/oodac` **962680** B @ 2026-08-12 06:41:59 -0700 |
+| Host md5 | `7e1ce7df9bd366b607f35724e0efe80b` |
+| Prove fixtures | `/tmp/cap_g6_peer2_fs/*.oo` (ephemeral) |
+| CAP-G6 DE migrate (observed WT, not this peer) | ooda `std/os/fs.oo` + std `src/fs.oo` FsCap→granular |
+| Peer OWN | audit only |
+
+### WT migration delta (observed — DE/other peer)
+
+**ooda/std/os/fs.oo** (`git diff` dirty):
+- `fs_write_file`: `&FsCap` → **`&FsWriteCap`**; body `write_file(...)`
+- `fs_read_file`: `&FsCap` → **`&FsReadCap`**; body `read_file(...)`
+- `fs_path_exists` / `fs_file_size`: `&FsCap` → **`&FsReadCap`**
+
+**std/src/fs.oo** (dirty):
+- `fs_write_file`: `&FsCap` → **`&FsWriteCap`**; body **`fs_write(...)`**
+- `fs_read_file`: `&FsCap` → **`&FsReadCap`**; body **`fs_read(...)`**
+
+========================================================================
+1) STATIC — signatures: read=FsReadCap, write=FsWriteCap, no FsRead on write
+========================================================================
+
+### ooda/std/os/fs.oo (product-aligned sealed names)
+
+```
+pub fn fs_write_file(fs: &FsWriteCap, ...)  → write_file(fs, ...)
+pub fn fs_read_file(fs: &FsReadCap, ...)    → read_file(fs, ...)
+pub fn fs_path_exists(fs: &FsReadCap, ...)  → path_exists(fs, ...)
+pub fn fs_file_size(fs: &FsReadCap, ...)    → file_size(fs, ...)
+```
+
+Static grep prove:
+```
+OK no FsReadCap on write signatures
+OK reads use FsReadCap
+```
+
+### std/src/fs.oo (repo std facade)
+
+```
+pub fn fs_write_file(fs: &FsWriteCap, ...)  → fs_write(fs, ...)
+pub fn fs_read_file(fs: &FsReadCap, ...)    → fs_read(fs, ...)
+```
+
+**Claim 1+2 (sig):** PASS — write params are FsWriteCap only; read params are FsReadCap only.
+**Claim 3 (sig):** PASS — no write function takes `&FsReadCap`.
+
+========================================================================
+2) STATIC — sealed map + runtime (CAP-G2 contract that CAP-G6 threads into)
+========================================================================
+
+### check: sealed_fs_kind_of (`oodac/check_cap_util.oo`)
+
+| Sealed name | Preferred kind |
+|-------------|----------------|
+| `read_file` | **FsReadCap** |
+| `fs_read` | **FsReadCap** |
+| `path_exists` | **FsReadCap** |
+| `file_size` | **FsReadCap** |
+| `write_file` | **FsWriteCap** |
+| `fs_write` | **FsWriteCap** |
+
+Helpers: `cap_fs_granted_ok` / `cap_fs_argflow_ok` accept **exact preferred OR legacy FsCap**.
+**No inverted bag:** FsReadCap does not authorize write; FsWriteCap does not authorize read.
+
+### runtime (`chs_rt_fs.c` + `chs_rt_sys.c`)
+
+| Op | Require | Accepts |
+|----|---------|---------|
+| `oo_read_file` | `oo_cap_require_fsread` | `g_tok_fsread` **or** `g_tok_fs` |
+| `oo_write_file` | `oo_cap_require_fswrite` | `g_tok_fswrite` **or** `g_tok_fs` |
+| path_exists / file_size | `oo_cap_require_fsread` | same as read |
+
+Wrong granular (`g_tok_fsread` on write / `g_tok_fswrite` on read) → `ERR\tcap\t…` + exit 1.
+Write still gated by `OODA_FS_WRITEDIR` after require (policy overlay; not a Cap type).
+
+**Claim 1+2 (map/runtime):** PASS.
+**Claim 3 (runtime):** PASS — write path never calls `require_fsread`.
+
+========================================================================
+3) LIVE CHECK MATRIX (product host `oodac/oodac`)
+========================================================================
+
+Command pattern:
+```
+cd /home/jeryd/Projects/openOODA/ooda
+OODAC=./oodac/oodac
+$OODAC check /tmp/cap_g6_peer2_fs/<fixture>.oo
+```
+
+| Fixture | Intent | rc | Prefer-kind / note | Verdict |
+|---------|--------|---:|--------------------|---------|
+| `wrap_read_ok` | thin `fs_read_file(&FsReadCap)→read_file` | 0 | — | **PASS** (×2) |
+| `wrap_write_ok` | thin `fs_write_file(&FsWriteCap)→write_file` | 0 | — | **PASS** (×2) |
+| `wrap_read_wrong` | write body with only FsReadCap | 1 | **FsWriteCap** | **PASS DENY** (×2) |
+| `wrap_write_wrong` | read body with only FsWriteCap | 1 | **FsReadCap** | **PASS DENY** |
+| `cross_fsread_on_write_sig` | `write_file` under FsReadCap | 1 | **FsWriteCap** | **PASS DENY** (×2) |
+| `fsread_read_ok` | FsReadCap + read_file | 0 | — | **PASS** |
+| `fswrite_write_ok` | FsWriteCap + write_file | 0 | — | **PASS** |
+| `fsread_write_file_deny` | FsReadCap + write_file | 1 | **FsWriteCap** | **PASS DENY** (×2) |
+| `fswrite_read_file_deny` | FsWriteCap + read_file | 1 | **FsReadCap** | **PASS DENY** (×2) |
+| `fscap_both_ok` | legacy FsCap supersede both | 0 | — | **PASS** |
+| `method_ok` | method form read/write correct caps | 0 | — | **PASS** |
+| `method_fsread_write_deny` | `fs.write_file` with FsReadCap | 1 | **FsWriteCap** | **PASS DENY** |
+| `method_fswrite_read_deny` | `fs.read_file` with FsWriteCap | 1 | **FsReadCap** | **PASS DENY** |
+| `path_size_ok` | path_exists+file_size + FsReadCap | 0 | — | **PASS** |
+| `path_size_fswrite_deny` | path_exists + FsWriteCap | 1 | **FsReadCap** | **PASS DENY** |
+
+Deny message sample (FsReadCap on write — dual-repro identical):
+```
+ERR capability Security Capability Violation: Function 'bad' calls sealed
+effectful builtin 'write_file' which requires a &FsWriteCap parameter, but
+none was declared … Default-deny: grant the capability token explicitly.
+rc=1
+```
+
+### Alias free-names `fs_read` / `fs_write` (honesty residual)
+
+| Call | Cap wrong | Check result | Cap correct |
+|------|-----------|--------------|-------------|
+| `fs_write` + FsReadCap | **DENY** prefer FsWriteCap | sealed map live | type: `undefined variable 'fs_write'` (not in `tc_names`) |
+| `fs_read` + FsWriteCap | **DENY** prefer FsReadCap | sealed map live | type: `undefined variable 'fs_read'` |
+
+**Interpretation:** sealed **cap map** includes alias names (`fs_read`/`fs_write`) for
+fail-closed preferred kinds, but product free builtins registered in `tc_names.oo`
+are **`read_file` / `write_file` only**. ooda thin wrappers correctly call product
+names. **std/src/fs.oo residual:** bodies call `fs_read`/`fs_write` (alias names) —
+signature migration PASS; body names are honesty residual (prefer `read_file`/
+`write_file` like ooda/std/os/fs.oo, or register aliases in tc/emit). **Not** a
+FsRead-on-write hole: wrong-cap still DENY via sealed map; correct-cap type-fails
+rather than fail-open.
+
+========================================================================
+4) CAP-G2 FLOOR REGRESSION (must-stay-green under CAP-G6)
+========================================================================
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/cap_g2_fs_granular_smoke.sh
+# exit 0
+```
+
+```
+OK static sealed_fs_kind_of map (read_file→FsReadCap)
+OK static sealed_fs_kind_of map (write_file→FsWriteCap)
+OK static runtime require_fsread / oo_cap_require_fsread
+OK check deny FsReadCap+write_file
+OK check deny FsWriteCap+read_file
+OK check allow FsCap+read+write
+OK check allow FsReadCap+read_file
+OK check allow FsWriteCap+write_file
+OK check allow FsCap+read_file (legacy)
+OK check allow FsCap+write_file (legacy)
+OK ci_product soft-wire present
+cap_g2_fs_granular_smoke: PASSED
+```
+
+**Floor holds** while CAP-G6 std FS wrappers migrate off legacy FsCap.
+
+========================================================================
+5) CLAIM TRACE (assigned prove)
+========================================================================
+
+### "fs_read uses FsReadCap"
+1. Map: `sealed_fs_kind_of("fs_read")` / `("read_file")` → `"FsReadCap"`.
+2. Sig: `fs_read_file(fs: &FsReadCap, …)` in both std trees.
+3. Runtime: read path → `oo_cap_require_fsread` (accepts FsReadCap or FsCap).
+4. Live: FsReadCap + read_file **ALLOW** rc=0 (dual).
+→ **PROVED.**
+
+### "fs_write uses FsWriteCap"
+1. Map: `sealed_fs_kind_of("fs_write")` / `("write_file")` → `"FsWriteCap"`.
+2. Sig: `fs_write_file(fs: &FsWriteCap, …)` in both std trees.
+3. Runtime: write path → `oo_cap_require_fswrite` (accepts FsWriteCap or FsCap).
+4. Live: FsWriteCap + write_file **ALLOW** rc=0 (dual).
+→ **PROVED.**
+
+### "no FsRead on write"
+1. Sig: no `fs_write_file(fs: &FsReadCap, …)` in either tree.
+2. Check: FsReadCap + write_file/fs_write → **DENY** prefer `&FsWriteCap` (dual).
+3. Method: `fs.write_file` with only FsReadCap → **DENY**.
+4. Runtime: `oo_write_file` calls `require_fswrite`, not `require_fsread`;
+   `g_tok_fsread` fails closed on write (CAP-G2 peer2 prior C2/C5).
+5. Hypothetical wrong wrapper typed FsReadCap with write body → live DENY.
+→ **PROVED.**
+
+========================================================================
+RESIDUALS (honesty — not CRIT for this peer claim)
+========================================================================
+
+| Residual | Severity | Note |
+|----------|----------|------|
+| std/src/fs.oo body uses `fs_read`/`fs_write` free names | LOW honesty | Product builtins are `read_file`/`write_file`; ooda/std/os/fs.oo correct. Align body names next wave. |
+| Free `fs_read`/`fs_write` not in `tc_names` | LOW | Cap map fail-closed on wrong granular; correct-cap type-errors. Not fail-open. |
+| Legacy FsCap still supersedes soft-granular | BY DESIGN | One-wave compat (CAP-G2); CAP-G6 migrates *preferred* call sites. |
+| OS isolation / landlock / seccomp | OUT OF SCOPE | CAP-G5 residual; process-local tokens only. |
+| Broader std still FsCap/NetCap/SysCap elsewhere | CAP-G6 open | This peer scoped FS thin wrappers only. |
+| Emit type→grant residual for some names | CAP-G3 path-A landed | Not re-opened here. |
+
+========================================================================
+VERDICT
+========================================================================
+
+| Item | Status |
+|------|--------|
+| fs_read / read path → **FsReadCap** | **PASS** (sig + map + runtime + live) |
+| fs_write / write path → **FsWriteCap** | **PASS** (sig + map + runtime + live) |
+| **No FsRead on write** | **PASS** (sig + dual-repro DENY + runtime require_fswrite) |
+| CAP-G2 smoke floor | **PASS** exit 0 |
+| Peer product/std fix | **none** |
+| Push | **none** |
+| CAP-G6 fully FIXED (all std) | **not claimed** — FS thin-wrapper migration **verified**; broader std residual |
+| **OVERALL** | **PASS** |
+
+### Leave-off (≤15 lines)
+
+- CAP-G6 Peer2 FS: std thin wrappers migrated to preferred granular caps.
+- **read** = `&FsReadCap` (`fs_read_file` / path / size); **write** = `&FsWriteCap`.
+- Sealed map + runtime require match CAP-G2; wrong granular fail-closed.
+- Live dual-repro: FsReadCap↛write (prefer FsWriteCap); FsWriteCap↛read.
+- CAP-G2 smoke still green under migration WT.
+- Residual: std/src/fs.oo still calls alias `fs_read`/`fs_write` free names
+  (ooda uses product `read_file`/`write_file`); not an FsRead-on-write hole.
+- Audit only; **no push**.
+
+end of cap_g6_peer2_fs.oot
