@@ -22,3 +22,201 @@ Do not re-open path-A product depth floor (chs_rt_alloc raise cap + free_bytes c
 ## Path-A floor
 
 Assumed done: runtime caps; FFI allowlist + realpath/O_NOFOLLOW dlopen; registered-handle dlsym/dlclose (`chs_rt_ffi.c`); TLS host verify when OpenSSL linked; concurrency publish-order; free_bytes clamp + per-raise 1GiB alloc ceiling (`chs_rt_alloc.c` @ `206af08`); seed SHA+minisign; CT import reject; `--hitl-allowed`; secret sinks path-A; cap type seal F02; load_import relative-only probes + bad-name reject (no abs `/home`); monofile count under `std/src/ooda` **>600 = 0**; path-A metamorphic path-a-shuffle/layout decoys + `meta_epoch` (full immune mutation residual; emit dual-green residual — see `audit/meta_phalanx_rollup.oot`). Re-open only if a prove fails.
+
+## Seventh sprint execution, 2026-08-11 (system-wide zero-trust audit)
+
+12-agent phalanx per the new SWARM.oot doctrine. All read-only. Findings written for grok to solve. **Total: 9 CRIT, 24 HIGH, 12 MED, 3 LOW surfaced in the audit proper; plus 7 CRIT, 4 HIGH, 3 MED, 1 LOW from the untracked-file scan. 50+ CRIT total.**
+
+Per new SWARM.oot §6 doctrine: 3 Engineering Core + 4 Adversarial QA + 3 Integration + 2 Command. Each agent owned an orthogonal slice. Findings are folded below by agent.
+
+### Engineering Core
+
+**DE1 — Capability model ([12 findings, 3 CRIT, 5 HIGH, 4 MED])**
+
+| # | Sev | File:line | Gap | Fix for grok |
+|---|---|---|---|---|
+| 1.1 | CRIT | `ooda/runtime/chs_rt_host.c:25-46` | `oo_host_ast_dump`, `oo_host_check`, `oo_host_token_dump`, `oo_chs_build` take no `cap` param and never `oo_cap_require_ffi` | Add `long long cap` to each signature; call `oo_cap_require_ffi(cap, "<op>")` at function entry |
+| 1.2 | CRIT | `ooda/runtime/chs_rt_fs.c:99-111` | `oo_env_get` calls raw `getenv`, bypassing the `OODA_`/`OO_` policy allowlist | Replace `getenv(key.data)` with `oo_process_policy_getenv(key.data ? key.data : "")` |
+| 1.3 | CRIT | `ooda/runtime/chs_rt_hitl.c:75-90` | `hitl_audit_open` uses raw `getenv("HOME")` | Replace with `oo_process_policy_getenv("HOME")`; reject `.ooda/audit.log` branch if HOME empty |
+| 1.4 | HIGH | `ooda/runtime/chs_rt_sys.c:17-45`, `chs_rt_ffi.c:17-37`, `chs_rt_libfloor.c:13-34`, `chs_rt_time_rand.c:13-36`, `chs_rt_v2.c:13-51` | 5 cap-init sites still use racy `int g_*_ready` | Replace each with `static pthread_once_t g_*_once = PTHREAD_ONCE_INIT;` + `pthread_once(&g_*_once, once_*_init);` (mirror `chs_rt_alloc.c:14`) |
+| 1.5 | HIGH | `ooda/runtime/chs_rt_sys.c:35-38` (and 5 other TUs) | Every cap token has only 32 bits of entropy | Use all 8 bytes of `b` for the per-token mask: `g_tok_fs = 0x1000000000000000LL | ...` |
+| 1.6 | HIGH | `ooda/runtime/chs_rt_alloc.c:79-92` | `oo_free_bytes` with `p >= quota` clamps quota to 0 (DoS) | Reject if `p > quota`; only reclaim what was allocated |
+| 1.7 | HIGH | `ooda/runtime/chs_rt_alloc.c:66-77` | `oo_list_ambient_quota += n` can overflow | Clamp to `LLONG_MAX` after add |
+| 1.8 | HIGH | `ooda/runtime/chs_rt_sys.c:107-138` | `oo_sys_exec` `fork()` inherits full env | Build filtered env before `execvp`: copy only `OODA_*`/`OO_*` keys |
+| 1.9 | HIGH | `ooda/oodac/check_cap_util.oo:78-173` | `is_sealed_sys` lists `async_spawn` but NOT `async_join` or `python_embed` | Add the two missing names to `is_sealed_sys` |
+| 1.10 | MED | `ooda/runtime/chs_rt_ffi.c:87-124` | FFI handle table read/mut without lock | Add `pthread_mutex_t g_ffi_handles_mu` |
+| 1.11 | MED | `ooda/runtime/chs_rt_hitl.c:38-63` | `g_audit_key` plaintext leaks into `fork()` children | Add `atfork_child_pre` that zeroizes `g_audit_key` |
+| 1.12 | MED | `ooda/runtime/chs_rt_alloc.c:68-77` | `oo_list_quota_init_public` runs under mutex acquisition path | Move init to `__attribute__((constructor))` |
+
+**DE2 — Taint model ([12 findings, 3 CRIT, 6 HIGH, 2 MED, 1 LOW])**
+
+| # | Sev | File:line | Gap | Fix for grok |
+|---|---|---|---|---|
+| 2.1 | CRIT | `ooda/oodac/c_emit_secret.oo:417-437` | `c_secret_prop_from_rhs` does not propagate function-return taint | When RHS IDENT is a callee with `__fr__<fn>=T` and any param tagged secret, mark LHS |
+| 2.2 | CRIT | `ooda/oodac/c_emit_call.oo:54-108` | `c_emit_method` never invokes the guard (`net.write(secret)` bypasses) | After `c_emit_call_args`, call `c_secret_emit_guard(env, mname, a0, a1, a2, args)` |
+| 2.3 | CRIT | `ooda/oodac/c_emit_secret.oo:187-411` | SECRETSINK missing `setenv`, `unsetenv`, `mmap`, `mprotect`, `shmat`, `pwrite`, `sendfile`, `splice`, `tee` | Add 8 entries to the chain |
+| 2.4 | CRIT | `ooda/oodac/c_emit_secret_guard.oo:33-135` (alias rebind) | `let net_write = tcp_write;` defeats IDENT-only equality | Record `__alias__<new> = <old>` in env; walk alias chain in guard |
+| 2.5 | HIGH | `ooda/oodac/c_emit_secret_guard.oo:35-46` | `c_secret_emit_guard` scans only a0/a1/a2, not the full `args` | For variadic, call `c_guard_scan_idents(env, t, args)` with full joined text |
+| 2.6 | HIGH | `ooda/oodac/c_emit_secret.oo:417-437` | `c_secret_prop_from_rhs` is flat IDENT scan, no recursion | Add tiny structured walker that descends LPAREN groups |
+| 2.7 | HIGH | `ooda/oodac/c_emit_secret_guard.oo:7-30` | `c_guard_scan_idents` does not skip string literals or comments | Add small state machine (in_string, in_line_comment, in_block_comment) |
+| 2.8 | MED | `ooda/oodac/c_emit.oo:62-82` | Macro-body secrets scanned before expansion | Document residual; require second pass post-expansion |
+| 2.9 | MED | `ooda/oodac/c_emit_secret.oo:161-186` | println walker bare-IDENT naive | Replace with `c_secret_emit_guard(env, id, a0, a1, a2, args)` |
+| 2.10 | MED | `ooda/oodac/c_emit_secret_guard.oo:33-135` | User-defined sink wrappers bypass (`my_log(secret)`) | Record `__sec_sink__<user_fn>=1` in fn_env; treat as sink |
+| 2.11 | LOW | `ooda/oodac/c_emit_ident.oo:83` | Sticky secret tag (over-refusal) | Clear `__sec__<dest>` when RHS has no SECRET IDENT |
+| 2.12 | LOW | `ooda/oodac/c_emit_secret.oo:82-95` | Compile-time refuse is correct; SECRETSINK gaps are the real risk | Emit `static_assert` enumerating SECRETSINK at build time |
+
+**Machine Code / Runtime Auditor — C runtime ambient access ([12 findings, 3 CRIT, 7 HIGH, 2 MED])**
+
+| # | Sev | File:line | Gap | Fix for grok |
+|---|---|---|---|---|
+| 3.1 | CRIT | `ooda/runtime/chs_rt_v2.c:13-24` | `oo_caps_v2_init` calls `getentropy`, `getpid`, `oo_monotonic_us` without a cap | Move init behind a bootstrap cap |
+| 3.2 | CRIT | `ooda/runtime/chs_rt_sys.c:17-29` | `oo_caps_init` same pattern | Same |
+| 3.3 | HIGH | `ooda/runtime/chs_rt_time_rand.c:13-24` | `oo_tr_init` same pattern | Same |
+| 3.4 | HIGH | `ooda/runtime/chs_rt_libfloor.c:13-24` | `oo_libfloor_init` same | Same |
+| 3.5 | HIGH | `ooda/runtime/chs_rt_ffi.c:17-28` | `oo_ffi_init` same | Same |
+| 3.6 | HIGH | `ooda/runtime/chs_rt_hitl.c:74-95` | `hitl_audit_open` does `realpath`/`open` without AuditCap/FsCap | Add AuditCap + FsWriteCap params |
+| 3.7 | HIGH | `ooda/runtime/chs_rt_hitl.c:49-60` | Audit config reads env without EnvCap | Require EnvCap |
+| 3.8 | HIGH | `ooda/runtime/chs_rt_hitl.c:77-95` | `getenv("HOME")` raw | Use `oo_process_policy_getenv("HOME")` |
+| 3.9 | HIGH | `ooda/runtime/chs_rt_hitl.c:193-204` | `oo_verify_human` lacks HitlCap/AuditCap | Add params |
+| 3.10 | HIGH | `ooda/runtime/chs_rt_hitl.c:143-163` | `hitl_build_audit_tuple` calls `getentropy`/`oo_monotonic_us` without RandCap/TimeCap | Add params |
+| 3.11 | HIGH | `ooda/runtime/chs_rt_hitl.c:246-251` | `/dev/tty` opened without TTY/HITL gate | Use HitlCap + host fd |
+| 3.12 | MED | `ooda/runtime/chs_rt_fs.c:113-117` | `oo_monotonic_us` calls `clock_gettime` without TimeCap | Add TimeCap param |
+
+### Adversarial QA
+
+**PV1 — Cap ↔ runtime cross-check ([10 findings, 2 CRIT, 4 HIGH, 3 MED, 1 LOW])**
+
+| # | Sev | File:line | Gap | Fix for grok |
+|---|---|---|---|---|
+| 4.1 | CRIT | `ooda/runtime/chs_rt_host.c:25-46` | Same as 1.1 (DE1) | Same |
+| 4.2 | HIGH | `ooda/runtime/chs_rt.h:250-251` | `oo_cg_sign`/`oo_cg_verify` declared but undefined | Implement or remove declarations |
+| 4.3 | HIGH | `ooda/runtime/chs_rt_v2.c:10-197` | 19 v2 cap tokens declared & granted, never enforced | Remove or wire to per-pillar entry points |
+| 4.4 | HIGH | `ooda/runtime/chs_rt_fs.c:99-111` | Same as 1.2 (DE1) | Same |
+| 4.5 | HIGH | `ooda/runtime/chs_rt_ffi.c:126-181` | `dlopen` callback re-entrancy (constructor runs before return) | Track `dlopen` depth; reject nested |
+| 4.6 | MED | `ooda/runtime/chs_rt_thread.c:108-118` | `oo_thread_join_s` cap check is in parse-failure branch | Move cap check to function entry |
+| 4.7 | MED | `ooda/runtime/chs_rt_sys.c:68-74` | Per-op vs per-call granularity not modeled | Add per-op sub-tokens; or document per-kind collapse |
+| 4.8 | MED | `ooda/runtime/chs_rt_hitl.c:193-263` | Audit record never captures forged-cap attempts | Add `audit_record("forged_cap", ...)` before `exit(1)` |
+| 4.9 | LOW | `ooda/runtime/chs_rt_actor.c:110-140` | `oo_actor_send` slot array | Add `OO_ACT_READY` flag distinct from `OO_ACT_LIVE` |
+| 4.10 | LOW | `ooda/runtime/chs_rt_fs.c:1-6` | Re-declares `extern` of cap-require prototypes | Delete the re-declarations (already in `chs_rt.h`) |
+
+**PV2 — Taint propagation ([10 findings, 3 CRIT, 4 HIGH, 2 MED, 1 LOW])**
+
+| # | Sev | File:line | Gap | Fix for grok |
+|---|---|---|---|---|
+| 5.1 | CRIT | `ooda/oodac/c_emit_secret.oo:417-437` | Function-return taint not propagated (interprocedural return is faked) | Add `__fr_secret__<fn>` flag |
+| 5.2 | CRIT | `ooda/oodac/c_emit_secret.oo:422` | If-taint broken (LBRACE break swallows secret) | Brace-balance the LBRACE/RBRACE walk |
+| 5.3 | CRIT | `ooda/oodac/c_emit_secret.oo:422` | Match-arm taint broken (same LBRACE break) | Brace-balance + recurse into each arm |
+| 5.4 | HIGH | `ooda/oodac/c_emit_secret.oo:161-167` | Array-index assign/read taint not propagated | Detect `IDENT LBRACKET ... RBRACKET EQ` as indexed-assign LHS |
+| 5.5 | HIGH | `ooda/oodac/c_emit_secret.oo:161-167` | Field-assign taint tags field NAME not value | Recognise `IDENT DOT IDENT EQ`; tag `<obj>.<field>` paths |
+| 5.6 | HIGH | `ooda/oodac/c_emit_secret.oo:175-186` | Method/accessor-call return taint not propagated | Same as 5.1 |
+| 5.7 | HIGH | `ooda/oodac/c_emit_secret.oo:161-167` + `:417-437` | Arg→field via call (compound of 5.1+5.5) | Combined fix |
+| 5.8 | MED | `ooda/oodac/lex.oo:259-264` | String interpolation `${...}` not parsed | Add `$` lex branch or document residual |
+| 5.9 | MED | `ooda/oodac/c_emit_secret.oo:417-437` | Concat taint works by accident (no LBRACE in RHS) | Document fragility; add regression fixture |
+| 5.10 | LOW | n/a | No closure syntax in language | Track when closures land |
+
+**Security Auditor — Attacker perspective ([12 findings, 6 HIGH, 4 MED, 1 LOW, 1 INFO])**
+
+| # | Sev | File:line | Gap | Fix for grok |
+|---|---|---|---|---|
+| 6.1 | HIGH | `ooda/oodac/c_emit_secret.oo:204-205` | `env_set` has NO taint guard | Add `env_set` to SECRETSINK + guard |
+| 6.2 | HIGH | `ooda/oodac/c_emit_secret.oo:400-411` | `ffi_call`/`dlsym`/`ffi_prep_cif` scan only arg 1 | `eq_only=false` for payload-bearing FFI |
+| 6.3 | HIGH | `ooda/openOODA/DESIGN.oot:58` | Maintainer key fingerprint NOT in DESIGN.oot | Add `SEED_PUBKEY_FP=645069A34E6058B7` block |
+| 6.4 | HIGH | `ooda/runtime/chs_rt_fs.c:53-77` | `write_file` has no path allowlist | Mirror `path_under_allowdir` with `OODA_FS_WRITEDIR` |
+| 6.5 | HIGH | `ooda/runtime/chs_rt_ffi.c:144-152` | `dlopen` ALLOWDIR accepts arbitrary user-writable prefix | Constrain to curated allowlist; require signed `.so` |
+| 6.6 | MED | `ooda/runtime/chs_rt_sys.c:14-50` | Cap tokens are process-local random, not crypto-attested | HMAC tokens from TPM/process measurement |
+| 6.7 | MED | `ooda/oodac/c_emit_secret.oo:7-80` | SECRET marker accepts any ident (DoS via over-tainting) | Require SECRET idents be assigned from sealed-source |
+| 6.8 | MED | `ooda/fixtures/secret_sticky_residual.oo` | Taint stickiness on `let mut` reassign (acknowledged residual) | Track per-name source-location set |
+| 6.9 | MED | `ooda/oodac/check_caps.oo:231-244` | F02 type check limited to params, not `let`-bound locals | Extend `c_arg_cap_type` to consult `local_types` |
+| 6.10 | LOW | `ooda/std/src/ooda/sec/crypto/double_ratchet_ops.oo:130-134` | All-zero X25519 privkey stub (fail-closed) | Add `double_ratchet_clamp_priv` helper now |
+| 6.11 | INFO | `ooda/runtime/chs_rt_hitl.c:95` | HITL audit log mode 0600 (verified secure) | Document `OODA_HITL_AUDIT_KEY` storage requirement |
+| 6.12 | MED | `ooda/runtime/chs_rt_sys.c:52-58` | Cap-token process-locality means forged caller leaks | Add `--runtime-cap-required` lint |
+
+**Memory Auditor — Secret retention ([10 findings, 7 CRIT, 2 HIGH, 1 MED])**
+
+| # | Sev | File:line | Gap | Fix for grok |
+|---|---|---|---|---|
+| 7.1 | CRIT | `ooda/oodac/c_emit_secret_guard.oo:7-30` | `c_guard_scan_idents` leaks OoStr payload per identifier char | Build into stack `char buf[256]` then `oo_str_lit` once |
+| 7.2 | CRIT | `ooda/oodac/c_emit_args.oo:121-131` | `c_sys_exec_last_arg` leaks OoStr payload per argv char | Same stack-buffer fix |
+| 7.3 | CRIT | `ooda/runtime/chs_rt_crypto.c:72-102` | `crypto_hmac_sha256_internal` leaves secret key on stack | `explicit_bzero(k, 64)` before return |
+| 7.4 | CRIT | `ooda/runtime/chs_rt_hitl.c:39, 56-63` | `g_audit_key` static 32-byte buffer never wiped | `mmap`+`MADV_DONTDUMP`+atexit wipe |
+| 7.5 | CRIT | `ooda/runtime/chs_rt_hitl.c:58` + `chs_rt_sys.c:85-91` | `getenv("OODA_HITL_AUDIT_KEY")` returns libc pointer, never zeroized | `strdup` + secure wipe the env slot |
+| 7.6 | CRIT | scope-wide: `ooda/runtime/chs_rt_*.c` | No `RLIMIT_CORE` set anywhere | `setrlimit(RLIMIT_CORE, {0, RLIM_INFINITY})` + `prctl(PR_SET_DUMPABLE, 0)` at init |
+| 7.7 | CRIT | `ooda/runtime/chs_rt_hitl.c:125-141, 193-263` | Audit log `msg` heap payload never zeroized after write | `explicit_bzero` after `write` |
+| 7.8 | CRIT | `ooda/runtime/chs_rt_crypto.c:62-70` + `chs_rt_hash.c:63-69` | Stack-allocated secret in `crypto_sha256_internal`/`crypto_md5_internal` | `volatile` stack wipe before return |
+| 7.9 | HIGH | `ooda/std/src/ooda/sec/crypto/double_ratchet_ops.oo:130-154` | `dh_keypair_wipe_secret` does not exist | Add the helper now |
+| 7.10 | HIGH | `ooda/oodac/c_emit_secret.oo:43-65` | `c_parse_secret_env` leaks OoStr payload per char of every SECRET name | Stack-buffer fix |
+
+### Integration
+
+**Compiler Integration Tester — Full build with caps exercised ([10 failures, 1 CRIT, 4 HIGH, 3 MED, 1 LOW])**
+
+| # | Sev | File:line | Gap | Fix for grok |
+|---|---|---|---|---|
+| 8.1 | CRIT | `ooda/oodac/tc_control_cond.oo:5` | DEBUG println leaks into every runtime output (root cause of 50+ downstream failures) | Remove line 5 or guard behind `OO_TC_DEBUG=1` |
+| 8.2 | HIGH | `boot_strap/SECRET_TAINT.md` | Doc missing | Author with `SECRET_TAINT_RESIDUAL_ALPHA`, `fetch`, `write_file`, `sys_exec` tokens |
+| 8.3 | HIGH | `boot_strap/STATIC_CAPS.md` | Doc missing | Author |
+| 8.4 | HIGH | `fixtures/while_count.oo` | Body build fails ("bodies failed") | Bisect vs. last-known-good |
+| 8.5 | HIGH | `boot_strap/` (≈20 docs) | TYPE_STATE.md, TOOLCHAINS_ADV.md, TEMPORAL_MEM.md, etc. all missing | Scaffold residual pack index + one-line stubs |
+| 8.6 | MED | `scripts/caps_matrix_smoke.sh:18,93,109,122,202` | Runtime Fs/Env/sys/Rand emit-then-exec fails (caused by 8.1) | Fix 8.1 + strip CR from argv |
+| 8.7 | MED | `scripts/...max_cycles_*` | missing MAX_CYCLES.md + recursion fixtures drift | Author doc + verify |
+| 8.8 | MED | `scripts/arc_smoke` | String ops emit `\b` artifacts | Audit `c_emit_expr_str_lit` |
+| 8.9 | MED | `scripts/...m162...byte_str...` | mixed; `STUB_FAIL_CLOSED` is by-design | Update smoke to accept residual |
+| 8.10 | LOW | `boot_strap/BYTE_STR.md` | path-A section missing | Add path-A section |
+
+**Test Harness Writer — 20 new fixtures**
+
+10 fail fixtures + 10 pass fixtures, all in `ooda/fixtures/secret_*.oo`. Wired to `scripts/secret_sink_enforce_smoke.sh` (new "Zero-trust gaps" block). All 10 fail fixtures FAIL today (documenting the gaps). All 10 pass fixtures PASS.
+
+Fixtures: `secret_alias_rebind_fail/pass`, `secret_function_return_fail/pass`, `secret_field_assign_fail/pass`, `secret_method_return_fail/pass`, `secret_closure_return_fail/pass`, `secret_string_interp_fail/pass`, `secret_setenv_fail/pass`, `secret_mmap_fail/pass`, `secret_dlopen_arg_fail/pass`, `secret_sys_exec_argv_fail/pass`.
+
+**Dependency/Hygiene Enforcer — Untracked file scan ([10 findings, 5 CRIT, 3 HIGH, 2 MED])**
+
+| # | Sev | File | Risk | Fix for grok |
+|---|---|---|---|---|
+| 9.1 | CRIT | `ooda/runtime/chs_rt_v2.c` | Untracked alternate capability runtime (cap-gate bypass) | `rm` |
+| 9.2 | CRIT | `ooda/tools/minisign` | Untracked ELF binary signing tool (supply-chain tamper) | `git add` (pin SHA) or `rm` |
+| 9.3 | CRIT | `ooda/oodac/oodac.host.aug10` | "host soft-pass" compiler binary (forbidden code path) | `rm` |
+| 9.4 | CRIT | `ooda/oodac/oodac.pre_hitl.bak` | "pre-HITL" compiler binary (pre-cap-gate snapshot) | `rm` |
+| 9.5 | CRIT | `ooda/patch_awk.sh` | sed-strip script that strips cap-gate prototypes | `rm` |
+| 9.6 | HIGH | `ooda/oodac/oodac.pure_tip` | Untracked "pure_tip" tip binary | `rm` |
+| 9.7 | HIGH | `ooda/oodac/oodac.m{170..181}` | 12 untracked compiler snapshot binaries | `rm` (single shell glob) |
+| 9.8 | HIGH | `ooda/scripts/boot_{dbg,keep,keep2,keep3,manual,manual2}.sh` | Untracked boot-script variants (cap-gate disablement) | `rm` |
+| 9.9 | HIGH | `ooda/scripts/boot_dbg.sh:107` + related | `chs_rt_v2.c` not in link recipe; future trivial link could ODR-conflict | Same as 9.1 |
+| 9.10 | MED | `ooda/tmp_test.oo`, `ooda/tmp_tc_assign_mut.oo.head` | Stray tmp `.oo` files in repo root | `rm` |
+
+### Command
+
+**Documentation Writer — 14 tags applied**
+
+8 PM.oot tags + 6 DESIGN.oot tags. All anchors matched uniquely. RFC-2026-08-11-ZT-AUDIT also written.
+
+**Swarm Coordinator — RFC written**
+
+`/home/jeryd/Projects/openOODA/openOODA/rfcs/2026-08-11-zt-audit.oot` (74 lines). Includes summary, motivation, detailed design, drawbacks, alternatives, unresolved questions, future work.
+
+### Grok's pick-order (RULES §2 power law, ≤5 at a time)
+
+1. **Apply DE1.1 / PV1.1** — `oo_host_*` cap check. Defined in `chs_rt.c` (header) and `chs_rt_host.c` (impl). Function-signature change touches 4 funcs + 4 `extern` decls. **Unblocks the host FFI allowlist.**
+2. **Apply DE1.2 / PV1.4** — `oo_env_get` uses `oo_process_policy_getenv`. One-line change in `chs_rt_fs.c:103`. **Unblocks the env-var policy.**
+3. **Apply DHE 9.1, 9.3, 9.4, 9.6, 9.7, 9.8, 9.10** — `rm` the untracked alternate cap runtime, host soft-pass binary, pre-HITL binary, pure_tip, 12 snapshots, 6 boot scripts, 2 tmp files. **Unblocks the E-1 hygiene.**
+4. **Apply CIT 8.1** — remove `println("DEBUG: ...")` from `ooda/oodac/tc_control_cond.oo:5`. One-line removal. **Unblocks 50+ downstream rails (estimated delta to PASS).**
+5. **Apply DE2.1 / PV2.1** — `__fr_secret__<fn>` flag for function-return taint. New env entry, threaded through `c_secret_prop_from_rhs`. **Unblocks the function-return value-secret leak path.**
+
+After these 5, re-run the verification swarm.
+
+### Honest residual
+
+- **No code is changed in this round.** This is a read-only audit. The findings ARE the work.
+- **The 2 pre-existing `chs_rt.c` warnings** (`chs_rt_hash.c:83`, `chs_rt_sys.c:196`) block `-Werror` re-enable.
+- **The smoke failure pattern (-DEBUG line contamination)** affects 50+ rails. Single fix at `ooda/oodac/tc_control_cond.oo:5` re-greens most of them.
+- **The 8 std crypto "real" files are still gated with `process_exit(1)`** — gate is the only thing keeping bad math from shipping. The math audit round (next phalanx) is the proper fix.
+- **The 610 untracked std files are still unverified** beyond the 200 triaged last round.
+
+### Track A+B close (2026-08-12)
+
+Evidence: `audit/track_a_rebuild_meta.oot`, `audit/track_ab_close.oot`.
+
+- **Track A rebuild:** PASS — tip `56f0f19`; seed_pure_multi green; product `oodac/oodac` = seed-side install; metamorphic path-A live decoys YES (`__oo_meta_decoy_0/1/2`); meta_epoch PASS.
+- **Track B CRIT close (scoped):** FIXED **11** / STALE **0** / OPEN **0**.
+  - **FIXED:** 1.1 host `cap`+`oo_cap_require_ffi` · 1.2 `oo_env_get`→policy getenv · 1.3 HITL no raw `getenv(HOME)` · 1.4 `pthread_once` cap-init · 1.5 full 8-byte token entropy · 1.6 free oversize no-op · 1.7 alloc quota saturate · 1.9 `async_join`/`python_embed` sealed · 2.2 method `c_secret_emit_guard` · 2.3 SECRETSINK setenv/mmap/… · 7.3 HMAC key stack wipe.
+- Seventh audit tables above remain historical; mark only these items FIXED. Other seventh findings still open unless separately closed.

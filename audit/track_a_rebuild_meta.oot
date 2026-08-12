@@ -1,0 +1,128 @@
+# track_a_rebuild_meta.oot — Track A product oodac rebuild + metamorphic path-A live
+# Date: 2026-08-12T10:06:21Z
+# Worker: grok-build (Track A)
+# Cwd: /home/jeryd/Projects/openOODA/ooda
+
+## TIP SHA
+
+```
+git rev-parse HEAD         → 56f0f19f55473f8961b5614cf71267b1c96aebe4
+git rev-parse --short HEAD → 56f0f19
+git log -1 --oneline       → 56f0f19 feat: metamorphic path-A emit drive, decoy styles, runtime mix APIs
+```
+
+## PATH / tools
+
+- tools/minisign: not present under ooda/tools at run time (no PATH prepend needed)
+- seed binary used: bootstrap/seed/oodac (cold seed pure multi)
+- side rebuild out: /home/jeryd/.cache/ooda-tmp/oodac_from_seed
+- product install: oodac/oodac (previous tip backed up to oodac/oodac.bak)
+
+## COMMANDS (in order)
+
+### 1) bash scripts/seed_pure_multi_smoke.sh
+
+```
+exit: 0
+seed_pure_multi_smoke: seed=/home/jeryd/Projects/openOODA/ooda/bootstrap/seed/oodac
+seed_pure_multi_smoke: main=.../oodac/main.oo → side out=/home/jeryd/.cache/ooda-tmp/oodac_from_seed
+OK seed_pure_multi: cold seed pure multi rebuild green
+  seed:    .../bootstrap/seed/oodac
+  side:    /home/jeryd/.cache/ooda-tmp/oodac_from_seed
+  check:   .../bootstrap/corpus/check/pass/ok_main.oo → OK
+pure_build: unique_fns=406 from_modules=147
+OK_PURE_MULTI
+seed_pure_multi_smoke: PASSED (green)
+```
+
+Verdict: **PASS** — seed not broken; side binary executable (908656 bytes).
+
+### 2) Install side → product tip (prefer side rebuild then install)
+
+```
+cp -a oodac/oodac oodac/oodac.bak
+# direct cp failed: Text file busy → atomic:
+cp -a ~/.cache/ooda-tmp/oodac_from_seed oodac/oodac.new && mv -f oodac/oodac.new oodac/oodac
+```
+
+Installed:
+- oodac/oodac     → 908656 bytes (BuildID 48c440a8…; matches side)
+- oodac/oodac.bak → 878392 bytes (prior tip)
+
+Verdict: **PASS** — tip product binary is seed-rebuilt side.
+
+### 3) OODAC_BIN=./oodac/oodac bash scripts/metamorphic_path_a_smoke.sh
+
+```
+exit: 0
+OK doc marker
+OK fail-closed residual wording
+OK path-a directive documented
+OK meta_epoch documented
+OK metamorphic_emit still residual refuse
+OK c_emit_meta parser
+OK c_emit wires decoys
+OK runtime epoch
+OK meta in umbrella
+OK chs_rt_meta.c compiles
+OK emit-c path-a produces decoys
+OK ci_product wire
+metamorphic_path_a_smoke: PASSED
+```
+
+Verdict: **PASS** — including live branch "emit-c path-a produces decoys" (not stale skip).
+
+### 4) Live emit-c + decoy grep
+
+```
+./oodac/oodac emit-c fixtures/metamorphic_path_a.oo > /tmp/meta_emit.c 2>/tmp/e.err
+# erc=0; stderr empty; /tmp/meta_emit.c ~11074 bytes
+
+grep __oo_meta_decoy_ /tmp/meta_emit.c | head -5
+# static void __oo_meta_decoy_0(void) {
+# static void __oo_meta_decoy_1(void) {
+# static void __oo_meta_decoy_2(void) {
+
+grep -c __oo_meta_decoy_ /tmp/meta_emit.c → 3
+# lines: 142, 159, 192
+```
+
+Note: first attempt piped through `head -5` truncated tee output (0 decoys visible). Full redirect shows live decoys.
+
+Verdict: **PASS** — **live decoys appear** (3 symbols: __oo_meta_decoy_0/1/2).
+
+### 5) bash scripts/meta_epoch_smoke.sh
+
+```
+exit: 0
+OK epoch=-6696101869466515908 mix=5014590086324665681 path_a=0
+meta_epoch_smoke: PASSED
+```
+
+Verdict: **PASS**
+
+## RESULT SUMMARY
+
+| Step                         | Result |
+|-----------------------------|--------|
+| seed_pure_multi_smoke       | PASS   |
+| side install → oodac/oodac  | PASS   |
+| metamorphic_path_a_smoke    | PASS   |
+| emit-c live decoys          | PASS   |
+| meta_epoch_smoke            | PASS   |
+
+**OVERALL: PASS**
+
+## LIVE DECOYS?
+
+**YES — live decoys appear.**
+
+Rebuilt product `./oodac/oodac` (tip SHA 56f0f19, seed-side pure multi) emits three path-A layout decoys for `fixtures/metamorphic_path_a.oo`:
+
+- `__oo_meta_decoy_0`
+- `__oo_meta_decoy_1`
+- `__oo_meta_decoy_2`
+
+Seed path left green (cold seed multi rebuild OK; product tip is side install, not seed overwrite).
+
+end of track_a_rebuild_meta.oot
