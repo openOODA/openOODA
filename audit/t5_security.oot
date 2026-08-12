@@ -1,0 +1,235 @@
+# t5_security.oot — Security Auditor (Std Secrets & Supply)
+# Date: 2026-08-12T11:20:00Z
+# Role: Security Auditor — SPRINT T5 std honesty + secrets / supply-chain surface
+# Host: org std repo `/home/jeryd/Projects/openOODA/std` (tip `141f2ad`, main ahead origin 20)
+#       + product pure-path `ooda/std` (host tip `0bfd752`)
+# Surfaces: committed secrets, API keys, private keys, .env, cap-bypass scripts,
+#           secret-class gitignore, dummy/test key material, FFI/cap API shape
+# Method: adversarial filename + content greps + git index/history probes +
+#         live `std_honesty_t5_smoke.sh` (exit 0)
+# OWN fix: **none** — no CRITICAL secret or cap-bypass debris found. No push.
+
+---
+
+## Claim under pressure
+
+SPRINT **T5** (std honesty + ship):
+
+| Slice | Path-A expectation |
+|-------|--------------------|
+| Committed secrets / API keys / private keys | **None** in `std/` or `ooda/std` working tree or git index |
+| `.env` / dotenv / credential files | Absent; gitignored |
+| Cap-bypass / cap-strip scripts | Absent (`patch_awk`, `boot_dbg*`, `*cap_strip*`, `*cap_bypass*`) |
+| Gated crypto honesty | No "PRODUCTION READY" greenwash next to `process_exit` (smoke gate) |
+| Supply-chain binaries | No tracked ELF/so/host tools under std |
+
+Adversarial stance: treat every `secret_key` / hex blob / `password` string as a
+**candidate leak** until classified as type API, public curve constant, or dummy
+verify padding. Treat gitignore alone as **not** a seal without index proof.
+
+---
+
+## Surfaces reviewed
+
+| Surface | Path | Role |
+|---------|------|------|
+| Org std repo | `/home/jeryd/Projects/openOODA/std` | primary hunt (1136 `.oo` on disk; ~535 tracked) |
+| Product pure-path std | `/home/jeryd/Projects/openOODA/ooda/std` | thin sealed wrappers (32 tracked) |
+| std gitignore | `std/.gitignore` | `.env` family only for secrets class |
+| ooda gitignore | `ooda/.gitignore` | stronger: `*.sec`, minisign key globs (T4) |
+| Honesty gate | `std/scripts/std_honesty_t5_smoke.sh` | production-greenwash refuse |
+| Sec crypto / net | `std/src/ooda/sec/{crypto,net}/` | stub density + pending markers |
+| FFI stubs | `std/ffi/{c,cxx,jvm,python,wasm}.oo` | cap-free vs fail-closed |
+| Net / OAuth / SSH | `std/src/net/{oauth2,ssh,udp,tcp}.oo` | credential params vs hardcoded values |
+| Crypto top-level | `std/crypto/*.oo`, `ooda/std/core/crypto.oo` | fail-closed / path-A honesty |
+
+---
+
+## Explicit: sealed vs residual
+
+### Path-A **sealed** / **PASS** this pass
+
+| Gate | Evidence |
+|------|----------|
+| No PEM / OpenSSH / PGP private key blocks | Live grep `BEGIN … PRIVATE KEY` → **none** on both trees |
+| No cloud API tokens (AWS AKIA, GitHub `ghp_`, Slack `xox*`, Stripe `sk_live_`, Google `AIzaSy`, Anthropic `sk-ant-`) | Live grep → **none** |
+| No `.env` / `.env.*` / `*.pem` / `*.sec` / `id_rsa` / `id_ed25519` files on disk | Live `find` → **none** |
+| No cap-strip / cap-bypass / `patch_awk` / `boot_dbg*` scripts under std | Live `find` → **none** |
+| No URL connection strings with embedded `user:pass@` | Live grep → **none** |
+| No webhook URLs / `Bearer` long tokens | Live grep → **none** |
+| Tracked index is source-only | `git ls-files` → `.oo` + `README.oot` + `LICENSE` + ignore attrs only; **no** ELF/so/key |
+| `.env` gitignored in std | `git check-ignore -v .env` → `.gitignore:6:.env` |
+| Honesty smoke | `std_honesty_t5_smoke.sh` → **PASSED** (exit 0) |
+| No CRITICAL production-greenwash in sec/crypto\|net | Smoke: no `PRODUCTION READY` (+ variants) without residual disclaimer next to `process_exit` |
+| ooda/std pure path | No secret-ish assignments; effectful APIs take leading `&FsCap`/`&NetCap`/`&SysCap` |
+| Product AES honesty | `ooda/std/core/crypto.oo` documents AES residual `STUB_FAIL_CLOSED` |
+
+### Residual (**not** sealed — honesty; **not CRITICAL**)
+
+| Residual | Sev | Why still open |
+|----------|-----|----------------|
+| **std/.gitignore lacks secret-key globs** | **HIGH** | Has `.env` / `.env.*` / `.envrc` only. Missing T4-class `*.sec`, `*.secret.key`, `**/minisign.key`, `*.pem` (ooda has these). No live secret files today — **preventative gap**, not an active leak. |
+| Dummy / shim key strings in verify & stubs | **LOW** | ~120 hits: `0123456789…`, `SUPER_SECRET_KEY`, `secret_key_pad`, keystore `"password"`, zero PCR, sequential ASCII. Type/verify padding — **not** operator credentials. |
+| Public curve constants (secp256k1 p/G/n) | **INFO** | Standard published parameters in `secp256k1_types.oo` — not secrets. |
+| `ffi/c.oo` `dlopen` / `dlsym` / `c_call` **without** cap param | **MED** | Fail-closed `process_exit(1)` body; **untracked** this host. API shape is a future cap-honesty debt if ever implemented without `&UnsafeFFICap`/`&SysCap` (cf. `src/gui/x11.oo` cast pattern). |
+| Cap-parameter gaps on some net ops | **MED** | e.g. `udp_send(socket, …)` relies on socket-held `&NetCap`; `ssh_exec(session, …)` same; oauth2 authorize lacks `&NetCap` but **process_exit** fail-closed. Not a strip script. |
+| High `process_exit` density in sec surfaces | **MED** (honesty) | sec/crypto: 304 hits in 33/146 files (22%); sec/net: 73 hits in 12/64 (18%). Gate is load-bearing residual, not a secret. |
+| `IMPLEMENTATION_PENDING` | **LOW** | 9 hits / 2 files (`double_ratchet_ops.oo`, `ed25519_ops.oo`) |
+| Untracked empty emit debris | **LOW** | `data/timeseries.oo.bin.tmp.c`, `encoding/cbor.oo.bin.tmp.c` (0 bytes) — not secrets; should stay untracked / gitignored if pattern spreads |
+| Large untracked surface | **INFO** | ~605 untracked `.oo` vs ~535 tracked — ship risk is **triage honesty**, not credential pack-in (spot-checked same secret patterns across whole tree) |
+| std main **ahead origin 20** | **INFO** | Ship/push is operator action; this auditor does **not** push |
+
+---
+
+## Attack matrix
+
+Verdict key:
+- **BLOCK** = refuse / absent / sealed on live probe
+- **BYPASS** = attack succeeds
+- **RESIDUAL** = open but not CRITICAL this pass
+- **N/A** = no surface
+
+| # | Attack | Expected | Actual / probe | FP/FN | Sev |
+|---|--------|----------|----------------|-------|-----|
+| K1 | Commit PEM private key under `std/` | absent | **BLOCK** — no PEM on disk or in index | — | — |
+| K2 | Commit OpenSSH `id_rsa` / `id_ed25519` | absent | **BLOCK** | — | — |
+| K3 | Commit AWS `AKIA…` / GitHub `ghp_` / Slack bot token | absent | **BLOCK** | — | — |
+| K4 | Commit `.env` with live credentials | ignore + absent | **BLOCK** — no file; `.env` ignored | — | — |
+| K5 | Commit `*.sec` / minisign secret key | ignore | **RESIDUAL FN (gitignore)** — patterns **missing** in std; **no file present** so no live leak | **gitignore FN** | HIGH residual |
+| K6 | Commit DB URL `postgres://user:pass@host` | absent | **BLOCK** | — | — |
+| K7 | Hardcode OAuth `client_secret` literal | none | **BLOCK** — type field + empty check only; no literal secret value | — | — |
+| K8 | Hardcode JWT HS256 production secret | none | **BLOCK** — shim uses `"secret_key_pad"` pad string only | — | — |
+| K9 | Real Ed25519 sk in verify block | none / test-only | **BLOCK (classified)** — sequential ASCII `"98765432…"` not entropy key material | — | LOW smell |
+| B1 | Land `patch_awk.sh` / `*cap_strip*` under std | absent | **BLOCK** — find empty | — | — |
+| B2 | Cap-bypass via sed on `oo_cap_require` in std | N/A (std is library) | **BLOCK** — no strip scripts; no matches | — | — |
+| B3 | Ship host ELF / `oodac` bak inside std | absent | **BLOCK** — tracked types oo/oot only | — | — |
+| B4 | Greenwash gated crypto as production-ready | smoke fail | **BLOCK** — honesty smoke PASSED | — | — |
+| B5 | Activate fail-closed `ffi/c.oo` dlopen without cap | must not load | **RESIDUAL** — exits today; signature still cap-free | shape debt | MED |
+| S1 | curl\|sh or unsigned install in std sources | absent | **BLOCK** | — | — |
+| S2 | Tracked binary supply (so/a/ELF) | absent | **BLOCK** | — | — |
+| H1 | git history objects named `.env`/`.pem`/`.key` | none | **BLOCK** — rev-list/object name scan empty for those globs (recent) | — | — |
+
+---
+
+## Live probes (this host)
+
+```text
+std_honesty_t5_smoke.sh                      → PASSED (exit 0)
+  sec/crypto process_exit                    → 304 hits / 33 of 146 files (22%)
+  sec/net process_exit                       → 73 hits / 12 of 64 files (18%)
+  IMPLEMENTATION_PENDING                     → 9 hits / 2 files
+  PRODUCTION READY greenwash                 → none
+  completeness claim + process_exit          → none
+
+PRIVATE_KEY PEM/OpenSSH blocks               → none (std + ooda/std)
+CLOUD_TOKEN patterns                         → none
+SENSITIVE_FILES (.env/.pem/.sec/id_*)        → none
+CAP_STRIP / cap_bypass / patch_awk / boot_dbg → none
+CONNSTR user:pass@                           → none
+
+git ls-files (std) non-oo/oot/license/ignore → empty
+git check-ignore .env                        → hit (.gitignore:6)
+git check-ignore foo.sec / foo.pem           → miss (gap)
+std HEAD                                     → 141f2ad (main ahead origin/main by 20)
+ooda tip (host)                              → 0bfd752
+```
+
+---
+
+## Classification of “secret-looking” hits (not leaks)
+
+These matched broad `secret_key` / hex greps but are **not** committed credentials:
+
+| Class | Examples | Verdict |
+|-------|----------|---------|
+| Type / API fields | `SecretKey`, `client_secret: String`, `FheSecretKey` | library surface |
+| Dummy verify padding | `"01234567890123456789012345678901"`, `"SUPER_SECRET_KEY"`, `"secret_key_pad"` | test/shim only |
+| Keystore shim | `keystore_init(..., "password")` in `keys.oo` | pad, not operator secret |
+| Curve constants | secp256k1 `p_hex` / `gx_hex` / `gy_hex` / `n_hex` | public parameters |
+| Zero fillers | all-zero PCR / info_hash | placeholders |
+| Filename false positive | `std/ai/tokenizer/` (BPE/WordPiece) | directory name, not auth token |
+
+---
+
+## OWN fix applied (CRITICAL only)
+
+**None.**
+
+Rationale: hunt found **zero** committed secrets, API keys, private keys, `.env` files,
+or cap-bypass scripts. No CRITICAL live leak to remediate under the T5 auditor charter.
+
+**Not done (would be HIGH hygiene, not CRITICAL without a live secret):**
+- Extend `std/.gitignore` with `*.sec`, `*.secret.key`, `**/minisign.key`, `*.pem`
+  (parity with T4 ooda patterns)
+- Cap-parameter retrofit of untracked `ffi/c.oo` before any real implementation
+- Delete empty `*.bin.tmp.c` debris
+
+**No push.**
+
+---
+
+## Root-cause notes (for DE / SPRINT T5)
+
+1. **Secrets class is clean** — std is source-heavy with stub density; credential risk
+   today is accidental future `git add` of local keys, not existing packed material.
+
+2. **gitignore asymmetry** — ooda learned T4 secret globs after seed/signing work;
+   org `std/.gitignore` never got the same hardening. Prefer proactive ignore parity
+   before first operator signs anything under std.
+
+3. **Honesty ≠ empty tree** — `process_exit` density is an intentional fail-closed
+   residual for gated crypto/net. The load-bearing control is
+   `std_honesty_t5_smoke.sh` refusing production-ready claims beside those gates.
+   Do not greenwash density decline as “crypto done.”
+
+4. **Cap-bypass scripts** — same debris class as T4; **absent** under both std trees.
+   Keep absence as PASS; re-open only if strip scripts reappear.
+
+5. **Two std trees** — `openOODA/std` (aspirational / broad) vs `ooda/std` (pure-path
+   product). Security secret hunt covers both; product seal claims for FS/net/sys
+   belong to `ooda/std` + runtime, not every untracked module under org std.
+
+6. **Ship residual** — std is 20 commits ahead of origin; push/PR is T5 operator work,
+   not this auditor.
+
+---
+
+## Scorecard
+
+| Metric | Count |
+|--------|------:|
+| Trees hunted | 2 (`std`, `ooda/std`) |
+| Secret pattern classes grepped | 12+ (PEM, cloud tokens, env, connstr, webhooks, JWT, hex, b64) |
+| **Live credential leaks** | **0** |
+| **Cap-bypass / strip scripts** | **0** |
+| **CRITICAL findings** | **0** |
+| **CRITICAL OWN fixes** | **0** |
+| HIGH residual (gitignore gap) | 1 |
+| MED residual (FFI cap shape, stub density, net param style) | several (documented) |
+| Honesty smoke | **PASS** |
+| Push | **none** |
+
+---
+
+## What T5 secrets/supply path-A is **not**
+
+> Absence of PEM/API keys in std is **not** a proof that every crypto module is
+> constant-time or production-complete, **not** a seal that untracked files will
+> stay secret-free forever, **not** gitignore parity with ooda, and **not**
+> permission to claim sec/crypto is ship-ready while `process_exit` gates remain.
+
+Re-open T5 security only if: (a) a real secret/key/`.env` lands in tree or index,
+(b) cap-strip scripts appear under std, (c) honesty smoke fails on production-greenwash,
+(d) binaries or signing private keys are tracked under std.
+
+---
+
+## Handoff
+
+| Owner | Action |
+|-------|--------|
+| Hygiene / DE | Optional: port T4 secret-key globs into `std/.gitignore` before any signing workflow under std |
+| Std triage | Continue sec/crypto + sec/net honesty batches; keep smoke green; do not greenwash stubs |
+| Ship | Push/PR when ready (`std` ahead 20) — **not** this auditor |
+| Security follow-up | If implementing `ffi/c.oo` for real: require leading FFI/Sys cap + runtime allowdir/minisig (T3 parity) |
+| Do not | Push from this auditor; treat dummy verify strings as incidents; invent CRITICAL without a live leak |

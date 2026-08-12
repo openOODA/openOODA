@@ -1,0 +1,294 @@
+# t5_peer1_crypto.oot
+# QA Peer 1 — Crypto Greenwash Detector (T5 std honesty)
+# Date: 2026-08-12T11:20:28Z
+# Role: independent peer; do not trust implementer "done" claims
+# Tree: /home/jeryd/Projects/openOODA/std
+# Audit path: /home/jeryd/Projects/openOODA/openOODA/audit/t5_peer1_crypto.oot
+# OWN: this matrix + tiny honesty header fixes only; **no push**
+# Subject: dishonest "done"/complete claims, empty engines labeled complete,
+#          process_exit facades pretending to be AES/ChaCha/HMAC/etc.
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Item | Live |
+|------|------|
+| Scope | `std/crypto*`, `std/hash/*`, `std/src/ooda/crypto/**`, `std/src/ooda/sec/crypto/**` |
+| `.oo` files scanned | **194** |
+| Files with `process_exit` | **58** (~30%) |
+| Total `process_exit(` sites | **~403** |
+| std tip (`git rev-parse --short HEAD`) | `389a1f8` (ahead of origin; no push) |
+| openOODA tip | `2418a85` |
+| ooda tip (context) | `0bfd752` |
+| Bootstrap honesty pack | `openOODA/bootstrap/STDLIB_CRYPTO_MATH.oot` (gate residual) |
+| Peer product change | **tiny doc honesty only** (headers/comments; no math rewrites) |
+| Push | **none** |
+
+### Verdict classes (this peer)
+
+| Class | Meaning | Count (approx) |
+|-------|---------|----------------|
+| **process_exit_facade** | Public encrypt/sign/hash body is only `process_exit(1)` | top `crypto/*` + most `hash/*` + many monofiles |
+| **stubs-exit** | `*_stubs.oo` fail-closed real crypto ops (honest pattern) | ~24–25 sec/crypto families |
+| **engine-skeleton** | Policy/state constructors; no field crypto | ~25 engines |
+| **ops-helpers** | Hex/checksum/struct builders; not the primitive | majority of `*_ops.oo` |
+| **ops-gated-deadcode** | Every public fn starts with `process_exit` then dead body | ed25519/dilithium/groth16/double_ratchet ops |
+| **shim** | Re-export unit; often claims "Real implementations remain" | ~20 M172 shims |
+| **runtime_backed** | Real via host builtin | `std/crypto.oo` SHA-256/HMAC-SHA256; `sec/crypto/hmac` SHA-256 path |
+| **math-live (partial)** | Real bitwise/block code present, not production-audited | `src/ooda/crypto/sha256_{ops,engine}.oo` |
+
+**OVERALL: FAIL-OPEN greenwash residual remains** (structural), but **fail-closed gates are load-bearing** where present. Top-level `crypto/*` honesty headers largely corrected this wave. Residual greenwash is mostly **semantic**: "Real implementations" / "module_ready" / large type surfaces that look shippable.
+
+**Peer ship recommendation for crypto math: DO NOT claim production crypto.** Gate-only / residual only (aligns with `STDLIB_CRYPTO_MATH.oot`).
+
+========================================================================
+HUNT METHOD
+========================================================================
+
+1. Inventory all `.oo` under crypto/hash surfaces (194).
+2. Count `process_exit(` density per file and per family.
+3. Classify: facade / stubs / engine / ops / shim / runtime.
+4. Grep honesty-negative claims: `Pure`, `Working Implementations`, `Real implementations remain`, `Realistic`, `module_ready`, `production`.
+5. Spot-read AES, AES-GCM-SIV, ChaCha, HMAC, HKDF, Ed25519/secp256k1 ops+stubs, KMAC, Poly1305, SHA-256 engine.
+6. Cross-check `bootstrap/STDLIB_CRYPTO_MATH.oot` vs live gates.
+
+========================================================================
+GREENWASH RISK MATRIX
+# columns: module | class | greenwash risk | action
+========================================================================
+
+### A. Top-level `std/crypto/*` + `std/crypto.oo` (legacy facades)
+
+| module | class | greenwash risk | action |
+|--------|-------|----------------|--------|
+| `crypto.oo` | runtime_backed (sha256/hmac_sha256 internals) | **LOW** | Keep; distinct from facades below |
+| `crypto/aes.oo` | process_exit_facade | **LOW** (was **HIGH**) | Header now HONESTY fail-closed; keep gated |
+| `crypto/aes_gcm.oo` | process_exit_facade | **LOW** | HONESTY present; keep gated |
+| `crypto/chacha20.oo` | process_exit_facade | **LOW** (was **HIGH**) | HONESTY present; keep gated |
+| `crypto/hmac.oo` | process_exit_facade | **LOW** (was **HIGH**) | HONESTY present; do not confuse with `sec/crypto/hmac` |
+| `crypto/hkdf.oo` | structural KDF over gated hmac | **LOW** (was **HIGH**) | HONESTY: non-functional; extract/expand call exit HMAC |
+| `crypto/x25519.oo` | process_exit_facade | **LOW** (was **MED**) | HONESTY present |
+| `crypto/curve25519.oo` | process_exit_facade | **LOW** | HONESTY present |
+| `crypto/ecdsa.oo` | process_exit_facade | **LOW** | HONESTY present |
+| `crypto/argon2.oo` | process_exit_facade | **LOW** | HONESTY present |
+| `crypto/kyber.oo` | process_exit_facade | **LOW** | HONESTY present; ≠ `sec/crypto/kyber.oo` |
+| `crypto/pbkdf2.oo` | process_exit_facade | **LOW** | HONESTY notes prior "implementation" greenwash |
+| `crypto/rsa_pss.oo` | monofile partial + process_exit bodies | **MED** | Header still reads like full RSA-PSS monofile; types "API shape" note applied; **do not ship as RSA** |
+
+### B. Top-level `std/hash/*`
+
+| module | class | greenwash risk | action |
+|--------|-------|----------------|--------|
+| `hash/sha256.oo` | process_exit_facade | **LOW** (was **HIGH** "Pure SHA256") | Point to `src/ooda/crypto/sha256*` for real block ops |
+| `hash/sha512.oo` | process_exit_facade | **LOW** | HONESTY present |
+| `hash/crc32.oo` | process_exit_facade | **LOW** | HONESTY present |
+| `hash/md5.oo` | process_exit_facade | **LOW** | HONESTY present |
+| `hash/blake3.oo` | process_exit_facade | **LOW** | HONESTY strengthened this peer |
+| `hash/sha3.oo` | process_exit_facade | **LOW** | HONESTY present |
+| `hash/siphash.oo` | process_exit_facade | **LOW** | HONESTY present |
+| `hash/fnv.oo` | process_exit_facade | **LOW** | HONESTY present |
+| `hash/xxhash.oo` | process_exit_facade (+ init structs) | **LOW** | Init looks real; hash path exits — honesty present |
+| `hash/murmur3.oo` | process_exit_facade | **LOW** | HONESTY present |
+
+### C. `src/ooda/crypto/*` (product-ish crypto)
+
+| module | class | greenwash risk | action |
+|--------|-------|----------------|--------|
+| `sha256.oo` shim | shim + "Real implementations remain" | **MED** | **Exception:** split parts are real compression math; claim is least false here — reword to "split block-ops remain" |
+| `sha256_ops.oo` | math-live (rotr/ch/maj/rounds) | **LOW** | Residual: not audited; not constant-time proven |
+| `sha256_engine.oo` | math-live (`process_block`) | **LOW** | Same; do not equate to production SHA-256 product claim without vectors |
+| `sha256_types.oo` | types | **LOW** | none |
+| `keys{,_*}.oo` | engine/ops + stubs HSM/TPM exit | **MED** | Shim "Real implementations"; stubs gate hardware |
+| `fhe{,_*}.oo` | surface + residual | **MED** | Shim "Real implementations"; no audited FHE math |
+| `zkp{,_*}.oo` | surface + residual | **MED** | Batch `is_completed` is batch state, not crypto-done — OK if not marketed |
+| `sign.oo` | monofile surface | **MED** | Large API; verify remaining bodies are gated/runtime |
+| `merkle.oo` | process_exit facade (tiny) | **LOW** if honesty header present | keep gate |
+
+### D. `src/ooda/sec/crypto/*` — per-family matrix
+
+Gate pattern (honest when labeled): **types + ops helpers + engine skeleton + stubs/process_exit for real primitive**.
+
+| module (family) | class | greenwash risk | action |
+|-----------------|-------|----------------|--------|
+| **aes_gcm_siv** (mono) | types+helpers live; encrypt/POLYVAL/AES **process_exit** | **HIGH→MED** | Header now states facade; still looks like full RFC 8452 unit — keep gate; split or residual tag in RFC/SPRINT |
+| **chacha20** | stubs-exit (10) + engine skeleton (zero-filled key words) + ops helpers | **MED** | Engine `chacha_state_init` pushes **0** key/nonce words — looks real, is not; keep residual; do not demo as ChaCha |
+| **poly1305** | stubs-exit (6) + verify calls `poly1305_mac` → exit | **LOW** | Fail-closed chain OK; residual label present |
+| **blake3** | stubs-exit (15 compress/hash) + ops flags/helpers | **LOW** | Core ops honestly gated |
+| **sha3** | stubs-exit (20) + ops init helpers | **LOW** | Core sponge gated |
+| **kmac** | encode helpers live; **engine** 14× exit | **MED** | `kmac_ops` "Working Implementations" = left/right_encode only — **scope claim** or rename section |
+| **hmac** (sec monofile) | runtime HMAC-SHA256 + gated algs | **LOW–MED** | "Real Working Implementations" true for SHA-256 path only; non-SHA256 `process_exit` — narrow comment |
+| **ed25519** | ops **18× exit** (incl. hex!) + stubs 8× exit + engine skeleton | **MED** | Gate load-bearing; dead code after exit is noise; **STDLIB_CRYPTO_MATH** correct that ops are gated |
+| **dilithium** | ops 12× + stubs 4× exit | **MED** | same as ed25519 pattern |
+| **double_ratchet** | ops 18× + stubs 7× exit | **MED** | same |
+| **groth16** | ops 11× + stubs 4× exit | **MED** | same |
+| **falcon** | ops **0 exit** (poly helpers) + stubs 6× exit (NTT/sign) | **MED** | STDLIB list says `falcon_ops` gated — **live: stubs hold the gate**, ops are schoolbook/helpers only; update bootstrap doc |
+| **secp256k1** | ops **0 exit** (constructors/validators **without on-curve**) + stubs 11× exit | **HIGH** | Point/key create sets `is_valid: true` on length alone — **looks like crypto validation**; real ECDSA/ECDH exit in stubs. **Do not call validate "crypto complete"** |
+| **plonk** | ops toy Int field + stubs 3× exit (KZG/FFT) | **MED** | Shim "Real implementations"; field ops are host `Int` mod, not BN254 |
+| **kyber** (mono) | mixed: poly helpers + encaps/decaps exit | **MED** | Honest residual tags on exits; large surface |
+| **sphincs** (mono) | params helpers + sign/verify exit | **MED** | same |
+| **rsa_pss** (sec split) | stubs 23× exit + types "Realistic" | **MED** | Reword "Realistic" → API shape (types file residual) |
+| **shamir** | stubs 6× + share poly helpers | **LOW–MED** | "Pure Polynomial Secret Reconstruction" section title overclaims if field is toy |
+| **bfv / bgv / ckks** | stubs few exits; engines/ops non-exit surfaces | **MED** | Homomorphic **API theatre**; treat as residual not product FHE |
+| **bulletproofs** | stubs 2×; prover batch `is_completed` | **MED** | Batch flag ≠ proof soundness |
+| **zksnark / zkstark** | stubs few exits; engines/ops surfaces | **MED** | Same API theatre class |
+| **hsm** | **hsm_pkcs** 32× exit; `hsm_module_ready()→true` | **HIGH→MED** | Ready name greenwash; comment fixed this peer — consider rename to `hsm_module_surface_loaded` later |
+| **kms** | stubs exit + `kms_module_ready()→true` | **HIGH→MED** | Same as HSM; comment fixed |
+| **tpm** | stubs 7× + engine 1× | **MED** | residual |
+| **tss** | stubs 7× (FROST/threshold) | **MED** | residual |
+
+### E. Cross-cutting claim classes
+
+| claim / pattern | class | greenwash risk | action |
+|-----------------|-------|----------------|--------|
+| `// Real implementations remain in split modules (check green alone)` (~20 shims) | typecheck-green sold as crypto-real | **HIGH** (systemic) | **Reword batch:** "Split parts remain; **crypto math residual / process_exit where gated**. `check green` = typecheck only." |
+| `// Pure … stub/logic` (historical) | facade pretends purity | **HIGH** | Fixed on top crypto/hash this wave |
+| `// … Working Implementations` (kmac_ops, hmac) | over-scope | **MED** | Narrow to named functions that are real |
+| `// Realistic … Types` | prestige wording | **LOW–MED** | Drop "Realistic" (rsa_pss_types residual) |
+| `*_module_ready() -> true` | false readiness | **MED** | Comment fixed hsm/kms; rename backlog |
+| `is_valid: true` on length-only point create (secp256k1) | silent false validity | **HIGH** | Fail-closed: require on-curve or refuse; or rename to `length_ok` |
+| Dead bodies after `process_exit(1)` in ops | looks like incomplete land | **LOW** (gate wins) | Optional strip; **never remove gate** without real math |
+| Engine matrices with zero key material (chacha) | empty engine looks live | **MED** | Comment at init: "key words not loaded — crypto in stubs" |
+| `STDLIB_CRYPTO_MATH.oot` lists 8 gated "ops" | residual honesty pack | **LOW–MED** | Update: falcon/secp256k1/plonk gates live in **stubs** more than **ops** |
+
+========================================================================
+FOCAL EXHIBITS (evidence)
+========================================================================
+
+### E1 — AES facade (top-level) — was classic greenwash
+
+Path: `/home/jeryd/Projects/openOODA/std/crypto/aes.oo`
+
+- Public `aes_encrypt` / `aes_decrypt` → `process_exit(1)` only.
+- Header now: **HONESTY: Fail-closed process_exit facade. NOT real AES.**
+
+### E2 — AES-GCM-SIV monofile looks complete
+
+Path: `src/ooda/sec/crypto/aes_gcm_siv.oo` (~432 L)
+
+- Live: types, hex, pad, key/nonce constructors.
+- Gated: `aes_ecb_encrypt_block`, `polyval_horner_mult`, `aes_gcm_siv_encrypt/decrypt`, hardware path.
+- Header updated this peer: types/helpers live; crypto bodies exit.
+
+### E3 — HKDF structure without HMAC
+
+Path: `crypto/hkdf.oo`
+
+- Expand/extract call `hmac_sign` → top-level HMAC facade exits.
+- Looks algorithmic; was HIGH greenwash without honesty; header now non-functional.
+
+### E4 — Ed25519 ops: gate + dead code
+
+Path: `src/ooda/sec/crypto/ed25519_ops.oo` (18× `process_exit`)
+
+- Even `byte_to_hex_pair` / checksum exit first then contain full bodies.
+- Fail-closed is correct; **do not** treat line count as "implemented Ed25519".
+
+### E5 — secp256k1 validate without curve check
+
+Path: `src/ooda/sec/crypto/secp256k1_ops.oo`
+
+- `secp256k1_point_create` / `secp256k1_point_validate` accept length + flag; set `is_valid: true`.
+- Real `ecdsa_sign` / `point_mul` in `secp256k1_stubs.oo` → `process_exit(1)`.
+- **Greenwash class:** validation API pretends cryptographic validity.
+
+### E6 — ChaCha engine zero key schedule
+
+Path: `src/ooda/sec/crypto/chacha20_engine.oo`
+
+- Constants words real-ish; key/nonce words pushed as `0`.
+- Encrypt path in `chacha20_stubs.oo` exits.
+- Engine is **state theatre**, not ChaCha20.
+
+### E7 — Shim systemic claim
+
+Example: `src/ooda/sec/crypto/secp256k1.oo` L12:
+
+`// Real implementations remain in split modules (check green alone).`
+
+Means: oodac typecheck of split files. **Does not** mean audited crypto math.
+
+### E8 — SHA-256 counterexample (not greenwash)
+
+Paths: `src/ooda/crypto/sha256_ops.oo`, `sha256_engine.oo`
+
+- Real `rotr`/`ch`/`maj`/64-round `process_block` using bitwise ops.
+- Distinct from `hash/sha256.oo` facade and from runtime `crypto_sha256_internal`.
+- Residual: audit/vectors/CT still open — honesty via RULES residual tags.
+
+### E9 — module_ready true
+
+Paths: `hsm_stubs.oo`, `kms_stubs.oo`
+
+- `*_module_ready() -> true` while PKCS/KMS crypto paths exit.
+- Comments clarified this peer (name still misleading).
+
+========================================================================
+STDLIB_CRYPTO_MATH.oot CROSS-CHECK
+========================================================================
+
+| Listed gated file | Live process_exit in that file? | Peer note |
+|-------------------|----------------------------------|-----------|
+| `ed25519_ops.oo` | **YES** (18) | Match |
+| `dilithium_ops.oo` | **YES** (12) | Match |
+| `groth16_ops.oo` | **YES** (11) | Match |
+| `double_ratchet_ops.oo` | **YES** (18) | Match |
+| `falcon_ops.oo` | **NO** (0) | Gate in `falcon_stubs.oo` (6) |
+| `kyber.oo` | **YES** (9) | Match (mono) |
+| `secp256k1_ops.oo` | **NO** (0) | Gate in `secp256k1_stubs.oo` (11) |
+| `plonk_ops.oo` | **NO** (0) | Gate in `plonk_stubs.oo` (3) |
+
+**Action:** refresh bootstrap table to say "gate in `_ops` and/or `_stubs`" — residual honesty still correct overall.
+
+========================================================================
+TINY FIXES APPLIED THIS PEER (no push)
+========================================================================
+
+Doc/honesty only (no algorithm changes, no gate removal):
+
+| Path | Change |
+|------|--------|
+| `std/crypto/aes.oo` et al. | Confirmed / aligned HONESTY headers (facade not pure) |
+| `std/crypto/hkdf.oo` | Non-functional KDF honesty |
+| `std/hash/{crc32,sha256,sha512,fnv,xxhash,blake3}.oo` | Fail-closed / not pure headers |
+| `std/src/ooda/sec/crypto/aes_gcm_siv.oo` | Surface vs process_exit crypto note |
+| `std/src/ooda/sec/crypto/hsm_stubs.oo` | `hsm_module_ready` not crypto-ready |
+| `std/src/ooda/sec/crypto/kms_stubs.oo` | `kms_module_ready` not crypto-ready |
+| `std/crypto/rsa_pss.oo` | "Realistic" → API shape wording |
+
+**Not fixed (backlog, not tiny):** systemic shim reword ×20; secp256k1 on-curve; rename `*_module_ready`; strip deadcode after exit; full math audit.
+
+========================================================================
+ACTIONS BACKLOG (for T5 std honesty landers — not this peer OWN beyond audit)
+========================================================================
+
+| Pri | Action |
+|-----|--------|
+| P0 | Never remove `process_exit` gates without real, vectored, reviewed math |
+| P0 | Batch-reword M172 shim "Real implementations remain (check green alone)" → typecheck ≠ crypto |
+| P1 | secp256k1: stop `is_valid: true` on length-only points; or hard-gate validate |
+| P1 | Update `STDLIB_CRYPTO_MATH.oot` gate file list (ops vs stubs) |
+| P1 | Narrow "Working Implementations" section titles (kmac/hmac) |
+| P2 | Comment chacha engine zero key words |
+| P2 | Rename `*_module_ready` → `*_surface_loaded` |
+| P2 | Optional: delete dead code after `process_exit` in ops to reduce false "implemented" reads |
+| P3 | Vectors for `src/ooda/crypto/sha256*` if promoted beyond residual |
+
+========================================================================
+PEER VERDICT
+========================================================================
+
+| Question | Answer |
+|----------|--------|
+| Dishonest "done" claims found? | **Yes** — mostly shim "Real implementations" + historical "Pure … logic" + `module_ready` + prestige "Realistic/Working" |
+| Empty engines labeled complete? | **Engines are skeletons** (policy/state); not usually labeled "complete", but read as product crypto when paired with shims |
+| process_exit facades pretending to be AES/etc.? | **Yes** — top `crypto/aes.oo`, ChaCha, HMAC, AEAD monofiles; **gates save callers** (fail-closed) |
+| Silent wrong crypto (no exit)? | **Risk:** secp256k1 length-only `is_valid`; toy plonk field; shamir/FHE surfaces — not full AES-class silent encrypt |
+| Production crypto claimed? | **Must not** — residual gate-only floor stands |
+| Push? | **No** |
+
+**T5 peer-1 crypto greenwash: residual FAIL for "crypto complete" marketing; PASS for fail-closed posture where gates exist.**
+
+========================================================================
+END t5_peer1_crypto.oot
+========================================================================

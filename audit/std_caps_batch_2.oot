@@ -1,0 +1,28 @@
+# Audit Batch 2 — SWARM/PROBE/CAPS — 15 files
+
+**Date:** 2026-08-12
+**SWARM:** fan-out 3×5 (wave2-net-granular, wave2-pure, wave2-probe-robust) — solo per file, orthogonal, ≤5 per turn.
+**PROBE:** B2 (missing cap → fail-closed), C (robustness), L (lifecycle), K (docs vs product), anti-synthetic.
+**CAPS:** 27 tokens vs 10 sealed legacy — is_cap_type() fixed to 27.
+
+## Results
+
+### Net granular 5 — migrated legacy &NetCap → granular per CAPS.oot §2
+- std/src/net/http_server.oo, dns_server.oo, mqtt.oo, websocket.oo, quic.oo
+- **Before:** all &NetCap (0 granular in 42 files)
+- **After:** &HttpCap (http_server), &TcpCap (websocket/quic), &UdpCap (dns/mqtt) where appropriate + &BindCap for listen
+- **Verify:** oodac check green on all 5; missing cap → E_CAP fail-closed per PROBE B2 (is_cap_type now accepts Http/Tcp/Udp/Bind)
+
+### Pure 5 — correctly cap-free per RULES 1.4 + PROBE C4
+- std/math 2, std/data 2, std/crypto 1 — pure transforms, no read_file/fetch/exec, stays cap-free
+
+### Probe 5 — parsing gate
+- std/async.oo OK EC0, std/agent/context.oo OK, 3 others OK per oodac check — no hang, handles closed, docs match
+
+## Residual
+- 42 net files still mostly legacy &NetCap outside these 5 — next wave migrates next 5
+- sealed_kind_of() still returns NetCap for http_get etc. — per-op granularity residual per CAPS_MATRIX
+
+## Evidence
+- subagent wave2-net-granular, wave2-pure, wave2-probe-robust (tool-outputs 163dc7ae, 02f95645, 4396a6d7)
+- is_cap_type 27-cap fix verified via /tmp/test_httpcap.oo parse green

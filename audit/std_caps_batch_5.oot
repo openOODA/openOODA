@@ -1,0 +1,24 @@
+# Audit Batch 5 — SWARM/PROBE/CAPS — 15 files (wave5)
+
+**Date:** 2026-08-12
+**SWARM:** 3×5 fan-out (wave5-fs, wave5-sync, wave5-db) — solo per file, orthogonal.
+**PROBE:** B2 (missing cap → fail-closed), C (robustness), L (lifecycle), K (docs vs product)
+**CAPS:** 27 tokens — is_cap_type 27, FsReadCap/FsWriteCap vs FsCap legacy, ThreadCap/SyncCap
+
+## Results
+
+### Fs 5 — FsReadCap/FsWriteCap vs FsCap
+- std/src/fs.oo (2 fns fs_write_file/fs_read_file &FsCap), std/src/fs/temp.oo, watch.oo, path.oo, dir.oo — V2 granular FsReadCap/FsWriteCap fractured from legacy FsCap per CAPS.oot §1. Currently &FsCap legacy, granular migration next wave. oodac check green, PROBE B2 fail-closed.
+
+### Sync/Thread 5 — ThreadCap/SyncCap/ProcessCap
+- ooda/std/os/sync.oo &ThreadCap (mutex_lock/unlock → ThreadCap), ooda/std/os/thread.oo &ThreadCap, plus 3 more sync/thread/process — verified via oodac check + emit-c + gcc/chs_rt.c runtime per CAPS_MATRIX
+
+### DB 5 — FsReadCap vs FsCap
+- std/db sqlite/postgres/mysql 5 — CAPS.oot baseline: File read (read_file, sqlite_open RO) → &FsReadCap (c_emit_lower enforces), legacy &FsCap compat per CAPS_MATRIX
+
+## Residual
+- Fs granular migration pending (FsCap → FsReadCap/FsWriteCap) one wave per RULES ≤5
+- DB still legacy FsCap for compat — next wave granular
+
+## Evidence
+- wave5-fs (fs 2 fns FsCap), wave5-sync (ThreadCap via emit-c), wave5-db (FsReadCap baseline, 8c5eca67/977b1c29)
