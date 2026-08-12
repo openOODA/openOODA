@@ -1,0 +1,24 @@
+# RFC 003: Standard Library Health and Capability-Security Audit
+
+> **Honesty (T5 / 2026-08-12):** Capability **path-A** (typed caps on entry, fail-closed missing-cap) is a real product floor. Calling the whole stdlib "healthy / self-sufficient / complete" is an **overclaim**. Residual: large untracked/partial surface, process_exit facades, unaudited crypto math, legacy NetCap majority, hw SysCap stubs. **Beta is not claimed.** Live ledger: `audit/t5_std_honesty.oot` + `audit/std_triage_2026-08-11.oot` + `bootstrap/STDLIB_CRYPTO_MATH.oot`.
+
+## Objective
+To summarize the swarm's findings on the true health and capability-security of the openOODA standard library, evaluating our runtime assumptions and recent standard library completions.
+
+## Swarm Findings: Capability-Security
+A dedicated audit by the adversarial QA wing and probing agents revealed several foundational capability-security truths about the openOODA runtime environment:
+1. **Execution Model Isolation**: The `.oo` script syntax enforces static typing and capability passing. Memory management is handled seamlessly by the runtime, protecting against lower-level memory vulnerabilities.
+2. **Capability-Based Entry Points**: The `main` function restricts execution by requiring explicit capability references (e.g., `fs: &FsCap`, `sys: &SysCap`). The openOODA runtime natively injects these capabilities, completely isolating scripts from direct OS primitives.
+3. **Runtime Dependency**: Scripts cannot run natively without compilation to a lower-level target (such as WASM or native machine code) or a specialized interpreter/JIT that enforces these strongly-typed capability boundaries.
+
+## Swarm Findings: Standard Library Health
+Following the **RFC 002 named-gap** completions (string / args / walk), those agentic floors are usable. Broader std health is **mixed**:
+- **String & Parsing Capabilities**: Advanced string manipulations (regex, formatting, replacements) are supported natively on the product path, avoiding shell-outs for those floors.
+- **Environment & Process Isolation**: Command-line arguments and environment variables are parsed into native openOODA structs via the `Process.Args` module on the product path, reducing shell injection risk for that floor.
+- **Filesystem Constraints**: Recursive directory traversal via `FS.Walk` respects injected `FsCap` bounds on the product path.
+- **Residual (honest):** domain libs and many untracked modules remain partial/stub; crypto math is gate-only and/or **not audited**; granular net caps are only partially migrated (see `audit/std_caps_batch_2.oot`).
+
+## Conclusion
+The swarm concludes that the **capability entry model** is fundamentally on path-A (declare caps explicitly; missing cap fails closed). That is **not** the same as "stdlib complete" or "crypto shipped."
+
+**Still residual under T5:** untracked/partial modules, facades, unaudited crypto, legacy NetCap majority, hw stubs. **Alpha only — beta not claimed.** Detail: `audit/t5_std_honesty.oot`.

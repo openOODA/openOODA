@@ -1,0 +1,74 @@
+# RFC 2026-08-11-ZT-AUDIT: Zero-Trust Round
+* **RFC ID**: 2026-08-11-ZT-AUDIT
+* **Author**: openOODA Core Team (Swarm Coordinator, 12-agent phalanx)
+* **Status**: Draft
+* **Created**: 2026-08-11
+
+---
+
+## 💡 Summary
+
+This RFC audits the openOODA zero-trust claim across four axes: (1) the capability model — are `&NetCap` / `&FsCap` / `&SysCap` / `&EnvCap` actually unforgeable and statically enforced, or merely advised? (2) the taint model — does `TaintSpan` provenance from the lexer survive HIR -> MIR -> LLVM, and is every tainted lower refused without a cap witness? (3) runtime ambient access — can any code path reach `net`, `fs`, `process`, or `env` without holding the corresponding cap (env vars, `argv`, cwd, temp dirs, signal handlers, dyn-loaders, JIT)? (4) secrets in memory — are HMAC keys, signing keys, AEAD nonces, and HITL ledger entries zeroizable, or do they survive in GC-managed heap strings past their scope? The round is read-only and produces a findings ledger; no code is changed in this RFC.
+
+## 🎯 Motivation
+
+Zero Trust is the security claim we ship to the agents that will be openOODA's primary users. Every gap in the four axes above is a fail-open hole: a forged cap, a taint laundering through emit, an ambient `getenv` slip, or a long-lived signing key is exactly the path that turns the language into a footgun. The previous audit round (`RFC 2026-08-11-AUDIT-CLOSE`) shipped patches and labelled four honest residuals. This round re-pressures those residuals plus everything the cap-emit checker did not previously cover, because the residual label is a claim and claims deserve a second look.
+
+## 📐 Detailed Specification
+
+**Phalanx composition — 12 agents, four cohorts, all parallel.**
+
+*Engineering Core (3) — owns one axis each, reads code, writes findings.*
+
+- **E1. Capability Auditor.** Walks every function in the compiler + stdlib that performs I/O and verifies that the matching cap (`&NetCap`, `&FsCap`, `&SysCap`, `&EnvCap`) is in scope at the call site, with `cap_id` minted by the registry (not constructed locally). Cross-checks against `CapabilityChecker::check_program()`.
+- **E2. Taint Auditor.** Replays the HIR -> MIR -> LLVM pipeline on a corpus of taint-bearing spans (network read, env var, file read, process spawn) and asserts that every lower either carries a `TaintSpan` witness with the matching cap or is refused. Looks for laundering via `unsafe { ... }`, `transmute`, `as` casts, and inline assembly.
+- **E3. Ambient-Access Auditor.** Greps for ambient reach: `getenv`, `os.environ`, `std.env`, `argv`, `cwd`, `tempdir`, `signal::`, `dlopen`, `mmap` without cap, `JIT::`, `/proc/self/`, clock reads outside `&SysCap`. Each hit is a finding unless it sits behind a cap gate.
+
+*Adversarial QA (4) — owns the "assume the claim is a lie" stance.*
+
+- **A1. Red-Team Cap Forger.** Tries to mint a cap from inside user code: bitcast, reflection, `unsafe`, union punning, raw pointer aliasing, FFI escape. Each successful forge is a P0 finding.
+- **A2. Taint Launderer.** Crafts a span that enters via a "safe" surface (literal constant, compile-time `const`) and tries to make it influence a lower to a privileged sink. Probes string interning, `CoW` slices, and `Box<str>` -> `&str` paths.
+- **A3. Secrets-in-Memory Hunter.** Allocates a signing key, lets it flow through HMAC, then reads `/proc/self/mem`, `gcore`, and GC heap dumps. If the key bytes appear, the zeroize residual from round 1 is exploitable, not theoretical.
+- **A4. Spec-vs-Impl Differ.** Loads `DESIGN.md` and `rfcs/*.oot`, asserts every claimed property (`"unforgeable"`, `"statically checked"`, `"fail-closed"`, `"constant-time"`, `"zeroized"`), and produces a diff for any claim that the implementation does not back.
+
+*Integration (3) — owns the seams between axes.*
+
+- **I1. Cap x Taint Seam.** Verifies that a tainted span which *should* require a cap cannot be laundered by routing it through a function that holds the cap transitively (cap leak across trust boundary).
+- **I2. Cap x Ambient Seam.** Confirms that adding a cap to a function does not silently widen ambient access; the cap must be the *only* path, not a back door alongside an ambient one.
+- **I3. Emit x Secrets Seam.** Asserts that secret-bearing spans (HMAC keys, AEAD nonces) do not appear in debug info, panic messages, or `eprintln!` traces.
+
+*Command (2) — owns the audit process itself.*
+
+- **C1. Coordinator.** Maintains the findings ledger, de-duplicates, and resolves orthogonal-scope races (see Drawbacks).
+- **C2. Regression Binder.** Re-runs the round-1..5 regression matrix plus the four new axis tests; any pre-existing test that flips status under the new audit is itself a finding.
+
+**Process.** Each agent operates on a disjoint file set (E1 owns `compiler/cap_*`, E2 owns `compiler/taint_*`, etc.). E3 and A2 share the `std/` grep surface but with disjoint regex sets. Findings land in `audit/zt-findings.jsonl`; C1 stamps a hash-chain entry per finding so the ledger is itself append-only and tamper-evident.
+
+## ⚠️ Drawbacks
+
+All 12 agents run in parallel for wall-clock reasons. They may race on file reads — two agents reading the same source byte at the same time and disagreeing on a finding. **Mitigation: orthogonal scope.** The E/A/I/C partition assigns disjoint file paths or disjoint regex surfaces per agent; the only shared resource is the findings ledger, which C1 serializes. If two agents still produce conflicting findings for the same locus, both are recorded with a `conflict` tag and escalated to a human reviewer.
+
+The audit is read-only. No code is changed. This means findings are *observations*, not fixes; a clean audit that finds N gaps does not close those gaps. Closing gaps is `RFC 2026-08-11-ZT-FIX` (Future Work).
+
+## 🔀 Alternatives Considered
+
+- **Just scan for known patterns (grep + semgrep rules).** Rejected: pattern matching catches last year's bugs. The four axes are defined by *behavior under adversarial input* (forge a cap, launder taint, dump memory), not by surface syntax. A static pattern scanner can be one tool in A4's belt; it cannot replace the agents.
+- **Run a fuzz harness (libFuzzer / AFL) against the compiler and runtime.** Rejected as the *primary* method, accepted as a sub-tool of A2 and A3. Fuzzing finds crashes, not policy violations; a clean fuzzer run does not prove the cap is unforgeable, only that the forge path crashes. We fuzz the taint-launder and secrets-dump paths in addition to the manual audit, not instead of it.
+- **Hire a human pen-tester.** Rejected for this round on cost, speed, and reproducibility grounds: a single pen-test report is a snapshot, and the audit ledger needs to be re-runnable on every release. We keep a human in the loop for the `conflict`-tagged findings only, where adversarial judgment is irreplaceable.
+
+## ❓ Unresolved Questions
+
+- **The 8 std monofiles.** The stdlib contains 8 files that exceed the power-law split target but were left intact under the round-1..5 cohesion rule. E3 must decide whether to audit them as monofiles (slower, more thorough) or to split them first and audit the shards (faster, but the split itself is a code change and this RFC is read-only). Default: audit as monofiles; flag a `split-required` note per finding that would have been easier on shards.
+- **The 610 untracked std files.** `tools/std-audit` does not index ~610 files in `std/`. They are not covered by the cap-emit checker. Do we (a) refuse to audit them and report "uncovered surface" as one P0 finding, (b) have A4 diff them against `DESIGN.md` as a best-effort pass, or (c) pause this RFC until the index lands? Default: (b), with the explicit caveat that the audit claim is partial until the index closes.
+- **Conflicting `[STATUS: residual]` claims.** The round-1..5 closure RFC documents four honest residuals (HMAC inner-pad, atomic-rename host-side, `ct_eq_int` early-out, string zeroize). A1, A3, and A4 may produce findings that *contradict* a residual claim — e.g., A3 may show the string-zeroize residual is exploitable today, not merely theoretical. C1 will not silently overwrite the residual label; each conflict is recorded as `residual:contested` and routed to a follow-up decision in `RFC 2026-08-11-ZT-FIX`.
+
+## 🚀 Future Work
+
+`RFC 2026-08-11-ZT-FIX` will be opened the moment this audit closes, one finding per fix, scoped to close the gaps the phalanx surfaces. That RFC is where code changes land; this one only lights the lamps.
+
+## 🧪 Testing & Verification Criteria
+
+- `audit/zt-findings.jsonl` exists, is hash-chained, and is reproducible from `git` state of the audited tree.
+- Every agent (E1-E3, A1-A4, I1-I3, C1-C2) signs its cohort's findings into the ledger.
+- The round-1..5 regression matrix re-runs green; any flip is itself a finding.
+- `tools/std-audit` coverage of the 610 untracked files is reported as a percentage in the close-out note (target: 100% by `RFC 2026-08-11-ZT-FIX`).

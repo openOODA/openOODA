@@ -1,0 +1,96 @@
+// purge_audit.oo — In plain English: Delete known Python/C debris left in audit/ by helpers. (was audit_clean.oo)
+// Keeps .oot audit logs; removes *.py, *.c, *.o, *.log debris.
+pub fn starts_with(s: String, prefix: String) -> Bool {
+    let p_len = prefix.len();
+    if s.len() < p_len { return false; }
+    return s[0:p_len] == prefix;
+}
+
+pub fn ends_with(s: String, suffix: String) -> Bool {
+    let s_len = s.len();
+    let suf_len = suffix.len();
+    if s_len < suf_len { return false; }
+    return s[(s_len - suf_len):s_len] == suffix;
+}
+
+pub fn main(fs: &FsReadCap, fsW: &FsWriteCap) {
+    let mut files: List[String] = list_new();
+    files = list_push(files, "audit/kill.c");
+    files = list_push(files, "audit/wait.c");
+    files = list_push(files, "audit/itos.c");
+    files = list_push(files, "audit/stoi.c");
+    files = list_push(files, "audit/test_struct.oo.bin.tmp.c");
+    files = list_push(files, "audit/kill.o");
+    files = list_push(files, "audit/wait.o");
+    files = list_push(files, "audit/fix_11.py");
+    files = list_push(files, "audit/fix_5.py");
+    files = list_push(files, "audit/fix_61.py");
+    files = list_push(files, "audit/fix_65.py");
+    files = list_push(files, "audit/fix_77.py");
+    files = list_push(files, "audit/fix_balance.py");
+    files = list_push(files, "audit/fix_braces.py");
+    files = list_push(files, "audit/fix_crash.py");
+    files = list_push(files, "audit/fix_mangled.py");
+    files = list_push(files, "audit/fix_mangled2.py");
+    files = list_push(files, "audit/fix_params.py");
+    files = list_push(files, "audit/fix_parens.py");
+    files = list_push(files, "audit/fix_structs.py");
+    files = list_push(files, "audit/force_stub_all.py");
+    files = list_push(files, "audit/super_fix.py");
+    files = list_push(files, "audit/rescue.py");
+    files = list_push(files, "audit/recover_files.py");
+    files = list_push(files, "audit/refactor.py");
+    files = list_push(files, "audit/refactor2.py");
+    files = list_push(files, "audit/check_missing_200.py");
+    files = list_push(files, "audit/find_missing.py");
+    files = list_push(files, "audit/generate_missing.py");
+    files = list_push(files, "audit/test.py");
+    files = list_push(files, "audit/scratch_local_alloc.oo.bin.tmp.c");
+    files = list_push(files, "audit/test.oo");
+    files = list_push(files, "audit/dummy.oo");
+    files = list_push(files, "audit/new_svg.oo");
+    files = list_push(files, "audit/temp_test.oo");
+    files = list_push(files, "audit/run_spawn.oo");
+    files = list_push(files, "audit/error.log");
+    files = list_push(files, "audit/missing_200.txt");
+    files = list_push(files, "audit/missing_libs.txt");
+    files = list_push(files, "audit/current_failures.log");
+
+    let mut deleted = 0;
+    let mut missing = 0;
+    let len = files.len();
+    let mut i = 0;
+
+    while i < len {
+        let f = list_get(files, i);
+        let res = fs_remove_file(fs, f);
+        if res.is_ok() {
+            deleted = deleted + 1;
+        } else {
+            missing = missing + 1;
+        }
+        i = i + 1;
+    }
+
+    let read_res = fs_read_dir(fs, "audit", false);
+    if read_res.is_ok() {
+        let all_files = read_res.unwrap();
+        let mut j = 0;
+        let all_len = all_files.len();
+        while j < all_len {
+            let fname = list_get(all_files, j);
+            if starts_with(fname, "scratch") {
+                if ends_with(fname, ".oo") {
+                    let r2 = fs_remove_file(fs, "audit/" + fname);
+                    if r2.is_ok() {
+                        deleted = deleted + 1;
+                    }
+                }
+            }
+            j = j + 1;
+        }
+    }
+
+    println("audit_clean: delete complete.");
+}
+

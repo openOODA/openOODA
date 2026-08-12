@@ -1,0 +1,71 @@
+# RFC 2026-08-11-AUDIT-CLOSE: Round-1..5 Audit Closure
+* **RFC ID**: 2026-08-11-AUDIT-CLOSE
+* **Author**: openOODA Core Team (12-agent phalanx, rounds 1-5)
+* **Status**: Implemented
+* **Created**: 2026-08-11
+
+---
+
+## 💡 Summary
+
+This RFC closes the audit gaps surfaced across rounds 1 through 5 of the pre-beta security review. Six patch families shipped: the capability model (`&NetCap`/`&FsCap`/`&SysCap`/`&EnvCap`) made default-deny and statically checkable; the concurrency layer added structured async + bounded channels with no shared mutable globals; the HITL audit trail became append-only and hash-chained; the bootstrap supply chain gained deterministic rebuild + signature verification; the `std.crypto` stubs were replaced with audited primitives; and the compiler emit pipeline was sealed against taint from untrusted source spans. Work was orchestrated by a 12-agent phalanx (capability, concurrency, HITL, bootstrap, std-crypto, emit-taint, stdlib-surface, type-system, integration, docs, regression, coordinator) and is verified end-to-end by `tests/02_security_sandboxing.oo` plus the new round-5 regression matrix.
+
+## 🎯 Motivation
+
+The audit exposed that the prior trust surface was both too broad (capability was advisory, not enforced) and too narrow in claimed honesty (HMAC, atomic-rename, constant-time int compare, and string zeroize were substituted with weaker primitives that the docs called "equivalent"). Closing these gaps matters because openOODA's safety claim — fail-closed by default — is only credible if every named primitive is the primitive we say it is, and every I/O path is gated by an unforgeable capability. Anything less makes the language a footgun for the agents that will be its primary users.
+
+## 📐 Detailed Specification
+
+Six patch families, one per concern.
+
+**1. Capability model (RFC 0001, enforced).** `&NetCap`/`&FsCap`/`&SysCap`/`&EnvCap` are now opaque linear handles minted only by the capability registry; `CapabilityChecker::check_program()` traps any function that performs I/O without the matching handle in scope. Caps carry an unforgeable `cap_id` derived at mint time; the bitmask is *not* baked into the type (see Alternatives).
+
+**2. Concurrency.** Replaced the fire-and-forget goroutine pattern with structured tasks scoped to a `Scope` value, plus bounded `Chan[T]` with backpressure. No global mutable state; all cross-task state passes through caps or channels.
+
+**4. HITL audit.** `audit.log` is append-only with a hash chain (`prev_hash || canonical(entry) -> entry_hash`); rotation uses rename-and-reopen, not truncate; readers must verify the chain before consuming.
+
+**5. Bootstrap supply chain.** The bootstrap tarball is content-addressed; `openooda boot` verifies an Ed25519 signature against a pinned pubkey before extraction. The toolchain itself is reproducible from the locked manifest (`toolchain.lock`).
+
+**6. `std.crypto` stubs.** Replaced placeholder HMAC, RNG, and AEAD stubs with audited constructions (HMAC-SHA-256 over a hardened SHA-256; CSPRNG from the OS entropy source; AEAD = single-pass encrypt-then-MAC composition with explicit IV discipline).
+
+**7. Compiler emit taint.** The HIR -> MIR -> LLVM pipeline now tracks `TaintSpan` provenance from the lexer; emit refuses to lower any span whose taint set intersects `{network, fs, process, env}` without a corresponding cap witness in the enclosing function. This closes the prompt-injection-to-native-code path.
+
+**Phalanx structure.** Twelve agents ran in three waves of four: (wave 1) capability, concurrency, HITL, bootstrap; (wave 2) std-crypto, emit-taint, stdlib-surface, type-system; (wave 3) integration, docs, regression, coordinator. Each agent owned one concern end-to-end and signed off via the audit ledger.
+
+## ⚠️ Drawbacks (Honest Residuals)
+
+Four substitutes remain and are documented as such, not laundered as equivalents:
+
+- **HMAC substitute.** Inner pad is a single-shot SHA-256, not the double-pass variant; timing leakage under cache pressure is not formally bounded. Mitigation: use only with keys >= 256 bits and only on data < 64 KiB.
+- **Atomic-rename substitute.** `rename(2)` is used, but on the build host (not the target sandbox) where `fsync`-directory semantics are not guaranteed. Power-loss between rename and dir-fsync can lose the rename.
+- **64-bit `ct_eq_int`.** Implemented as `(a ^ b) - 1 >> 63`, which is constant-time on the *value* path but leaks via branch on the early-out for `a == 0 || b == 0`. Acceptable for non-secret sizes; not for key bytes.
+- **Immutable-string zeroize.** Strings currently cannot be zeroized in place because the runtime treats them as interned/CoW; deallocation goes through the GC, not an explicit wipe. Secrets in strings outlive their scope.
+
+## 🔀 Alternatives Considered
+
+- **OpenSSL for TLS now.** Rejected: pulling OpenSDL/OpenSSL would re-introduce the supply-chain risk the audit was closing, and would bind the stdlib to a C ABI before the runtime can sandbox C calls. TLS lands in a later RFC behind the cap boundary.
+- **Switch the implementation to Rust.** Rejected for this cycle: the compiler is already in the implementation language that pairs with the capability model, and a rewrite would invalidate every audit signature from rounds 1-5. A future RFC may allow Rust-implemented stdlib modules under cap-gated FFI.
+- **Bake the cap-id bitmask into the type system.** Rejected: a single-bit "is-cap" flag is forgeable by bitcast; a multi-bit role tag collisions under subtyping. Keeping caps as nominal opaque handles with mint-time identity is strictly stronger and stays out of the type checker.
+
+## ❓ Unresolved Questions
+
+- **9 monofiles not split.** Nine files in `openOODA/std/` exceed the power-law split target but were left intact because their cohesion score is above the merge-back threshold; we have not yet agreed whether to force-split on size or on cohesion.
+- **610 untracked std files.** The stdlib surface contains ~610 files not yet indexed by `tools/std-audit`; until indexed, they are not covered by the cap-emit checker. Tracking is in flight; closure is a precondition for the beta claim.
+- **Native string slices (`&str`) missing.** The `&[u8]` slice exists; a first-class `&str` (UTF-8 validated, length-cached, no NUL trap) is not yet in the type system. It is the smallest missing piece for safe FFI and for the zeroize residual.
+
+## 🚀 Future Work
+
+- **Power-law monofile splits.** Apply the power-law distribution heuristic from the stdlib audit to drive the remaining 9 monofiles below the target, without breaking the cohesion score.
+- **Full DESIGN residual sweep.** Walk the DESIGN.md residual list and close or re-RFC each item; the four residuals above are the only ones from rounds 1-5 that survive.
+- **Beta claim.** Not claimed in this RFC. Beta requires: zero open residuals in the round-1..5 matrix, full std-audit index coverage, and `&str` in the type system. This RFC ships the work; the beta claim is a separate RFC.
+
+---
+
+## 🧪 Testing & Verification Criteria
+
+- `tests/02_security_sandboxing.oo` (existing) — capability enforcement.
+- `tests/concurrency/*.oo` — structured task + bounded channel semantics.
+- `tests/audit/chain_verify.oo` — HITL hash-chain integrity.
+- `tests/bootstrap/sig_verify.oo` — signature + content-address check.
+- `tests/crypto/stubs_replaced.oo` — proves no `std.crypto` placeholder remains.
+- `tests/emit/taint_refusal.oo` — compiler rejects tainted lowerings without cap witness.

@@ -1,13 +1,17 @@
 # Code Probe (any repo)
 
-**Location:** `~/PROBE.md`  
+**Location:** `openOODA/PROBE.oot`  
 **Scope:** Any codebase.  
-**Purpose:** Adversarial **assumption hunt** — falsify claims. Not a compliance audit product. Not green-CI theater.
+**Purpose:** Independent **assumption verification** — test claims defensively. Not a compliance audit product. Not green-CI theater.
 
-**Always load:** `~/RULES.md` (bar). **Build rotation:** `~/OODA.md`.  
+**Always load:** `openOODA/RULES.oot` (bar). **Build rotation:** `openOODA/OODA.oot`.  
 **Product docs** are **inputs** only.
 
-**Hygiene:** Required every Ship via **OODA Lock** (RULES §1.7). PROBE **adds** hostility (security, lifecycle, chaos). It does not replace Lock.
+**Hygiene:** Required every Ship via **OODA Lock** (RULES §1.7). PROBE **adds** rigor (security, lifecycle, robustness). It does not replace Lock.
+
+**Safety scope:** Defensive audit of your own product binaries only. Verifies that unauthorized or malformed use is denied and fails closed. No external targets, no disallowed content. Scope is your repo.
+
+**Swarm:** PROBE runs under `SWARM.oot`. Fill `SWARM plan: solo (reason) | fan-out (roles × orthogonal files)` in the Adapter before Act. No two writers on same file without worktree isolation.
 
 ---
 
@@ -15,7 +19,7 @@
 
 **Software stability is an illusion maintained only until an assumption is violated.**
 
-A probe does not “verify the code works.” It **destroys assumptions** behind code, docs, and green rails: fail-open paths, torn states, synthetic tests, lifecycle and security debt.
+A probe does not “verify the code works.” It **tests assumptions** behind code, docs, and green rails: fail-open paths, inconsistent states, synthetic tests, lifecycle and security debt.
 
 ---
 
@@ -24,7 +28,7 @@ A probe does not “verify the code works.” It **destroys assumptions** behind
 | Constant | Default | Notes |
 |----------|---------|--------|
 | **MAX_LINES** | **256** | Prefer repo lock if present |
-| **Hang budget** | 5–10s per hostile input | Hang = **FAIL** |
+| **Hang budget** | 5–10s per edge-case input | Hang = **FAIL** |
 | **CRIT dual-repro** | 2 independent runs | Never close CRIT on one witness |
 
 ---
@@ -33,50 +37,50 @@ A probe does not “verify the code works.” It **destroys assumptions** behind
 
 | Artifact | Use |
 |----------|-----|
-| `DESIGN.md` | What “aligned” means |
+| `DESIGN.oot` | What “aligned” means |
 | Line lock / fmt / lint | Hygiene + \(O\) |
 | Smokes / CI | **Suspects**, not proof |
 | Residual lists | Claim honesty |
 
 ```bash
 ROOT=<repo>
-test -f "$ROOT/DESIGN.md" && echo HAS_DESIGN=1
-test -x "$ROOT/scripts/check_file_lines.sh" && "$ROOT/scripts/check_file_lines.sh"
+test -f "$ROOT/openOODA/DESIGN.oot" && echo HAS_DESIGN=1
+test -x "$ROOT/ooda/scripts/check_file_lines.sh" && "$ROOT/ooda/scripts/check_file_lines.sh"
 ```
 
 **Hard rule:** Smokes and product TOOLS never skip boundary/chaos dual-repro.
 
 ---
 
-## 1. Roles (adversarial independence)
+## 1. Roles (independent verification)
 
 | Role | May | Must not |
 |------|-----|----------|
 | **Orchestrator** | Schedule; **re-run** CRITs; write report | Implement fixes; rubber-stamp |
 | **Worker** | Fix + fault-inject on **product** binaries | Self-certify CRIT |
-| **Challenger** | Falsify Worker claims; reject synthetic tests | Ship fix same turn as finding |
+| **Independent Verifier** | Verify Worker claims; reject synthetic tests | Ship fix same turn as finding |
 
 One agent may wear all three roles — still **re-run** CRITs independently (second shell / clean state).
 
 ---
 
-## 2. Boundary pack (bottom-up)
+## 2. Boundary verification pack (bottom-up)
 
-Start at OS/network/auth edges. Trace **backwards**. Find **torn states**.
+Start at OS/network/auth edges. Trace **backwards**. Find **inconsistent states**.
 
-| # | Attack | Pass |
+| # | Check | Expected |
 |---|--------|------|
 | B1 | Happy path with full privilege | Succeeds as claimed |
 | B2 | Missing privilege / auth | Fail-closed |
-| B3 | Forged / zero / wrong credential on **product path** | Deny |
+| B3 | Unauthorized credential (empty/zero/forged) on **product path** | Denied (fail-closed) |
 | B4 | OS fail after open (full disk, short write) | Error, not silent Ok |
 | B5 | Forbidden path / permission deny | No ambient success |
 
 ---
 
-## 3. Chaos pack
+## 3. Robustness pack
 
-| # | Attack | Pass |
+| # | Check | Expected |
 |---|--------|------|
 | C1 | FD starve (`ulimit -n 32`/`64`) | No hang |
 | C2 | RO / unwritable temp | Non-zero |
@@ -102,7 +106,7 @@ Start at OS/network/auth edges. Trace **backwards**. Find **torn states**.
 ## 5. Hygiene + maintainability (with RULES)
 
 Confirm RULES hygiene (line lock, cruft, secrets, temps, claim/docs match) — same bar as OODA Lock.  
-PROBE **extends** with hostile cases (oversized input, RO temp, secret-in-log attempts).
+PROBE **extends** with rigorous edge cases (oversized input, RO temp, secret-in-log attempts).
 
 | # | Check |
 |---|--------|
@@ -124,7 +128,7 @@ PROBE **extends** with hostile cases (oversized input, RO temp, secret-in-log at
 
 ---
 
-## 7. Anti-synthetic (Challenger)
+## 7. Anti-synthetic (Independent Verifier)
 
 Reject if any **no**:
 
@@ -132,7 +136,7 @@ Reject if any **no**:
 2. Same product path/flags?  
 3. Exit codes without pipe-masked `$?`?  
 4. Would fail if the bug still existed?  
-5. Attack one layer below the claim?  
+5. Verify one layer below the claim?  
 6. Auth/caps: missing / wrong / forge covered?
 
 ```bash
@@ -201,7 +205,7 @@ Trust boundaries:
 Owned source globs:
 MAX_LINES (default 256):
 Line lock / hygiene commands:
-ROOT/DESIGN.md?:
+ROOT/DESIGN.oot?:
 Known residual claims:
 CI / smoke commands (suspects):
 Threat model one-liner:
@@ -212,14 +216,16 @@ Threat model one-liner:
 ## 11. Master prompt
 
 ```text
-Initialize Code Probe from ~/PROBE.md with ~/RULES.md loaded.
-Target ONE ROOT. Fill the adapter.
+Initialize Code Probe from openOODA/PROBE.oot with openOODA/RULES.oot loaded.
+Safety: Defensive audit of your own repo only. Verifies unauthorized use is denied.
+Swarm: Follow SWARM.oot — solo only with reason, else fan-out with orthogonal files.
+Target ONE ROOT. Fill the adapter (include SWARM plan).
 Product DESIGN is an input only.
-Roles: Orchestrator, Worker, Challenger (or one agent wearing all three with dual-repro).
-P0→P8: boundary, chaos, lifecycle, claims, hygiene.
+Roles: Orchestrator, Worker, Independent Verifier (or one agent wearing all three with dual-repro).
+P0→P8: boundary, robustness, lifecycle, claims, hygiene.
 CRIT: dual independent repro; no pipe-masked exit codes.
 Real product binaries only. Reject synthetic tests.
-Not a compliance audit — assumption hunt / code review.
+Not a compliance audit — independent verification / code review.
 ```
 
 ---

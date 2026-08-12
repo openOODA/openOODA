@@ -1,0 +1,76 @@
+pub fn extract_first_line(s: String) -> String {
+    let nl = str_index_of(s, "\n");
+    if nl >= 0 {
+        return str_slice(s, 0, nl);
+    }
+    return s;
+}
+
+pub fn shell_escape(s: String) -> String {
+    let mut out = "'";
+    let n = chars_len(s);
+    let mut i = 0;
+    while i < n {
+        let c = str_slice(s, i, i + 1);
+        if c == "'" {
+            out = out + "'\\''";
+        } else {
+            out = out + c;
+        }
+        i = i + 1;
+    }
+    out = out + "'";
+    return out;
+}
+
+
+// filter_failures.oo — In plain English: Show subset failures for issue 61. Pass log file as arg, fallback to audit/current_failures.log. (was check_61.oo)
+// Personal hard path removed — use args or audit/ file.
+pub fn main(fs: &FsReadCap, sys: &SysCap, args: List[String]) {
+    let mut log_path = "audit/current_failures.log";
+    if args.len() > 1 {
+        log_path = args[1];
+    }
+    let get_files_cmd = "grep '^Fail: ' " + log_path + " | cut -d' ' -f2";
+    let get_files_res = sys_exec(sys, "sh", "-c", get_files_cmd);
+    
+    let mut files_out = "";
+    if get_files_res.is_ok() {
+        files_out = match get_files_res { Ok(s) => s, Err(e) => e };
+    } else {
+        files_out = match get_files_res { Ok(s) => s, Err(e) => e };
+    }
+    
+    let mut start = 0;
+    let n = chars_len(files_out);
+    
+    while start < n {
+        let rest = str_slice(files_out, start, n);
+        let nl = str_index_of(rest, "\n");
+        let mut end = n;
+        if nl >= 0 {
+            end = start + nl;
+        }
+        
+        if end > start {
+            let f = str_slice(files_out, start, end);
+            
+            let cmd = "./ooda/oodac/oodac check " + shell_escape(f) + " 2>&1 || true";
+            let check_res = sys_exec(sys, "sh", "-c", cmd);
+            
+            let mut check_out = "";
+            if check_res.is_ok() {
+                check_out = match check_res { Ok(s) => s, Err(e) => e };
+            } else {
+                check_out = match check_res { Ok(s) => s, Err(e) => e };
+            }
+            
+            if str_index_of(check_out, "ERR") >= 0 {
+                let first = extract_first_line(check_out);
+                println(f + ": " + first);
+            }
+        }
+        
+        start = end + 1;
+    }
+}

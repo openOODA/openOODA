@@ -1,0 +1,56 @@
+// verify_all.oo — In plain English: Check every .oo file with oodac check. Report how many passed. (was check_all.oo)
+// Runs in openOODA/scripts with SysCap + FsReadCap.
+pub fn main(sys: &SysCap, fs: &FsReadCap) {
+    let r = proc_exec(sys, "find std -name \"*.oo\"");
+    match r {
+        Ok(out) => {
+            let files = out.split("\n");
+            let len = list_len(files);
+            let mut i = 0;
+            let mut fails = 0;
+            let mut total = 0;
+
+            while i < len {
+                let f = list_get(files, i);
+                if f.len() > 0 {
+                    let cmd = "./ooda/oodac/oodac check " + f;
+                    let p_res = proc_spawn(sys, cmd);
+                    match p_res {
+                        Ok(p) => {
+                            let w_res = proc_wait(sys, p);
+                            match w_res {
+                                Ok(status) => {
+                                    if status != "0" {
+                                        println("Fail: " + f);
+                                        fails = fails + 1;
+                                    }
+                                },
+                                Err(e) => {
+                                    println("Fail wait: " + f);
+                                    fails = fails + 1;
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            println("Fail spawn: " + f);
+                            fails = fails + 1;
+                        }
+                    }
+                    total = total + 1;
+                }
+                i = i + 1;
+            }
+            
+            let total_str = total.to_string();
+            let fails_str = fails.to_string();
+            println("Checked " + total_str + " files. Failed: " + fails_str);
+            if fails > 0 {
+                process_exit(1);
+            }
+        },
+        Err(e) => {
+            println("Error: " + e);
+            process_exit(1);
+        }
+    }
+}

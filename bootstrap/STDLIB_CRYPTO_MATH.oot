@@ -1,0 +1,80 @@
+# Std crypto math — gate-only, math not audited
+
+**Status:** residual honesty (load-bearing gate). PM **4.3** / DESIGN §4.3.
+**Marker:** `STDLIB_CRYPTO_MATH_RESIDUAL`
+**Status:** `[STATUS: residual — math not audited]`
+
+---
+
+## What is true today
+
+Product std crypto ships **gate-only** `.oo` files. Public entry points compile
+and are callable, but the real math bodies are fail-closed `process_exit(1)`
+stubs. The gate is **load-bearing**: callers that hit a "real" function do not
+get crypto — they get an immediate process exit. No silent fall-through.
+
+The math has **not been audited**. Treat every gated `.oo` below as
+**unverified**, regardless of the file name.
+
+---
+
+## Gated files (8 std crypto "real" implementations)
+
+Each file pairs a public surface with a `process_exit(1)` body. Math is not
+audited; gate is the only thing keeping callers honest.
+
+| File | Family | Gate shape |
+|------|--------|------------|
+| `std/src/ooda/sec/crypto/ed25519_ops.oo` | EdDSA / X25519 | `_ops` bodies `process_exit(1)` |
+| `std/src/ooda/sec/crypto/dilithium_ops.oo` | PQC sig (Dilithium) | `_ops` bodies `process_exit(1)` |
+| `std/src/ooda/sec/crypto/groth16_ops.oo` | zkSNARK (Groth16) | `_ops` bodies `process_exit(1)` |
+| `std/src/ooda/sec/crypto/double_ratchet_ops.oo` | Signal ratchet | `_ops` bodies `process_exit(1)` |
+| `std/src/ooda/sec/crypto/falcon_ops.oo` | PQC sig (Falcon) | `_ops` bodies `process_exit(1)` |
+| `std/src/ooda/sec/crypto/kyber.oo` | PQC KEM (Kyber) | top-level bodies `process_exit(1)` |
+| `std/src/ooda/sec/crypto/secp256k1_ops.oo` | ECDSA / secp256k1 | `_ops` bodies `process_exit(1)` |
+| `std/src/ooda/sec/crypto/plonk_ops.oo` | zkSNARK (Plonk) | `_ops` bodies `process_exit(1)` |
+
+Each also has paired `_types.oo`, `_engine.oo`, `_stubs.oo` — only `_ops` /
+top-level bodies carry the gate; types/engines/stubs may carry partial surfaces.
+
+---
+
+## Known math gaps (Round 1 audit)
+
+Math-level gaps observed during Round 1 review. None are closed; none are
+products. Listed so agents do not treat gated files as if they implement
+the named primitive correctly.
+
+- **X25519 clamp** — scalar clamping per RFC 7748 §5 not verified in
+  `ed25519_ops.oo`. Cofactor / small-subgroup behaviour unverified.
+- **On-curve validation** — Ed25519 / secp256k1 point decoding does not
+  enforce on-curve check; mixed-coordinate edge cases unverified.
+- **Constant-time** — no side-channel audit. Timing-leak posture unknown.
+  No `CT-` / `volatile` / barrier markers in any gated `_ops` body.
+- **Dilithium sampling** — rejection sampling + NTT domain not verified;
+  polynomial arithmetic unverified.
+- **Falcon sampler** — Gaussian / NTT sampler unverified; signature
+  rejection loop unverified.
+- **Groth16 / Plonk** — pairing arithmetic, R1CS encoding, and
+  quotient-polynomial reduction unverified.
+- **Double Ratchet** — DH ratchet step + symmetric ratchet key derivation
+  unverified; root-key / chain-key chain unverified.
+- **Kyber** — CPA-PKE → CCA-KEM transform (FO transform) unverified.
+
+---
+
+## What we do **not** claim
+
+- No audited, production-grade crypto math in the product std surface.
+- No constant-time guarantee on any gated body.
+- No X25519 clamping, on-curve check, or NTT correctness.
+
+## Path A product floor (alpha) — gate only
+
+- **In:** gate (`process_exit(1)`) is load-bearing; callers that reach a
+  "real" function exit the process.
+- **Residual:** the math itself — not audited, not shipped as crypto.
+
+---
+
+**Round:** 2.5 closeout. Math audit remains residual.
