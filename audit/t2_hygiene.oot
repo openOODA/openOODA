@@ -1,0 +1,155 @@
+# t2_hygiene.oot — Hygiene Enforcer (T2 secret pack)
+# Date: 2026-08-12T10:34:10Z
+# Role: Hygiene Enforcer
+# Tree: /home/jeryd/Projects/openOODA  (ooda/ + openOODA/)
+# Tip (ooda): 1f67f4d (1f67f4d74b8e350aa41299da43258f0cc02b8780)
+# OWN: c_emit_secret*.oo line-lock ≤300 (split if over);
+#      no /tmp in committed secret scripts; bash -n secret smokes
+# WRITE: this audit only (no product edits required this pass)
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Check | VERDICT | Notes |
+|-------|---------|-------|
+| `c_emit_secret*.oo` ≤300 lines | **PASS** | max = 263 (`c_emit_secret.oo`); all 4 units under bar |
+| Split any emit unit if >300 | **N/A** | none over; no split; imports unchanged |
+| `/tmp` in committed secret scripts | **PASS** | ZERO hits in `scripts/secret_*.sh` + emit units |
+| `bash -n` secret smokes | **PASS** | 5/5 syntax clean |
+| Emit units free of `/tmp` path sludge | **PASS** | no `/tmp` in `c_emit_secret*.oo` |
+
+OVERALL: **PASS**
+
+========================================================================
+LINE COUNTS
+========================================================================
+
+Measured live under `ooda/` at tip `1f67f4d` (hygiene pass 2026-08-12T10:34Z).
+
+### Emit units (line-lock OWN)
+
+| File | Lines | ≤300 | Headroom | Split? | /tmp |
+|------|------:|:----:|--------:|:------:|:----:|
+| `oodac/c_emit_secret.oo` | **263** | PASS | 37 | NO | none |
+| `oodac/c_emit_secret_prop.oo` | **233** | PASS | 67 | NO | none |
+| `oodac/c_emit_secret_guard.oo` | **162** | PASS | 138 | NO | none |
+| `oodac/c_emit_secret_alias.oo` | **157** | PASS | 143 | NO | none |
+| **emit total** | **815** | — | — | — | — |
+
+Headroom gate: largest unit `c_emit_secret.oo` = **263 / 300** (37 lines free before split).
+
+`main.oo` import order (unchanged):
+  `c_emit_secret_alias.oo` → `c_emit_secret.oo` → `c_emit_secret_prop.oo` → `c_emit_secret_guard.oo`
+
+### Secret smokes
+
+| File | Lines | bash -n | /tmp |
+|------|------:|:-------:|:----:|
+| `scripts/secret_eprintln_smoke.sh` | 47 | OK | none |
+| `scripts/secret_product_floor_smoke.sh` | 49 | OK | none |
+| `scripts/secret_sink_enforce_smoke.sh` | 264 | OK | none |
+| `scripts/secret_t1_return_smoke.sh` | 81 | OK | none |
+| `scripts/secret_taint_residual_smoke.sh` | 81 | OK | none |
+| **smokes total** | **522** | 5/5 | — |
+
+### Pack total (emit + smokes)
+
+| Pack | Lines |
+|------|------:|
+| emit + secret smokes | **1337** |
+
+========================================================================
+SPLIT GATE — c_emit_secret*.oo
+========================================================================
+
+Rule: if any `oodac/c_emit_secret*.oo` > 300 lines → split cleanly
+(keep roles: core sinks in `c_emit_secret.oo`; prop/mark in
+`c_emit_secret_prop.oo`; alias resolve in `c_emit_secret_alias.oo`;
+guard scan in `c_emit_secret_guard.oo`; fix `oodac/main.oo` imports only).
+
+Live:
+  lines(c_emit_secret.oo)       = 263
+  lines(c_emit_secret_prop.oo)  = 233
+  lines(c_emit_secret_guard.oo) = 162
+  lines(c_emit_secret_alias.oo) = 157
+  split_needed                  = NO
+  new split unit                = not created (correct)
+
+Delta vs t1_hygiene snapshot (earlier monofile-heavy land):
+  t1 reported secret.oo=288 + guard=78; tip now has prop+alias peeled,
+  secret.oo=263, guard=162, prop=233, alias=157 — all still ≤300.
+
+========================================================================
+/tmp PURGE (secret committed scripts)
+========================================================================
+
+Scan: `grep /tmp` on
+  - `oodac/c_emit_secret.oo`
+  - `oodac/c_emit_secret_prop.oo`
+  - `oodac/c_emit_secret_guard.oo`
+  - `oodac/c_emit_secret_alias.oo`
+  - `scripts/secret_*.sh`
+
+Result: **ZERO hits**.
+
+Smokes prefer non-/tmp temps where temps are used:
+  `export TMPDIR="${TMPDIR:-$HOME/.cache/ooda-tmp}"`
+  `mkdir -p "$TMPDIR"`
+  (secret_eprintln_smoke.sh, secret_sink_enforce_smoke.sh, secret_t1_return_smoke.sh)
+
+secret_product_floor_smoke.sh / secret_taint_residual_smoke.sh:
+  no temp-file surface (doc/marker / floor checks only).
+
+Out of OWN (not modified): `fixtures/secret_*.oo` path-string oracles that
+intentionally use `"/tmp/..."` as static-taint / sink test tokens (product
+rails, not script sludge). Same policy as t1 / meta pack hygiene.
+
+========================================================================
+bash -n (secret smokes)
+========================================================================
+
+```
+bash -n scripts/secret_eprintln_smoke.sh
+bash -n scripts/secret_product_floor_smoke.sh
+bash -n scripts/secret_sink_enforce_smoke.sh
+bash -n scripts/secret_t1_return_smoke.sh
+bash -n scripts/secret_taint_residual_smoke.sh
+# all: exit 0
+```
+
+ALL_BASHN_OK = true
+
+========================================================================
+ACTIONS THIS PASS
+========================================================================
+
+| Action | Result |
+|--------|--------|
+| Measure `c_emit_secret*.oo` | 263 + 233 + 162 + 157; all ≤300 |
+| Split emit unit | not required |
+| Purge `/tmp` from secret scripts | already clean; no edit |
+| `bash -n` secret smokes | 5/5 OK |
+| Product code edits | **none** |
+| Audit write | this file only |
+
+========================================================================
+RETURN — LINE COUNTS (compact)
+========================================================================
+
+```
+  263  oodac/c_emit_secret.oo
+  233  oodac/c_emit_secret_prop.oo
+  162  oodac/c_emit_secret_guard.oo
+  157  oodac/c_emit_secret_alias.oo
+   47  scripts/secret_eprintln_smoke.sh
+   49  scripts/secret_product_floor_smoke.sh
+  264  scripts/secret_sink_enforce_smoke.sh
+   81  scripts/secret_t1_return_smoke.sh
+   81  scripts/secret_taint_residual_smoke.sh
+  815  emit total
+  522  smokes total
+ 1337  total (emit+smokes)
+```
+
+end of t2_hygiene.oot

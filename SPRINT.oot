@@ -8,8 +8,8 @@ History and deep evidence: `audit/*.oot` + git. Do not re-open monofile >600, M1
 | Item | Value |
 |------|--------|
 | Release | `v0.184.0-alpha` |
-| Tip (`ooda`) | `1f67f4d` — T1 secret return/alias/LBRACE taint; prior `4b70f14` ZT CRIT + metamorphic path-A; product `oodac/oodac` rebuilt (gitignored) |
-| Focus | Post-T1 backlog (scan depth T2 + hygiene T4 + runtime T3); std honesty; ship push |
+| Tip (`ooda`) | `ad53efe` — T2 secret scan depth (args/nested/field/comment-skip/FFI); prior T1 `1f67f4d` + ZT `4b70f14`; product `oodac/oodac` rebuilt (gitignored) |
+| Focus | Post-T2 backlog (hygiene T4 + runtime T3); std honesty; ship push |
 | Beta | **Not claimed** |
 
 ---
@@ -22,6 +22,7 @@ History and deep evidence: `audit/*.oot` + git. Do not re-open monofile >600, M1
 | `audit/track_ab_close.oot` | Track A+B close ledger — what is already **FIXED** (1.1–1.3, 1.4–1.7, 1.9, 2.2–2.3, 7.3) |
 | `audit/track_a_rebuild_meta.oot` | Metamorphic tip rebuild dual-green evidence |
 | `audit/t1_phalanx_rollup.oot` | T1 secret return/control-flow phalanx — **FIXED** 2.1, 2.4, 5.1–5.3 |
+| `audit/t2_phalanx_rollup.oot` | T2 secret scan depth phalanx — **FIXED** 2.5–2.7, 5.4–5.6, 6.2 |
 | `audit/meta_phalanx_rollup.oot` | Metamorphic 12-agent residuals (R1–R7) |
 | `audit/std_triage_2026-08-11.oot` + `std_batches_landed.oot` | Std untracked triage + landed batches |
 | `PM.oot` | Long-term product/milestone board (alpha floors vs DESIGN residual) |
@@ -41,10 +42,11 @@ Deep finding tables from the 2026-08-11 zero-trust phalanx lived in an earlier S
   What: propagate SECRET through function returns; alias rebind (`let f = tcp_write`); fix if/match LBRACE walker so taint is not dropped.  
   Evidence: `audit/t1_phalanx_rollup.oot` + `audit/t1_integration.oot` (product host 942360 B; matrix 25/25 green).
 
-- [ ] **T2 — Secret scan depth (HIGH)**  
-  IDs: **2.5, 2.6, 2.7, 5.4–5.6, 6.2**  
-  Where: `c_emit_secret*.oo`  
-  What: full `args` string scan; nested RHS walker; skip string/comment false positives; field/index/method return taint; FFI payload args.
+- [x] **T2 — Secret scan depth (HIGH)** — **FIXED**  
+  IDs: **2.5, 2.6, 2.7, 5.4, 5.5, 5.6, 6.2** (closed 2026-08-12)  
+  Where: `c_emit_secret*.oo`, `c_emit_ident.oo`  
+  What: full `args` string scan; nested RHS walker; skip string/comment false positives; field/index/method return taint; FFI payload args.  
+  Evidence: `audit/t2_phalanx_rollup.oot` + `audit/t2_integration.oot` (product host 950936 B; matrix 29/29 green; T1+T2 smokes exit 0).
 
 - [ ] **T3 — Runtime remaining ZT (HIGH)**  
   IDs: **1.8, 1.10, 4.5, 6.4** (6.5 optional)  
@@ -99,10 +101,10 @@ Deep finding tables from the 2026-08-11 zero-trust phalanx lived in an earlier S
 | P3 | Agy NN post-compiler — **agy lane**; do not thrash |
 | P4 | DESIGN long-horizon: SMT, GPU, pkg/LSP, beta, … |
 
-### Already FIXED (do not re-open) — see `audit/track_ab_close.oot` + `audit/t1_phalanx_rollup.oot`
+### Already FIXED (do not re-open) — see `audit/track_ab_close.oot` + `audit/t1_phalanx_rollup.oot` + `audit/t2_phalanx_rollup.oot`
 
-`1.1` `1.2` `1.3` `1.4` `1.5` `1.6` `1.7` `1.9` `2.2` `2.3` `2.1` `2.4` `5.1` `5.2` `5.3` `7.3`  
-Plus: monofile >600 = 0; tip metamorphic live decoys; seed SHA+minisign; path-A caps/FFI/TLS/CT; T1 return/alias/LBRACE taint.
+`1.1` `1.2` `1.3` `1.4` `1.5` `1.6` `1.7` `1.9` `2.2` `2.3` `2.1` `2.4` `2.5` `2.6` `2.7` `5.1` `5.2` `5.3` `5.4` `5.5` `5.6` `6.2` `7.3`  
+Plus: monofile >600 = 0; tip metamorphic live decoys; seed SHA+minisign; path-A caps/FFI/TLS/CT; T1 return/alias/LBRACE taint; T2 scan depth (args/nested/comment-skip/field-method/FFI named sinks).
 
 ---
 
@@ -117,4 +119,37 @@ Runtime seals; FFI allowlist + realpath/O_NOFOLLOW + handle dlsym; TLS host veri
 1. Pick **T1–T5** only this turn (power law).  
 2. When an ID lands, mark `[x]` here and add a one-line evidence path under `audit/`.  
 3. Do not paste full 12-agent findings back into this file — keep them in `audit/` or git history.  
-4. `PM.oot` stays the long board; **SPRINT is the active todo list**.
+4. `PM.oot` mirrors `DESIGN.oot` plus current status; **SPRINT is the active todo list**.
+
+**Glossary for owners:** `T2` = next fix for hidden secrets in function arguments; `ZT` = zero-trust check; `chs_rt` = C runtime that enforces permission tokens.
+
+---
+
+## Lanes — swarm write ownership (folded from `LANE.oot` 2026-08-12)
+
+**Purpose:** Orthogonal file ownership. No two write-agents own the same file.
+
+### Rules
+
+- **Write exclusivity:** each file path has at most one write-agent this turn.
+- **Read-only lanes** may inspect any tree; they must not edit.
+- **Power law:** ≤ **5** work items per agent per turn.
+- If lanes would collide, stop and re-slice before Act.
+
+### Current lanes (this turn)
+
+| Agent | Lane | Trees |
+|-------|------|-------|
+| **agy** | std library | `std/` |
+| **minimax** | sprint issues | follow their dirty files (do not steal paths they already hold) |
+| **vibe** | audit (read-only) | monorepo (no writes) |
+| **grok** | A process, B root hygiene, C runtime security residuals, D peer-verify, E QA/CI; **metamorphic path-A this turn** | `openOODA/` process docs, monorepo root hygiene, select `ooda/runtime` files, `qa/`, ooda CI; write: `rfcs/2026-08-11-metamorphic-path-a.oot`, `audit/meta_phalanx_rollup.oot` |
+
+### How to use lanes
+
+1. Pick work only inside your trees.
+2. Before a write, confirm the path is not on another write-agent's dirty set.
+3. Residual that crosses lanes: name it; do not silently edit peer trees.
+4. Update this table when the coordinator reassigns lanes (same turn or next).
+
+**Residual:** Lane map is turn-scoped. Stale rows after reassignment are hygiene debt — rewrite the table, do not accumulate ghost owners.

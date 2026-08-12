@@ -1,0 +1,163 @@
+# t2_peer1_args.oot
+# Peer Verifier 1 (QA) — T2 secret scan depth: args / sinks (write_file, tcp_write, println)
+# Date: 2026-08-12
+# Role: Peer Verifier 1 (QA)
+# Tree: /home/jeryd/Projects/openOODA/ooda
+# OWN: audit this file; fixtures secret_t2_args_*.oo; fix guard only if fail
+# Binary: oodac/oodac @ 2026-08-12 03:30 (937592 B)
+# Tip (ooda): 1f67f4d (working tree dirty; secret units present in product host)
+
+========================================================================
+SUMMARY
+========================================================================
+T2 peer1 args matrix (write_file / tcp_write / println secret vs clean): **GREEN**
+
+| # | Fixture | Claim under verify | Expected | Actual | Verdict |
+|---|---------|--------------------|----------|--------|---------|
+| 1 | `secret_t2_args_write_file_fail` | `write_file(fs, path, secret)` refuse | rc!=0 + `ERR\tsecret` | rc=1 + `ERR\tsecret\twrite_file sink refuses SECRET token` | **PASS** |
+| 2 | `secret_t2_args_tcp_write_fail` | `tcp_write(net, slot, secret)` refuse | rc!=0 + `ERR\tsecret` | rc=1 + `ERR\tsecret\ttcp_write sink refuses SECRET token` | **PASS** |
+| 3 | `secret_t2_args_println_secret_fail` | `println(secret)` bare IDENT refuse | rc!=0 + `ERR\tsecret` | rc=1 + `ERR\tsecret\tprintln sink refuses SECRET token` | **PASS** |
+| 4 | `secret_t2_args_println_concat_fail` | `println("literal " + secret)` refuse | rc!=0 + `ERR\tsecret` | rc=1 + `ERR\tsecret\tprintln sink refuses SECRET token` | **PASS** |
+| 5 | `secret_t2_args_println_ok_pass` | `println("no secret")` OK with `// SECRET: other` | rc=0, no `ERR\tsecret` | rc=0, 0 secret ERRs | **PASS** |
+
+**Matrix: 5/5 PASS. No peer guard fix required.**
+
+========================================================================
+COMMAND (as assigned)
+========================================================================
+```
+cd /home/jeryd/Projects/openOODA/ooda
+OODAC=./oodac/oodac
+for f in \
+  secret_t2_args_write_file_fail \
+  secret_t2_args_tcp_write_fail \
+  secret_t2_args_println_secret_fail \
+  secret_t2_args_println_concat_fail \
+  secret_t2_args_println_ok_pass
+do
+  out=$($OODAC emit-c fixtures/$f.oo 2>&1); rc=$?
+  echo "=== $f rc=$rc ==="
+  echo "$out" | grep -E $'ERR\tsecret' | head -2 || true
+done
+```
+
+Expected contract:
+- **fail** fixtures: `rc != 0` and output contains `ERR\tsecret`
+- **pass** fixture: `rc == 0` and no `ERR\tsecret`
+
+========================================================================
+FIXTURES (created this pass)
+========================================================================
+
+Paths under `ooda/fixtures/`:
+
+### 1. secret_t2_args_write_file_fail.oo
+```
+// SECRET: token
+pub fn main(fs: &FsCap) {
+    let token = "s3cret";
+    let path = "/tmp/ooda_t2_args_should_not_write";
+    let r = write_file(fs, path, token);
+    println(1);
+}
+```
+Live: refuse content arg (argi=2) via `c_secret_scan_call(..., want=2, eq_only=true)`.
+
+### 2. secret_t2_args_tcp_write_fail.oo
+```
+// SECRET: token
+pub fn main(net: &NetCap) {
+    let token = "s3cret-payload";
+    let slot = 0;
+    let r = tcp_write(net, slot, token);
+    println(1);
+}
+```
+Live: refuse payload (argi>=1) via net sink branch in `check_secret_println_sinks`
+(`tcp_write` / `net_tcp_write` / `net_send` / `http_post` / …). Emit-time
+`c_secret_emit_guard` also scans a1/a2 + full `args` via `c_guard_scan_idents`.
+
+### 3. secret_t2_args_println_secret_fail.oo
+```
+// SECRET: token
+pub fn main() {
+    let token = "s3cret";
+    println(token);
+}
+```
+Live: bare IDENT walk in println args → refuse.
+
+### 4. secret_t2_args_println_concat_fail.oo
+```
+// SECRET: token
+pub fn main() {
+    let token = "s3cret";
+    println("literal " + token);
+}
+```
+Live: println arg walker visits every IDENT (not bare-only), so `token` inside
+`"literal " + token` is refused. This is the T2-class concat-in-args case
+(string literal alone is not a secret).
+
+### 5. secret_t2_args_println_ok_pass.oo
+```
+// SECRET: other
+pub fn main() {
+    let other = "s3cret-not-printed";
+    println("no secret");
+}
+```
+Live: string-literal-only println does not touch SECRET-tagged `other` → OK.
+Proves tag presence alone does not poison unrelated clean sinks.
+
+========================================================================
+SOURCE REVIEW (guard / check path — no fix)
+========================================================================
+
+Check path (`oodac/c_emit_secret.oo`):
+- `write_file`: `c_secret_scan_call` want=1 and want=2 (path + content)
+- `tcp_write` family: `c_secret_scan_call` want=1, eq_only=false (payload args)
+- `println` / `eprintln`: IDENT walk of full arg list (covers concat + multi-arg)
+- Alias resolve (`c_secret_resolve_alias`) already on all sink branches (T1)
+
+Emit path (`oodac/c_emit_secret_guard.oo`):
+- `write_file`: a1 + a2 + `c_guard_scan_idents(args)`
+- `tcp_write` family: a1 + a2 + full args scan
+- `println` family: full args scan (string-skipping walker)
+- Line count: guard 162 / secret 263 — under monofile ratchet
+
+## Peer OWN fix
+
+None landed. All five `secret_t2_args_*.oo` fixtures match expect on tip
+product host; guard already covers write_file content, tcp_write payload, and
+println IDENT-in-concat without false-positive on clean string literals.
+
+========================================================================
+RESIDUALS (honest, out of primary gate)
+========================================================================
+
+1. **T2 backlog still open** in SPRINT (IDs 2.5–2.7, 5.4–5.6, 6.2): nested RHS
+   exhaustiveness, field/index/method-return taint, FFI payload depth beyond
+   named sinks, string/comment false-positive hardening. This matrix only
+   proves the assigned arg-sink shapes.
+2. **String interp `${secret}`** — residual (SPRINT 5.8); not covered here.
+3. **Emit vs check dual-path** — check path green for these fixtures; emit
+   guard scan is present for the same sinks but not re-exercised as a separate
+   host binary path in this audit (same `emit-c` entry).
+4. **tcp_write** requires NetCap typing; refuse fires before runtime IO — correct
+   for static path-A.
+
+========================================================================
+VERDICT
+========================================================================
+| Item | Status |
+|------|--------|
+| write_file(fs, path, secret) refuse | **PASS** live |
+| tcp_write secret payload refuse | **PASS** live |
+| println(secret) refuse | **PASS** live |
+| println("literal " + secret) refuse | **PASS** live |
+| println("no secret") OK w/ SECRET: other | **PASS** live |
+| Primary fixture matrix | **5/5 PASS** |
+| Peer guard fix | **none required** |
+
+end of t2_peer1_args.oot
