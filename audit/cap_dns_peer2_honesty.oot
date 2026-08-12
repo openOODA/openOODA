@@ -1,0 +1,296 @@
+# cap_dns_peer2_honesty.oot
+# QA Peer 2 — DNS residual honesty
+# Date: 2026-08-12T14:18Z
+# Role: QA Peer Verifier 2 (DNS residual honesty)
+# Tree: /home/jeryd/Projects/openOODA/ooda/std/src/net/dns.oo
+# OWN: prove non-localhost still Err residual; localhost Ok; no greenwash "real DNS".
+#      Write this audit only. No product/std edits. No push.
+# Mandate: residual path-A honesty after CAP-G6 UdpCap migrate (Integration 2).
+
+========================================================================
+SUMMARY
+========================================================================
+
+| # | Claim | Expected | Actual | VERDICT |
+|---|--------|----------|--------|---------|
+| 1 | **localhost → Ok** | exact `"localhost"` returns `Ok("127.0.0.1")` | pure body + verify `assert_eq!(ok_res, Ok("127.0.0.1"))` | **PASS** |
+| 2 | **non-localhost → Err residual** | any other hostname returns residual Err string | pure body single residual `return Err(...)`; verify `openooda.org` + branch matrix | **PASS** |
+| 3 | **no greenwash "real DNS"** | no wire resolver; cap formal ≠ product DNS | no socket/getaddrinfo/bind_udp in dns.oo; UdpCap unused in body; CAPS residual wording; header honesty | **PASS** |
+| 4 | Preferred formal still UdpCap | `resolve_ipv4(udp: &UdpCap, …)` | reflect `"type":"&UdpCap"` | **PASS** |
+| 5 | Product `oodac check` dns.oo | OK rc=0 (dual) | **OK** ×2 | **PASS** |
+| 6 | `cap_dns_udp_smoke.sh` | exit 0 (dual) | **PASSED** ×2 | **PASS** |
+| 7 | Push | none | none | **PASS** |
+
+**OVERALL: PASS** — DNS residual is honest: localhost pure-string Ok; non-localhost residual Err; UdpCap preferred formal does **not** imply a live resolver.
+
+**Do not claim:** product UDP socket DNS, dig path, getaddrinfo facade, or full std NetCap purge.
+
+**No peer code fix required. No push.**
+
+========================================================================
+METHOD
+========================================================================
+
+1. Static read of live WT `ooda/std/src/net/dns.oo` (md5 below).
+2. Control-flow / branch matrix: exact `"localhost"` only Ok path; single residual Err.
+3. Anti-greenwash scan: no wire DNS APIs in dns.oo; runtime getaddrinfo only on tcp/tls floors (not this facade).
+4. Product host: `oodac check` dual-repro + `oodac reflect` signature.
+5. Smoke dual-repro: `scripts/cap_dns_udp_smoke.sh`.
+6. Cross-doc honesty: CAPS.oot §CAP-G6 / UdpCap rows name residual, not product DNS.
+7. Pure-body sim of residual contract (source-identical Python mirror of branches).
+
+No ooda/std/openOODA product edits by this peer. No push.
+
+========================================================================
+HOST / TIP / WT CONTEXT
+========================================================================
+
+| Item | Value |
+|------|--------|
+| When (UTC) | 2026-08-12T14:18Z |
+| ooda tip | `2a0d10f` (`2a0d10fd3e3eaf91d2047b72b6f11a2752c076b5`) — `feat(caps): ProcessCap product facades for process/async` |
+| std tip | `77fb876` |
+| openOODA tip | `a5643ea` |
+| Product host | `ooda/oodac/oodac` **962680** B @ 2026-08-12 06:41:59 -0700 |
+| Host md5 | `7e1ce7df9bd366b607f35724e0efe80b` |
+| Surface | `ooda/std/src/net/dns.oo` **30** lines / **1145** B |
+| Surface md5 | `7c3476a0ebb8bc3ba54236ee02ed1296` |
+| WT | **dirty** uncommitted dns DE + `?? scripts/cap_dns_udp_smoke.sh` (not this peer) |
+| External twin | **none** — `std/src/net/dns.oo` does not exist |
+| Prior class | `audit/cap_g6_peer1_net.oot` SOFT_LEGACY NetCap → Integration 2 UdpCap migrate (`audit/cap_dns_integration.oot`) |
+| Peer OWN | audit only |
+
+========================================================================
+SURFACE (live source — residual contract)
+========================================================================
+
+```
+// CAP-G6: preferred UdpCap for DNS residual (UDP query path when product lands).
+// Residual: real UDP socket DNS not implemented (localhost hardcode + Err).
+// SECURITY: never construct Cap(0)/NetCap(0)/UdpCap(0) in verify (forge theater banned).
+
+fn resolve_ipv4_pure(hostname: String) -> Result[String, String]
+    requires hostname != ""
+{
+    if hostname == "localhost" {
+        return Ok("127.0.0.1");
+    }
+    return Err("Residual: UDP socket DNS not implemented");
+}
+
+fn resolve_ipv4(udp: &UdpCap, hostname: String) -> Result[String, String]
+    requires hostname != ""
+{
+    return resolve_ipv4_pure(hostname);   // cap formal unused for wire
+}
+
+verify resolve_ipv4_pure {
+    assert_eq!(resolve_ipv4_pure("localhost"), Ok("127.0.0.1"));
+    assert_eq!(resolve_ipv4_pure("openooda.org"),
+               Err("Residual: UDP socket DNS not implemented"));
+}
+```
+
+| Field | Truth |
+|-------|--------|
+| Preferred formal | **`&UdpCap`** on `resolve_ipv4` |
+| Pure residual core | `resolve_ipv4_pure` — no cap token (forge theater banned) |
+| Sealed ops called | **none** (`bind_udp` / `udp_recv` / socket / getaddrinfo absent) |
+| Ok path | **one** — exact string `"localhost"` → `Ok("127.0.0.1")` |
+| Err path | **one** — residual string names unimplemented UDP DNS |
+| Verify | asserts **both** Ok and residual Err without Cap(0) forge |
+
+`oodac reflect` (rc=0):
+
+```
+{"kind":"fn","name":"resolve_ipv4_pure",...,"params":[{"name":"hostname","type":"String"}],...}
+{"kind":"fn","name":"resolve_ipv4",...,"params":[{"name":"udp","type":"&UdpCap"},{"name":"hostname","type":"String"}],...}
+{"kind":"verify","name":"resolve_ipv4_pure"}
+```
+
+========================================================================
+1) CLAIM — localhost Ok
+========================================================================
+
+| Probe | Result |
+|-------|--------|
+| Body branch | `if hostname == "localhost" { return Ok("127.0.0.1"); }` |
+| return Ok count in pure | **1** |
+| verify | `assert_eq!(ok_res, Ok("127.0.0.1"))` for `"localhost"` |
+| Case sensitivity | `"LOCALHOST"` / `"localhost."` are **not** Ok (exact match only) |
+| IP string | `"127.0.0.1"` as hostname is **not** special-cased (falls to residual Err) |
+
+**VERDICT: PASS** — localhost pure-string Ok is the only success path.
+
+========================================================================
+2) CLAIM — non-localhost still Err residual
+========================================================================
+
+Residual string (exact):
+
+```
+Err("Residual: UDP socket DNS not implemented")
+```
+
+| Hostname | Simulated result | Basis |
+|----------|------------------|-------|
+| `localhost` | **Ok** `"127.0.0.1"` | pure if-branch |
+| `openooda.org` | **Err** residual | pure fallthrough + verify assert |
+| `example.com` | **Err** residual | fallthrough (no other Ok) |
+| `google.com` | **Err** residual | fallthrough |
+| `LOCALHOST` | **Err** residual | case-sensitive exact match only |
+| `127.0.0.1` | **Err** residual | not special-cased as host |
+| `localhost.` | **Err** residual | trailing-dot not equal |
+| `""` | **requires deny** | `requires hostname != ""` |
+
+Control-flow inventory on pure body:
+
+| Metric | Value |
+|--------|------:|
+| `return Ok` | 1 |
+| `return Err` | 1 |
+| Wire / sealed call sites | 0 |
+
+`resolve_ipv4(&UdpCap, host)` is a thin wrapper: `return resolve_ipv4_pure(hostname);` — granting UdpCap does **not** unlock a real query.
+
+**VERDICT: PASS** — non-localhost remains residual Err; verify pins `openooda.org`.
+
+========================================================================
+3) CLAIM — no greenwash "real DNS"
+========================================================================
+
+Adversarial stance: UdpCap formal after migrate could be misread as "DNS product works." Refuse that claim.
+
+### 3a) dns.oo surface — no resolver
+
+| Greenwash marker | Present? |
+|------------------|----------|
+| `getaddrinfo` / `gethostbyname` / `res_query` | **no** |
+| `bind_udp` / `udp_recv` / `socket` wire calls | **no** |
+| Multiple Ok paths / synthetic A-records | **no** (only localhost hardcode) |
+| Cap(0) forge in verify to fake pass | **no** (pure verify; header bans forge theater) |
+| Doc claim "DNS implemented / product DNS / live resolver" | **no** — opposite wording |
+
+Header honesty (excerpt):
+
+- "Residual: real UDP socket DNS not implemented (localhost hardcode + Err)."
+- "Cap on resolve_ipv4 is API honesty for a future sealed UDP path"
+- "never construct Cap(0)/NetCap(0)/UdpCap(0) in verify"
+
+### 3b) Cap preferred ≠ product DNS (doc law)
+
+| Doc | Wording |
+|-----|---------|
+| `CAPS.oot` §CAP-G6 | "Real UDP socket DNS **not implemented** (localhost hardcode + Err residual) — cap preferred ≠ resolver product." |
+| `CAPS.oot` UdpCap bullet | "DNS residual … real socket DNS still residual Err. **Not** a claim that product DNS is implemented." |
+| `audit/cap_dns_integration.oot` | "not greenwashed as live resolver" |
+
+### 3c) Runtime getaddrinfo is elsewhere (tcp/tls floors)
+
+| File | Role | DNS product facade? |
+|------|------|---------------------|
+| `runtime/chs_rt_netfloor.c` | `tcp_connect` resolve | **no** — TCP floor |
+| `runtime/chs_rt_sys.c` | host resolve helper | **no** — not dns.oo |
+| `runtime/chs_rt_tls.c` | TLS connect resolve | **no** — TLS floor |
+| `std/src/net/dns.oo` | residual resolve_ipv4 | **this surface** — pure string residual |
+
+Do **not** cite tcp/tls getaddrinfo as evidence that `resolve_ipv4` is a real DNS product.
+
+### 3d) Cap formal unused for wire (API intent only)
+
+```
+resolve_ipv4 body: return resolve_ipv4_pure(hostname);
+```
+
+Param `udp: &UdpCap` is **not** threaded into any sealed op. Formal documents preferred future UDP query path + closes SOFT_LEGACY NetCap; body still residual.
+
+**VERDICT: PASS** — no greenwash "real DNS"; residual named and fail-closed for non-localhost.
+
+========================================================================
+4) LIVE HOST PROVE
+========================================================================
+
+### 4a) oodac check (dual-repro)
+
+```
+cd ooda
+./oodac/oodac check std/src/net/dns.oo
+# → OK  rc=0
+./oodac/oodac check std/src/net/dns.oo
+# → OK  rc=0
+```
+
+Mirror residual monofile (same pure body + UdpCap wrapper; multi non-local hosts):
+`/tmp/cap_dns_peer2/mirror_residual.oo` → **OK** rc=0 ×2.
+
+### 4b) cap_dns_udp_smoke (dual-repro)
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/cap_dns_udp_smoke.sh
+# OK static resolve_ipv4 uses &UdpCap
+# OK residual honesty string present
+# OK residual commentary present
+# OK oodac check dns.oo
+# OK ci_product wire after cap_process
+# cap_dns_udp_smoke: PASSED  exit 0 ×2
+```
+
+### 4c) Soft-lock
+
+| File | Lines | ≤256 monofile | Soft-lock |
+|------|------:|---------------|-----------|
+| `ooda/std/src/net/dns.oo` | 30 | yes | **PASS** |
+
+========================================================================
+5) RESIDUAL INDEX (named — not peer fail)
+========================================================================
+
+| Residual | Status |
+|----------|--------|
+| Real UDP socket DNS (bind/send/recv under UdpCap) | **unimplemented** — Err residual |
+| Product dig / getaddrinfo facade via resolve_ipv4 | **absent** (by design residual) |
+| Case-insensitive / FQDN / IPv6 / CNAME / multi-A | **absent** |
+| External `std/src/net/dns.oo` twin | **none** |
+| NetCap supersede of UdpCap (CAP-G1 one-wave) | still soft OK at check/runtime for other soft ops; formal prefers UdpCap |
+| batch_2 phantom `dns_server.oo` etc. | still **not on disk** (prior honesty) |
+| WT uncommitted dns DE | concurrent lane; this peer **did not** edit |
+
+========================================================================
+6) CLOSE CRITERIA
+========================================================================
+
+| # | Criterion | Result |
+|---|-----------|--------|
+| 1 | localhost Ok proved (body + verify + branch matrix) | **PASS** |
+| 2 | non-localhost Err residual proved (body + verify + matrix) | **PASS** |
+| 3 | no greenwash "real DNS" (surface + CAPS + no wire) | **PASS** |
+| 4 | UdpCap formal retained; cap unused for wire | **PASS** |
+| 5 | product check + dns smoke dual green | **PASS** |
+| 6 | No push | **PASS** |
+
+========================================================================
+CROSS-LINKS
+========================================================================
+
+| Artifact | Role |
+|----------|------|
+| `/home/jeryd/Projects/openOODA/ooda/std/src/net/dns.oo` | residual surface (proved) |
+| `/home/jeryd/Projects/openOODA/ooda/scripts/cap_dns_udp_smoke.sh` | UdpCap formal + honesty string smoke |
+| `/home/jeryd/Projects/openOODA/openOODA/CAPS.oot` | UdpCap / CAP-G6 residual law |
+| `audit/cap_dns_integration.oot` | Integration 2 UdpCap migrate |
+| `audit/cap_g6_peer1_net.oot` | prior SOFT_LEGACY classification |
+| `audit/cap_dns_peer3_regression.oot` | floor regression (G1–G6 + process) |
+| `oodac/check_cap_util.oo` `sealed_net_kind_of` | bind_udp/udp_recv → UdpCap (wire map; not yet used by dns body) |
+
+========================================================================
+PEER CLOSE
+========================================================================
+
+**QA Peer 2 (DNS residual honesty): PASS**
+
+- **localhost Ok** — exact string hardcode only.
+- **non-localhost still Err residual** — single residual string; no alternate Ok.
+- **no greenwash "real DNS"** — preferred UdpCap is API intent; pure residual body; docs refuse product claim.
+
+No product/std edits. **No push.**
+)

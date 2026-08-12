@@ -1,0 +1,238 @@
+# cap_dns_peer1.oot
+# QA Peer 1 — DNS least privilege (resolve_ipv4 / UdpCap)
+# Date: 2026-08-12T14:16Z
+# Role: Peer Verifier 1 (QA) — independent least-privilege prove for DNS surface
+# Trees: /home/jeryd/Projects/openOODA/ooda (+ openOODA audit only)
+# OWN: prove check behavior honestly; fix only critical DE bugs if red+clear. **No push.**
+# Prove binary: /home/jeryd/Projects/openOODA/ooda/oodac/oodac (962680 B @ 2026-08-12 06:41)
+# Host md5: 7e1ce7df9bd366b607f35724e0efe80b
+
+========================================================================
+SUMMARY
+========================================================================
+
+| # | Claim | Expected | Actual | Verdict |
+|---|--------|----------|--------|---------|
+| 1 | `resolve_ipv4` **with UdpCap** allows at **check** | rc=0 when UdpCap is valid param and/or body calls sealed UDP with UdpCap | type-accept OK; sealed `bind_udp`/`udp_recv` under UdpCap OK | **PASS** |
+| 2 | **Only HttpCap / TcpCap** denies **if sealed map applies** | DENY when body calls sealed `bind_udp`/`udp_recv` without UdpCap/NetCap | rc=1 + requires `&UdpCap` (Http, Tcp, Bind wrong-granular) | **PASS** (sealed path) |
+| 3 | **NetCap supersede** still allows soft UDP sealed ops | rc=0 for `bind_udp`/`udp_recv` under `&NetCap` | rc=0 | **PASS** |
+| 4 | Honesty: `resolve_ipv4` is a **user fn**, not sealed builtin | `sealed_net_kind_of("resolve_ipv4") == ""` | name **absent** from map; free call is **type** not capability | **PASS** |
+| 5 | What check **actually** enforces | sealed builtins only; UdpCap type-accept | wrong-cap user-fn **call args** not denied | **PASS** (residual documented) |
+
+**Primary sealed matrix: 13/13 PASS** (allows + denials + supersede + free-name contrast + product residual).
+**User-fn residual (no sealed body): 3/3** Http/Tcp/Net → user `&UdpCap` **rc=0** — **not** least-privilege enforce on user-call edges.
+**CRIT dual-repro:** Http/Tcp sealed denies re-run twice → both rc=1.
+
+**Peer code fix:** **none** (check CAP-G1 path-A correct for sealed ops; DNS product still SOFT_LEGACY NetCap residual — not a check bug).
+
+**OVERALL: PASS with residual honesty** — least privilege for DNS is **indirect**: only when a user body calls sealed UDP builtins. `resolve_ipv4` itself is **not** a sealed op; check **type-accepts** `&UdpCap` but does **not** deny wrong-granular tokens at user-fn call sites.
+
+Do **not** claim: "calling `resolve_ipv4` requires UdpCap at check" as a sealed-map fact. Product `dns.oo` still takes **`&NetCap`** and has no sealed UDP body (residual string only).
+
+========================================================================
+HOST / SOURCE ANCHORS
+========================================================================
+
+| Item | Value |
+|------|--------|
+| Product host | `ooda/oodac/oodac` **962680** B @ 2026-08-12 06:41 |
+| Host md5 | `7e1ce7df9bd366b607f35724e0efe80b` |
+| Sealed map | `ooda/oodac/check_cap_util.oo` `sealed_net_kind_of` L63–80 |
+| Grant path | `ooda/oodac/check_caps.oo` `check_function` + `cap_net_granted_ok` / `cap_net_argflow_ok` |
+| Cap type accept | `is_cap_type` accepts `HttpCap`/`TcpCap`/`UdpCap`/`BindCap` (L310) |
+| Product DNS | `ooda/std/src/net/dns.oo` — `fn resolve_ipv4(net: &NetCap, …)` residual, **no** sealed call |
+| Soft kinds | `is_soft_net_kind`: Http/Tcp/**Udp**/Bind — NetCap supersedes |
+| Fixtures (ephemeral) | `/tmp/cap_dns_peer1/*.oo` |
+| No push | **confirmed** |
+
+### Static sealed map (UDP family — no `resolve_ipv4`)
+
+```
+// check_cap_util.oo sealed_net_kind_of
+bind_udp  → UdpCap
+udp_recv  → UdpCap
+// resolve_ipv4 → ""  (not present; user fn only)
+sock_raw / raw_socket → NetCap (hard; not soft)
+```
+
+Preferred soft map (CAP-G1 / CAPS.oot): HttpCap, TcpCap, BindCap, UdpCap; legacy **NetCap supersedes soft only**.
+
+========================================================================
+COMMAND
+========================================================================
+```
+OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
+FIX=/tmp/cap_dns_peer1
+
+# Allows
+$OODAC check $FIX/01_udp_user_type_accept.oo      # UdpCap user fn, no sealed
+$OODAC check $FIX/02_udp_sealed_bind_allow.oo     # UdpCap + bind_udp
+$OODAC check $FIX/03_udp_sealed_recv_allow.oo     # UdpCap + udp_recv
+$OODAC check $FIX/08_net_supersede_bind_allow.oo  # NetCap ⊨ bind_udp
+$OODAC check $FIX/09_net_supersede_recv_allow.oo  # NetCap ⊨ udp_recv
+$OODAC check $FIX/15_product_net_residual.oo      # product-shaped NetCap residual
+$OODAC check ooda/std/src/net/dns.oo
+
+# Denies (sealed map applies to bind_udp / udp_recv inside user body)
+$OODAC check $FIX/04_http_sealed_bind_deny.oo
+$OODAC check $FIX/05_tcp_sealed_bind_deny.oo
+$OODAC check $FIX/06_http_sealed_recv_deny.oo
+$OODAC check $FIX/07_tcp_sealed_recv_deny.oo
+$OODAC check $FIX/16_bind_sealed_udp_deny.oo      # BindCap ↛ bind_udp
+$OODAC check $FIX/17_udp_tcp_bind_deny.oo         # UdpCap ↛ tcp_bind
+$OODAC check $FIX/14_free_bind_udp_no_cap.oo
+
+# Residual honesty: user-fn call edge NOT sealed-enforced
+$OODAC check $FIX/10_http_to_user_udp_no_seal.oo  # rc=0 residual
+$OODAC check $FIX/11_tcp_to_user_udp_no_seal.oo   # rc=0 residual
+$OODAC check $FIX/12_net_to_user_udp_no_seal.oo   # rc=0 residual
+
+# Contrast: free name resolve_ipv4 without def → type, not capability
+$OODAC check $FIX/13_free_resolve_undefined.oo
+```
+
+========================================================================
+LIVE MATRIX
+========================================================================
+
+| Fixture | Expect | rc | Prefer-kind / note | Verdict |
+|---------|--------|---:|--------------------|---------|
+| `01_udp_user_type_accept` | ALLOW | 0 | UdpCap type-accept; no sealed op | **PASS** |
+| `02_udp_sealed_bind_allow` | ALLOW | 0 | exact UdpCap ⊨ `bind_udp` | **PASS** |
+| `03_udp_sealed_recv_allow` | ALLOW | 0 | exact UdpCap ⊨ `udp_recv` | **PASS** |
+| `04_http_sealed_bind_deny` | DENY | 1 | requires `&UdpCap` | **PASS** |
+| `05_tcp_sealed_bind_deny` | DENY | 1 | requires `&UdpCap` | **PASS** |
+| `06_http_sealed_recv_deny` | DENY | 1 | requires `&UdpCap` | **PASS** |
+| `07_tcp_sealed_recv_deny` | DENY | 1 | requires `&UdpCap` | **PASS** |
+| `08_net_supersede_bind_allow` | ALLOW | 0 | soft NetCap supersede | **PASS** |
+| `09_net_supersede_recv_allow` | ALLOW | 0 | soft NetCap supersede | **PASS** |
+| `10_http_to_user_udp_no_seal` | residual ALLOW | 0 | **no** sealed enforce on user call | **PASS (residual)** |
+| `11_tcp_to_user_udp_no_seal` | residual ALLOW | 0 | same | **PASS (residual)** |
+| `12_net_to_user_udp_no_seal` | residual ALLOW | 0 | same (not supersede path) | **PASS (residual)** |
+| `13_free_resolve_undefined` | TYPE | 1 | `ERR type` undefined `resolve_ipv4` | **PASS** |
+| `14_free_bind_udp_no_cap` | DENY | 1 | sealed `bind_udp` needs `&UdpCap` | **PASS** |
+| `15_product_net_residual` | ALLOW | 0 | NetCap + residual body | **PASS** |
+| `16_bind_sealed_udp_deny` | DENY | 1 | BindCap ↛ `bind_udp` | **PASS** |
+| `17_udp_tcp_bind_deny` | DENY | 1 | UdpCap ↛ `tcp_bind` | **PASS** |
+| product `std/src/net/dns.oo` | ALLOW | 0 | live tree still NetCap residual | **PASS** |
+
+Deny message sample (HttpCap + sealed `bind_udp` in user `resolve_ipv4` body):
+```
+ERR capability Security Capability Violation: Function 'resolve_ipv4' calls sealed
+effectful builtin 'bind_udp' which requires a &UdpCap parameter, but none was
+declared at line 2, col 13. Default-deny: grant the capability token explicitly.
+```
+
+Dual-repro:
+```
+04 dual1 rc=1 ; 04 dual2 rc=1
+05 dual1 rc=1 ; 05 dual2 rc=1
+```
+
+========================================================================
+WHAT CHECK ACTUALLY ENFORCES (honest floor)
+========================================================================
+
+### A. Sealed builtins (CAP-G1 path-A) — **enforced**
+
+`check_function` only denies when a free/method call name has `sealed_kind_of(name) != ""`.
+
+For UDP product effects that are **sealed today**:
+| Op | Preferred | Soft? | NetCap supersede? |
+|----|-----------|-------|-------------------|
+| `bind_udp` | UdpCap | yes | yes |
+| `udp_recv` | UdpCap | yes | yes |
+
+Rules proved live:
+1. Exact **`&UdpCap`** on the enclosing fn + matching arg-flow → **ALLOW**.
+2. Wrong granular **`&HttpCap` / `&TcpCap` / `&BindCap`** → **DENY** (preferred remains UdpCap).
+3. Legacy **`&NetCap`** → **ALLOW** via `cap_net_granted_ok` / `is_soft_net_kind("UdpCap")`.
+4. Cross-deny: **`&UdpCap` ↛ `tcp_bind`** (preferred BindCap) still holds.
+
+### B. User fn `resolve_ipv4` — **not sealed**
+
+| Probe | Result | Meaning |
+|-------|--------|---------|
+| `sealed_net_kind_of("resolve_ipv4")` | `""` (name absent from map L63–80) | not a sealed op |
+| Free call without definition | `ERR type` undefined | type residual, **not** capability |
+| User fn with `&UdpCap` param, residual body | OK | `is_cap_type("UdpCap")` grants bag membership for **that** fn's sealed body checks only |
+| Call user `resolve_ipv4(&UdpCap)` from main with Http/Tcp/Net only | **OK rc=0** | **no** inter-fn cap subtype check; call-edge least privilege **residual** |
+
+So claim "resolve_ipv4 with UdpCap allows" is true as:
+- **type accept** of `&UdpCap` on a user signature, and
+- **sealed allow** if that user body calls `bind_udp`/`udp_recv` with the UdpCap token.
+
+It is **false** as: "the name `resolve_ipv4` is in the sealed map and check always requires UdpCap to invoke it."
+
+### C. Product tree honesty
+
+`ooda/std/src/net/dns.oo` (live):
+
+```
+fn resolve_ipv4(net: &NetCap, hostname: String) -> Result[String, String]
+…
+    return Err("Residual: UDP socket DNS not implemented");
+```
+
+- Cap: **SOFT_LEGACY NetCap** (prior CAP-G6 peer1 residual: prefer UdpCap next DE wave).
+- Body: **no** sealed UDP call → check cannot exercise UdpCap preferred map on this file.
+- `oodac check dns.oo` → **OK** (types + residual).
+
+Migrating the signature to `&UdpCap` would be a **stdlib honesty/style** land, not a sealed-map change, unless DE also implements real `bind_udp`/`udp_recv` inside and relies on check.
+
+========================================================================
+CLAIM MAPPING (assignment → evidence)
+========================================================================
+
+### 1. resolve_ipv4 with UdpCap allows (check)
+
+| Path | Fixture | rc | Note |
+|------|---------|---:|------|
+| Signature type-accept | `01_udp_user_type_accept` | 0 | UdpCap is `is_cap_type` |
+| Body sealed bind | `02_udp_sealed_bind_allow` | 0 | CAP-G1 exact preferred |
+| Body sealed recv | `03_udp_sealed_recv_allow` | 0 | same |
+
+**Verdict: PASS** (with honesty: allow is type + optional sealed-body grant, not sealed-name `resolve_ipv4`).
+
+### 2. Only HttpCap / TcpCap denies **if sealed map applies**
+
+| Fixture | Sealed op | rc |
+|---------|-----------|---:|
+| `04_http_sealed_bind_deny` | `bind_udp` | 1 |
+| `05_tcp_sealed_bind_deny` | `bind_udp` | 1 |
+| `06_http_sealed_recv_deny` | `udp_recv` | 1 |
+| `07_tcp_sealed_recv_deny` | `udp_recv` | 1 |
+| Extra: `16_bind_sealed_udp_deny` | `bind_udp` | 1 |
+
+Without a sealed call (`10`/`11`), Http/Tcp **do not** deny. Condition **"if sealed map applies"** is required and was proved.
+
+**Verdict: PASS** (conditional claim held; unconditional wrong-cap on user call is residual fail-open).
+
+### 3. NetCap supersede still allows if soft supersede
+
+| Fixture | Op | rc |
+|---------|-----|---:|
+| `08_net_supersede_bind_allow` | `bind_udp` | 0 |
+| `09_net_supersede_recv_allow` | `udp_recv` | 0 |
+
+Matches `cap_net_legacy_ok` / `cap_net_granted_ok` for soft UdpCap preferred.
+
+**Verdict: PASS**
+
+========================================================================
+RESIDUAL / NON-CLAIMS
+========================================================================
+
+1. **User-fn call-edge least privilege residual:** passing HttpCap/TcpCap/NetCap into a user fn declared `&UdpCap` is **check OK** today. No DE fix this peer (not a sealed-map regression; orthogonal inter-fn typing residual).
+2. **Product DNS still NetCap:** SOFT_LEGACY residual; prefer migrate signature → `&UdpCap` when DE implements real UDP DNS (or as honesty-only facade).
+3. **No runtime prove this peer:** assignment is check-path. Runtime `oo_cap_require_udp` already CAP-G1 (see `audit/cap_g1_peer2_runtime.oot`); not re-proved here.
+4. **Do not claim** `resolve_ipv4` is a sealed builtin or that Http/Tcp always deny mere DNS user calls.
+5. **No push.**
+
+========================================================================
+VERDICT LINE
+========================================================================
+
+**PASS** — Check enforces DNS-adjacent least privilege only through sealed UDP builtins (`bind_udp`/`udp_recv` → UdpCap exact or NetCap soft supersede; Http/Tcp/Bind wrong-granular deny). User `resolve_ipv4` is type-accept for UdpCap and **not** sealed-map gated; product remains NetCap residual without sealed body.
+
+Peer fix: none. Evidence: this file + `/tmp/cap_dns_peer1/*` fixtures + host `oodac` md5 above.

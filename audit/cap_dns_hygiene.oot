@@ -1,0 +1,252 @@
+# cap_dns_hygiene.oot — Hygiene Enforcer (DNS UdpCap residual migrate)
+# Date: 2026-08-12T14:18:30Z
+# Role: Hygiene Enforcer — RULES §1.7 (cap_dns wave)
+# Tree: /home/jeryd/Projects/openOODA  (ooda/ + openOODA/)
+# Tip (ooda): 2a0d10f (working tree dirty — std/src/net/dns.oo + new smoke)
+# Tip (std):  77fb876 (no external std dns twin)
+# Tip (openOODA): a5643ea
+# OWN: line-lock `ooda/std/src/net/dns.oo`;
+#      bash -n **new** `cap_dns_udp_smoke.sh` + related net/std smokes;
+#      no /tmp secrets; no mass deletes; no push
+# WRITE: this audit only
+# POLICY: RULES §1.7 / PROBE MAX_LINES = 256 (soft); pack watch 300; hard ban >600
+#         No mass peels/deletes this pass (DE mid-flight on dns UdpCap)
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Check | VERDICT | Notes |
+|-------|---------|-------|
+| Soft lock ≤256 (`dns.oo`) | **PASS** | **30** lines (−226 headroom) |
+| Pack pressure ≤300 | **PASS** | 0 OWN over 300 |
+| Hard ban >600 | **PASS** | 0 OWN over 600 |
+| Split this pass | **NOT needed** | far under soft; no peel |
+| `bash -n` **new** `cap_dns_udp_smoke.sh` | **PASS** | 97 lines; syntax clean; untracked `??` |
+| `bash -n` related net/std smokes | **PASS** | 3/3 syntax clean (g1/g6/libfloor_net) |
+| `/tmp` + secrets in OWN + smokes | **PASS** | ZERO secrets; no `/tmp`; smoke static+check only |
+| Mass deletes | **none** | charter |
+| Push | **no** | charter |
+
+OVERALL: **PASS** (OWN line-lock green; new smoke bash -n green; secrets clean;
+DNS NetCap→UdpCap WIP named — not SPRINT-closed by hygiene alone)
+
+========================================================================
+SCOPE + METHOD
+========================================================================
+
+OWN units (cap_dns surface — CAP-G6 residual net wave after peer1 SOFT_LEGACY):
+
+  Dirty this wave (DE WIP — measured live):
+
+  `ooda/std/src/net/dns.oo`              — `resolve_ipv4` prefers `&UdpCap`
+                                           (was bare `&NetCap`); pure helper
+                                           `resolve_ipv4_pure` for verify; residual
+                                           Err for non-localhost; honesty banner
+
+  **NEW** smoke (bash -n OWN):
+
+  `ooda/scripts/cap_dns_udp_smoke.sh`    — ?? untracked; static UdpCap formal
+                                           + residual honesty + optional check
+
+  Adjacent (observe / bash -n only — not line-lock OWN):
+
+  `ooda/scripts/ci_product.sh`           — M; wires `cap_dns_udp_smoke.sh`
+                                           after `cap_process_facade_smoke`
+  `ooda/scripts/cap_g1_net_granular_smoke.sh`
+  `ooda/scripts/cap_g6_std_migrate_smoke.sh`
+  `ooda/scripts/libfloor_net_smoke.sh`
+
+  No external `std/**/dns.oo` twin (product-only residual under `ooda/std/src`).
+
+Commands:
+
+  `wc -l` + formal cap-token inventory on OWN `dns.oo`
+  `git diff` HEAD vs working for migration honesty
+  `bash -n` on new dns smoke + 3 related net/std smokes
+  `grep` secret-pattern + `/tmp` scan on OWN + smoke
+  optional: execute new smoke once for evidence (hygiene bar is bash -n)
+  no mass delete; no push; no product source edits this pass
+
+Thresholds:
+
+| Threshold | Meaning |
+|-----------|---------|
+| **256** | RULES §1.7 / PROBE MAX_LINES — soft lock |
+| **300** | Pack monofile pressure (flag for DE peel) |
+| **600** | Path-A hard ban — still green for OWN |
+
+========================================================================
+LINE LOCK — OWN dns.oo (live)
+========================================================================
+
+Measured under monorepo at tip ooda=`2a0d10f`+WIP (2026-08-12T14:18Z).
+md5 `7c3476a0ebb8bc3ba54236ee02ed1296` (stable re-read).
+
+| File | Lines | ≤256 | ≤300 | ≤600 | Headroom 256 | Headroom 300 | Split? |
+|------|------:|:----:|:----:|:----:|-------------:|-------------:|:------:|
+| `ooda/std/src/net/dns.oo` | **30** | PASS | PASS | PASS | +226 | +270 | NO |
+| **OWN total** | **30** | — | — | — | — | — | — |
+
+New smoke (syntax-only OWN; not product monofile lock):
+
+| File | Lines | bash -n | Git |
+|------|------:|---------|-----|
+| `ooda/scripts/cap_dns_udp_smoke.sh` | **97** | **PASS** | `??` untracked |
+
+Committed baseline (HEAD only, for delta):
+
+| File | HEAD lines | Working | Δ | Cap migration (work tree) |
+|------|----------:|--------:|--:|---------------------------|
+| `ooda/std/src/net/dns.oo` | 16 | 30 | **+14** | formal `&NetCap` → **`&UdpCap`**; pure `resolve_ipv4_pure` + capped wrapper; forge Cap(0) banned from verify |
+
+Delta notes (DNS UdpCap land pressure):
+
+- **dns +14**: CAP-G6 honesty banner + pure/capped split + residual comments.
+  Soft-lock trivial (+226 headroom to 256).
+- Preferred: `resolve_ipv4(udp: &UdpCap, hostname)` → delegates pure residual.
+- Pure: `resolve_ipv4_pure(hostname)` — localhost → Ok; else residual Err.
+  Cap not consumed (API honesty for future sealed UDP path).
+- Behavior unchanged vs HEAD residual: same Err string; no real socket DNS.
+- Verify exercises **pure** helper only — no `UdpCap(0)`/`NetCap(0)` forge
+  (banner: "forge theater banned"). Avoids greenwash of check-time Cap(0).
+- Banner: not raw/L2; soft-granular UdpCap preferred; do not keep legacy
+  bare NetCap-only on this surface.
+- Diffstat (ooda): `M std/src/net/dns.oo`; `?? scripts/cap_dns_udp_smoke.sh`;
+  `M scripts/ci_product.sh` (wire after process facade smoke).
+
+========================================================================
+FORMAL CAP MAP (hygiene observe — not prove)
+========================================================================
+
+Product `ooda/std/src/net/dns.oo` (live):
+
+| Facade | Formal | Class |
+|--------|--------|-------|
+| `resolve_ipv4_pure` | none (pure) | residual contract; verify target |
+| `resolve_ipv4` | **`&UdpCap`** | preferred (UDP query residual; future sealed path) |
+| body | no socket | pure localhost alias + residual Err |
+| `verify resolve_ipv4_pure` | asserts pure Ok/Err | no Cap forge tokens |
+
+Honesty (do not greenwash):
+
+1. UdpCap on `resolve_ipv4` is **WIP progress** on dirty tree — closes the
+   SOFT_LEGACY residual named in `audit/cap_g6_peer1_net.oot` (dns still
+   NetCap at that peer). Hygiene measures; peers prove runtime rails.
+2. Real UDP DNS (bind/send/recv under UdpCap) is **not product** — residual
+   Err string is load-bearing honesty, not a feature claim.
+3. Pure helper is hygiene-friendly: verify without synthesizing caps.
+4. No claim that UdpCap is enforced at runtime for this pure residual yet
+   (cap is API honesty until product lowers UDP DNS).
+
+Prior peer residual closed on disk (observe):
+
+  `cap_g6_peer1_net.oot`: dns = SOFT_LEGACY NetCap → prefer UdpCap next wave.
+  Live work tree: formal is **UdpCap** — DE wave landed in WT (uncommitted).
+
+========================================================================
+SPLIT GATE (not exercised this pass)
+========================================================================
+
+Rule: if OWN unit over soft lock and peel is **trivial + DE-authorized**,
+split at functional seams. Charter this pass: **no mass deletes / no mass peel**.
+
+| Unit | Over? | Trivial peel? | Action |
+|------|:-----:|:-------------:|--------|
+| `dns.oo` 30 | no | n/a | none — +226 soft headroom |
+| `cap_dns_udp_smoke.sh` 97 | no (script) | n/a | none |
+
+Suggested DE (when authorized, not this hygiene pass):
+
+1. Product UDP DNS lower under UdpCap (bind/send/recv) — still residual.
+2. Keep formal `&UdpCap`; do not reintroduce bare NetCap-only.
+3. Do **not** claim dnssec/crypto as this wave (orthogonal sec/net residual).
+
+========================================================================
+bash -n (new dns smoke + related)
+========================================================================
+
+```
+OK bash -n cap_dns_udp_smoke.sh
+OK bash -n cap_g1_net_granular_smoke.sh
+OK bash -n cap_g6_std_migrate_smoke.sh
+OK bash -n libfloor_net_smoke.sh
+```
+
+ALL_BASHN_OK = true (4/4)
+NEW_CAP_DNS_SMOKE_SH = **present** (`cap_dns_udp_smoke.sh`, ??)
+
+New smoke intent (static + optional check; executed once for evidence this pass):
+
+  1. Static: `resolve_ipv4` formal is `&UdpCap`
+  2. Static: not bare NetCap-only (must not list only `&NetCap`)
+  3. Residual honesty string present (`Residual: UDP socket DNS not implemented`)
+  4. Optional: `oodac check dns.oo` when binary present
+  Soft: `ci_product` wire after `cap_process_facade_smoke`
+
+Live execute (extra evidence; hygiene bar is bash -n):
+
+  `bash scripts/cap_dns_udp_smoke.sh` → **PASSED** (rc=0)
+  — static UdpCap OK; honesty OK; oodac check OK; ci_product wire after process
+
+Temps: smoke is static/check only — **no TMPDIR / no /tmp / no trap needed**.
+Shape satisfies secrets bar (no world-writable temp scratch).
+
+========================================================================
+/tmp + SECRETS
+========================================================================
+
+### OWN dns.oo
+
+Scan secret-like patterns (`password=`, `BEGIN *PRIVATE`, api keys, token
+material) + literal `/tmp`:
+
+  - `ooda/std/src/net/dns.oo` — **clean**
+
+### New + related smokes
+
+  - `cap_dns_udp_smoke.sh` — **clean**; no TMP; no password/key/token material
+  - related g1/g6/libfloor_net — no secret hits in this pass scope
+
+VERDICT `/tmp` secrets: **PASS**
+
+========================================================================
+ACTIONS / NON-ACTIONS THIS PASS
+========================================================================
+
+| Action | Result |
+|--------|--------|
+| Measure OWN `dns.oo` line lock | **done** — 30 under soft (+226) |
+| Flag soft/pack residual on OWN | **none** |
+| Split oversize OWN units | **none** (not over; no peel) |
+| Mass deletes (bak, /tmp, monofiles) | **none** |
+| `bash -n` new dns smoke | **PASS** (97L) |
+| `bash -n` related net/std smokes | **3/3 OK** |
+| Purge `/tmp` secrets from committed surface | already clean; no edit |
+| Product / std source edits | **none** (hygiene audit only) |
+| Mark SPRINT dns UdpCap closed | **no** (WIP measure; peers prove) |
+| Push | **no** |
+| Audit write | **this file only** |
+
+========================================================================
+RETURN — COMPACT
+========================================================================
+
+```
+SCOPE   cap_dns OWN dns.oo  ooda=2a0d10f+WIP  std=77fb876  openOODA=a5643ea
+OWN     dns.oo=30  (HEAD 16 → WORK 30, Δ+14)  md5=7c3476a0ebb8bc3ba54236ee02ed1296
+>600    0 OWN   PASS hard ban
+>300    0 OWN   PASS pack
+>256    0 OWN   PASS soft  (dns +226 headroom)
+BASHN   NEW cap_dns_udp_smoke.sh OK (97); related 3/3 OK
+/tmp    PASS  no secrets; smoke static+check only (no TMPDIR)
+SPLIT   none (under soft)
+PUSH    no
+CAPS    resolve_ipv4: &NetCap → &UdpCap preferred; pure resolve_ipv4_pure helper
+        verify pure only (forge Cap(0) banned); residual Err non-localhost
+SMOKE   cap_dns_udp_smoke: bash -n PASS; live execute PASSED (extra evidence)
+CI      ci_product wires cap_dns_udp_smoke after cap_process_facade_smoke
+OVERALL PASS
+```
+
+end of cap_dns_hygiene.oot
