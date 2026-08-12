@@ -1,0 +1,238 @@
+# cap_g2_integration.oot — Integration 2 Rebuild & Live Prove (CAP-G2)
+# Date: 2026-08-12T11:56:46Z
+# Worker: Grok Build (Integration 2 — Rebuild Prove) CAP-G2
+# Cwd: /home/jeryd/Projects/openOODA/ooda
+# Scope: seed pure multi → side path; atomic tip install; re-prove G1 + G2 smokes; this audit only
+# Policy: no push; avoid concurrent pure multi tip fights (side path then atomic install)
+
+## Verdict (honest)
+
+| Layer | Result | Notes |
+|-------|--------|-------|
+| **CAP-G2 check smoke** (`cap_g2_fs_granular_smoke`) | **PASS** exit 0 | side + tip host |
+| **CAP-G1 check smoke** (`cap_g1_net_granular_smoke`) | **PASS** exit 0 | regression after G2 rebuild |
+| **Least-privilege fs** (FsReadCap ⊭ write_file; FsWriteCap ⊭ read_file) | **PASS** | deny fixtures refuse with `ERR capability` preferred kinds |
+| **Legacy FsCap supersede** | **PASS** | FsCap authorizes read + write |
+| **Preferred granular allow** | **PASS** | FsReadCap+read; FsWriteCap+write; path_exists/file_size as read |
+| **Runtime granular require** (C compile) | **PASS** (unit -c) | `oo_cap_require_{fsread,fswrite}` in `chs_rt_sys.c`; fs ops call them from `chs_rt_fs.c` |
+| **Runtime require harness (link)** | **RESIDUAL** | standalone gcc link of sys alone needs more RT objs (`oo_str_lit` / amalg multi-def) — not a check-layer G2 failure |
+| **T1–T4 floors** | **PASS** | secret_t1/t2, runtime_zt_t3, hygiene_t4 all exit 0 on tip |
+| **OODA_FS_WRITEDIR overlay** | **PASS** (via T3) | keep path-A writedir seal |
+| **Push** | **NOT DONE** | human-gated |
+
+**Integration claim:** CAP-G2 **check path-A (FsReadCap/FsWriteCap preferred + FsCap supersede + wrong-granular deny)** is live-proved green on tip host below after seed pure multi + atomic install. CAP-G1 remains green (no net regression). Do **not** greenwash full product emit/runtime matrix or CAP-G3 unused grants as FIXED.
+
+---
+
+## TIP SHA / binary
+
+```
+git rev-parse --short HEAD → c2da895
+git log -1 --oneline       → c2da895 fix(cap-g1): granular net enforce — preferred kinds + runtime require
+# CAP-G2 product sources are DIRTY WIP on tip tree (check_cap_util / check_caps / runtime fs+sys + corpus + smoke)
+```
+
+| Item | Value |
+|------|--------|
+| Product tip | `ooda/oodac/oodac` **949456** bytes @ 2026-08-12 04:55 local |
+| md5 | `0de4edd3f5b7f0d9f4acfc8a0c7902f9` |
+| BuildID | `750e069af15830c43b0d063eae48ad421cb44318` |
+| Side pure multi (seed) | `~/.cache/ooda-tmp/oodac_from_seed_capg2` **949456** B — **SIDE_EQ_TIP** |
+| Pre-install tip (bak) | `oodac/oodac.bak.pre_cap_g2` **1146880** B md5 `6165082592e01149…` (pre-G2-install witness; oversized non-matching host) |
+| Seed host | `bootstrap/seed/oodac` |
+| Pure multi stats | `unique_fns=434` `from_modules=149` `input_fp=d8109c5b…` `OK_PURE_MULTI` |
+| Concurrent pure multi | prior `oodac_pure_build → oodac_new` finished before this install; **no tip clobber fight** |
+
+Symbols on tip: `oo_cap_require_fs`, `oo_cap_require_fsread`, `oo_cap_require_fswrite`, `oo_cap_require_http`.
+
+---
+
+## 0) DE landing observed
+
+| Path | Role |
+|------|------|
+| `oodac/check_cap_util.oo` | `sealed_fs_kind_of` preferred map (read→FsReadCap, write→FsWriteCap); `is_soft_fs_kind`; `cap_fs_granted_ok` / `cap_fs_argflow_ok`; `sealed_kind_of` routes fs via `sealed_fs_kind_of` |
+| `oodac/check_caps.oo` | CAP-G2 bag: exact preferred **or** FsCap supersede via `cap_fs_granted_ok`; wrong granular deny (FsReadCap↛write) |
+| `runtime/chs_rt_sys.c` | `oo_cap_require_{fsread,fswrite}` accept granular **or** `g_tok_fs`; grants `oo_cap_grant_{fsread,fswrite}` |
+| `runtime/chs_rt_fs.c` | `oo_read_file` / `path_exists` / `file_size` → require_fsread; `oo_write_file` → require_fswrite; **OODA_FS_WRITEDIR** overlay kept |
+| `runtime/chs_rt.h` | declare require/grant fsread/fswrite |
+| `bootstrap/corpus/check/fail/wrong_granular_fsread_for_write.oo` | FsReadCap + write_file **must deny** |
+| `bootstrap/corpus/check/fail/wrong_granular_fswrite_for_read.oo` | FsWriteCap + read_file **must deny** |
+| `bootstrap/corpus/check/fail/wrong_granular_fswrite_for_path.oo` | FsWriteCap + path_exists **must deny** |
+| `bootstrap/corpus/check/pass/ok_fs_cap_read_write.oo` | FsCap multi-op supersede |
+| `bootstrap/corpus/check/pass/ok_fs_read_cap_read.oo` / `ok_fsread_cap_read.oo` | FsReadCap + read_file allow |
+| `bootstrap/corpus/check/pass/ok_fs_write_cap_write.oo` / `ok_fswrite_cap_write.oo` | FsWriteCap + write_file allow |
+| `bootstrap/corpus/check/pass/ok_fsread_path_size.oo` | FsReadCap + path_exists/file_size |
+| `scripts/cap_g2_fs_granular_smoke.sh` | dedicated G2 harness (ci soft-wire present) |
+| Peer fixtures (ephemeral) | `/tmp/cap_g2_peer1/*` — extended matrix (method form, aliases) |
+
+---
+
+## 1) Rebuild path — concurrent-safe
+
+### 1a) Side pure multi (seed) — GREEN link + G2 check live
+
+```
+env -u OODA OODAC_BIN=bootstrap/seed/oodac PURE_NO_ARC=0 PURE_SKIP_CHECK=1 \
+  bash scripts/oodac_pure_build.sh oodac/main.oo ~/.cache/ooda-tmp/oodac_from_seed_capg2
+# pure_rc=0  unique_fns=434 from_modules=149  OK_PURE_MULTI
+# side 949456 B md5 0de4edd3… BuildID 750e069a…
+```
+
+Log: `/home/jeryd/.cache/ooda-tmp/seed_pure_multi_capg2.log`
+
+**Prove on this side (pre-install):**
+- `OODAC_BIN=$SIDE bash scripts/cap_g1_net_granular_smoke.sh` → **PASS**
+- `OODAC_BIN=$SIDE bash scripts/cap_g2_fs_granular_smoke.sh` → **PASS**
+- Peer matrix `/tmp/cap_g2_peer1`: deny 5/5 OK; allow preferred+legacy OK; `fs_read`/`fs_write` free-name allow fixtures type-fail (`undefined variable`) — **not cap logic** (names sealed for check map only; not product free builtins)
+
+### 1b) Atomic tip install
+
+```
+# bak witness
+cp -a oodac/oodac oodac/oodac.bak.pre_cap_g2   # 1146880 B pre-install
+# same-dir temp then rename (no long tip clobber window)
+install -m 755 ~/.cache/ooda-tmp/oodac_from_seed_capg2 oodac/oodac.capg2.new
+mv -f oodac/oodac.capg2.new oodac/oodac
+cmp -s ~/.cache/ooda-tmp/oodac_from_seed_capg2 oodac/oodac  # SIDE_EQ_TIP=yes
+```
+
+No concurrent pure multi during install. Did **not** write mid-flight into tip as emit target.
+
+---
+
+## 2) CAP-G2 smoke — PASS (tip)
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/cap_g2_fs_granular_smoke.sh
+# exit 0
+OK static sealed_fs_kind_of map (read_file→FsReadCap)
+OK static sealed_fs_kind_of map (write_file→FsWriteCap)
+OK static runtime require_fsread / oo_cap_require_fsread
+OK check deny FsReadCap+write_file
+OK check deny FsWriteCap+read_file
+OK check allow FsCap+read+write
+OK check allow FsReadCap+read_file
+OK check allow FsWriteCap+write_file
+OK check allow FsCap+read_file (legacy)
+OK check allow FsCap+write_file (legacy)
+OK ci_product soft-wire present
+cap_g2_fs_granular_smoke: PASSED
+```
+
+Log: `/home/jeryd/.cache/ooda-tmp/cap_g2_smoke_tip.log` (+ side: `cap_g2_smoke_side.log`)
+
+### Sample deny messages (preferred kinds — not legacy FsCap wording)
+
+```
+write_file … requires a &FsWriteCap parameter  (FsReadCap-only grant)
+read_file  … requires a &FsReadCap parameter   (FsWriteCap-only grant)
+```
+
+### Corpus scan (fs-related) — green
+
+All G2 pass fixtures OK; all three wrong-granular fail fixtures non-zero. Legacy `ok_fs_read` / `ok_fs_write` / `ok_method_fs_read` still green.
+
+---
+
+## 3) CAP-G1 regression smoke — PASS (tip)
+
+```
+OODAC_BIN=./oodac/oodac bash scripts/cap_g1_net_granular_smoke.sh
+# exit 0
+cap_g1_net_granular_smoke: PASSED
+```
+
+Log: `/home/jeryd/.cache/ooda-tmp/cap_g1_smoke_tip_capg2.log` (+ side: `cap_g1_smoke_side_capg2.log`)
+
+---
+
+## 4) Floor matrix (live tip `0de4edd3…`)
+
+| Gate | Result | Notes |
+|------|--------|-------|
+| `cap_g2_fs_granular_smoke` | **PASS** exit 0 | §2 |
+| `cap_g1_net_granular_smoke` | **PASS** exit 0 | §3 |
+| `secret_t1_return_smoke` | **PASS** exit 0 | T1 regression |
+| `secret_t2_depth_smoke` | **PASS** exit 0 | T2 regression |
+| `runtime_zt_t3_smoke` | **PASS** exit 0 | includes FS writedir 6.4 |
+| `hygiene_t4_smoke` | **PASS** exit 0 | bak ignore OK |
+| `caps_matrix_smoke` | **N/A** this run | not re-gated; residual from G1 (emit/seccomp) assumed open |
+| `std_honesty_t5_smoke` | **N/A** this run | not CAP-G2 hard gate |
+
+Floor logs: `/home/jeryd/.cache/ooda-tmp/capg2_floors_tip/`
+
+---
+
+## 5) Runtime CAP-G2 (C host)
+
+```
+gcc -c -Werror -O0 -I runtime runtime/chs_rt_sys.c  → rc=0
+gcc -c -Werror -O0 -I runtime runtime/chs_rt_fs.c   → rc=0
+```
+
+Symbols: `oo_cap_require_{fsread,fswrite}`, `oo_cap_grant_{fsread,fswrite}`; product binary nm confirms `T` exports.
+
+Policy (source):
+- `require_fsread`: accept `g_tok_fsread` **OR** `g_tok_fs` (legacy)
+- `require_fswrite`: accept `g_tok_fswrite` **OR** `g_tok_fs`
+- Wrong granular fails closed (write token ≠ read require)
+- `write_file` still gated by `OODA_FS_WRITEDIR` path-A overlay (T3 floor green)
+
+Standalone C require harness link **residual** (missing RT string helpers when linking `chs_rt_sys.c` alone; amalg multi-def if combining all `chs_rt*.c`). Check path + unit -c + tip nm are the live prove for this integration.
+
+---
+
+## 6) Rebuild / multi residual vs concurrent agents
+
+| Observation | Impact |
+|-------------|--------|
+| Concurrent pure multi to `oodac_new` earlier | Finished before install; side out only |
+| This worker | Side `oodac_from_seed_capg2` only; tip via atomic `install`+`mv` |
+| Pre-tip 1146880 B host | Preserved as `oodac.bak.pre_cap_g2` (not used as prove host) |
+| Peer `fs_read`/`fs_write` free-name allows | Type undefined residual — not G2 deny/allow map failure |
+
+---
+
+## 7) Evidence index (absolute)
+
+| Artifact | Path |
+|----------|------|
+| Tip product host | `/home/jeryd/Projects/openOODA/ooda/oodac/oodac` |
+| Side multi | `/home/jeryd/.cache/ooda-tmp/oodac_from_seed_capg2` |
+| Pre-install bak | `/home/jeryd/Projects/openOODA/ooda/oodac/oodac.bak.pre_cap_g2` |
+| Pure multi log | `/home/jeryd/.cache/ooda-tmp/seed_pure_multi_capg2.log` |
+| G2 smoke tip log | `/home/jeryd/.cache/ooda-tmp/cap_g2_smoke_tip.log` |
+| G2 smoke side log | `/home/jeryd/.cache/ooda-tmp/cap_g2_smoke_side.log` |
+| G1 smoke tip log | `/home/jeryd/.cache/ooda-tmp/cap_g1_smoke_tip_capg2.log` |
+| Floor logs | `/home/jeryd/.cache/ooda-tmp/capg2_floors_tip/` |
+| Peer fixtures | `/tmp/cap_g2_peer1/` |
+| DE smoke | `/home/jeryd/Projects/openOODA/ooda/scripts/cap_g2_fs_granular_smoke.sh` |
+| G1 smoke | `/home/jeryd/Projects/openOODA/ooda/scripts/cap_g1_net_granular_smoke.sh` |
+
+---
+
+## 8) What integration does **not** claim
+
+- CAP-G2 **FULL FIXED** / product-floor complete (emit grant inject for every granular name; standalone RT harness link)
+- CAP-G3 unused V2 grants, CAP-G4 ProcessCap exec, CAP-G5 seccomp honesty
+- Remote push / PR
+- `fs_read`/`fs_write` as product free builtins (check seal names only)
+- caps_matrix full green
+
+---
+
+## 9) Summary for coordinator
+
+| Question | Answer |
+|----------|--------|
+| After DE land, rebuild? | **YES** — seed pure multi side `oodac_from_seed_capg2` **949456** B (434 fns / 149 mods) |
+| Atomic tip install? | **YES** — `install`+`mv`; SIDE_EQ_TIP; bak `oodac.bak.pre_cap_g2` |
+| G2 smoke live? | **YES — PASS** (side + tip) |
+| G1 smoke live (regression)? | **YES — PASS** |
+| Floors T1–T4 live? | **YES — PASS** |
+| Runtime granular require present? | **YES** (unit -c + tip nm; harness link residual) |
+| Integration audit written? | **THIS FILE** |
+| Push? | **NO** |
+
+**Integration 2 status: LIVE PROVE GREEN for CAP-G2 check smoke + CAP-G1 regression + T1–T4 floors after side pure multi and atomic tip install; RT standalone harness link residual open; no push.**

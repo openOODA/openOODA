@@ -1,0 +1,211 @@
+# cap_g2_peer2_runtime.oot
+# QA Peer 2 — Runtime FS Token + Writedir (CAP-G2)
+# Date: 2026-08-12T11:57Z
+# Role: QA Peer Verifier 2 (Runtime FS Token + Writedir)
+# Tree: /home/jeryd/Projects/openOODA/ooda  (runtime/) + openOODA/audit
+# Tip (ooda HEAD): `c2da895` fix(cap-g1): granular net enforce — preferred kinds + runtime require
+# WT runtime: chs_rt_sys.c + chs_rt_fs.c CAP-G2 unlock (uncommitted vs tip)
+# OWN: prove require_fsread/fswrite or-FsCap; writedir still fail-closed; wrong granular fails.
+#      Small runtime fixes only if DE3 missed. No push. No check/emit scope.
+# WRITE: this audit. Runtime unlock already in WT (declared-but-unimplemented gap closed).
+
+========================================================================
+SUMMARY
+========================================================================
+
+| Claim | Expected | Actual | VERDICT |
+|-------|----------|--------|---------|
+| `require_fsread` accepts FsReadCap **or** FsCap | exact granular OR legacy | A1+B1 PASS; path/size A3/A4+B3 | **PASS** |
+| `require_fswrite` accepts FsWriteCap **or** FsCap | exact granular OR legacy | A2+B2 PASS | **PASS** |
+| Wrong granular fail-closed | FsWrite↛read; FsRead↛write; cross path/size | C1–C5 DENY `ERR\tcap` + exit 1 | **PASS** |
+| Forge / wrong class fail-closed | zero, classic `0x4F4F4653`, Net/Http | D1–D6 DENY | **PASS** |
+| `OODA_FS_WRITEDIR` still fail-closed after granular | unset/empty/outside deny; allow under dir | E1–E5 PASS; `fs_writedir_smoke` exit 0 | **PASS** |
+| Cap deny precedes writedir | FsReadCap+writedir set still cap-deny on write | C5 DENY (never Result writedir Err) | **PASS** |
+| Correct granular product emit host | `main(fsread: &FsReadCap)` injects `grant_fsread` | emit-c lowers `oo_read_file(fsread,…)` **without** `fsread = grant_fsread()` | **FAIL residual** (emit/CAP-G3) |
+| Legacy FsCap product path | `main(fs: &FsCap)` + read still works | emit `grant_fs` + `oo_read_file(fs)`; runtime require_fsread accepts FsCap | **PASS** (static + VM run) |
+
+**OVERALL: PASS (runtime path-A CAP-G2 tokens + writedir overlay)** — product emit grant for pure `FsReadCap`/`FsWriteCap` main params residual (CAP-G3).
+
+Runtime unlock this pass (DE3 gap closed in WT):
+- **Before (tip `c2da895`):** `chs_rt.h` declared `oo_cap_require_{fsread,fswrite}` + grants mint `g_tok_fsread`/`g_tok_fswrite`, but **no require impl**; all FS ops used `oo_cap_require_fs` only → correct granular tokens **could not** unlock; wrong granular was impossible to distinguish at runtime.
+- **After (WT):** impl (granular **OR** `g_tok_fs`); wire `read_file`/`path_exists`/`file_size` → `require_fsread`; `write_file` → `require_fswrite`; writedir policy unchanged after require. C-host **23/23**.
+
+========================================================================
+METHOD
+========================================================================
+
+1. Static inventory: grants + header requires present; bodies missing on tip; FS ops on legacy `require_fs`.
+2. Runtime unlock present in WT (DE concurrent / DE3 close): implement two requires; rewire FS ops; keep `OODA_FS_WRITEDIR` after require on write.
+3. C-host probe `/tmp/cap_g2_rt_probe2.c` linked against `runtime/chs_rt.c` — fork-per-case, expect `ERR\tcap` + exit 1 for deny, exit 0 for require-pass / policy Result path.
+4. Regression: `scripts/fs_writedir_smoke.sh` (legacy `grant_fs` harness) exit 0.
+5. Product host: `oodac check` wrong-granular deny; `emit-c` legacy vs fsread grant inject residual; `oodac run` is VM (not C runtime seal path).
+
+No check-layer edit. No emit edit. No push.
+
+========================================================================
+RUNTIME UNLOCK (WT vs tip)
+========================================================================
+
+Files touched (WT vs `c2da895`):
+
+| File | Δ | Change |
+|------|---|--------|
+| `ooda/runtime/chs_rt_sys.c` | +16 | `oo_cap_require_fsread` / `oo_cap_require_fswrite` (exact granular **OR** `g_tok_fs`) |
+| `ooda/runtime/chs_rt_fs.c` | +8/−6 | wire read/path/size → `require_fsread`; write → `require_fswrite`; forward decls |
+
+Op → require map (path-A CAP-G2):
+
+| Op | Require | Accepts |
+|----|---------|---------|
+| `read_file` | `oo_cap_require_fsread` | FsReadCap **or** FsCap |
+| `path_exists` | `oo_cap_require_fsread` | FsReadCap **or** FsCap |
+| `file_size` | `oo_cap_require_fsread` | FsReadCap **or** FsCap |
+| `write_file` | `oo_cap_require_fswrite` | FsWriteCap **or** FsCap |
+| `verify_human` (HITL) | `oo_cap_require_fs` (unchanged) | **FsCap only** |
+
+Write overlay (unchanged, after require):
+```
+dir = oo_process_policy_getenv("OODA_FS_WRITEDIR");
+if (!dir || !dir[0] || !path_under_writedir(p, dir)) → Result Err
+else openat(… O_NOFOLLOW …)
+```
+
+Deny contract (verified):
+```
+stderr: ERR\tcap\t<op>: missing or forged capability\n
+exit: 1
+```
+
+Line residual (hygiene note): `chs_rt_sys.c` **375** lines after CAP-G2 requires (soft 256 / pack 300 already blown by CAP-G1) — split deferred.
+
+========================================================================
+PROBE MATRIX (C host — 23/23)
+========================================================================
+
+Command:
+```
+gcc -O0 -Iruntime runtime/chs_rt.c /tmp/cap_g2_rt_probe2.c -o /tmp/cap_g2_rt_probe2 -lm -ldl -lpthread
+/tmp/cap_g2_rt_probe2   # exit 0; SUMMARY pass=23 fail=0
+```
+
+### A — Correct granular (require pass)
+
+| ID | Call | Token | Result |
+|----|------|-------|--------|
+| A1 | read_file | FsReadCap | **PASS** |
+| A2 | write_file | FsWriteCap (+ writedir set) | **PASS** |
+| A3 | path_exists | FsReadCap | **PASS** |
+| A4 | file_size | FsReadCap | **PASS** |
+
+### B — FsCap supersedes
+
+| ID | Call | Token | Result |
+|----|------|-------|--------|
+| B1 | read_file | FsCap | **PASS** |
+| B2 | write_file | FsCap (+ writedir set) | **PASS** |
+| B3 | path_exists | FsCap | **PASS** |
+
+### C — Wrong granular fail-closed
+
+| ID | Call | Token | Result |
+|----|------|-------|--------|
+| C1 | read_file | FsWriteCap | **DENY** |
+| C2 | write_file | FsReadCap | **DENY** |
+| C3 | path_exists | FsWriteCap | **DENY** |
+| C4 | file_size | FsWriteCap | **DENY** |
+| C5 | write_file under writedir | FsReadCap | **DENY** (cap before policy) |
+
+### D — Forge / wrong class
+
+| ID | Call | Token | Result |
+|----|------|-------|--------|
+| D1 | read_file | `0` | **DENY** |
+| D2 | read_file | classic `0x4F4F4653` | **DENY** |
+| D3 | read_file | NetCap | **DENY** |
+| D4 | read_file | HttpCap | **DENY** |
+| D5 | write_file | `0` | **DENY** |
+| D6 | write_file | NetCap | **DENY** |
+
+### E — Writedir fail-closed (require already passed)
+
+| ID | Case | Result |
+|----|------|--------|
+| E1 | unset `OODA_FS_WRITEDIR` + FsWriteCap | **PASS** (Result Err contains policy string) |
+| E2 | empty `OODA_FS_WRITEDIR` + FsCap | **PASS** |
+| E3 | path outside allowdir | **PASS** |
+| E4 | allow under dir + FsWriteCap | **PASS** (write-ok) |
+| E5 | allow under dir + FsCap | **PASS** |
+
+### Regression harness
+
+```
+bash scripts/fs_writedir_smoke.sh   # PASSED (unset/empty/root/create/overwrite/outside/.. /symlink)
+```
+
+========================================================================
+PRODUCT HOST
+========================================================================
+
+Host: `ooda/oodac/oodac` (gate binary on tip tree).
+
+### Check-layer wrong granular — PASS (DE check path; not this peer's OWN but observed)
+
+```
+pub fn main(fswrite: &FsWriteCap) { let r = read_file(fswrite, …); }
+→ ERR capability … requires &FsReadCap … Default-deny  (exit ≠ 0)
+pub fn main(fsread: &FsReadCap) { let r = write_file(fsread, …); }
+→ ERR capability … requires &FsWriteCap …
+```
+(Aligned with `sealed_fs_kind_of` + `cap_fs_granted_ok` dual-accept in WIP check sources.)
+
+### Legacy FsCap emit-c — PASS (static)
+
+```
+pub fn main(fs: &FsCap) { let r = read_file(fs, "/etc/hosts"); … }
+```
+- emit: `long long fs = oo_cap_grant_fs();` + `oo_read_file(fs, …)`
+- runtime: `require_fsread` accepts `g_tok_fs` → seal compatible
+
+### Correct FsReadCap emit-c — product residual FAIL
+
+```
+pub fn main(fsread: &FsReadCap) { let r = read_file(fsread, "/etc/hosts"); … }
+```
+- emit: `oo_read_file(fsread, …)` **without** `long long fsread = oo_cap_grant_fsread();`
+- main inject hardcodes legacy set only (`fs/sys/env/net/time/rand/alloc/ffi/thread/gpu`) — no `fsread`/`fswrite` idents
+- gcc of emit-c alone: `'fsread' undeclared` (same class as CAP-G1 HttpCap residual)
+- **Conclusion:** runtime can; product emit host cannot until CAP-G3 grant matrix wires `FsReadCap`/`FsWriteCap` main params
+
+### `oodac run` honesty note
+
+`run` dispatches to **VM bytecode** (`vm_run_bytecode_caps`), not Backend-C runtime seal. VM host grants only `&FsCap`/`&SysCap` for the interpreter process. Do **not** treat `oodac run` stdout as C-runtime token proof. C-host probe is the CAP-G2 runtime evidence.
+
+========================================================================
+HONESTY / RESIDUALS
+========================================================================
+
+| Residual | Owner | Note |
+|----------|-------|------|
+| Product emit `oo_cap_grant_fsread`/`fswrite` for main params | CAP-G3 | blocks pure `main(fsread: &FsReadCap)` C product path |
+| CAPS_MATRIX.md still legacy `&FsCap` rows for FS ops | CAP-G2 docs | update when rollup greens |
+| CAPS.oot path-A table still says non-net residual | CAP-G2 docs | flip after phalanx rollup |
+| `verify_human` still FsCap-only | residual / intentional | dual EnvCap+FsCap; not soft-granular |
+| `chs_rt_sys.c` line soft/pack | hygiene | 375 lines after CAP-G2 requires |
+| Process-local tokens ≠ unforgeable object-caps | DESIGN residual | path-A claim only |
+| Writedir TOCTOU / hardlink escape | T3 residual | no landlock multi-tenant seal |
+| Check-layer preferred fs map | CAP-G2 DE check / Peer1 | WIP `sealed_fs_kind_of` observed; not owned here |
+
+========================================================================
+VERDICT
+========================================================================
+
+**Runtime CAP-G2 token seal + writedir overlay: PROVED.**
+
+1. `oo_cap_require_fsread` / `oo_cap_require_fswrite` accept exact granular **or** legacy FsCap.
+2. Wrong granular → fail-closed (`ERR\tcap` + exit 1), including FsReadCap under writedir for write.
+3. `OODA_FS_WRITEDIR` still fail-closed after require; allow path works for both FsWriteCap and FsCap.
+4. C-host 23/23; `fs_writedir_smoke` PASSED.
+
+DE3 unlock gap closed in runtime WT (declared-but-unimplemented requires + FS ops still on legacy `require_fs`). No push.
+
+*Peer2 Runtime FS Token + Writedir — CAP-G2 path-A.*
