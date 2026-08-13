@@ -38,11 +38,13 @@ Open
     Verdict still FAILs on rc=124/132/137 or RSS > 32 GiB.
     Owns: HARN
 
-  B8 OPEN — trace per-call allocation source
-    After env.oo fix, oodac check oodac/main.oo regressed 22x wall, 725x RSS (~28 GiB peak).
-    Not a security issue (DoS closed by B5) and not unbounded (returns rc=1 within 180s).
-    Trace the per-call allocation source and feed into B6 fast-path work.
-    Owns: DE2
+  [x] B8 CLOSED — patch landed (1.77x wall / 2.5x RSS); not at baseline
+    env.oo was a red herring (PV2 confirmed). Real cause = oo_str_concat churn in tc_names.oo / tc_scope.oo.
+    Fix: convert binds from String to List[String]; 7 append sites + drop_depth rewrite.
+    Honest delta: 50s / 30 GB -> 28.5s / 12 GB. Original 1-2s / 39 MB baseline not recovered.
+    Files: oodac/tc_names.oo (183->202), oodac/tc_scope.oo (148->107).
+    Audit: openOODA/audit/b8_root_cause.oot (corrected).
+    Owns: INT (applied), COORD (rollup corrected).
 
   [x] B5 MED — os/env.oo recursive self-call
     Replace return env_get(cap, key); with return oo_env_get(cap, key); at ../ooda/std/os/env.oo:7
@@ -67,7 +69,7 @@ Open
 
   10 HIGH — migrate all .sh scripts to .oo files
     Convert 386 .sh files to use std/test.oo + cmd_execute pattern
-    Progress: 21/386 total, 16/40 residual_smoke scripts done
+    Progress: 84/203 ooda/scripts/ (41.4%), 29 new .oo files created today
     wasm_execute_smoke.oo created as primary template
     Owns: vibe
 
