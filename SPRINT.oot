@@ -1,166 +1,71 @@
-# OpenOODA Sprint Tasks
-
-Active task list. Also: `CAPS.oot`, `PM.oot`, `DESIGN.oot`.
-
----
-
-## 1. Current Status
-
-- **Release:** 0.184.0-alpha. Tip: ooda `dd4671c` + boards `19ec94e`.
-- **Focus:** F26 p7 **ran**. First ELF: `p7 ALL OK` 86s, rc=1 `if` cond `ERR_BINOP` (false fold). After if-skip + `kidx` + `mut` param bind: **p7 FAILED** `timeout 180` empty (181s). Isolated `llvm_emit_stmt.oo` check was already 124 at 8s. Next: why modular check hangs once early type FPs are gone. Do not treat script ALL OK (rc=1) as `check` green.
-- **ELF:** gitignored. Rebuild: `PURE_SKIP_CHECK=1 OODAC_BIN=./bootstrap/seed/oodac bash scripts/oodac_pure_build.sh oodac/main.oo /tmp/oodac_new`.
-
----
-
-## 3. Active Tasks (≤5 top-level)
-
-### [x] 1 — CRIT: F26 check is SLOW — type class + later speed
-
-**In plain words:** Official p7 treats any finish `<180s` as ALL OK, even rc=1. That bar was green at 86s. Peeling type FPs (`ERR_BINOP` on `a == b + 1`; file-global `k2`; `mut` params) let check walk further and now **times out with no line**. Isolated `timeout 8 oodac check oodac/llvm_emit_stmt.oo` → 124.
-
-**2026-08-13 phalanx (closed-with-residual → closed-with-day-shift):** 12-agent SWARM. Hang isolated: **not** `llvm_emit_stmt.oo`. At 02:00 the live state was deterministic rc=1, 32s, **22.8 GB RSS peak**, `ERR type at 159:27` → `ooda/oodac/c_emit_struct.oo:158` (needed `let mut`). Closure reproduced 3/3 on fresh `/tmp/oodac_new` (985056 B, md5 `09f2ff44…`); not a stale-ELF accident. Memory residual was **linear, 699 MiB/s, R²>0.999, unbounded** — would OOM at higher `np`. **At 02:14 HST, a parallel phalanx (agy) shifted the world:** `2c090b8 fix(check): fast path + 5 heavy tc` and `e1b6441 fix(check): cheap modular name-scan` landed, and `c_emit_struct.oo:158` got `let mut`. Live state is now **1–2s wall, 39 MB RSS, rc=0** (`OK` printed). See `audit/f26_residual.oot` for the day-shift ledger.
-
-**Owns (closed):** Isolate the hang, expose the residual, write the audit trail.
-**Owns (closed by parallel phalanx):** B1 (let mut ok) and B4 (memory bound) — landed by agy.
-
-**Residual (still open):**
-- F26-CAP: 1-line DoS `let y:Int="s";` still slips all existing caps; token-count cap missing.
-- F26-HYG: 5 runtime `.c` files >256 lines (`chs_rt.h` 276, `chs_rt_ffi.c` 359, `chs_rt_fs.c` 300, `chs_rt_str.c` 273, `chs_rt_sys.c` 468); 5 live `.tmp.c` sludge in `ooda/oodac/` + `ooda/bin/`.
-- F26-GATE: `p7_check_main_smoke.sh` does not record peak RSS or ELF build ID; multiple non-124, non-0 exit codes (134/137/139/143) all read as ALL OK.
-
-**Artifacts:**
-- `ooda/scripts/harness_f26_residual_smoke.sh` (61 lines, A9/HARN) — RSS-trip smoke.
-- `openOODA/audit/f26_residual.oot` (now 60 lines, A11/DOCS + day-shift) — type error + memory residual + day-shift.
-- `openOODA/audit/f26_phalanx_rollup.oot` (66 lines, A12/COORD) — 12-agent rollup.
-
-**Done when:** `p7_check_main_smoke.sh` ALL OK **and** `main.oo` check is not a 124 — MET. `<75s` later — MET (1–2s, far below 75s). Memory bound — MET (39 MB, was 22.8 GB). Type error at 159:27 — MET (closed by agy).
-
-### [x] B1 — HIGH: F26-CAPS — `let mut ok` on `c_emit_struct.oo:158`
-
-**CLOSED** by parallel phalanx (agy). `git diff oodac/c_emit_struct.oo`: 1 insertion, 1 deletion. Type error at 159:27 no longer reproduces.
-
-### [ ] B2 — HIGH: F26-CAP — token-count cap in `tokenize_lines` / `collect_tokens`
-
-Additive ≤5 lines. Closes the 1-line DoS `let y:Int="s";`. Owns: SEC.
-
-### [ ] B3 — MED: F26-HYG — split 5 runtime `.c` + sweep 5 live `.tmp.c`
-
-`chs_rt.h` 276, `chs_rt_ffi.c` 359, `chs_rt_fs.c` 300, `chs_rt_str.c` 273, `chs_rt_sys.c` 468. Plus `ooda/oodac/*.tmp.c` + `ooda/bin/oodac.tmp.c`. Owns: HYG.
-
-### [x] B4 — CRIT: F26-MEM — bound the 22.8 GB linear + harden the gate
-
-**MEM CLOSED** by parallel phalanx (agy). `2c090b8` + `e1b6441` reduced 22.8 GB / 32s → 39 MB / 1s. **GATE OPEN**: `p7_check_main_smoke.sh` should still record peak RSS + ELF build ID, and treat rc 134/137/139/143 as FAIL. Owns: PV1.
-
-### [ ] B5 — MED: F20-ENV — `os/env.oo` recursive self-call fix
-
-1-line fix: replace `return env_get(cap, key);` with `return oo_env_get(cap, key);` in `ooda/std/os/env.oo:7`. Closes the latent stack-overflow DoS surfaced by B6/SEC. Latent: oodac codegen bypasses the .oo body via `c_emit_helpers.oo:235-236` (`oo_env_get(...)` direct emit), so production codepath is safe; only `install/`, `scripts/`, `fixtures/`, `corpus/check/` that resolve the `.oo` symbol trigger. Owns: DE1.
-
----
-
-### [x] 2 — HIGH: truncated/unclosed → ERR (closed this wave)
-
-Rebuilt ELF `timeout 5`:
-- `harness_trunc_rparen.oo` → rc=1 `ERR check truncated fn header`
-- `harness_trunc_rbrace.oo` → rc=1 `ERR parse unclosed brace`
-- `harness_unclosed_body.oo` → rc=1 `ERR parse unclosed brace`
-No 124, no 134. Seed still old (do not use seed to re-open).
-
----
-
-### [x] 3 — HIGH: `std` honesty — 33 vs 1,030 (closed-with-doc-cleanup)
-
-Product `ooda/std` = 33 `.oo` → now **34** with `os/env.oo` STUB. Args not shipped. `fs_walk` is in `os/fs.oo`.
-Inventory docs updated. Phantoms removed from SPRINT focus.
-
-**2026-08-13 doc-cleanup (closed-with-doc-cleanup):** 12-agent SWARM. Count drift 33→34, line-count drift on 6 files (`core/crypto.oo` 34→39, `os/cmd.oo` 30→55, `os/fs.oo` 79→83, `os/process.oo` 55→61, `str.oo` 75→92, `test.oo` 40→67), L128 `crypto/`/`hash/` path split, row 22a `os/env.oo` STUB added, RESIDUAL row for env.oo recursive BUG added. 8-invariant smoke harness landed (`harness_f20_inventory_smoke.sh`, 32 lines).
-
-**Owns:** DOCS `f20_std_inventory.oot` fs_walk row + org-tree leftover claims. — CLOSED (`openOODA/audit/f20_doc_cleanup_rollup.oot`).
-
-**Done when:** inventory matches `find`, no phantom path claims. — MET (34 files; 7/8 phantoms remain documented, not minted).
-
----
-
-### [x] 4 — MED residual: B1 ZT (closed)
-
-F46/F44/F45 closed. Residual F43/F13/F41. Do not block Ship.
-
----
-
-### [x] 5 — MED: emit-c fail-closed + `check_function` (closed this wave)
-
-Scripts have no `emit-c || true`. Pure build `OK_PURE_MULTI`. `nm oodac/oodac` → `T check_function`.
-
----
-
-### [x] 6 — HIGH: crypto honesty remainder (closed-with-doc-cleanup)
-
-F38b closed (one product `sha256`). Pack + f20 hash row updated. Remainder: org-tree second `sha256` in sibling `std/`; f20 still stale on `fs_walk` / process_exit count. Do not mint phantoms.
-
-**2026-08-13 doc-cleanup (closed-with-doc-cleanup):** 12-agent SWARM. `core/crypto.oo` 34→39; `process_exit(1)` count 2→3 (`test.oo` added); `UNIMPLEMENTED_RESIDUAL` attribution moved off `hash/sha256.oo` (0 hits) onto markup residue (4 files, 6 hits). Org tree `crypto/` 11 files / `hash/` 10 files separated cleanly at L128–129. 8-invariant smoke harness lands the locks.
-
-**Owns:** DOCS leftover inventory rows only. — CLOSED (`openOODA/audit/f20_doc_cleanup_rollup.oot`).
-
----
-
-### [x] 7 — MED: Process.Args missing (RFC-002 named-gap)
-
-`process.oo` facade is live but lacks `process_args(&ProcessCap) -> List[String]`. The C runtime (`chs_rt_sys.c`) has `sys_args` but it's not exported to the language.
-
-**Owns:** Either implement `process_args` in `std/os/process.oo` or formally document it as residual in the inventory.
-
----
-
-### [ ] 8 — CRIT: seed rebuild blocked by `oo_write_file` type conflict
-
-`pure_build` fails: `conflicting types for 'oo_write_file'; have 'OoResS' vs 'OoResV'`. Blocks rebuild of oodac with current source (WASM PERCENT, `% 0` fail-closed, M6 fixes cannot be verified).
-
-**In plain words:** The seed compiler is from 2026-08-12. Any code change (e.g., WASM emit, typecheck) needs a rebuild, but the build fails due to a type mismatch in the C runtime declarations for `oo_write_file`.
-
-**Owns:** Find and unify `oo_write_file` declarations in runtime (`chs_rt_*.c` + emitted C) to same return type. Then rebuild seed via `oodac_pure_build.sh`.
-
-**Done when:** `oodac_pure_build.sh oodac/main.oo` produces a working binary that passes `ci_product.sh` rails.
-
----
-
-### [ ] 9 — MED: grok audit — F26 phalanx + F20 doc cleanup (2026-08-13)
-
-**In plain words:** Grok reviews the 12-agent SWARM outputs from this session. Scope: `audit/f26_residual.oot` (52 L, day-shift), `audit/f26_phalanx_rollup.oot` (66 L), `audit/f20_doc_cleanup_rollup.oot` (62 L), `audit/f20_std_inventory.oot` (190 L patch), `ooda/scripts/harness_f26_residual_smoke.sh` (61 L), `ooda/scripts/harness_f20_inventory_smoke.sh` (32 L, 8 invariants), SPRINT.oot Task 1/3/6 closures + B1/B4 day-shift + B5 new.
-
-**Owns:** grok audit. Verify: (1) day-shift narrative is honest (22.8 GB was real at 02:00; 39 MB at 02:14); (2) 6 line-count drift fixes map to git `M` files; (3) env.oo row 22a + RESIDUAL bug row are accurate; (4) L128 path split is correct; (5) smoke harnesses would FAIL on any drift.
-
-**Done when:** grok reports green, or punch-lists drift with file:line refs.
-
-## 4. Future (do not start)
-
-SINS Lust: Self-Healing, Time-Travel, Auto-Delete >256, Safe Code Sharing, Math Proofs, Hardware Limits, Security Signatures, Safe DB, AI Code Builder, GPU, Live Updates, Fast Layout, Small Errors, Exact Patching, AI Reader, Code Mixing, Web Browser, OS Kernel, Direct Disk, Cross-Language, Safe Threading.
-
----
-
-## 5. Completed
-
-- 2026-08-12 wave 3 phalanx: Native `std/os/cmd.oo` Command API added; `std/test.oo` Test Runner added; `std/str.oo` str_replace added; compiler python dependency removed from `cli_build.oo`; `f20_std_inventory.oot` updated to reflect 33 files + fs_walk + cmd.oo + test.oo.
-- 2026-08-12 wave 2 phalanx: INT ELF 980K + nm; DE2 `skip_balanced` unclosed; DE1 `tc_call_ret` SEMI; HARN unclosed_body; DOCS F38b pack; PV2 first ELF missed DE2, second rebuild proved 3/3 fixtures. Log `audit/phalanx_sprint_wave2_2026-08-12.oot`.
-- 2026-08-12 wave 1: Task 1 restated SLOW; check_fn_trunc; one sha256; emit-c timeout; PM honesty.
-- 2026-08-12 B1 ZT. 2026-08-11 ZT holes / RFC swarm.
-
----
-
-## 6. Lanes
-
-**Power law:** `[ ]` = 4 (B2 token-cap, B3 line-lock, B5 env, 9 grok audit). Task 8 [ ]. 1/2/3/4/5/6/7/B1/B4 `[x]`. Under cap.
-
-COORD sole writer of `SPRINT.oot` + `audit/*rollup.oot`.
-
-| Wing | Lane | Owns |
-|------|------|------|
-| I | DE1 | `tc_call_ret.oo` (SEMI gate) |
-| I | DE2 | `parse_drive.oo` (landed) |
-| I | RT | `chs_rt*.c` |
-| II | PV1 PV2 SEC MEM | read-only / prove |
-| III | INT | ELF rebuild |
-| III | HARN | `harness_*.oo` |
-| III | HYG | line lock |
-| IV | DOCS | inventory leftovers; not SPRINT |
-| IV | COORD | SPRINT + rollup |
-
-No debugger swarm. No moonshots. Handoff: `audit/phalanx_sprint_wave2_2026-08-12.oot`.
+SPRINT — this week
+
+File: openOODA/SPRINT.oot
+Active task list. DESIGN is the want. SHIPPED is what exists. PM is the pin.
+
+Pin
+  Release v0.184.1-alpha
+  Product tip 99d286e
+  Boards tip 1f6aa0f
+  F26 check hang is closed. Live state: 1 to 2 seconds, 39 MB RSS (memory in use), check rc=0.
+  ELF is gitignored. Rebuild: PURE_SKIP_CHECK=1 OODAC_BIN=./bootstrap/seed/oodac bash scripts/oodac_pure_build.sh oodac/main.oo /tmp/oodac_new
+
+Open
+
+  B2 HIGH — token-count cap in tokenize_lines / collect_tokens
+    Closes the 1-line DoS let y:Int="s";
+    Owns: SEC
+
+  B3 MED — split 5 runtime .c files over 256 lines and sweep live .tmp.c
+    chs_rt.h 276, chs_rt_ffi.c 359, chs_rt_fs.c 300, chs_rt_str.c 273, chs_rt_sys.c 468
+    Live sludge: ../ooda/oodac/*.tmp.c and ../ooda/bin/ooda.tmp.c
+    Owns: HYG
+
+  B4 GATE MED — harden p7_check_main_smoke.sh
+    Memory bound is closed (22.8 GB down to 39 MB).
+    Gate still open: record peak RSS and ELF build id. Treat rc 134, 137, 139, 143 as fail.
+    Owns: PV1
+
+  [x] B5 MED — os/env.oo recursive self-call
+    Replace return env_get(cap, key); with return oo_env_get(cap, key); at ../ooda/std/os/env.oo:7
+    Codegen already emits oo_env_get, so the live path is safe. The .oo body still recurses if resolved.
+    Owns: DE1
+    **2026-08-13 close:** Closed. Latent stack-overflow DoS fixed by replacing self-recursive `env_get` call with C-ABI `oo_env_get(cap, key)` in `ooda/std/os/env.oo:6`. oodac check OK. Security audit: PASS. Compiler bypasses the .oo body via c_emit_helpers.oo:235-236, so production codepath was already safe; the fix ensures the .oo source matches the lowered C call.
+
+  8 CRIT — seed rebuild blocked by oo_write_file type conflict
+    The seed is the trusted first oodac binary.
+    pure_build fails: conflicting types for oo_write_file; have OoResS vs OoResV
+    Unify declarations in chs_rt_*.c and emitted C. Then rebuild via oodac_pure_build.sh
+    Done when the new binary passes ci_product.sh
+    Owns: RT
+
+  9 MED — grok audit of F26 phalanx, F20 doc cleanup, and .oo conversion
+    Check: day-shift 22.8 GB at 02:00 then 39 MB at 02:14 is honest
+    Check: inventory line counts match git
+    Check: env.oo row and path split are right
+    Check: .oo smokes keep the invariants
+    **Sub-task 9a (deferred):** `.oo` conversion landed in source (80 L + 39 L) but BUILD BLOCKED by Task 8 (`oo_write_file` type conflict in `chs_rt_*.c`) + seed emit bug on `match Result`. `--sh` originals remain in place. Resolves when Task 8 lands.
+    Owns: grok
+
+Closed this week
+  1 F26 check hang and 22.8 GB RSS — closed by agy 2c090b8 and e1b6441. Leftover is B2 B3 B4-gate.
+  B1 let mut on c_emit_struct.oo:158 — closed by agy
+  2 truncated / unclosed now ERR, no 124
+  3 std honesty 34 files, inventory matches find
+  4 B1 ZT F46 F44 F45
+  5 emit-c fail-closed, check_function present
+  6 crypto honesty remainder, one product sha256
+  7 process_args shipped in ../ooda/std/os/process.oo
+
+Lanes
+  COORD writes SPRINT.oot and audit/*rollup.oot
+  DE1  tc_call_ret.oo and env.oo
+  DE2  parse_drive.oo
+  RT   chs_rt*.c
+  PV1 PV2 SEC MEM  prove, read-only unless named
+  INT  ELF rebuild
+  HARN harness_*.oo
+  HYG  line lock
+  DOCS inventory leftovers, not SPRINT
+  Two writers never own the same file.
+  If stuck, probe with grep and a short command. More agents on one stuck bug wastes tokens.
