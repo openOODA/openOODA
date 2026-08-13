@@ -1,284 +1,95 @@
-# OODA Programming Language: Design & Architectural Blueprint
-
-**Project:** openOODA — `https://github.com/openOODA/ooda`  
-**File:** `openOODA/DESIGN.oot` — north star. This file says what we want to build. Current status lives in `PM.oot`.  
-**Format note (dogfooding):** Product source is `.oo` by default per this spec. Board docs are `.oot` by specific call in `BOOTSTRAP.oot` §Docs format — that exception is how we dogfood both.  
-**Reading tip:** Words in brackets like `[STATUS: residual]` mean "not yet true in the product". They show what is still an idea, not a working feature.
-
----
-
-## In plain English — what is openOODA?
-
-openOODA is a systems language for safe, fast software.  
-It aims to let humans and AI agents write code that is checked early, runs safely, and cannot touch files or network unless given a clear permission token.  
-Every function can carry its own tests. The compiler gives short, fixable errors.  
-Full speed, P2P, and OS-level ideas are still future work. The real product today is a native compiler that emits C and runs through gcc.
-
----
-
-## Executive Summary
-
-**OODA** (*Observe, Orient, Decide, Act*) is an AI-native, capability-secure, self-testing systems language for rapid feedback, zero-day defense, and native execution.
-
-- Bare-metal / `#![no_std]` is a **refuse stub** on alpha. Product does not ship an embedded `no_std` runtime. **[STATUS: residual]**
-- Sub-second global verifiable compute network is not yet real. Product loops `check` / `build` / `run` are real. **[STATUS: residual]**
-
----
-
-## 1. The openOODA Language (Core Syntax & Philosophy)
-
-- **Philosophy of speed (The OODA loop)** — Goal: short loop from idea to running code. Product loops are real. Full marketing claim of sub-millisecond compile is still residual. **[STATUS: residual — see `ooda/bootstrap/OODA_SPEED.oot`]**
-- **Mathematical contracts** — `requires` and `ensures` bound what a function may accept and promise. Simple runtime checks are in. Full proof with SMT and quantifiers is not yet. **[STATUS: residual]**
-- **Data-oriented design & layout (DOD)** — Goal: arrays of structs, zero-copy layout. Alpha refuses the names `soa_layout` / `dod_layout` — no product path yet. **[STATUS: residual / path-A refuse]**
-- **First-class AST macros** — Goal: rewrite code at compile time with normal functions. Names `macro_expand` / `ast_macro` are refused on alpha. **[STATUS: residual / path-A refuse]**
-- **Compile-time type-state machines** — Goal: prove lifecycles like `Unopened → Opened` at compile time. Names `type_state_check` / `typestate_assert` are refused. **[STATUS: residual / path-A refuse]**
-
----
-
-## 2. AI-Native Tooling (Vibe-Coding)
-
-- **Surgical AST patching** — `--json-errors` plus `ooda fix` apply of `E_CAP` hints is in. Multi-code one-turn auto-fix is not yet. **[STATUS: residual]**
-- **Token-minimized APIs** — `ooda outline` and `ooda reflect` work (parse-only alpha). Claimed "85–90% token cut" is not measured. **[STATUS: residual]**
-- **Intent-driven compilation (Telepathic AST)** — Goal: fill a blank body `...` with LLM help at compile time. Names `telepathic_compile` / `intent_compile` are refused. **[STATUS: residual / path-A refuse]**
-- **Global hive-mind fuzzing** — Goal: idle compilers form a P2P network that fuzzes while you sleep. Names `hive_fuzz` / `hivemind_join` are refused. No P2P network today. **[STATUS: residual / path-A refuse]**
-
----
-
-## 3. The Safety & Security Engine
-
-- **Unified capability sandboxing** — Process-local seals for Fs/Sys/Env/Net/Time/Rand/Alloc plus ThreadCap/GpuCap are in. Biometric, crypto object-caps, and OS isolation are not yet. **[STATUS: residual]** Also residual: bitmask cap-id extension, per-op vs per-call granularity, 8-byte token randomness, `chs_rt_v2.c` described but absent (verified in Round 2.5).
-- **Time & entropy sandboxing** — TimeCap and RandCap seals are in (now, sleep, random, seed, forge deny). Not yet CSPRNG or attested clock. **[STATUS: residual — see `TIME_ENTROPY.oot`; HMAC-SHA-256 audit residual]**
-- **Memory quotas (heap sandboxing)** — AllocCap helpers plus ambient List quota are in and fail closed. Not yet OS rlimit or typed `&AllocCap<N>`. **[STATUS: residual — see `MEMORY_QUOTA.oot`]**
-- **CPU quotas (execution sandboxing)** — `// MAX_CYCLES: N` for while, for, and recursion via shared `__oo_mc` is in. Not yet OS cgroup, `#[MaxCycles]` attribute, or static WCET. **[STATUS: residual — see `MAX_CYCLES.oot`]**
-- **Static taint tracking** — `// SECRET:` sinks (`println`, `write_file`, …) are in. Not yet full `#[Secret]` interprocedural taint. **[STATUS: residual]** Shipped: function-return taint via `__fr_secret__` (Round 2.1), method sinks, alias rebind, SECRETSINK list, brace balance, LPAREN recursion, variadic scan (Round 2). Still residual: string interpolation `${...}` and full field/index taint.
-- **Automated contract fuzzer** — Pure domains int, bool, string, list are in, including homogeneous multi-arg. AST contracts and mixed-type multi are not yet. **[STATUS: residual — see `FUZZ_DEFER.oot`]**
-- **0ms GC & memory safety** — RAII plus ARC reclaim on ref0 is in, including match let safety. Full pause-free GC marketing is residual. **[STATUS: residual — see `TEMPORAL_MEM.oot`]**
-- **Temporal memory (state rollback)** — Goal: undo RAM for 3 seconds. Names `checkpoint` / `rollback` / `snapshot_state` are refused. **[STATUS: residual / path-A refuse]**
-- **Cryptographic call-graph integrity** — Goal: hash valid call edges to trap ROP. Names `sign_callgraph` / `verify_callgraph` are refused. **[STATUS: residual / path-A refuse]**
-- **Shadow-state semantic reversion** — Goal: ghost-state cancel before commit. Names `shadow_revert` / `shadow_commit` are refused. **[STATUS: residual / path-A refuse]**
-- **Polymorphic metamorphic binaries (immune system)** — Goal: mutate layout in RAM. **In:** opt-in decoys via `// METAMORPHIC: path-a` (`__oo_meta_decoy_*`) and `meta_epoch()`. **Not in:** `metamorphic_emit` / `metamorphic_build`, symbol reorder, `meta_mix`, or live continuous mutation. **[STATUS: path-A partial; full immune residual]**
-
----
-
-## 4. The Compiler & Execution Targets
-
-- **Multi-target engine** — Floor is **Backend-C** (`emit-c` + `chs_rt` + gcc). BC, LLVM, and WASM smoke tests exist. Full multi-target is residual. **[see `MULTI_TARGET.oot`]**
-  - **Development run path (`ooda run`)** — Native via Backend-C. BC VM surface exists, not a JIT. **[STATUS: residual]**
-  - **LLVM (`ooda build --emit-llvm`)** — Smoke path only, not default release or full self-host. **[STATUS: residual; TLS host verify / OpenSSL headers residual]**
-  - **GPU/NPU acceleration** — Goal: PTX/ROCm/SPIR-V/Metal. Names `emit_ptx` / `emit_spirv` refused; `gpu_launch` is residual behind `&GpuCap`. **[STATUS: residual / path-A refuse]**
-  - **WebAssembly (`--target wasm`)** — Emit and execute smoke is in. Not yet production browser floor. **[STATUS: residual — see `WASM_SMOKE.oot`]**
-  - **Bare-metal embedded (`#![no_std]`)** — Name `bare_metal_init` refused. No product `no_std` floor. **[STATUS: residual / path-A refuse]**
-- **Native hot-code reloading** — Goal: swap ASTs in a running process. Names `hot_reload` / `live_reload` refused. **[STATUS: residual / path-A refuse]**
-- **Advanced toolchains** — Goal: cross-language LTO plus full `import "C"`. Names refuse on alpha. **[STATUS: residual]** Also residual: std crypto/math primitives are gated (`process_exit(1)` — math not audited, gate is load-bearing; see `bootstrap/STDLIB_CRYPTO_MATH.oot`).
-  - **Cross-language LTO** — Name `lto_xlang_link` refused. **[STATUS: residual / path-A refuse]**
-  - **Deterministic reproducible builds** — Content fingerprint `input_fp` is in. Not yet bit-identical hermetic dist. **[STATUS: residual]**
-  - **Compile-time FFI generation** — Names `ffi_gen` / `import_c` refused; Cap vs FFI seal is in. **[STATUS: residual / path-A refuse; FFI env-var propagation residual]**
-- **Holographic data persistence** — Goal: RAM ↔ Merkle NVMe map. Names `holo_persist` / `holo_load` refused. **[STATUS: residual / path-A refuse]**
-
----
-
-## 5. Ecosystem & Developer Experience (DX)
-
-- **100% self-hosted ecosystem** — Pure compiler + CLI via seed is in. Package host, LSP, and registry are not yet. **[STATUS: residual — see `PKG_ECOSYSTEM.oot`; maintainer key fingerprint residual; PURE_SKIP_CHECK=0 default]**
-- **The verifiable web of code (zero-trust)** — Basic boundary rules are in. Formal solver and mint registry are not yet. **[STATUS: residual]**
-- **Fearless concurrency** — Channel and actor names `channel_new` / `actor_spawn` are refused. ThreadCap mutex and spawn seal with residual Err are in. Full message-passing runtime is later. **[STATUS: residual / path-A refuse; see concurrency section]**
-- **The standard library philosophy** — Split `std::core` vs `std::os` is in. Growth includes Result assert, MD5/SHA1, semver, markup, archive, net/process/thread wrappers. Not yet full DESIGN surface. **[STATUS: residual — std crypto/math gated]**
-- **Narrative diagnostics** — Code-keyed `fix_hint` with `E_SECRET`/`E_MAX_CYCLES`/`E_CAP` is in; smoke green. Full causal story and auto-apply are not yet. **[STATUS: residual — see `AST_AUTOFIX.oot`]**
-- **Human-in-the-loop (`hitl`) testing** — `// HITL: pause` deny (`E_HITL`) plus `verify_human` dual EnvCap+FsCap and getenv allowlist are in. Interactive harness is not yet. **[STATUS: residual — symlink-safe audit file; audit log mode / key derivation residual]**
-- **Universal native LSP** — Name `lsp_serve` is refused via `check_residual`. No live LSP daemon on alpha. **[STATUS: residual / path-A refuse]**
-
----
-
-## 6. Architectural Tension & Conflict Resolution
-
-Ideas at the edge conflict. We choose clear boundaries:
-
-- **Metamorphic binaries vs deterministic builds** — `input_fp` is in; decoys are off by default and opt-in with `// METAMORPHIC: path-a`. Path-a shuffle has no symbol reorder product. True bit-identical dist and live mutation are later. **[STATUS: residual]**
-- **0ms GC (ARC) vs temporal memory** — ARC reclaim is in. Temporal ring-buffer arena is later. **[STATUS: residual — see `ARC_TEMPORAL_TENSION.oot`]**
-- **Capability sandboxing vs C/C++ FFI** — Check seal plus process-local `oo_cap_grant_ffi` and `oo_dlopen` stub are in. Full OS `dlopen` and C TCB are later. **[STATUS: residual — see `CAP_FFI.oot`]**
-
----
-
-## 📂 Design Document Locations & Links
-
-- Formal EBNF Grammar: `ooda/ooda.ebnf`
-- Full Specification: `DESIGN.oot` Appendix — Language Specification (folded from `SPEC.oot`)
-- Compiler Source: `openOODA/ooda`
-- QA Integration Suite: `openOODA/qa`
-- Interactive Web Playground: `openOODA/docs/index.html` — landing only, not full interactive playground **[STATUS: residual / path-A refuse]**
-
----
-
-## 🏗️ openOODA V2 Architecture (Achieved)
-
-### 1. V2 Zero-Trust Capability Model
-Legacy sandbox capabilities (`SysCap`, `NetCap`) are now 18 granular, hardware-backed tokens via `getentropy()`.
-
-- Audit & Trust: `AuditCap`, `SignCap`, `HitlCap`
-- Process: `ProcessCap`, `SyncCap`, `MemCap`
-- Network: `HttpCap`, `TcpCap`, `UdpCap`, `BindCap`
-- Hardware: `AudioCap`, `CameraCap`, `UsbCap`, `HidCap`
-- Display: `WindowCap`, `FrameCap`
-- Filesystem: `FsReadCap`, `FsWriteCap`
-
-### 2. The AI & Math Ecosystem
-First safe, deterministic ML framework with no hidden allocation:
-
-- Matrix core: 2D math `std/src/ooda/math/matrix.oo` **[residual — std crypto/math gated]**
-- AI agents: neural controllers bounded by `AuditCap` (`std/src/ooda/ai/agent.oo`)
-- Inference: pure `.oo` feed-forward `dense.oo` plus integer activations `relu`, `step`
-
----
-
-## 🚀 Future Moonshots
-
-- **The openOODA web browser** — a tab where WASM/JS cannot escape the capability token.
-- **The openOODA package manager (Nexus)** — a registry where libs cannot touch net or fs without a token passed in `main()`.
-- **The openOODA micro-kernel** — a kernel in pure `.oo`, wiring hardware interrupts to capability tokens.
-
-*These are north-star ideas, not alpha products.*
-
----
-
-## Appendix — Language Specification (folded from `SPEC.oot` 2026-08-12)
-
-> `SPEC.oot` is folded here. `DESIGN.oot` is the single north star + spec. See git history for `SPEC.oot`.
-> **RULES §1.7 exception:** This north-star file may exceed 256 lines (`wc -l` = 284). Do not split the appendix.
-
-### A1. Core Vision & Design Philosophy (from SPEC)
-
-- File extension is `.oo` (`main.oo`, `auth.oo`).
-- Rapid loop `check` / `build` / `run` is real on alpha. Sub-second marketing is not proven. **[STATUS: residual — see `OODA_SPEED.oot`]**
-- Safety without friction — bad code fails to compile, but without extra ceremony.
-- Self-testing code — contracts and tests live with the function.
-- AI vibe-coding native — machine-readable AST diagnostics, strict contracts, instant feedback.
-- Zero-dependency ecosystem — compiler + CLI ship together. Package, LSP, and registry are not yet a single toolchain. **[STATUS: residual]**
-
-### A2. Type System & Expressiveness
-
-- Variables are immutable `let` unless `let mut`.
-- No `null`. Use `Option[T]` and `Result[T, E]` with exhaustive `match`.
-- Strong static typing with local inference.
-- Traits over inheritance.
-- Refinement types — Goal: `type Port = Int where 1..=65535`. Not yet compile-time. **[STATUS: residual]**
-- Strong newtypes — Goal: `type UserId = newtype u64` to avoid mixing IDs. Not yet full surface. **[STATUS: residual]**
-
-### A3. Guard Rails & Security (from SPEC)
-
-- Capability seals (Fs/Sys/Env/Net/Time/Rand/Alloc + ThreadCap/GpuCap) are in. Full biometric ladder is not yet. **[STATUS: residual]**
-- Must-use — unused `Result`/`Option`/resource is a hard error. Coverage is partial. **[STATUS: residual]**
-- No null/wild pointers — RAII and ARC aim to remove leaks, not yet proven full elimination. **[STATUS: residual]**
-
-### A4. Self-Testing & Executable Contracts
-
-- `requires` / `ensures` — simple runtime is in; synthesis not yet. **[STATUS: residual]**
-- `@example` doc-tests — Goal: examples become tests. **[STATUS: residual]**
-- `verify` blocks — pure `verify` path is in. **[STATUS: residual]**
-- Fuzzing `#[auto_fuzz]` — pure int/bool/string/list domains are in. Attribute and full suite are not yet. **[STATUS: residual]**
-
-### A5. Memory & Concurrency Model
-
-- RAII + region arenas — ARC on ref0 is in. Full region arena and 0ms marketing are later. **[STATUS: residual]**
-- Structured concurrency — Goal: tasks bound to parent scopes. Channels/actors refused; ThreadCap partial. **[STATUS: residual / path-A refuse]**
-- Zero data races — Not yet proven for full product. **[STATUS: residual]**
-
-### A6. AI & Tooling Integration
-
-- Machine-readable diagnostics `--json-errors` with `E_CAP` hints are in. Multi-code auto-fix is not yet. **[STATUS: residual]**
-- `comptime` execution — Goal: build-time type gen with normal code. Names `macro_expand` / `ast_macro` refused. **[STATUS: residual]**
-
-### A7. Unified Developer Toolchain
-
-- `ooda build` / `run` / `check` — in, Backend-C floor.
-- `ooda test` — pure verify and fuzz are in.
-- `ooda fmt` / `lint` / `lsp` / `pkg` — goals, not full products on alpha. **[STATUS: residual]**
-
-### A8. Syntax & Grammar Design
-
-- Brace syntax `{}` with expression bodies (TypeScript readability + Rust safety).
-- `if`, `match`, and blocks return values directly.
-- Keywords `requires`, `ensures`, `spec` sit on or in the function header.
-
-### A9. Compilation Target Architecture
-
-- Floor: Backend-C (`emit-c` + `chs_rt` + gcc).
-- LLVM IR — smoke only, not default. **[STATUS: residual]**
-- WASM — smoke only, not production browser floor. **[STATUS: residual]**
-- Instant JIT (`ooda run`) — Not a JIT. Native/BC run is real. Sub-second marketing is residual. **[STATUS: residual]**
-
-### A10. Multi-Ecosystem Interoperability (FFI & Bridges)
-
-- C-ABI FFI — Cap-gated `dlopen` stub is in; unrestricted zero-cost FFI and Rust LTO are not yet. **[STATUS: residual]**
-- Python bridge `embed "python"` — Stub only; `load_model` not working. **[STATUS: residual / fail-closed stub]**
-- C-header auto-import `import_c` — Refused; no header reading. **[STATUS: residual]**
-
-### A11. Zero-Shot AI Adaptability
-
-- Compact grammar `ooda.grammar` — under 2,000 tokens goal; living `ooda.ebnf` exists. **[STATUS: residual]**
-- Grammar-constrained decoding `ooda.gbnf` — file exists; sampler integration not yet.
-- High orthogonality — one way to express each idea.
-- Compiler-as-teacher — JSON error explains rule with example.
-- Self-describing API `ooda reflect` — parse-only alpha. **[STATUS: residual]**
-
-### A12. Architectural Constraints for LLM Context Optimization
-
-- Zero-boilerplate FS modules — any `.oo` file is a module (`src/auth/jwt.oo` → `auth::jwt`).
-- Modular-size lints — Warn at ~256–300 lines. Soft. **[STATUS: residual]**
-- Isolated functional units — one file holds types + logic + caps + `verify`.
-- Symbol reflection — Goal: `ooda context path#symbol`. **[STATUS: residual]**
-- Module outlines `ooda outline` — parse-only alpha. **[STATUS: residual]**
-- AST diff edits `ooda patch` — node-id patches residual. **[STATUS: aspirational]**
-- Token-optimized diagnostics `--json-minimal` — residual. **[STATUS: residual]**
-
-### A13. Comprehensive Security Architecture
-
-- Capability sandboxing — default-deny seals are in. Full OS isolation and registry audit are not yet. **[STATUS: residual]**
-- Memory safety — RAII and ARC aim to remove UAF/overflow/null classes. Not yet proven full. **[STATUS: residual]**
-- Injection prevention — `process::exec(sys_cap, "git", ["clone", user_input])` array form blocks shell injection.
-- AI containment — caps trap I/O. JIT containment not a product (no JIT). **[STATUS: residual]**
-- Zero-day defense — default-deny trapping is in; memory class defense and metamorphic layout (decoys only) are partial; supervisor trees later. **[STATUS: residual]**
-
-### A14. High-Performance Engine Architecture
-
-- 0ms GC — ARC is in; 0ms marketing residual. **[STATUS: residual]**
-- LLVM optimizer & bare-metal — LLVM smoke only; bare-metal refused. **[STATUS: residual]**
-- Monomorphized generics & value types — depth not full. **[STATUS: residual]**
-- Zero-cost abstractions & strippable contracts — simple contracts are in; full strip in release residual. **[STATUS: residual]**
-- Dual-engine execution — `run` native, `build` Backend-C. Marketing dual-engine residual. **[STATUS: residual]**
-
-### A15. Telemetry, Logging & Debugging
-
-- Structured logging & spans — Goal: `log::info!`. **[STATUS: residual]**
-- AI-enriched stack traces — Full arg-value traces later. **[STATUS: residual]**
-- Time-travel replay `ooda replay` — Goal; not shipped. **[STATUS: residual / not shipped]**
-- Zero-overhead probes — Goal: `log::debug!` stripped in release unless enabled. **[STATUS: residual]**
-- Performance profiler `ooda profile` — Goal; not shipped. **[STATUS: residual / not shipped]**
-
-### A16. First Principles Foundation
-
-- Code, contracts, and tests are one truth — one atomic unit.
-- Cognition & LLM context are finite — grammar <2k tokens, files ~256 lines.
-- Security is a capability, not sanitization — zero I/O by default.
-- Memory lifetimes follow scopes — scope-based reclaim, O(1) free.
-- Feedback speed drives quality — short `check/build/run` loops.
-
-### A17. Governance, Ecosystem & Release Strategy
-
-- Repo is public (`v0.184.0-alpha`); boards may be private. **Beta not claimed.** Ladder `v0.1.0-alpha → v0.5.0-beta → v0.9.0-rc → v1.0.0-stable` is aspirational.
-- Std is growing (core vs os split; Result, MD5, net wrappers). Not yet HTTP-server-complete. **[STATUS: residual — crypto/math gated]**
-- Lockfile governance `ooda.lock` — hashed lockfiles and capability-audited installs, not yet. **[STATUS: residual]**
-- Process resilience & supervisor trees — Goal; refuse on alpha. **[STATUS: residual / path-A refuse]**
-- Migration `ooda migrate` — Disabled (unsafe `let mut` sed removed). AST tool later. **[STATUS: disabled residual]**
-- Standards / RPC / benchmarks — No shipping suite yet. **[STATUS: residual]**
-
----
-
-## Glossary (plain words for jargon)
-
-- **Path-A** — minimal safe stub that refuses the name on alpha. Not a full feature.
-- **Residual** — intended but not yet true in the product. Listed honestly.
-- **Refuse stub** — compiler says `ERR` if you use the name, so you cannot think it works.
-- **Dual-green** — both host-built and product-built compilers pass the same smoke test.
-- **Seal / Cap** — a permission token you must pass to a function to let it do I/O.
-- **Alpha In** — works at least as a smoke test, not yet a full product.
-- **ZT** — zero-trust checks from the audit phalanx.
+DESIGN — what we want to build
+
+File: openOODA/DESIGN.oot
+North star. SHIPPED.oot is what exists. SPRINT.oot is this week. PM.oot is the pin.
+
+openOODA is a systems language for safe, fast software.
+Humans and agents write code that is checked early.
+Code runs only with a clear permission token.
+Every function can carry its own tests.
+The compiler gives short, fixable errors.
+The product path today is a native compiler that emits C and runs through gcc.
+The rest of this file is the want. Build toward it.
+
+1. Language
+  Short loop from idea to running code.
+  requires and ensures bound what a function may accept and promise. Full proof later.
+  Data layout: arrays of structs, zero-copy.
+  Goal names: soa_layout (struct of arrays) and dod_layout (data-oriented layout).
+  AST macros: rewrite the parse tree at compile time with normal functions.
+  Type-state: prove lifecycles like Unopened to Opened at compile time.
+
+2. Agent tools
+  Machine-readable errors (--json-errors) plus ooda fix for E_CAP (missing token) hints.
+  One-turn multi-fix later.
+  ooda outline and ooda reflect. Measure token cut later.
+  Fill a blank body with help at compile time.
+  Idle compilers form a net that fuzzes while you sleep.
+
+3. Safety
+  Capability seals for files, exec, env, net, time, rand, alloc, threads, GPU.
+  Finer tokens, object-caps, and OS isolation later.
+  Time and entropy seals. Strong random and attested clock later.
+  Heap quota. OS rlimit later.
+  MAX_CYCLES on while, for, and recursion. Cgroup later.
+  SECRET: sinks at compile time. Full field taint later.
+  Contract fuzzer on int, bool, string, list. Mixed types later.
+  ARC (free when the last ref drops). Pause-free GC later.
+  Undo RAM for a few seconds.
+  Hash valid call edges.
+  Ghost-state: cancel a change before it commits.
+  Mutate layout in RAM.
+
+4. Compiler targets
+  Floor: emit C, link the C runtime (chs_rt), then gcc.
+  ooda run on native machine code.
+  LLVM emit. Full self-host later.
+  GPU and NPU backends, entered with a GPU token.
+  WASM emit. Browser floor later.
+  Bare metal, no extra runtime.
+  Swap code in a running process.
+  Cross-language link-time optimize. Import C at compile time.
+  Bit-identical builds.
+  RAM to a hash (Merkle) store.
+
+5. Ecosystem
+  Compiler and CLI rebuild themselves using the seed (the trusted first oodac binary).
+  Package host, native language server, and registry later.
+  Boundary rules, then a mint registry.
+  Channels and actors.
+  std split: core vs os. Grow the surface.
+  Errors that say what to fix. Auto-apply later.
+  Human pause (HITL). Interactive harness later.
+
+6. Tension
+  Fake layouts stay off by default. Turn them on with METAMORPHIC: path-a.
+  Path-a is the small decoy path: fake pads so memory offsets change.
+  Deterministic build is the default.
+  ARC now. Undo later.
+  Seal calls into C (FFI) with a token. Full OS dlopen later.
+
+Language shape
+  Files end in .oo
+  let is immutable unless let mut
+  No null. Option[T] and Result[T, E] with match
+  Traits, not inheritance
+  Refinement types and newtypes
+  Must-use Result and Option
+  Brace syntax. if, match, and blocks return values
+  Keywords requires, ensures, spec sit on the function
+  Grammar lives in ../ooda/ooda.ebnf
+  Any .oo file is a module
+  Aim for files under 256 lines
+
+Moonshots
+  A browser tab that cannot escape its token
+  A package registry that cannot touch net or fs without a token from main
+  A kernel in .oo that wires interrupts to tokens
+
+These are wants.
+
+Docs
+  EBNF: ../ooda/ooda.ebnf
+  Compiler: ../ooda
+  QA: ../qa
+  Site: https://openOODA.github.io

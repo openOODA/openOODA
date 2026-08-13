@@ -1,67 +1,50 @@
-# SWARM.oot — Swarm Operations & Token Efficiency
+SWARM
 
-**Location:** `openOODA/SWARM.oot`  
-**Scope:** Any multi-agent or LLM-driven coding environment (Gemini, Grok, OpenAI, Minimax, etc.).  
-**Purpose:** Agnostic first principles for orchestrating LLMs and agentic swarms, strictly minimizing token waste, and preventing runaway compute costs.
+File: openOODA/SWARM.oot
+How to use helper agents. Goal: get the work done without wasting tokens.
 
----
+1. Right-size the model
+  Light work (hygiene, line lock, grammar, one command): use a fast model.
+  Heavy work (compiler logic, multi-file bugs, architecture): use a strong model.
 
-## 1. Model Tiering (Right-Sizing Intelligence)
-Never default to heavy reasoning models for lightweight tasks. Match the cognitive load to the engine.
+2. Small ships
+  Give each agent one tight job, usually one file.
+  Stop at the goal or the first hard fail.
+  Do not hand one agent a whole backend.
 
-| Tier | Ecosystem Examples | Allowed Use Cases |
-|------|--------------------|-------------------|
-| **Fast / Light** | Gemini Flash, GPT-4o-mini, Grok-fast, Minimax-light | Hygiene audits, line lock checkers (`check_file_lines.sh`), grammar enforcement (ASD-STE100), simple bash script execution, and deterministic formatting. |
-| **Heavy / Pro** | Gemini Pro, GPT-4o / o1, Grok-2, Minimax-pro | Deep architectural reasoning, compiler emission logic, interprocedural state tracking, and resolving complex multi-file logic bugs. |
+3. If stuck
+  Probe with grep, tail, and a short command.
+  Kill a rogue process.
+  More agents on one stuck bug wastes tokens.
 
----
+4. Isolation
+  Concurrent writers must own different files.
+  If two jobs touch the same file, use separate worktrees or do them in order.
 
-## 2. Small Ships, Fast Fail (Task Granularity)
-Do not hand agents monolithic missions (e.g., "Build a full backend"). Massive tasks force the LLM to pull huge context windows into memory, drastically inflating the token cost of every single action and reasoning loop.
+5. Hostile check
+  A QA helper hunts edge cases that would falsify the happy path.
+  If a hole lets bad work pass: close it, stop, report.
+  QA names the hole. A builder owns the rewrite.
 
-- **Surgical Scoping:** Slice tasks into single-file, highly localized prompts.
-- **Fail-Fast:** Instruct the LLM to stop and report back immediately after hitting its specific goal or first failure, rather than entering long, autonomous trial-and-error loops in the background.
+6. The 12-agent phalanx
+  Use this shape for a large change.
 
----
+  Engineering
+    DE1 DE2 — build the product change
+    RT — C runtime and the emit boundary
 
-## 3. Ban Redundant Swarms (The Debugger Fallacy)
-If an agent gets stuck (e.g., triggers an infinite compilation loop, deadlocks a terminal, or enters a hallucination loop):
-- **DO NOT** spawn additional heavy subagents to "debug" the first agent. This multiplies token bleed exponentially.
-- **DO** use fast, localized deterministic probes (`grep`, `tail`, direct bash commands) to diagnose the root cause yourself.
-- **DO** ruthlessly kill rogue or stuck background processes / agents using your platform's process management tools to prevent context-window runaway.
+  Adversarial
+    PV1 PV2 — red-team the builders
+    SEC — path, shell, and cap leaks
+    MEM — copies, leaks, unbounded growth
 
----
+  Integration
+    INT — build and trace breaks
+    HARN — tests for the new logic
+    HYG — line lock and leftover files
 
-## 4. Architectural Isolation (Workspace Strategy)
-When spinning up concurrent engineering agents, ensure they are modifying **strictly orthogonal files**.
-- If domains overlap (e.g., two agents modifying the same AST parser or build script), force them into isolated sandboxes, temporary directories, or separate git branches.
-- This prevents file lock collisions, `/tmp` race conditions, and corrupted ASTs.
+  Command
+    DOCS — boards match the code
+    COORD — handoffs, sprint, rollup
 
----
-
-## 5. QA & Adversarial Probes
-- QA / Boundary agents should focus entirely on edge cases (mutual recursion limits, taint propagation drops, macro explosions) to rapidly falsify the 'happy path' claims of the primary engineers.
-- If a fail-open hole is found, the QA agent should immediately enforce a fail-closed trap (e.g., `process_exit(1)`) and halt, rather than autonomously attempting a massive refactor of the underlying feature.
-
----
-
-## 6. The 12-Agent Phalanx (Official Swarm Doctrine)
-Based on field-tested deployments, any major codebase refactor or migration MUST utilize the **12-Agent Phalanx** composition to avoid siloing, C-compiler blind spots, and LLM debris accumulation:
-
-### I. The Engineering Core (3 Agents)
-- **2x Domain Experts**: Pure builders focusing 100% on writing business logic.
-- **1x Machine Code / Runtime Auditor**: Dedicated exclusively to auditing the boundary between the primitives and the underlying C/Rust runtime (catching variadic macro faults).
-
-### II. The Adversarial QA Wing (4 Agents)
-- **2x Peer Verifiers**: Directly assigned to red-team the Domain Experts (hunting for integer underflows and syntax errors).
-- **1x Security Auditor**: Dedicated to Zero Trust verification (path traversal, shell injection, capability leaks).
-- **1x Memory Auditor**: Dedicated to enforcing capability-based memory quotas (hunting for massive memory copies or leaks).
-
-### III. The Integration Wing (3 Agents)
-- **1x Compiler Integration Tester**: Autonomous agent assigned to run the global build check, trace cascading API breaks across the repository, and silently patch legacy files.
-- **1x Test Harness Writer**: Assigned to translate the new logic into unit tests.
-- **1x Dependency/Hygiene Enforcer**: Scrubs the repository of LLM scratchpads and ensures no sludge is left behind.
-
-### IV. The Command Wing (2 Agents)
-- **1x Documentation Writer**: Updates official documents (e.g., `STD_LIB.oot`) to ensure the specifications match the code.
-- **1x Swarm Coordinator**: Drafts the official RFCs, orchestrates handoffs, and enforces the sprint goals.
+  COORD names who owns which file before anyone writes.

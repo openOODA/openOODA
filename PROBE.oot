@@ -1,242 +1,85 @@
-# Code Probe (any repo)
+PROBE — hostile check of a claim
 
-**Location:** `openOODA/PROBE.oot`  
-**Scope:** Any codebase.  
-**Purpose:** Independent **assumption verification** — test claims defensively. Not a compliance audit product. Not green-CI theater.
+File: openOODA/PROBE.oot
+Test the assumptions behind code, docs, and green rails.
+Smokes are suspects, not proof.
+Own repo only. Unauthorized or malformed use must fail closed.
 
-**Always load:** `openOODA/RULES.oot` (bar). **Build rotation:** `openOODA/OODA.oot`.  
-**Product docs** are **inputs** only.
+Always load RULES.oot. Build rotation is OODA.oot. SWARM still applies.
+Hygiene is required on every Ship via OODA Lock. PROBE adds hostility.
 
-**Hygiene:** Required every Ship via **OODA Lock** (RULES §1.7). PROBE **adds** rigor (security, lifecycle, robustness). It does not replace Lock.
+Defaults
+  Max file lines: 256
+  Hang budget: 5 to 10 seconds per edge input. Hang is fail.
+  CRIT needs two independent runs. One witness is not enough.
 
-**Safety scope:** Defensive audit of your own product binaries only. Verifies that unauthorized or malformed use is denied and fails closed. No external targets, no disallowed content. Scope is your repo.
+Roles
+  Orchestrator — schedule, re-run CRITs, write the report. Does not implement.
+  Worker — fix and fault-inject on product binaries. Does not self-certify CRIT.
+  Independent verifier — re-run claims. Rejects a test that would pass if the bug still existed.
+  One agent may wear all three. Still re-run CRITs in a clean shell.
 
-**Swarm:** PROBE runs under `SWARM.oot`. Fill `SWARM plan: solo (reason) | fan-out (roles × orthogonal files)` in the Adapter before Act. No two writers on same file without worktree isolation.
+Boundary
+  Happy path with the claimed privilege succeeds.
+  Missing privilege fails closed.
+  Empty, zero, or forged token is denied.
+  Full disk or short write is an error, not silent Ok.
+  Forbidden path does not succeed.
 
----
+Robustness
+  Few file descriptors: no hang
+  Read-only temp: non-zero exit
+  Concurrent valid plus garbage: no deadlock
+  Empty, truncated, binary, oversized: fail closed. Hang is fail.
+  Missing runtime: fail closed.
 
-## First principle
+Lifecycle
+  Handles closed on all paths
+  Partial write or read is failure where integrity is claimed
+  Children reaped
+  Temps cleaned on success and failure
+  No secrets in world-readable temps
 
-**Software stability is an illusion maintained only until an assumption is violated.**
+Claims
+  Docs match the product path
+  Smokes hit real entry points
+  "Not supported" is a real error
+  Security claims are no larger than what the rails prove
 
-A probe does not “verify the code works.” It **tests assumptions** behind code, docs, and green rails: fail-open paths, inconsistent states, synthetic tests, lifecycle and security debt.
+Anti-synthetic
+  Same binary users get
+  Same product path and flags
+  Exit codes measured without a pipe hiding them
+  The test would fail if the bug still existed
+  Check one layer below the claim
+  Caps: missing, wrong, and forged are covered
 
----
+Use the packs. Stop when each CRIT has two independent runs.
 
-## 0. Defaults
+Finding
+  Severity: CRIT | HIGH | MED | LOW
+  Assumption destroyed:
+  Surface:
+  Repro:
+  Actual output / exit:
+  Would smoke catch:
+  Residual after fix:
 
-| Constant | Default | Notes |
-|----------|---------|--------|
-| **MAX_LINES** | **256** | Prefer repo lock if present |
-| **Hang budget** | 5–10s per edge-case input | Hang = **FAIL** |
-| **CRIT dual-repro** | 2 independent runs | Never close CRIT on one witness |
+  CRIT — bypass or wrong success on the product path
+  HIGH — fail-open, hang, silent wrong behavior
+  MED — lifecycle, incomplete seal, hygiene debt
+  LOW — docs drift
 
----
-
-## 0.1 Product inputs (ROOT only)
-
-| Artifact | Use |
-|----------|-----|
-| `DESIGN.oot` | What “aligned” means |
-| Line lock / fmt / lint | Hygiene + \(O\) |
-| Smokes / CI | **Suspects**, not proof |
-| Residual lists | Claim honesty |
-
-```bash
-ROOT=<repo>
-test -f "$ROOT/openOODA/DESIGN.oot" && echo HAS_DESIGN=1
-test -x "$ROOT/ooda/scripts/check_file_lines.sh" && "$ROOT/ooda/scripts/check_file_lines.sh"
-```
-
-**Hard rule:** Smokes and product TOOLS never skip boundary/chaos dual-repro.
-
----
-
-## 1. Roles (independent verification)
-
-| Role | May | Must not |
-|------|-----|----------|
-| **Orchestrator** | Schedule; **re-run** CRITs; write report | Implement fixes; rubber-stamp |
-| **Worker** | Fix + fault-inject on **product** binaries | Self-certify CRIT |
-| **Independent Verifier** | Verify Worker claims; reject synthetic tests | Ship fix same turn as finding |
-
-One agent may wear all three roles — still **re-run** CRITs independently (second shell / clean state).
-
----
-
-## 2. Boundary verification pack (bottom-up)
-
-Start at OS/network/auth edges. Trace **backwards**. Find **inconsistent states**.
-
-| # | Check | Expected |
-|---|--------|------|
-| B1 | Happy path with full privilege | Succeeds as claimed |
-| B2 | Missing privilege / auth | Fail-closed |
-| B3 | Unauthorized credential (empty/zero/forged) on **product path** | Denied (fail-closed) |
-| B4 | OS fail after open (full disk, short write) | Error, not silent Ok |
-| B5 | Forbidden path / permission deny | No ambient success |
-
----
-
-## 3. Robustness pack
-
-| # | Check | Expected |
-|---|--------|------|
-| C1 | FD starve (`ulimit -n 32`/`64`) | No hang |
-| C2 | RO / unwritable temp | Non-zero |
-| C3 | Concurrent valid + garbage | No deadlock |
-| C4 | Empty / truncated / binary / oversized | Fail-closed; hang = FAIL |
-| C5 | Missing runtime / bad link | Fail-closed |
-
----
-
-## 4. Lifecycle pack
-
-| # | Check |
-|---|--------|
-| L1 | Handles closed on all paths |
-| L2 | Partial write/read = failure where integrity claimed |
-| L3 | Children reaped |
-| L4 | Temps cleaned on success **and** failure |
-| L5 | No secrets in world-readable fixed temps |
-| L6 | Question large clones if zero-copy claimed |
-
----
-
-## 5. Hygiene + maintainability (with RULES)
-
-Confirm RULES hygiene (line lock, cruft, secrets, temps, claim/docs match) — same bar as OODA Lock.  
-PROBE **extends** with rigorous edge cases (oversized input, RO temp, secret-in-log attempts).
-
-| # | Check |
-|---|--------|
-| E1 | Line lock green (or ratchet) |
-| E2 | Lock misses owned types (e.g. scripts lock ignores) |
-| E3 | Ceiling list (~90% MAX_LINES) |
-
----
-
-## 6. Claim–evidence pack
-
-| # | Check |
-|---|--------|
-| K1 | Docs vs product path |
-| K2 | CI/smokes vs real entrypoints |
-| K3 | “Not supported” is non-zero / explicit error |
-| K4 | Build-path matrix (test × build × release × flags) |
-| K5 | Security claims ≤ what rails prove |
-
----
-
-## 7. Anti-synthetic (Independent Verifier)
-
-Reject if any **no**:
-
-1. Same binary users get?  
-2. Same product path/flags?  
-3. Exit codes without pipe-masked `$?`?  
-4. Would fail if the bug still existed?  
-5. Verify one layer below the claim?  
-6. Auth/caps: missing / wrong / forge covered?
-
-```bash
-cmd >out 2>err
-echo exit=$?
-```
-
----
-
-## 8. Phases
-
-| Phase | Action |
-|-------|--------|
-| **P0** | Adapter + product inputs + surface list |
-| **P1** | Boundary |
-| **P2** | Build matrix |
-| **P3** | Chaos |
-| **P4** | Lifecycle |
-| **P5** | Claims / security honesty |
-| **P6** | Hygiene + line pressure |
-| **P7** | Challenger re-runs Worker fixes |
-| **P8** | Report |
-
-**Done when:** dual-repro CRITs, clean exits measured correctly, findings complete, fixes re-challenged.
-
----
-
-## 9. Finding schema
-
-```markdown
-## Finding F##
-Severity: CRIT | HIGH | MED | LOW
-Assumption destroyed:
-Surface:
-Repro (shell):
-Actual output / exit:
-Would smoke catch? (yes/no + why):
-Residual after fix? (none | text):
-```
-
-| Severity | Meaning |
-|----------|---------|
-| **CRIT** | Bypass or wrong success on product path |
-| **HIGH** | Fail-open, hang, silent wrong behavior |
-| **MED** | Lifecycle / incomplete seal / hygiene debt |
-| **LOW** | Docs drift, ceiling pressure |
-
-```markdown
-## Session
-ROOT:
-HAS_DESIGN:
-Hygiene / line lock:
-Smokes (suspects):
-```
-
----
-
-## 10. Adapter
-
-```markdown
-## Adapter: <project>
-Root path:
-Product binaries / entrypoints:
-Build & run:
-Trust boundaries:
-Owned source globs:
-MAX_LINES (default 256):
-Line lock / hygiene commands:
-ROOT/DESIGN.oot?:
-Known residual claims:
-CI / smoke commands (suspects):
-Threat model one-liner:
-```
-
----
-
-## 11. Master prompt
-
-```text
-Initialize Code Probe from openOODA/PROBE.oot with openOODA/RULES.oot loaded.
-Safety: Defensive audit of your own repo only. Verifies unauthorized use is denied.
-Swarm: Follow SWARM.oot — solo only with reason, else fan-out with orthogonal files.
-Target ONE ROOT. Fill the adapter (include SWARM plan).
-Product DESIGN is an input only.
-Roles: Orchestrator, Worker, Independent Verifier (or one agent wearing all three with dual-repro).
-P0→P8: boundary, robustness, lifecycle, claims, hygiene.
-CRIT: dual independent repro; no pipe-masked exit codes.
-Real product binaries only. Reject synthetic tests.
-Not a compliance audit — independent verification / code review.
-```
-
----
-
-## 12. Not this framework
-
-- Not regulatory/compliance “audit” product  
-- Not “run smokes and write PASSED”  
-- Not a substitute for OODA Lock hygiene on every ship  
-- Not permission to rewrite without dual-repro  
-
----
-
-*Process kit: **PROBE** · **RULES** · **OODA** · **SWARM** · **SINS** · **SCIENCE**.*
+Adapter
+  Root path:
+  Product binaries:
+  Build and run:
+  Trust boundaries:
+  Owned source:
+  Max lines:
+  Hygiene commands:
+  DESIGN present:
+  Known leftovers:
+  Smoke commands (suspects):
+  Threat model one line:
+  SWARM plan:

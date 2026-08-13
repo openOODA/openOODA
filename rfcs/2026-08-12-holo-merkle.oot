@@ -1,0 +1,43 @@
+# RFC 2026-08-12: Merkle blob persist (new files)
+
+* **RFC ID**: 2026-08-12-holo-merkle
+* **Author**: openOODA Core Team
+* **Status**: Implemented (C helper slice)
+* **Created**: 2026-08-12
+
+## Feature Overview
+
+A small C helper stores a byte blob with a Merkle-style root.
+Load checks the root and fails if the bytes do not match.
+This is not the language names `holo_persist` / `holo_load`.
+Those names stay refused at check.
+
+## Motivation
+
+DESIGN wants RAM mapped to a Merkle store.
+This slice proves persist and load of one blob.
+It does not rewrite live memory onto a disk map.
+
+## Specification
+
+- Files: `ooda/runtime/oo_holo.c`, `oo_holo.h`, `oo_sha256.c`, `oo_sha256.h`.
+- Leaf size 64 bytes. Parent is SHA-256 of two child hashes.
+- File magic `OOH1`, then length, payload, 32-byte root.
+- Paths with `..` or empty paths fail closed.
+- No network.
+
+## Security
+
+Write is explicit-path file I/O for the smoke.
+It is not a capability-sealed language API.
+Tamper of the stored root or payload must fail load.
+
+## Testing
+
+`bash ooda/scripts/oo_holo_smoke.sh` must print PASSED.
+`oodac check` of `fixtures/residual_holo_fail.oo` must still fail.
+
+## Residual
+
+Full holographic RAM-to-disk map is not shipped.
+Language `holo_persist` / `holo_load` stay residual.
