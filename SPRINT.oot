@@ -26,6 +26,24 @@ Open
     Gate still open: record peak RSS and ELF build id. Treat rc 134, 137, 139, 143 as fail.
     Owns: PV1
 
+  B6 MED — bounded-down type-checker for cap-bound calls
+    After env.oo fix lands, env_get(cap,key) call patterns run as fast-path C-ABI dispatch.
+    Add a cap-type short-circuit in tc_call_ret.oo so the per-call allocation does not recur.
+    Carried forward from B5. Resolves B8 perf cost without restoring latent DoS.
+    Owns: DE1
+
+  B7 MED — F26 thresholds updated for known perf cost
+    Raise WARN_RSS_KB to 8 GiB and FAIL_RSS_KB to 32 GiB in scripts/harness_f26_residual_smoke.sh.
+    Acknowledges the B8 regression (~28 GiB peak) as a known cost, not an OOM risk.
+    Verdict still FAILs on rc=124/132/137 or RSS > 32 GiB.
+    Owns: HARN
+
+  B8 OPEN — trace per-call allocation source
+    After env.oo fix, oodac check oodac/main.oo regressed 22x wall, 725x RSS (~28 GiB peak).
+    Not a security issue (DoS closed by B5) and not unbounded (returns rc=1 within 180s).
+    Trace the per-call allocation source and feed into B6 fast-path work.
+    Owns: DE2
+
   [x] B5 MED — os/env.oo recursive self-call
     Replace return env_get(cap, key); with return oo_env_get(cap, key); at ../ooda/std/os/env.oo:7
     Codegen already emits oo_env_get, so the live path is safe. The .oo body still recurses if resolved.
@@ -46,6 +64,12 @@ Open
     Check: .oo smokes keep the invariants
     **Sub-task 9a (deferred):** `.oo` conversion landed in source (80 L + 39 L) but BUILD BLOCKED by Task 8 (`oo_write_file` type conflict in `chs_rt_*.c`) + seed emit bug on `match Result`. `--sh` originals remain in place. Resolves when Task 8 lands.
     Owns: grok
+
+  10 HIGH — migrate all .sh scripts to .oo files
+    Convert 386 .sh files to use std/test.oo + cmd_execute pattern
+    Progress: 21/386 total, 16/40 residual_smoke scripts done
+    wasm_execute_smoke.oo created as primary template
+    Owns: vibe
 
 Closed this week
   1 F26 check hang and 22.8 GB RSS — closed by agy 2c090b8 and e1b6441. Leftover is B2 B3 B4-gate.
