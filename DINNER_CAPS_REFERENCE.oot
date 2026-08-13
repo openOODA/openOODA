@@ -1,0 +1,80 @@
+// # DINNER_CAPS_REFERENCE
+//
+// Logline: The CAPs section is the auditable bridge between a function signature and the runtime that gates it. Read CAPS.oot once, then this file is the per-function contract: runtime injects a token, compiler checks the call, auditor reads the section.
+//
+// Beats:
+//   1. Why CAPs matter
+//   2. Format spec
+//   3. Cap catalog
+//   4. Examples
+//   5. Common mistakes
+//   6. Integration with main signature
+// ## 1. Why the CAPs section matters
+// Machine-readable, one cap per line. Cross-cutting anchor for cap audits (PROBE greps the section before reading the body). Compiler checks section vs signature — drift fails the build. Runtime injects a sealed token; forged or missing fail closed.
+// ## 2. Format spec
+//   // ## CAPs
+//   //
+//   //   <CapName>:    <one-line purpose>
+//   //
+//   //   (Only list caps used in main or private fns.)
+// Rules: one cap per line, name first, matches CAPS.oot exactly (FfiCap == UnsafeFFICap).
+// List only what the body calls. Order: process, fs, env, net, time, rand, alloc, threads, gpu, ffi.
+// ## 3. Cap catalog
+// ProcessCap  — sys_exec, spawn, wait, kill. Run a child.
+// FsReadCap   — read_file, path_exists, file_size. Reads; obeys OODA_FS_READDIR.
+// FsWriteCap  — write_file. Writes; obeys OODA_FS_WRITEDIR.
+// FsCap       — old broad file token. Prefer FsReadCap / FsWriteCap. Legacy only.
+// HttpCap     — fetch. HTTP only. Don't pair with TcpCap unless raw TCP is also used.
+// TcpCap      — tcp connect, read, write, close, tls_connect. Raw TCP / TLS.
+// UdpCap      — bind_udp, udp_recv. UDP and DNS (resolve_ipv4 takes UdpCap).
+// BindCap     — tcp_bind. Open a listener.
+// NetCap      — old broad net token. Required only for sock_raw.
+// SysCap      — old broad OS token. python_embed, epoll, inotify, prctl, async join.
+// EnvCap      — env get. Keys OODA_ and OO_ only. No raw getenv.
+// TimeCap     — now, sleep. Wall clock or delay.
+// RandCap     — random. Draw entropy.
+// AllocCap    — heap. Allocate beyond the stack.
+// ThreadCap   — mutex, spawn, join, channels. Create concurrency.
+// GpuCap      — gpu_launch. CPU/noop path today.
+// FfiCap      — C bindings. UnsafeFFICap is the same token; pick FfiCap.
+// Accepted now, product op later: MemCap, SyncCap, UsbCap, AudioCap, CameraCap, HidCap,
+// WindowCap, FrameCap, AuditCap, SignCap, HitlCap. Runtime injects no-op.
+// ## 4. Examples
+// A. Single cap — process only:
+//    pub fn main(p: &ProcessCap)
+//    // ## CAPs
+//    //   ProcessCap:    run child commands
+// B. Two caps — process + fs read:
+//    pub fn main(p: &ProcessCap, fs: &FsReadCap)
+//    // ## CAPs
+//    //   ProcessCap:    run grep over results
+//    //   FsReadCap:     read fixture files
+// C. Three caps — process + fs + env:
+//    pub fn main(p: &ProcessCap, fs: &FsReadCap, env: &EnvCap)
+//    // ## CAPs
+//    //   ProcessCap:    run smoke
+//    //   FsReadCap:     load fixtures
+//    //   EnvCap:        read OODA_* keys
+// D. No caps — pure. Section empty or omitted:
+//    pub fn main()
+//    // ## CAPs
+//    //   (none)
+// E. Multiple caps with usage breakdown:
+//    pub fn main(p: &ProcessCap, fs: &FsReadCap, fs_w: &FsWriteCap,
+//                env: &EnvCap, t: &TimeCap)
+//    // ## CAPs
+//    //   ProcessCap:    spawn helper, wait, kill on timeout
+//    //   FsReadCap:     read config + fixtures
+//    //   FsWriteCap:    write report under OODA_FS_WRITEDIR
+//    //   EnvCap:        read OODA_* and OO_* keys
+//    //   TimeCap:       now() deadline, sleep() backoff
+// ## 5. Common mistakes
+// Forgetting the CAPs section — audit fails even if build passes.
+// Listing caps not used — phantom token, audit flag.
+// Listing over-granted caps — SysCap where FsReadCap suffices. RULES 1.4.
+// Inconsistent naming — fs vs FsRead. Compiler is case-sensitive.
+// ## 6. Integration with main signature
+// CAPs section is a 1:1 mirror of the function signature: every &CapName in the
+// signature appears once in the section with the same name. Helpers called by main
+// pull their caps through main's signature; helpers do not mint their own.
+// Drift between signature and section is a build break, not a warning.
