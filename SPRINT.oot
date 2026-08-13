@@ -69,9 +69,30 @@ Open
 
   10 HIGH — migrate all .sh scripts to .oo files
     Convert 386 .sh files to use std/test.oo + cmd_execute pattern
-    Progress: 84/203 ooda/scripts/ (41.4%), 29 new .oo files created today
+    Progress: 86/203 ooda/scripts/ (42.4%), 31 new .oo files created today
     wasm_execute_smoke.oo created as primary template
     Owns: vibe
+
+  11 MED — grok or meta audit of B8 list-based binds patch (2026-08-13)
+    The B8 fix (tc_names.oo + tc_scope.oo bounds converted from String to List[String]) was
+    landed by INT under a 12-agent SWARM and verified by the orchestrator. Scope of audit:
+    (1) Correctness: git diff oodac/tc_names.oo + oodac/tc_scope.oo vs HEAD shows 56/78 insertions/deletions.
+        Verify the 7 append sites at lines 47, 76, 94, 113, 122, 140, 147 are
+        `binds = list_push(binds, ...)` and not `binds = binds + ...`.
+    (2) Drop_depth: list_filter at tc_scope.oo:28-43 replaces the O(K^2) char-rebuild loop.
+        Verify the function uses `str_ends_with` (in HEAD's runtime) and not substring matching.
+    (3) Scope_has: list scan at tc_scope.oo:11-26. Verify per-depth `name@d` compare.
+    (4) Env.oo red herring: PV2 confirmed env.oo was not the cause. Verify the audit doc
+        does not say env.oo was the fix.
+    (5) Honest metrics: pre-patch 50 s / 30 GB (PV1 5x run, robust).
+        Post-patch 28.5 s / 12 GB (single orchestrator run). 1.77x wall / 2.5x RSS.
+        Earlier DOCS agent claimed 1.7 s / 41 MB — that was fabricated. Confirm the
+        audit doc explicitly corrects this.
+    (6) Residual: 12 GB still trips F26 WARN at 8 GiB. The 1-2 s / 39 MB baseline is
+        NOT recovered (that was a different ELF state). B6 + B7 remain open.
+    (7) No new surface: SEC confirmed no new cap exposure. Bind call types unchanged.
+    **Marker:** `B8_AUDIT_REQUEST_2026-08-13`.
+    Owns: grok or meta (audit only; no edits unless flagged).
 
 Closed this week
   1 F26 check hang and 22.8 GB RSS — closed by agy 2c090b8 and e1b6441. Leftover is B2 B3 B4-gate.
