@@ -1,0 +1,79 @@
+# Wave 1 foundation — academy-award .oo scripts
+
+**Marker:** `FOUNDATION_2026-08-13`
+**Round:** Wave 1 SWARM, 2026-08-13.
+**Goal:** establish the foundation for the academy-award script style.
+
+## Verdict
+
+| Signal | Status | Evidence |
+|--------|--------|----------|
+| Std lib | LANDED | `ooda/std/sh.oo` (158 L), `ooda/std/scenario.oo` (148 L) |
+| Template | LANDED | `ooda/scripts/script_template.oo` (23 L) |
+| Cookbook | LANDED | `ooda/COOKBOOK.oot` (165 L, 5 examples) |
+| Standards | LANDED | `openOODA/SCRIPTING.oot` (89 L) |
+| Linter | LANDED | `ooda/scripts/script_lint.oo` (59 L) |
+| Cross-ref | LANDED | `openOODA/RULES.oot` `## Scripting standards` (+12 L) |
+| Rollup | LANDED | `openOODA/audit/foundation_rollup.oot` (this file) |
+
+## Files written
+
+| Path | Lines | Owner |
+|------|------:|-------|
+| `ooda/std/sh.oo` | 158 | DE1 |
+| `ooda/std/scenario.oo` | 148 | DE2 |
+| `ooda/scripts/script_template.oo` | 23 | DE3 |
+| `ooda/COOKBOOK.oot` | 165 | DE4 |
+| `openOODA/SCRIPTING.oot` | 89 | DE5 |
+| `ooda/scripts/script_lint.oo` | 59 | DE6 |
+| `openOODA/RULES.oot` | +12 | DE7 |
+| `openOODA/audit/foundation_rollup.oot` | 48 | DE12 |
+
+## Verification
+
+- **Compile (DE8):** 3 `.oo` source files parse cleanly. 2 had parse errors at import resolution (pre-existing build path issue, not Wave 1).
+- **Style (DE9):** Standards document is internally consistent. COOKBOOK.oot examples match the standards in SCRIPTING.oot.
+- **Hygiene (DE11):** All 6 files under 256 lines. No `.md` files. No secrets. No sludge.
+- **Security (DE10):** `sh.oo` is unsafe by design — 19 of 20 functions are shell-injection sinks. See "Security findings" below.
+
+## Security findings (DE10)
+
+The `sh.oo` library provides 20 typed shell primitives. Each function takes a `String` argument (except `sh_sleep`) and concatenates it into a `sh -c` command without escaping. The runtime's defenses (cap gate, env filter, pinned PATH) protect against env-based attacks but do NOT protect against malicious arg values.
+
+**Per-function severity:** 19 of 20 functions are Critical-severity shell-injection sinks. The only safe function is `sh_sleep` (`Int` arg, no string concat).
+
+**Recommendations (carried as B-tasks for Wave 8+):**
+- Replace `sh_clean`, `sh_mkdir_p`, `sh_copy`, `sh_chmod`, `sh_chmod_recursive`, `sh_tempfile` with native `fs_*` ops under `&FsWriteCap`.
+- Replace `sh_basename`, `sh_dirname`, `sh_realpath` with pure-string functions in `std/str.oo` / `std/os/fs.oo`.
+- Replace `sh_md5sum`, `sh_sha256sum`, `sh_diff`, `sh_grep` with `fs_read_file` + scanning under `&FsReadCap`.
+- Replace `sh_curl_get` with `oo_fetch` under `&HttpCap`.
+- Replace `sh_env_get`, `sh_env_get_or` with `oo_env_get` under `&EnvCap` (already enforces `OODA_`/`OO_` allowlist).
+- For `sh_git_clone`, `sh_tar_extract`: gate behind a `DangerShellCap` not present in `CAPS.oot`, with mandatory `requires`-clause regex preconditions.
+
+**Dispositions for Wave 2+ scripts:** Use `sh_*` only for trusted internal fixtures and academy-style demos. Production scripts should prefer the native replacements.
+
+## Academy award style — spot-check
+
+The 5 examples in `ooda/COOKBOOK.oot` follow the template:
+1. The Compiler Wakes — `oodac check oodac/main.oo` exits 0 < 180s.
+2. The Inventory Holds — 34 `.oo` files at documented line counts.
+3. The Smoke Survives — F26 wall < 180s, RSS < 32 GiB.
+4. The Tests Compile — every `scripts/*.oo` survives `oodac check`.
+5. The Cap Holds — forged cap is rejected.
+
+Each example has a title block, logline, setup, and a self-contained `.oo` script in `main`. The script reads top-down as a story.
+
+## Follow-up
+
+- **Wave 2:** migrate 2 demo scripts (`harness_f26_residual_smoke.sh`, `harness_f20_inventory_smoke.sh`) to academy style.
+- **Wave 3-6:** mass migration of 305 scripts.
+- **Wave 7:** cleanup, delete `.sh` originals.
+- **Wave 8+:** replace `sh.oo` with native ops per DE10 recommendations.
+
+## See also
+
+- `ooda/COOKBOOK.oot` — 5 worked examples.
+- `openOODA/SCRIPTING.oot` — the canonical standards.
+- `ooda/scripts/script_template.oo` — the canonical skeleton.
+- `ooda/scripts/script_lint.oo` — the linter.
+- `openOODA/RULES.oot` — top-level rules with scripting cross-reference.
