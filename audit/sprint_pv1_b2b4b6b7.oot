@@ -1,0 +1,130 @@
+# sprint_pv1_b2b4b6b7.oot
+# PV1 hostile prove. Read-only. This file only.
+# Date: 2026-08-13
+# Pin on board: v0.186.0-alpha / e1c0735 (not re-checked here)
+# Tree: /home/jeryd/Projects/openOODA/ooda
+# Did not run oodac check oodac/main.oo (INT).
+# Did not trust SPRINT.oot. Grep + read only.
+
+## Score
+
+| Item | SPRINT [x] claim | Disk | Verdict |
+|------|------------------|------|---------|
+| B2 | cap 1048576 in collect_tokens + tokenize_lines; ERR lex too many tokens + exit | yes in named files; tokenize_lines cap is dead | PASS |
+| B4 | peak RSS + ELF build-id printed; rc 134/137/139/143 FAIL; tiny + main kept | yes in .sh and .oo | PASS |
+| B6 | cap_builtin_ret short-circuit in tc_call_ret.oo; env_get/oo_env_get mapped | helper In; paren walk + full ret_table still paid; check OK unproven | PARTIAL |
+| B7 | 8 GiB WARN / 32 GiB FAIL in harness_f26_residual_smoke.sh and .oo | .sh real; .oo prints WARN and drops FAIL | PARTIAL |
+
+Board lie: SPRINT.oot:33-39 marks B6 and B7 [x]. SPRINT.oot:95 still says "B6 + B7 remain open".
+
+## B2 — PASS
+
+Claim: Cap 1048576 in collect_tokens and tokenize_lines. Overflow prints ERR lex too many tokens and process_exit(1).
+
+Proof
+- ooda/oodac/token_stream.oo:22-24 collect_tokens: if list_len(out) >= 1048576 { println("ERR\tlex\ttoo many tokens"); process_exit(1); }
+- ooda/oodac/token_fmt.oo:25-28 tokenize_lines: after collect_tokens, if list_len(toks) > 1048576 { same ERR; process_exit(1); }
+
+Same number, not the same rail (chars, not tokens)
+- ooda/oodac/lex.oo:16-17 lex_all: if chars_len(src) > 1048576 { return Err("source exceeds 1MiB limit"); } No process_exit. Caller tokenize_lines:17-23 exits on that Err.
+- ooda/oodac/check_mod.oo:16-18: chars_len(body) > 1048576 → ERR check source exceeds 1MiB expanded limit + process_exit(1).
+- ooda/oodac/check_drive.oo:30-32: same char cap + same ERR text as check_mod.
+
+Holes (claim can [x] while product is still wrong)
+1. tokenize_lines:26 `>` is dead. collect_tokens already process_exit on `>=` before it can return more than 1048576 rows. The wrap cap is theater.
+2. Off-by-one: collect_tokens may return 1048576 (last push is EOF) and tokenize_lines accepts it. A 1048576-char all-punct file (lex_all allows n==1048576) then dies on the extra EOF push. lex says OK; token cap says ERR.
+3. Cap is per tokenize_lines call, not process life. np>12 check_mod tokenizes each body alone. Many 1MiB modules do not trip "too many tokens".
+4. Count is not RSS. list_push still copies. 1M token rows + source string can still blow heap before the if. dump_tokens (token_dump.oo:12-58) walks lex_step with no token-count cap (only lex_all's 1MiB char cap).
+5. No fixture string "too many tokens" under ooda/fixtures. No product smoke that the ERR fires.
+6. Double walk: tokenize_lines lex_all then collect_tokens. Cap does not cut that cost.
+
+## B4 — PASS
+
+Claim: Peak RSS printed. ELF build-id printed. rc 134/137/139/143 FAIL. Tiny + main checks kept.
+
+Proof .sh
+- ooda/scripts/p7_check_main_smoke.sh:33 echo build-id
+- :79 peak RSS tiny; :109 peak RSS oodac/main.oo
+- :59-60 crash_rc 134|137|139|143
+- :82-83 tiny crash → bad; :112-113 main crash → bad
+- :19 tiny fixture; :95-96 main check timeout 180
+
+Proof .oo
+- ooda/scripts/p7_check_main_smoke.oo:38 println build-id
+- :49 peak RSS tiny; :60 peak RSS oodac/main.oo
+- :95-96 is_crash those four rcs
+- :66-80 crash → FAIL + fail=1; :89-90 process_exit(1)
+- tiny + main kept (:40-41, :51-52)
+
+Holes
+1. RSS is printed, not gated. 12 GB still ALL OK. Claim can pass while F26 cost is still wrong.
+2. build-id may be "unavailable" (:33 .sh, :35 .oo). Not pinned to SPRINT tip. Wrong ELF still prints and passes.
+3. Big check: any non-crash non-124 rc is PASS (.sh:116-118, .oo:83-84). Missing /usr/bin/time, missing timeout, type ERR, rc=127 all look like "not hung".
+4. .oo has no /proc VmHWM fallback. .sh:43-57 does. .oo:40-41 hard-requires /usr/bin/time -v.
+5. std/scenario.oo:14 residual: check `within` is message-only; no clock. p7_check_main_smoke.oo:42 and :53 discard check() with `let _ =`. Inner `timeout` is the only clock, and only if that binary exists.
+6. .sh:2 still says finish within 45s. Live timeout is 180s. Stale header.
+7. Crash set omits 132 SIGILL and 136 SIGFPE. Claim named four codes only; those two still PASS the big lane if they occur.
+
+## B6 — PARTIAL
+
+Claim: cap_builtin_ret short-circuit in tc_call_ret.oo. env_get / oo_env_get mapped. main.oo check OK. Leftover ret_table concat seed: SPRINT does not claim gone.
+
+Proof In
+- ooda/oodac/tc_call_ret.oo:125-137 return IDENT LPAREN: cap_builtin_ret first; only else call_ret_type_at.
+- :176-187 mut assign IDENT = IDENT LPAREN: same.
+- :219-228 cap_builtin_ret: env_get || oo_env_get → "Result" (also read/write/fetch/sys_exec/fs_*).
+- ooda/std/os/env.oo:15 env_get → oo_env_get(cap, key).
+- ooda/oodac/c_emit_lower.oo:153-158 env_get emits oo_env_get after &EnvCap check.
+- No `ret_table = ret_table + "env_get:…"` left under ooda/oodac. Seed gone.
+
+Proof not In
+- :14 still `let mut ret_table = build_fn_ret_table(toks)`. Full table still built every time. `mut` never written. Leftover from the old concat seed.
+- :114-123 still match_rparen before the short-circuit. Comment :218 "Skips ret_table scan and match_rparen" is false for match_rparen.
+- ooda/oodac/tc_call_let.oo:71-76 let-init calls still call_ret_type_at only. No cap_builtin_ret.
+- ooda/oodac/tc_ann_let.oo:104 resolve_type_alias(ret_table, cname) only, and only for zero-arg `()`.
+- ooda/oodac/tc_call_util.oo:93-102 call_ret_type_at still match_rparen + ret_table scan. No cap name skip.
+- ooda/oodac/tc_names.oo:187-188 get_builtin_ret_type maps oo_file_size to Bool. cap_builtin_ret :236-239 maps it to Int. Split tables.
+- cap_builtin_ret returns bare "Result" / "List", not Result[String, String] / List[String]. User `fn env_get(...) -> Int` is still typed Result (name-text override).
+- "main.oo check OK" not proved here.
+
+Holes
+1. SPRINT title "bounded-down" can [x] while every check still builds the whole ret_table string and still walks parens on return f(...);.
+2. let x = env_get(...) (the common path) never hits cap_builtin_ret.
+3. Seed concat is gone, but the cost it was papering over (string ret_table + resolve_type_alias scan) is still the default in every sibling tc_call_*.oo.
+4. Stale tokens.txt:32004 still holds STRING env_get:Result[String, String] from an old dump. Not live source.
+5. Line 250 is a dangling comment ("Fail-closed: g() + a") with no function. Truncation residue.
+
+## B7 — PARTIAL
+
+Claim: Already 8 GiB WARN / 32 GiB FAIL in harness_f26_residual_smoke.sh and .oo.
+
+Proof .sh In
+- ooda/scripts/harness_f26_residual_smoke.sh:11 WARN_RSS_KB = 8 * 1024 * 1024
+- :12 FAIL_RSS_KB = 32 * 1024 * 1024
+- :50-51 rss > 32 GiB → bad (fail=1); else > 8 GiB → warn (no fail)
+- :56-58 fail → exit 1
+
+Proof .oo constants + WARN only
+- ooda/scripts/harness_f26_residual_smoke.oo:18-19 same 8 / 32 KiB constants
+- :44 if rss > WARN_RSS_KB { println WARN > 8 GiB }
+- :43 `let _ = expect_lt(rss, FAIL_RSS_KB);` — Result dropped
+- std/scenario.oo:155-159 expect_lt returns Err on a >= b. It does not process_exit.
+- :45-47 prints FAIL for rc 124/132/137 only. No process_exit. 32 GiB + rc=0 prints PASS.
+
+Holes
+1. .oo 32 GiB FAIL is theater. Claim can [x] both files while the .oo never fails closed on RSS.
+2. Live board peak is 12 GB (SPRINT pin). That is > 8 GiB WARN and < 32 GiB FAIL. Every honest run WARNs and still ALL OK. Product stays 300x over the 39 MB baseline while B7 is [x].
+3. .sh :50 uses -gt. rss == 32 GiB exactly is not FAIL. .oo expect_lt is >= (if it were honored). The two files disagree on the edge.
+4. Missing GNU time → awk empty → rss treated as 0 (.sh:42, .oo:38-39 parse_int of junk → 0 via tc_parse_int.oo:23-36 skipping non-digits). Memory FAIL never fires.
+5. .sh:2 still says "32s, 22.8 GB RSS". Stale vs B8 28s / 12 GB.
+6. .oo ignores OODAC_BIN. Hardcoded oodac/oodac (:15-16).
+7. parse_int on wall/rss has no overflow check. A garbage time file can wrap or stay 0.
+
+## What this pass did not do
+
+- No oodac check oodac/main.oo.
+- No ELF strings.
+- No live RSS / wall clock.
+- No flood input for B2.
+
+Marker: `SPRINT_PV1_B2B4B6B7_2026-08-13`
