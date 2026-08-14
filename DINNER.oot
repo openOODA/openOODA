@@ -1,251 +1,88 @@
-// # DINNER.oot
+// # Make every product .oo file readable
 //
 // File: openOODA/DINNER.oot
-// Purpose: spec for the academy-award .oo code style; canonical, long-form.
-// Stage: governance
-// Story: B-CODE-STYLE-V1; closes the engineering-doc gap flagged in W7 audit.
-// Caps: (none)
 //
-// Logline: a header tells the story before the code earns the right to be read.
+// Logline: Rewrite product .oo files so they read like the scripts: title, logline, beats, then clean code.
 //
-// Setup: GROK implements, META reviews, AGY reads for sanity; the user is
-// out of the loop until the one-pass migration lands. Build path is broken;
-// .oo files are source-of-truth text; .sh files remain runnable.
+// Setup: Scripts already have this look. This plan is the same pass on oodac and ooda/std. The owner stays in the loop.
 //
 // Beats:
-//   1. Why this style exists    2. Title block format    3. CAPs section
-//   4. Tokenomics header        5. Script grammar        6. Linter rules
-//   7. Phases                   8. Decisions (13)        9. Trade-offs
-//  10. Rollback               11. Cross-references    12. What ships
+//   1. Write this plan in plain words.
+//   2. Rewrite a few small files. Run a check. Stop if it fails.
+//   3. Wave the rest of ooda/std, then oodac, one file at a time.
+//   4. Long files last. Split only if a file does two jobs.
+//   5. Owner reads a sample before we call it done.
 
-// ## 1. Why this style exists
+// ## What this is
 
-Code is told twice. Once to the machine, which forgives nothing. Once
-to the human, who forgets everything. The header is the second telling.
-It costs lines. It pays back in hours saved, bugs avoided, and onboarding
-rounds skipped. Overhead is per file. Savings are per read. The read
-happens more often than the write. Bet on the read.
+Make every product `.oo` file easy to read. Same look as the scripts.
+A person opens the file and knows the job before the body.
 
-256 lines per file is a constraint, not a prison. The linter is the law.
+// ## What a file looks like
 
-// ## 2. The title block — exact format
-
-Every .oo file opens with five sections, in this order:
-
-  // # <Title>                            ← one line, sentence case, no period
+  // # <Title>
   //
-  // File: <path relative to repo root>
-  // Purpose: <one sentence, present tense, active voice>.
-  // Stage: <lex|parse|tc|emit|cli|...>.
-  // Story: <R1, M166, M-CTZ-1, ...> (optional).
-  // Caps: <cap names> (optional).
+  // Logline: <one sentence, present tense, ends in a period>.
   //
-  // Logline: <one sentence, present tense, active voice, ends in a period>.
-  //
-  // Setup: <preconditions — what must be true before main runs>.
+  // Setup: <what must be true>.
   //
   // Beats:
   //   1. <first beat>
   //   2. <second beat>
   //   3. <third beat>
-  //
-  // <optional: any other free-form comment lines>
 
-Rules:
-  Title is the function the file performs, not the file name.
-  Logline is one sentence. If you need two, you have two functions.
-  Beats list the story's plot points, not the code's line ranges.
-  No marketing prose. No emoji. No "TODO" inside the header.
-  Three beats is the floor. Six is the ceiling.
+Title is the job, not the file name.
+Logline is one honest sentence.
+Beats name what the file does, not line numbers.
+Three beats minimum. Six maximum.
+If something is not built yet, one `// residual:` line after the header.
 
-// ## 3. The CAPs section — exact format
+Compiler and std files keep real functions. Do not put `when` / `then` in them.
+Scripts already use that story in `main`. Leave scripts alone.
 
-A function that touches files, net, exec, env, time, rand, alloc,
-threads, gpu, or ffi lists the caps it uses. Place the section between
-the title block and the function body. Mirror the signature 1:1.
+Keep function names (`typecheck_*`, `c_emit_*`, `lex_*`, `opt_*`, `res_*`).
+Keep behavior. Pretty is not a new API.
 
-  // ## CAPs
-  //
-  //   <CapName>:    <one-line purpose>
-  //
-  //   (List only caps used in main or in private helpers called by main.)
+// ## Scope
 
-Rules:
-  One cap per line. Name first, colon, then one short purpose.
-  Name matches CAPS.oot exactly. No aliases. Pick one and stick.
-  Order: process, fs, env, net, time, rand, alloc, threads, gpu, ffi, other.
-  Helpers called by main pull their caps through main's signature; helpers
-  do not mint their own.
-  Drift between signature and CAPs section is a build break.
+Do:
+  ooda/std/*.oo (and small std subfolders)
+  ooda/oodac/*.oo
 
-Example A — single cap:
-  pub fn main(p: &ProcessCap)
-  // ## CAPs
-  //
-  //   ProcessCap:    run child commands
+Skip:
+  ooda/scripts/*.oo          already done
+  ooda/fixtures/**           inputs, not programs
+  ooda/bootstrap/corpus/**   inputs
+  ooda/pm/**                 other owner
+  org /std/src               not this wave unless the owner says so
 
-Example B — three caps:
-  pub fn main(p: &ProcessCap, fs: &FsReadCap, env: &EnvCap)
-  // ## CAPs
-  //
-  //   ProcessCap:    run smoke
-  //   FsReadCap:     load fixtures
-  //   EnvCap:        read OODA_* keys
+About 220 files. Not 1500.
 
-Example C — pure function:
-  pub fn main()
-  // ## CAPs
-  //
-  //   (none)
+// ## How we work
 
-Common mistakes:
-  Forgetting the section. Build passes the signature check, audit fails.
-  Listing caps that aren't used. Audit flags a phantom token.
-  Over-granting. SysCap where FsReadCap suffices. RULES 1.4.
-  Naming caps inconsistently. fs vs fsRead vs FsRead. Compiler is case-sensitive.
+One writer per file. A second agent reads the body, not just the header.
+After each small wave, run `oodac check` on the touched files.
+If the check fails, fix those files. Do not start the next file.
+Writer does not mark their own file done.
 
-// ## 4. The Tokenomics header — exact format
+Waves of four files.
+Small files first.
+Files near 256 lines last. Comments count. Split only at a real seam.
 
-A canonical (long-form) file carries:
+Do not rewrite RULES, SCRIPTING, BOOTSTRAP, or SPRINT for this pass.
+Do not add Tokenomics stickers.
+Caps stay in the function signature.
 
-  // ## Tokenomics
-  //
-  //   canonical:    yes   # this is the long-form canonical version
-  //   short-form:   <path-to-compact-form>  # optional, if it exists
+// ## Check
 
-A compressed short-form file carries:
+From ooda/:
+  ./oodac/oodac check <file.oo>
 
-  // ## Tokenomics
-  //
-  //   canonical:    no   # this file is the compressed form
+Green: next four files.
+Red: fix, then re-check.
 
-Rules:
-  canonical: yes means this file is the source of truth. Read it first.
-  canonical: no means this file is itself the compressed form. The path
-  to canonical lives in the short-form's title block, not here.
-  Default to canonical. Reach for short-form only when tokens are the
-  bottleneck (bulk migration, one-shot read).
-  The short form is a child of the canonical. Never the other way around.
+// ## Done when
 
-// ## 5. The story grammar for scripts
-
-.oo scripts in ooda/scripts/*_smoke.oo use a small vocabulary:
-
-  scenario(name)  — open a named story
-  given           — setup precondition
-  when            — begin the action
-  and             — chain the next beat
-  then            — the resolution
-  expect_*        — assertion family (see ooda/std/scenario.oo)
-  check           — a one-shot test
-
-Form: title block, CAPs, then main reads top-to-bottom as a story.
-`when` / `and` / `then` are the prose. `expect_*` and `check` are the work.
-No `if r.is_err() { fail = 1; }` in main. Use the expect_* family.
-
-Scripts must be .oo. Not .oos. Folder and name tell the job.
-Canonical script standard: SCRIPTING.oot. Skeleton: ooda/scripts/script_template.oo.
-Linter: ooda/scripts/script_lint.oo.
-
-// ## 6. Rules the linter enforces
-
-  - Title block present, in the exact five-section order.
-  - Logline present, one sentence, ends in a period.
-  - Beats present, numbered 1..N, three or more.
-  - CAPs section present when the signature carries caps.
-  - CAP names match CAPS.oot exactly (case-sensitive).
-  - Tokenomics header present on every .oo file.
-  - No `process_exec` direct calls outside main.
-  - File line count <= 256.
-  - No debug files, temp files, or secret keys in the tree.
-  - No `.oos` extension. Scripts are `.oo`. Folder tells the job.
-
-What the linter does not check (human responsibility):
-  - Whether the logline is honest.
-  - Whether the beats cover the real plot.
-  - Whether a helper mints a cap its caller didn't grant.
-  - Whether the short-form drifts from the canonical.
-
-// ## 7. Phases (one-pass migration)
-
-Phase A: Foundation (1 SWARM, 12 agents).
-  - Write CODE_STYLE.oot, oodac/_template.oo, std/_template.oo, code_lint.oo.
-  - Rewrite 6 of the BEST .oo files as proof-of-concept.
-  - Write audit/code_style_rollup.oot.
-
-Phase B: 5 worst files (5 SWARMs, 1 file each).
-  - c_emit_helpers.oo (275 L), tc_call_arity.oo (230 L),
-    parse_item.oo (243 L), voxels.oo (256 L), mtls_engine.oo (255 L).
-
-Phase C: Sweep (4 SWARMs, ~1500 files).
-  - C1: oodac/ files a-c. C2: d-l. C3: m-p. C4: r-w + std/.
-  - Each agent processes 1-3 files; adds header + CAPs + Tokenomics + preludes.
-
-Phase D: Cross-cutting (1 SWARM, 12 agents).
-  - Update RULES.oot, SCRIPTING.oot, the 3 historical decision files.
-  - Run linter on entire openOODA. Final rollup.
-
-Phase E: Done.
-
-// ## 8. Decisions (13 explicit)
-
- 1. Vocabulary: `// # / // Purpose:` (NOT `// Logline:` — production code is not narrative).
- 2. Priority: style guide first, then worst files, then sweep.
- 3. Sprint tracking: new task (task 12).
- 4. Scope: oodac/ + std/ + qa/tests/ (the core).
- 5. Function naming: keep current verb-prefixed (`typecheck_*`, `c_emit_*`, `lex_*`).
- 6. Doc on private fns: still required (`// ##` annotation).
- 7. One-line vs two-line doc: prefer one-line unless non-obvious.
- 8. Rewrite, not annotate: add the academy header directly; drop old `// job:`.
- 9. Cross-cutting docs: apply new style to RULES.oot, BOOTSTRAP.oot, SPRINT.oot.
-10. SWARM composition: GROK decides per phase. Each agent processes 1-3 files.
-11. CAPs section: required for any file using caps. Machine-readable.
-12. Tokenomics section: required for every file. Default canonical: yes.
-13. 256 line max: strict. Any file >256 MUST be split. Linter enforces.
-
-// ## 9. Trade-offs
-
-Gain: every .oo file readable top-down; function names + preludes =
-self-documenting; CAPs section is machine-readable for cap audits; Tokenomics
-enables short-form loading for LLM context; linter enforces; migration is
-mechanical.
-
-Loss: ~1500 files need a header change (mechanical); some files may exceed
-256 lines after adding preludes (e.g., c_emit_helpers.oo); agents may introduce
-bugs in the worst files; "academy-award" is a strong word; some .oo files
-will look forced.
-
-// ## 10. Rollback
-
-If the migration fails: `git revert <commit>` per Phase commit; sweep
-re-runs until clean. The standards stay in CODE_STYLE.oot and SCRIPTING.oot
-(no rollback). The reference files (CAPS, Tokenomics, Creative) stay
-(no rollback). The templates stay (no rollback).
-
-// ## 11. Cross-references
-
-  - DINNER_CAPS_REFERENCE.oot        # full cap catalog + examples
-  - DINNER_TOKENOMICS_REFERENCE.oot  # canonical vs short-form, compression rules
-  - DINNER_CREATIVE.oot              # field notes, philosophy, lessons learned
-  - wave_audit_rollup.oot            # W7 audit flagged the engineering-doc gap
-  - SCRIPTING.oot                    # .oo script standards (canonical)
-  - ooda/scripts/script_template.oo  # the skeleton
-  - ooda/scripts/script_lint.oo      # the linter
-  - ooda/COOKBOOK.oot                # plan for replacing a .sh
-  - CAPS.oot                         # the cap names
-  - RULES.oot                        # the rules the kit obeys
-  - LORE.oot                         # hard-won lessons
-
-// ## 12. What ships when
-
-Phase A (foundation): CODE_STYLE.oot, 2 templates, code_lint.oo, 6 proof-of-concept
-rewrites, code_style_rollup.oot.
-
-Phase B (5 worst): 5 files rewritten and split as needed.
-
-Phase C (sweep): ~1500 files have the new style; linter passes.
-
-Phase D (cross-cutting): RULES.oot, SCRIPTING.oot, BOOTSTRAP.oot, SPRINT.oot updated;
-final rollup.
-
-Phase E: Done. Marker: DINNER_2026-08-13.
+Every in-scope file has the academy header and reads top to bottom.
+Checks on the rewritten files are green.
+The owner looked at a sample and said it looks right.
