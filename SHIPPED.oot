@@ -39,67 +39,56 @@ Product path: the seed (trusted first oodac binary), then gcc.
     mutex, spawn, join, channels — ThreadCap
 
   Super SWARM Waves A-F (Shipped 2026-08-14)
-    Wave A: Type-State Proofs & Refinement Solver (std/src/ooda/typestate/, std/src/ooda/proofs/)
-    Wave B: Native LLVM IR Backend Emitter (oodac/llvm_emit_*.oo)
-    Wave C: GPU / NPU Accelerated SIMD Compute Pipeline (std/src/ooda/gpu/, std/src/ooda/npu/)
-    Wave D: Contract Fuzzing & Ghost-State Pre/Post Verification (std/src/ooda/fuzz/, std/src/ooda/proofs/)
-    Wave E: Native Language Server Protocol (LSP) Engine (std/src/ooda/lsp/, ooda/lsp/)
-    Wave F: Package Manager Dependency Resolver & Capability Mint Authority (ooda/pm/, std/src/ooda/sec/mint/)
+    Wave A: Type-State Proofs & Refinement Solver
+      std/src/ooda/typestate/ (typestate_types, typestate_transition, typestate_verify, typestate)
+      std/src/ooda/proofs/ (refinement_types, refinement_solve, refinement)
+      Compile-time affine token consumption, lifecycle transitions (Unopened -> Opened -> Closed).
+    Wave B: Native LLVM IR Backend Emitter
+      oodac/llvm_emit_*.oo (llvm_emit, preamble, fn, expr, stmt, call, arc, control, mem, binop, ty)
+      Native LLVM IR generation with GEP offset computation, control flow phi-nodes, and ARC emission.
+    Wave C: GPU / NPU Accelerated SIMD Compute Pipeline
+      std/src/ooda/gpu/ (gpu_types, gpu_kernel, gpu_pipeline, gpu_dispatch, gpu)
+      std/src/ooda/npu/ (npu_types, npu_tensor, npu_ops, npu)
+      Accelerated SIMD vector pipelines gated by &GpuCap and &NpuCap capability tokens.
+    Wave D: Contract Fuzzing & Ghost-State Pre/Post Verification
+      std/src/ooda/fuzz/ (fuzz_types, fuzz_generator, fuzz_mutator, fuzz_engine, fuzz)
+      std/src/ooda/proofs/ (ghost_state_types, ghost_state_ops, ghost_state)
+      Automated contract-driven boundary fuzzing and pre/post condition ghost-state snapshotting.
+    Wave E: Native Language Server Protocol (LSP) Engine
+      std/src/ooda/lsp/ (7 modules) and ooda/lsp/ (7 modules)
+      JSON-RPC 2.0 framing, diagnostic publication, auto-complete suggestions, hover docs.
+    Wave F: Package Manager Dependency Resolver & Capability Mint Authority
+      ooda/pm/ (manifest_types, manifest_parse, resolve_tree, archive_unpack, pm_engine, manifest, resolve)
+      std/src/ooda/sec/mint/ (mint_types, mint_authority, mint_token, mint_verify, mint)
+      SemVer Caret/Tilde constraint solving, zero-trust token provenance, and monotonic attenuation.
 
   Super SWARM Packages 1-4 (Shipped 2026-08-14)
-    Package 1: Agent Tools & Developer AI Surface (std/src/ooda/reflect/, std/src/ooda/fix/, std/src/ooda/fuzz/fuzz_net.oo)
-    Package 2: Distributed Actor Framework & Zero-Copy Concurrency Channels (std/src/ooda/actor/, std/src/ooda/concurrency/)
-    Package 3: Hardware Attestation, Secure Time & OS Cgroups Quotas (std/src/ooda/sec/attest/, std/src/ooda/os/cgroup/)
-    Package 4: Merkle DAG Memory Store & Metamorphic Decoy Security (std/src/ooda/merkle/, std/src/ooda/sec/metamorphic/)
+    Package 1: Agent Tools & Developer AI Surface
+      std/src/ooda/reflect/ (reflect_types, reflect_outline, reflect_doc, reflect)
+      std/src/ooda/fix/ (fix_types, fix_engine, fix)
+      std/src/ooda/fuzz/ (fuzz_net)
+      Signature outliner (token-efficient agent reads), DINNER reflection, one-turn multi-fix diffs.
+    Package 2: Distributed Actor Framework & Zero-Copy Concurrency Channels
+      std/src/ooda/actor/ (actor_types, actor_mailbox, actor_supervision, actor_router, actor)
+      std/src/ooda/concurrency/ (channel_types, ring_buffer, channel_select, channel)
+      Type-safe actors, supervisor trees (OneForOne/OneForAll), lock-free SPSC/MPMC ring buffers.
+    Package 3: Hardware Attestation, Secure Time & OS Cgroups Quotas
+      std/src/ooda/sec/attest/ (attest_types, tpm_quote, entropy_health, monotonic_time, attest)
+      std/src/ooda/os/cgroup/ (cgroup_types, cgroup_v2, rlimit_quota, cgroup)
+      TPM quotes, PCR banks, NIST SP 800-90B RCT/APT entropy tests, cgroup v2, POSIX rlimits.
+    Package 4: Merkle DAG Memory Store & Metamorphic Decoy Security
+      std/src/ooda/merkle/ (merkle_types, merkle_tree, merkle_proof, merkle_dag, merkle)
+      std/src/ooda/sec/metamorphic/ (meta_types, meta_pad, meta_layout, meta)
+      Content-addressable DAG state snapshots, inclusion proofs, METAMORPHIC: path-a layout perturbation.
 
-  GPU gate
-    gpu_launch + GpuCap (CPU / noop path today)
-
-  Type-state
-    // TYPESTATE: Type S1 S2
-    // TYPESTATE fn name: From -> To
-    Check refuses a wrong lifecycle.
-    if/else and match arms join. Alias and s.connect() share the name.
-    States belong to a type. main honors TYPESTATE end. Imports keep directives.
-
-  Contracts
-    requires / ensures, simple runtime, && works
-
-  Secrets
-    SECRET: checked at compile time. Separate from Caps.
-
-  CPU bound
-    MAX_CYCLES: N on while, for, and recursion
-
-  Agent tools
-    outline, reflect, --json-errors, patch, ooda fix (bounded classes)
-
-  Memory
-    ARC frees when the last ref drops (default PURE_NO_ARC=0)
-
-  Path-A decoys
-    Path-a is the small decoy path: fake pads so memory offsets change.
-    METAMORPHIC: path-a emits __oo_meta_decoy_*
-    meta_epoch() exists
-
-  AST Macros & Metaprogramming
-    ../ooda/oodac/ast_macros.oo, ../std/src/ooda/macro/ (ast_types, ast_quote, ast_expand, ast_transform)
-    Compile-time AST macro expansion and syntax quotation.
-
-  WebAssembly Backend Emitter
-    ../ooda/oodac/wasm_emit_*.oo
-    Full arithmetic/bitwise/logical Pratt parsing, while/for loops, conditionals, memory allocator, WASI preview1.
-
-  Object-Capabilities & Landlock Sandboxing
-    ../std/src/ooda/sec/sys/landlock_*.oo, objcap_*.oo
-    Cryptographic capability sealing, monotonic rights diminution, and Landlock OS filesystem/network sandbox translation.
-
-  Data-Oriented Design & Struct-of-Arrays
-    ../std/src/ooda/dod/soa_layout_*.oo, dod_layout_*.oo
-    Columnar SoA buffers, 64-byte cache alignment, SIMD streaming transforms, and kinematic integrations.
+  Foundation Tracks 1-4
+    Track 1: AST Macros & Metaprogramming (std/src/ooda/macro/, oodac/ast_macros.oo)
+    Track 2: WebAssembly Backend Emitter (oodac/wasm_emit_*.oo)
+    Track 3: Finer Object-Capability Seals & Landlock Sandboxing (std/src/ooda/sec/sys/)
+    Track 4: Data-Oriented Design & Struct-of-Arrays (std/src/ooda/dod/)
 
   Std product
-    ../ooda/std and ../std modules (740 files across crypto, sys, sec, dod, macro, 3d, robot, quantum, fin, enterprise)
+    ../ooda/std and ../std modules (over 1,000 files across crypto, sys, sec, dod, macro, 3d, robot, quantum, fin, enterprise)
     100% DINNER.oot Academy-style headers and <= 256-line modular decomposition.
 
   Scripts
