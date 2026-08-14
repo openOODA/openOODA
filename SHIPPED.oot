@@ -1,159 +1,49 @@
-# openOODA Platform Capabilities & System Guarantees
+SHIPPED — what exists on the product path
 
-This document serves as the single source of truth for all fully verified, shipped, and production-tested capabilities in the openOODA platform. Every system listed below is proven by end-to-end fixtures and smoke test suites across all compilation targets.
+File: openOODA/SHIPPED.oot
+This is what we have proved. DESIGN is the want. Residual is wanted, not built.
 
-================================================================================
-1. Core Language & Execution Model
-================================================================================
+Proof for this file means: files on disk under ooda/, plus oodac check oodac/main.oo,
+or a fixture/smoke that emit-c + gcc + runs. Source under std/src/ooda is not that proof.
 
-  Native Compilation Pipeline
-    - Direct C Code Emission: Compiles high-level `.oo` source into optimized ANSI C, linked with the lightweight `chs_rt` runtime and compiled to native machine code via GCC or Clang.
-    - WebAssembly Backend (`oodac/wasm_emit_*.oo`): Emits spec-compliant WASM binary modules (`.wasm`) with structured linear memory, LEB128 encoding, and WASI host call bindings.
-    - LLVM IR Backend (`oodac/llvm_emit_*.oo`): Emits typed LLVM Intermediate Representation with SSA form, explicit GEP pointer math, and ARC retain/release runtime shims.
-    - Multi-Pass Type Checker: Strict type inference, pattern exhaustiveness checking, and type-state lifecycle validation.
+Proven
 
-  Safe Memory & Resource Lifecycle
-    - Automatic Reference Counting (ARC): Deterministic memory deallocation when references drop, with zero stop-the-world pauses.
-    - Linear & Affine Ownership: Enforces single-consumer tokens and move semantics for sensitive hardware resources.
-    - Type-State Transitions (`std/src/ooda/typestate/`): Proves lifecycle states (e.g. `Unopened` -> `Opened` -> `Closed`) at compile time, eliminating invalid state access.
-    - Compile-Time Refinement Solver (`std/src/ooda/proofs/`): Verifies `requires` and `ensures` function contracts statically with interval bounds and arithmetic verification.
+  Compiler
+    oodac check of oodac/main.oo. Live pin is on SPRINT.oot.
+    C emit through chs_rt, then gcc. That is the product path.
+    Official rebuild is bootstrap/oodac_pure_build (host script, gcc+seed).
+    Type checker: oodac/tc_*.oo. Typestate: oodac/check_typestate*.oo.
+    requires / ensures: oodac/tc_refine*.oo and contract fixtures.
+    SECRET sinks include process_exec. Fail fixture refuses SECRET token.
+    ooda run is check + emit C + gcc + exec. Proved on fixtures/hello.oo.
+    LLVM: emit-llvm + clang + run of fixtures/int_main.oo prints 42.
+    emit-llvm of fixtures/hello.oo prints Hello, openOODA Developer! (no IR after ret).
+    Host ELF that has this LLVM fix is seed-emitted (~0.47 GiB check).
+    Two-stage slim ELF (~0.31 GiB) cannot emit-llvm or emit-c of c_emit_ty.oo (slist_get OOB).
 
-================================================================================
-2. Capability Security & Operating System Isolation
-================================================================================
+  Caps
+    Process-local tokens, not OS Landlock.
+    sys_spawn / sys_wait / sys_kill are real (fork, waitpid, kill).
+    Proved: fixtures/sys_spawn_wait.oo prints ok. kill pid 0 is refused.
+    Spawn and exec children share oo_child_filter_env: OODA_/OO_ keys only,
+    then PATH=/usr/bin:/bin. HOME does not leak. fixtures/sys_spawn_env.oo.
+    process_exec is sh -c and a SECRET sink.
+    GpuCap is CPU/noop. Device shaders are not product.
 
-  Object-Capability Security Model (`std/src/ooda/sec/sys/objcap*.oo`)
-    - Cryptographic Capability Seals: Unforgeable HMAC-SHA256 capability tokens required for all external, file, network, time, random, and memory operations.
-    - Monotonic Rights Diminution: Enforces capability attenuation (`attenuate_rights`) where child tokens can only drop or retain permissions, never escalate.
-    - Ephemeral Single-Use Seals: Consumable tokens invalidated upon first use, preventing replay attacks.
+  Library and tools
+    ooda/std includes std/core/list.oo. fixtures/std_list_main.oo prints 1 then 2.
+    ooda/pm exists. vscode talks to vscode/server/ooda-lsp.js.
 
-  OS Sandbox & Hardware Attestation (`std/src/ooda/sec/sys/landlock*.oo`, `std/src/ooda/sec/attest/`)
-    - Linux Landlock LSM Sandboxing: Translates capability rights into kernel Landlock rulesets, restricting filesystem and network access directly inside the kernel.
-    - POSIX Resource Limits & Cgroups v2 (`std/src/ooda/os/cgroup/`): Enforces hardware resource boundaries including `RLIMIT_AS`, `RLIMIT_CPU`, and Cgroups v2 `memory.max` / `cpu.weight`.
-    - Hardware Attestation & TPM Quotes: Validates TPM 2.0 PCR banks, cryptographic quote signatures, and hardware platform identity.
-    - Attested Monotonic Time: Hardware-derived timestamp verification guaranteeing bounded drift and monotonicity.
-    - NIST SP 800-90B Continuous Entropy Testing: Real-time repetition count and adaptive proportion health checks on system entropy sources.
+Residual (wanted, not built)
 
-  Metamorphic Defense & ASLR Hardening (`std/src/ooda/sec/metamorphic/`)
-    - METAMORPHIC: path-a: Randomized in-memory struct decoy padding and field offset diversification to thwart Return-Oriented Programming (ROP/JOP) attacks while preserving semantic field accessors.
+  WASM emit is .wat text. Not a .wasm product. wasmtime is not required.
+  LLVM beyond int_main (hello.oo, self-host) is residual.
+  DNS / import C / full SECRET field taint / object-caps / Landlock / heap rlimit
+  / mixed fuzzer are later.
+  ooda/pm is not a proved install. Native ooda/lsp is not what vscode uses.
+  ooda fix has no proved E_CAP apply path. HITL is pause deny only.
+  SoA/DoD, AST macros, extra typestate, actors, hot-swap, bit-identical,
+  merkle/undo/EBR, GPU device, bare metal are later.
+  std/src/ooda is not product.
 
-================================================================================
-3. Autonomous AI Agent Surface & Developer Tooling
-================================================================================
-
-  Agent-First Development Tools (`std/src/ooda/reflect/`, `std/src/ooda/fix/`)
-    - Fast AST Signature Outlining (`ooda outline`): Extracts complete module signatures, function headers, struct definitions, and contract bounds without parsing implementation bodies, drastically reducing LLM token consumption.
-    - Programmatic Docstring & DINNER Metadata Extraction (`ooda reflect`): Emits structured metadata and capability manifests for LLM agents.
-    - Diagnostic Multi-Fix Engine (`ooda fix`): Translates type errors, missing capability tokens (`E_CAP`), and contract mismatches into unified, auto-applicable code diffs.
-    - AST Metaprogramming & Macros (`std/src/ooda/macro/`, `oodac/ast_macros.oo`): Hygienic macro expansion engine with quasi-quoting (`QuoteNode`), syntax interpolation (`unquote`), and AST traversal.
-
-  Language Server Protocol (LSP) Engine (`ooda/lsp/`, `std/src/ooda/lsp/`)
-    - Native JSON-RPC 2.0 Server: High-throughput LSP engine with Content-Length framing.
-    - Interactive IDE Diagnostics: Real-time publishDiagnostics, hover documentation resolution, and context-aware autocomplete suggestions.
-
-  Automated Contract Fuzzing & Ghost State (`std/src/ooda/fuzz/`, `std/src/ooda/proofs/`)
-    - Property-Based Contract Fuzzer: Automated input generator and mutation engine exploring integer, string, boolean, and compound boundaries against function contracts.
-    - Idle Swarm Fuzz Daemon (`fuzz_net.oo`): Background fuzzing mesh executing during system idle periods to discover contract edge cases.
-    - Transactional Ghost-State Verification: Pre-condition snapshotting and post-condition delta rollback for contracts.
-
-================================================================================
-4. Human-in-the-Loop (HITL) Governance & Audit Tracing
-================================================================================
-
-  Step-Pause Protocol & Authorization Gates (`std/src/ooda/hitl/`, `std/hitl.oo`)
-    - Multi-Tier Approval Gates: Intercepts destructive actions (`is_destructive`) and external network/system effects (`is_external`), requiring explicit human authorization before side effects commit.
-    - Strict Timeout Windows & Default-Deny: Enforces fail-closed evaluation where expired or unhandled requests automatically deny and abort.
-    - Interactive HITL Step Loop: Session harness managing queued pause actions, operator approvals, and single-use execution tokens (`HitlToken`).
-    - Cryptographic Audit Trail: Monotonically timestamped, tamper-evident audit record journal verifying operator identity, gate decisions, and action lifecycle.
-
-================================================================================
-5. In-Memory Merkle DAG & Time-Travel Undo RAM
-================================================================================
-
-  Cryptographic Merkle State Store (`std/src/ooda/merkle/`)
-    - Binary Hash Tree Construction: SHA-256 leaf and intermediate node hashing creating immutable Merkle state roots.
-    - Inclusion Proof Verification: Cryptographic audit path proofs verifying that a specific state frame belongs to a verified Merkle DAG snapshot.
-    - Content-Addressable Directed Acyclic Graph: Immutable, deduplicated state storage with structural sharing.
-
-  Time-Travel Undo RAM & Snapshot Engine (`std/src/ooda/undo/`, `std/undo.oo`)
-    - High-Resolution In-Memory Ring Buffer: Cyclic snapshot logging recording scalar and byte-level memory delta frames (`DeltaFrame`) over execution time windows.
-    - Instant Rollback Engine: Fast state restoration reverting modified memory state to previous snapshot checkpoints upon invariant failures, contract violations, or operator aborts.
-
-================================================================================
-6. Concurrency, Distributed Actors & Accelerated Compute
-================================================================================
-
-  Type-Safe Distributed Actor Framework (`std/src/ooda/actor/`)
-    - Isolated Actor State & Bounded Mailboxes: Lock-free message passing with configurable mailbox capacities and backpressure policies.
-    - Hierarchical Supervision Trees: Self-healing actor trees with `OneForOne` and `OneForAll` supervisor restart strategies and exponential backoff.
-    - Flexible Message Routers: Round-robin, broadcast, and consistent hash routing strategies.
-
-  Zero-Copy Concurrency Channels (`std/src/ooda/concurrency/`)
-    - Ring Buffer Channels: High-throughput SPSC/MPMC lock-free ring buffers with cache-padded sequence counters.
-    - Multi-Channel Select: Multiplexes non-blocking and blocking channel reads/writes.
-
-  Data-Oriented Design (DoD) & Accelerated Compute (`std/src/ooda/dod/`, `std/src/ooda/gpu/`)
-    - Struct-of-Arrays (SoA) Layouts: Columnar data representation with 64-byte CPU cache alignment.
-    - SIMD Vector Pipelines: Streaming array transformations optimizing vector registers.
-    - GPU / NPU Compute Kernels: Kernel dispatch pipelines gated by `&GpuCap` and `&NpuCap` capability tokens.
-    - C-Header Importer & FFI Shims (`std/src/ooda/ffi/`, `std/ffi.oo`): Parses C headers (`typedef struct`, `extern fn`) and generates zero-cost OpenOODA capability-encased FFI wrappers.
-    - Compiler Memory Telemetry (`std/src/ooda/perf/`, `std/perf.oo`): High-resolution `/proc/self/status` VmRSS/VmHWM sampler tracking compiler memory across phases (<8GB budget monitor).
-
-================================================================================
-7. Standard Library Ecosystem & Quality Standards
-================================================================================
-
-  Modular Standard Library (`std/` and `ooda/std/`)
-    - Over 1,000 production modules covering Cryptography (SHA-256, HMAC, AES, Keccak), POSIX IO, Networking, 3D Graphics, Robotics, Quantum Simulation, Financial Calculations, and Enterprise Data.
-    - 100% DINNER.oot 4-Element Academy Headers (`# Title`, `Logline:`, `Setup:`, `Beats:`).
-    - 100% Modular Sizing Invariant: Every `.oo` file is strictly $\le 256$ lines (RULES.oot 1.7).
-    - Automated Pre-Commit Enforcement: Git hooks and `dinner_lint.oo` validate formatting, sizing, and typechecks before commits land.
-
-  Capability-Governed Package Manager (`ooda-pm`, `ooda/pm/`)
-    - SemVer Constraint Solving: Caret (`^`), Tilde (`~`), and exact range resolution.
-    - Zero-Trust Token Provenance: Capability Mint Authority (`std/src/ooda/sec/mint/`) validating token origin and monotonic rights attenuation.
-
-================================================================================
-8. Cryptographically Reproducible & Bit-Identical Build Attestation
-================================================================================
-
-  Canonical AST Serialization & Entropy Sanitizer (`std/src/ooda/repro/`, `std/repro.oo`)
-    - Canonical AST Serializer: Eliminates filesystem ordering nondeterminism, strips source path leakages, and clamps timestamps against SOURCE_DATE_EPOCH.
-    - Deterministic 256-bit Digest Generation: Calculates bit-identical canonical AST digests across compilation passes.
-    - Multi-Compiler Attestation Validator: Ingests independent build seed attestations (GCC, Clang, WASM, LLVM), verifies bit-identical consensus, and issues tamper-evident certification.
-    - Entropy Leak Detection: Automated scanning detecting and flagging leaked environment variables (HOSTNAME, USER, BUILD_TIMESTAMP).
-
-================================================================================
-9. Live Process Code Hot-Swapping & Dynamic State Schema Migration
-================================================================================
-
-  Hot-Swap & Schema Evolution Engine (`std/src/ooda/hotswap/`, `std/hotswap.oo`)
-    - Live Symbol Patching: Relocates and updates module function symbol tables in running processes without restart, gated by `&HotswapCap`.
-    - Dynamic State Migration: Transforms live in-memory data structures across schema versions v(N) to v(N+1) with automatic field defaulting and custom migration handlers.
-    - Atomic Transactional Rollback: Safeguards hot-swap sessions by automatically reverting live symbol pointers and restoring previous state buffers if migration faults occur.
-
-================================================================================
-10. Field-Level Information Flow Taint Tracking & Secret Sink Guards
-================================================================================
-
-  Information Flow Control & Leak Prevention (`std/src/ooda/sec/taint/`, `std/taint.oo`)
-    - Inter-Procedural Taint Lattice: Tracks and joins sensitivity labels (`SECRET`, `USER_INPUT`, `UNTRUSTED_NET`) across variable assignments, expressions, and struct field projections.
-    - Sink Guard Verification: Enforces strict compile-time and runtime checks preventing tainted data from reaching unauthorized sinks (`LogSink`, `NetEgressSink`, `FsWriteSink`, `ExecSink`).
-    - Cryptographic Sanitizer Enforcement: Requires verified declassification and hashing sanitizers before high-sensitivity data can be emitted.
-
-================================================================================
-11. Pause-Free Epoch-Based Reclamation (EBR) & Zero-Fragmentation Slab Arenas
-================================================================================
-
-  Concurrent Memory Management (`std/src/ooda/mm/`, `std/mm.oo`)
-    - Lock-Free Epoch-Based Reclamation: Manages concurrent memory life cycles across global epochs with zero stop-the-world garbage collection pauses.
-    - Thread-Pinned Safe Reclamation: Defers node deallocations until all threads progress past the retiring epoch, eliminating use-after-free conditions.
-    - Zero-Fragmentation Slab Arena Pools: Pre-allocated memory slabs delivering O(1) allocation velocity and SIMD 64-byte aligned memory chunks with 0 ppm external fragmentation.
-
-================================================================================
-Sidecars & Tooling
-================================================================================
-  - VS Code Integration: `vscode/` language client with real-time `ooda-lsp` diagnostics and hover info.
-  - Tree-Sitter Grammar: `tree-sitter/` full grammar specification for syntax highlighting.
-  - Runtime Hide: `ooda/runtime/oo_hide.c` 16-slot load-time table.
-  - Hologram Persistence: `ooda/runtime/oo_holo.c` content-addressed persistent blob engine.
+  Also not product: HMAC seals, TPM, cgroups, 1000-module std, WASM+WASI binary.

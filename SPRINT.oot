@@ -2,151 +2,102 @@ SPRINT — this week
 
 File: openOODA/SPRINT.oot
 Active task list. DESIGN is the want. SHIPPED is what exists. PM is the pin.
+Goal: everything the pin and the product claim must be production ready.
+Order: first principles, then power law. Work Open from the top.
+
+Handoff (for the next agent)
+  Read RULES.oot first. Then this file, then SHIPPED.oot and PM.oot.
+  Do not start section 6 while section 1 is open.
+  Two writers never own the same file. New proofs are .oo, not .sh.
+  Isolated peel check is not proof. Proof is oodac check oodac/main.oo
+  or emit-c/emit-llvm + gcc/clang + run.
+
+  Next job is Open 1. The installed host is seed-emitted so hello.oo LLVM
+  works. Check RAM is ~0.47 GiB. A two-stage slim ELF (~0.31 GiB) cannot
+  emit-c oodac/c_emit_ty.oo or emit-llvm (ERR slist_get OOB). Split the
+  huge || chain in c_emit_ty.oo, make slim rebuild work, then reinstall
+  two-stage so RAM is ~0.31 GiB without losing LLVM hello or SECRET refuse.
+
+  Rebuild: from ooda/, PURE_SKIP_CHECK=1
+    OODAC_BIN=./bootstrap/seed/oodac bash bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
+    OODAC_BIN=./oodac/oodac bash bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
+  Seed-only = working compiler, fat RAM. Second pass = slim, currently broken emit.
+
+  Do not overwrite oodac/oodac until the new binary proves:
+    check oodac/main.oo OK, emit-llvm fixtures/hello.oo + clang + run,
+    emit-c fixtures/secret_process_exec_fail.oo refuses SECRET.
 
 Pin
-  Release v0.196.0-alpha
+  Release v0.197.0-alpha
   Product tip main
   Boards tip main
   Std tip main
-  F26 check hang is closed. Live state: 11.86s, 0.44 GiB RSS (was 27.69s / 12.67 GiB). F26 WARN quiet.
-  Migration: 100% academy headers + 100% 256-line modularization across all files (DINNER.oot).
-  Enforcement: pre-commit hook installed in all repos + dinner_lint.oo active.
-  Super SWARM Packages 1-6 (All Shipped & 100% Verified):
-    Package 1: Agent Tools & Developer AI Surface (std/src/ooda/reflect/, std/src/ooda/fix/, std/src/ooda/fuzz/fuzz_net.oo)
-    Package 2: Distributed Actor Framework & Zero-Copy Channels (std/src/ooda/actor/, std/src/ooda/concurrency/)
-    Package 3: Hardware Attestation, Secure Time & OS Cgroups (std/src/ooda/sec/attest/, std/src/ooda/os/cgroup/)
-    Package 4: Merkle DAG Memory Store & Metamorphic Security (std/src/ooda/merkle/, std/src/ooda/sec/metamorphic/)
-    Package 5: Interactive HITL Harness, Undo RAM, FFI Importer & RSS Profiler (std/src/ooda/hitl/, undo/, ffi/, perf/)
-    Package 6: Hot-Swap & Migration, Bit-Identical Repro, Taint Flow, and Epoch GC (std/src/ooda/hotswap/, repro/, taint/, mm/)
-  Live check: oodac check passed cleanly across all modules, fixtures, and smoke tests (2026-08-14).
+  Live: oodac check oodac/main.oo OK 10.81s / 0.47 GiB (494596 KB) and 10.81s / 494440 KB.
+  Host is seed-emitted so hello.oo LLVM works. Two-stage slim (~0.31 GiB) cannot
+  emit-llvm or emit-c oodac/c_emit_ty.oo (slist_get OOB). F26 quiet.
+  Rails: oodac check 132/132. Rebuild: bash bootstrap/oodac_pure_build (two-stage).
 
 Open
 
-  [x] B2 HIGH — token-count cap in tokenize_lines / collect_tokens
-    Cap 1048576 in collect_tokens + tokenize_lines; overflow ERR lex too many tokens + exit.
-    Files: oodac/token_stream.oo, oodac/token_fmt.oo. main.oo check OK.
-    Owns: SEC
+  1. The compiler must rebuild itself
+  If the host cannot emit its own sources, the pin is a trap.
+  [ ] Slim two-stage ELF must emit-c oodac/c_emit_ty.oo without slist_get OOB.
+  [ ] Slim two-stage ELF must emit-llvm fixtures/int_main.oo and fixtures/hello.oo.
+  [ ] Split c_emit_ty.oo (huge || chain). File must stay ≤256 lines and emit in one pass.
+  [ ] After that, two-stage host at ~0.31 GiB must keep hello.oo LLVM and secret refuse.
+  [ ] chs_rt_sys.c and chs_rt_libfloor.c are over 256 lines. Split without changing behavior.
 
-  [x] B3 MED — Auto-Pagination of Generated C Files (Pillar 1)
-    Generated C files (e.g., oodac_check_cap_util_oo.c) violated the 256-line limit.
-    Implemented FAIRY's Auto-Pagination in bootstrap.sh & oodac_pure_build.sh to shard bodies N > 200 lines.
-    Optimized C Emitter (c_emit_arc_2.oo, c_emit_contract.oo) to reduce macro bloat.
-    (Note: runtime C files chs_rt_*.c may still need manual fracture, but generated code is solved).
-    Owns: HYG / DE
+  2. Bugs on paths we already claim
+  [ ] LLVM emit of verify / dead code after ret is fixed for hello.oo. Prove more string
+      functions with verify blocks (not only greet).
+  [ ] LLVM match, contracts, and SECRET refuse must match Backend-C or stay named residual.
+  [ ] oodac --backend llvm build of fixtures/hello.oo (not only emit-llvm + hand clang).
+  [ ] Faster check under 10s. Smaller than 0.31 GiB on a two-stage host that can rebuild.
+  [ ] WASM: emit a real .wasm, or keep .wat and never imply wasmtime is product.
 
-  [x] B4 GATE MED — harden p7_check_main_smoke.sh
-    Peak RSS + ELF build-id printed. rc 134/137/139/143 FAIL. Tiny + main checks kept.
-    Owns: PV1
+  3. Locks on what we already expose
+  [ ] process_exec / sys_spawn are sh -c. Keep SECRET + env filter. Add alias/concat fixtures.
+  [ ] __sec_sink__ user wrappers only track println/eprintln. Cover process_exec aliases.
+  [ ] oo_sys_exec / spawn do not use to_cpath-style copy for argv (len + embedded NUL on
+      the C string the child sees after filter). Finish that belt.
+  [ ] Full SECRET field taint, not only name/sink refuse.
+  [ ] Object-caps as real tokens, not process-local ints.
+  [ ] OS isolation (Landlock or equal). std/src is not product.
+  [ ] Heap quota / OS rlimit on the product runtime.
+  [ ] Mixed-type contract fuzzer on the product path.
 
-  [x] B6 MED — bounded-down type-checker for cap-bound calls
-    cap_builtin_ret short-circuit in tc_call_ret.oo. Let-init fast path landed in tc_call_let.oo (2026-08-14).
-    Unannotated `let x = env_get(...)` hits cap_builtin_ret at tc_call_let.oo:115 (EQ, no COLON); gty unused.
-    Lazy ret_table in tc_call_let.oo + tc_call_ret.oo (empty at entry; build on first non-cap miss).
-    Residual: RSS still ramps (0.44 GiB). Ident/number sliced; tok_line is one C alloc. pack_tok and string-lit concat remain.
-    Owns: DE1
+  4. Tokens that still do not do what people think
+  [ ] DNS / real sockets beyond path-a fetch and tcp helpers.
+  [ ] FFI: header import and import C, or keep “dlopen + FfiCap only”.
+  [ ] sock_raw, epoll, inotify, prctl stay residual Err. Boards must say so everywhere.
+  [ ] GpuCap device shaders, or keep CPU/noop only on every board.
 
-  [x] B7 MED — F26 thresholds updated for known perf cost
-    Already 8 GiB WARN / 32 GiB FAIL in harness_f26_residual_smoke.sh and .oo.
-    Parse fix 2026-08-14: when/and/then are comments only.
-    Residual: .sh still live RSS gate; 12 GB still WARNs.
-    Owns: HARN
+  5. Tools we name
+  [ ] ooda/pm: one proved install/resolve (check + emit + gcc + run).
+  [ ] vscode talks to a real ooda lsp, or keep “JS server is the product” on every board.
+  [ ] ooda fix: one proved E_CAP apply path. std/src fix is not product.
+  [ ] HITL interactive harness, or keep pause deny only.
+  [ ] Grow ooda/std (core vs os). Do not claim std/src/ooda.
 
-  [x] B8 CLOSED — patch landed (1.77x wall / 2.5x RSS); not at baseline
-    env.oo was a red herring (PV2 confirmed). Real cause = oo_str_concat churn in tc_names.oo / tc_scope.oo.
-    Fix: convert binds from String to List[String]; 7 append sites + drop_depth rewrite.
-    Honest delta: 50s / 30 GB -> 28.5s / 12 GB. Original 1-2s / 39 MB baseline not recovered.
-    Files: oodac/tc_names.oo (183->202), oodac/tc_scope.oo (148->107).
-    Audit: openOODA/audit/b8_root_cause.oot (corrected).
-    Owns: INT (applied), COORD (rollup corrected).
-
-  [x] B5 MED — os/env.oo recursive self-call
-    Closed. Body is `return oo_env_get(cap, key);` at env.oo:15. Lower is c_emit_lower.oo:153-158.
-    Owns: DE1
-
-  [x] 8 CRIT — seed rebuild blocked by oo_write_file type conflict
-    Runtime + live oodac_pure_build.sh already OoResV. Stale fixed*.sh prototypes unified.
-    Rebuild OK_PURE_MULTI (seed oodac). Residual: live source + runtime + this seed pin emit OoResV. OoResS only if an old seed is used.
-    ci_product rail retargeted to .oo (132 rails in ci_product_rails.oo; oodac check each). ci_product.sh absent. Green: oodac check 132/132 + scripts/ci_product.oo OK (2026-08-14). Residual: check of .oo rails, not a full emit/fuzz run of each smoke. Old INT 108/164 was the deleted .sh rail.
-    Audit: openOODA/audit/sprint8_writefile_emit.oot
-    Owns: RT
-
-  [x] 9 MED — grok audit of F26 phalanx, F20 doc cleanup, and .oo conversion
-    Audit: openOODA/audit/sprint9_f26_f20_verify.oot
-    39 MB was a different ELF. Live cost 26.05s / 12.25 GiB (INT). env.oo is oo_env_get. F20 count is 39 (harness EXPECTED=39 + macro.oo).
-    **9a leftover:** seed replaced (sha256 sidecar present; was 37a99a97…). Audit: openOODA/audit/sprint9a_match_result.oot. Fixture: ooda/fixtures/match_result_seed.oo. Residual: cannot refresh minisign sidecar without secret key (RT: tools/minisign absent; secret key not in tree; minisig stale vs pin). process_exec as match scrutinee still unlowered.
-    Owns: grok
-
-  [x] 10 HIGH — migrate all .sh scripts to .oo files (closed)
-    Convert 386 .sh files to use std/test.oo + cmd_execute pattern
-    Progress: 97/203 ooda/scripts/ (47.8%), 42 new .oo files created today
-    wasm_execute_smoke.oo created as primary template
-    Owns: vibe
-    **2026-08-13 close:** Closed. 7 waves of 12-agent SWARMs (Waves 1-5).
-    **2026-08-14:** Remaining twins written (academy .oo). Then deleted 391 `.sh` files.
-    Product tree has zero `.sh` (skip `.git` / cache / `node_modules`). ci_product rail retargeted to `.oo` (132 checks). Green: oodac check 132/132 (2026-08-14).
-    Residual: bash bootstrap/pure_build/release pack are gone; those jobs live as `.oo`.
-    Vendor leftover only: vscode/node_modules/.../terminateProcess.sh.
-
-  [x] 11 MED — grok or meta audit of B8 list-based binds patch (2026-08-13)
-    Audit PASS: openOODA/audit/sprint11_b8_binds_verify.oot
-    **Closed.** Original request:
-    The B8 fix (tc_names.oo + tc_scope.oo bounds converted from String to List[String]) was
-    landed by INT under a 12-agent SWARM and verified by the orchestrator. Scope of audit:
-    (1) Correctness: git diff oodac/tc_names.oo + oodac/tc_scope.oo vs HEAD shows 56/78 insertions/deletions.
-        Verify the 7 append sites at lines 47, 76, 94, 113, 122, 140, 147 are
-        `binds = list_push(binds, ...)` and not `binds = binds + ...`.
-    (2) Drop_depth: list_filter at tc_scope.oo:28-43 replaces the O(K^2) char-rebuild loop.
-        Verify the function uses `str_ends_with` (in HEAD's runtime) and not substring matching.
-    (3) Scope_has: list scan at tc_scope.oo:11-26. Verify per-depth `name@d` compare.
-    (4) Env.oo red herring: PV2 confirmed env.oo was not the cause. Verify the audit doc
-        does not say env.oo was the fix.
-    (5) Honest metrics: pre-patch 50 s / 30 GB (PV1 5x run, robust).
-        Post-patch 28.5 s / 12 GB (single orchestrator run). 1.77x wall / 2.5x RSS.
-        Earlier DOCS agent claimed 1.7 s / 41 MB — that was fabricated. Confirm the
-        audit doc explicitly corrects this.
-    (6) Residual: 12 GB still trips F26 WARN at 8 GiB. The 1-2 s / 39 MB baseline is
-        NOT recovered (that was a different ELF state). B6 + B7 remain open.
-    (7) No new surface: SEC confirmed no new cap exposure. Bind call types unchanged.
-    **Marker:** `B8_AUDIT_REQUEST_2026-08-13`.
-    Residual: B6 and B7 are [x] on this board now.
-    Owns: grok or meta (audit only; no edits unless flagged).
-
-  [x] 12 HIGH — audit Native FS, Env, Process Args and Typestate integration
-    Audit: openOODA/audit/sprint12_typestate_fs_verify.oot
-    Facades + C cap re-check PASS. Residual: raw path.data on some reads; no np>12 TYPESTATE prepend (old audit was wrong).
-    Owns: grok or meta (audit only).
+  6. Later language (wanted, still undone)
+  [ ] SoA / DoD layout as a real emit path.
+  [ ] AST macros that rewrite the parse tree in product expand.
+  [ ] Typestate beyond the current checker.
+  [ ] Actors as product. Channels are a small process-local string queue today.
+  [ ] Live hot-swap of a running process.
+  [ ] Bit-identical builds.
+  [ ] Merkle / undo RAM / EBR / holo_persist as language product.
+  [ ] GPU / NPU backend with a real device token path.
+  [ ] Bare metal, no extra runtime.
 
 Closed this week
-  1 F26 check hang and 22.8 GB RSS — closed by agy 2c090b8 and e1b6441. B2 B3 B4-gate now [x]. Residual is B8 cost (12 GB).
-  B1 let mut on c_emit_struct.oo:158 — closed by agy
-  2 truncated / unclosed now ERR, no 124
-  3 std honesty 39 files (was 38; harness + macro.oo), inventory matches find
-  4 B1 ZT F46 F44 F45
-  5 emit-c fail-closed, check_function present
-  6 crypto honesty remainder, one product sha256
-  7 process_args shipped in ../ooda/std/os/process.oo
-  8 Package Manager (ooda-pm) — built via 12-agent SWARM, zero-trust zero-heap dod_layout. Flags: AUDIT_REQUIRED.
+  [x] Official rebuild in-repo. PM first command needs no env.sh. CI is check-only.
+  [x] process_exec is a SECRET sink. spawn/wait/kill are real. Child env filtered.
+  [x] ooda run is check + emit C + gcc + exec.
+  [x] LLVM hello.oo: no IR after ret. emit-llvm + clang + run prints the hello line.
+      Proved on seed-emitted host. Slim two-stage host cannot emit-llvm (Open 1).
+  [x] std/core/list.oo. fixtures/std_list_main.oo prints 1 then 2.
 
 Lanes
-  COORD writes SPRINT.oot and audit/*rollup.oot
-  DE1  tc_call_ret.oo and env.oo
-  DE2  parse_drive.oo
-  RT   chs_rt*.c
-  PV1 PV2 SEC MEM  prove, read-only unless named
-  INT  ELF rebuild
-  HARN harness_*.oo
-  HYG  line lock
-
-Open from wave audit (2026-08-13)
-  [x] F20-count / linecounts / allowlist — harness now 39 files + current wc. macro.oo + sh.oo + scenario.oo included.
-  [x] sh-unsafe: sh_mkdir_p is FsWriteCap + fs_mkdir_p; sh_copy is native tree copy (fs_copy_tree); sh_clean is native fs_remove_tree (fw+fr). git/tar/chmod still shell. basename/dirname/realpath are now pure.
-  [x] sh-parse_int: pub fn parse_int in std/str.oo:104 (digit fold; no recurse). COOKBOOK can call it.
-  [x] 9a tiny fixture: seed replaced (sha256 sidecar ≠ 37a99a97…). Residual: cannot refresh minisign sidecar without secret key.
-  [x] build-path: oodac check oodac/main.oo OK 11.86s / 0.44 GiB (size pass 2026-08-14). F26 WARN quiet.
-  [x] Task 10: 391 `.sh` deleted after academy `.oo` twins. ci_product rail retargeted to `.oo` (132 checks). Green: oodac check 132/132 (2026-08-14).
-  Residual: vendor `vscode/node_modules/.../terminateProcess.sh` only. Cold bash bootstrap gone.
-  [x] rules-merge: RULES 1.13 is the Scripts rule; 1.14 points at 1.13.
-  cross-refs: all OK after b8_root_cause.oot fix.
-  DOCS inventory leftovers, not SPRINT
   Two writers never own the same file.
-  If stuck, probe with grep and a short command. More agents on one stuck bug wastes tokens.
+  Work Open from the top. Do not start section 6 while section 1 is open.
