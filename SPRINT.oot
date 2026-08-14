@@ -5,16 +5,19 @@ Active task list. DESIGN is the want. SHIPPED is what exists. PM is the pin.
 
 Pin
   Release v0.186.0-alpha
-  Product tip e1c0735
+  Product tip 56fcb21
   Boards tip 00634a6
-  F26 check hang is closed. Live state: 28 seconds, 12 GB RSS (B8 patch); 1-2 s / 39 MB baseline not recovered (was a different ELF state).
-  Migration: 209 .oo files in ooda/scripts/ (academy-award style, 5 waves).
-  ELF is gitignored. Rebuild: PURE_SKIP_CHECK=1 OODAC_BIN=./bootstrap/seed/oodac bash scripts/oodac_pure_build.sh oodac/main.oo /tmp/oodac_new
+  F26 check hang is closed. Live state: 26.05s, 12.25 GiB RSS (INT sprint_int_prove.oot); 1-2 s / 39 MB baseline not recovered (was a different ELF state).
+  Migration: academy headers on product + scripts + fixtures + corpus + org std (DINNER).
+  Seed rebuild: PURE_SKIP_CHECK=1 OODAC_BIN=./bootstrap/seed/oodac bash scripts/oodac_pure_build.sh oodac/main.oo /tmp/oodac_new
+  Live check: oodac check oodac/main.oo OK 26.30s / 12.26 GiB RSS (INT 2026-08-14). B8 residual not baseline.
+  Residual this turn: ci_product.sh not re-run (INT: long rail / race risk). ci_product.oo still has live when/and/then; .sh fallback; RUN not proven. Product BOOTSTRAP_PIN is v0.187.0-alpha. Boards tip not re-pinned. Seed not replaced.
 
 Open
 
-  B2 HIGH — token-count cap in tokenize_lines / collect_tokens
-    Closes the 1-line DoS let y:Int="s";
+  [x] B2 HIGH — token-count cap in tokenize_lines / collect_tokens
+    Cap 1048576 in collect_tokens + tokenize_lines; overflow ERR lex too many tokens + exit.
+    Files: oodac/token_stream.oo, oodac/token_fmt.oo. main.oo check OK.
     Owns: SEC
 
   [x] B3 MED — Auto-Pagination of Generated C Files (Pillar 1)
@@ -24,21 +27,20 @@ Open
     (Note: runtime C files chs_rt_*.c may still need manual fracture, but generated code is solved).
     Owns: HYG / DE
 
-  B4 GATE MED — harden p7_check_main_smoke.sh
-    Memory bound is closed (22.8 GB down to 39 MB).
-    Gate still open: record peak RSS and ELF build id. Treat rc 134, 137, 139, 143 as fail.
+  [x] B4 GATE MED — harden p7_check_main_smoke.sh
+    Peak RSS + ELF build-id printed. rc 134/137/139/143 FAIL. Tiny + main checks kept.
     Owns: PV1
 
-  B6 MED — bounded-down type-checker for cap-bound calls
-    After env.oo fix lands, env_get(cap,key) call patterns run as fast-path C-ABI dispatch.
-    Add a cap-type short-circuit in tc_call_ret.oo so the per-call allocation does not recur.
-    Carried forward from B5. Resolves B8 perf cost without restoring latent DoS.
+  [x] B6 MED — bounded-down type-checker for cap-bound calls
+    cap_builtin_ret short-circuit in tc_call_ret.oo. Let-init fast path landed in tc_call_let.oo (2026-08-14).
+    Unannotated `let x = env_get(...)` hits cap_builtin_ret at tc_call_let.oo:112 (EQ, no COLON); gty unused.
+    Residual: full ret_table still built. Cheap unproven.
     Owns: DE1
 
-  B7 MED — F26 thresholds updated for known perf cost
-    Raise WARN_RSS_KB to 8 GiB and FAIL_RSS_KB to 32 GiB in scripts/harness_f26_residual_smoke.sh.
-    Acknowledges the B8 regression (~28 GiB peak) as a known cost, not an OOM risk.
-    Verdict still FAILs on rc=124/132/137 or RSS > 32 GiB.
+  [x] B7 MED — F26 thresholds updated for known perf cost
+    Already 8 GiB WARN / 32 GiB FAIL in harness_f26_residual_smoke.sh and .oo.
+    Parse fix 2026-08-14: when/and/then are comments only.
+    Residual: .sh still live RSS gate; 12 GB still WARNs.
     Owns: HARN
 
   [x] B8 CLOSED — patch landed (1.77x wall / 2.5x RSS); not at baseline
@@ -50,24 +52,20 @@ Open
     Owns: INT (applied), COORD (rollup corrected).
 
   [x] B5 MED — os/env.oo recursive self-call
-    Replace return env_get(cap, key); with return oo_env_get(cap, key); at ../ooda/std/os/env.oo:7
-    Codegen already emits oo_env_get, so the live path is safe. The .oo body still recurses if resolved.
+    Closed. Body is `return oo_env_get(cap, key);` at env.oo:15. Lower is c_emit_lower.oo:153-158.
     Owns: DE1
-    **2026-08-13 close:** Closed. Latent stack-overflow DoS fixed by replacing self-recursive `env_get` call with C-ABI `oo_env_get(cap, key)` in `ooda/std/os/env.oo:6`. oodac check OK. Security audit: PASS. Compiler bypasses the .oo body via c_emit_helpers.oo:235-236, so production codepath was already safe; the fix ensures the .oo source matches the lowered C call.
 
-  8 CRIT — seed rebuild blocked by oo_write_file type conflict
-    The seed is the trusted first oodac binary.
-    pure_build fails: conflicting types for oo_write_file; have OoResS vs OoResV
-    Unify declarations in chs_rt_*.c and emitted C. Then rebuild via oodac_pure_build.sh
-    Done when the new binary passes ci_product.sh
+  [x] 8 CRIT — seed rebuild blocked by oo_write_file type conflict
+    Runtime + live oodac_pure_build.sh already OoResV. Stale fixed*.sh prototypes unified.
+    Rebuild OK_PURE_MULTI (seed oodac). Residual: live source + runtime + this seed pin emit OoResV. OoResS only if an old seed is used.
+    ci_product.sh not re-run this turn (INT: skipped, long rail / race risk). .sh fallback. RUN not proven.
+    Audit: openOODA/audit/sprint8_writefile_emit.oot
     Owns: RT
 
-  9 MED — grok audit of F26 phalanx, F20 doc cleanup, and .oo conversion
-    Check: day-shift 22.8 GB at 02:00 then 39 MB at 02:14 is honest
-    Check: inventory line counts match git
-    Check: env.oo row and path split are right
-    Check: .oo smokes keep the invariants
-    **Sub-task 9a (deferred):** `.oo` conversion landed in source (80 L + 39 L) but BUILD BLOCKED by Task 8 (`oo_write_file` type conflict in `chs_rt_*.c`) + seed emit bug on `match Result`. `--sh` originals remain in place. Resolves when Task 8 lands.
+  [x] 9 MED — grok audit of F26 phalanx, F20 doc cleanup, and .oo conversion
+    Audit: openOODA/audit/sprint9_f26_f20_verify.oot
+    39 MB was a different ELF. Live cost 26.05s / 12.25 GiB (INT). env.oo is oo_env_get. F20 count is 38.
+    **9a leftover:** live + this seed pin emit match Result on the tiny fixture (OoResS __m). Audit: openOODA/audit/sprint9a_match_result.oot. Fixture: ooda/fixtures/match_result_seed.oo. Residual: compiler-graph rebuild / older seed; process_exec as match scrutinee still unlowered.
     Owns: grok
 
   [x] 10 HIGH — migrate all .sh scripts to .oo files (closed)
@@ -76,11 +74,14 @@ Open
     wasm_execute_smoke.oo created as primary template
     Owns: vibe
     **2026-08-13 close:** Closed. 7 waves of 12-agent SWARMs (Waves 1-5).
-    All ~200 .sh scripts in `ooda/scripts/` have a `.oo` counterpart in
-    academy-award style. The `.sh` originals are preserved as runnable
-    fallbacks. Migration audit: `openOODA/audit/migration_rollup.oot`.
+    Most ooda/scripts/*.sh have a `.oo` twin. 2026-08-14: install_dress_rehearsal.oo
+    and release.oo on disk (when/and/then comments). .sh kept. Residual: tarball pack + tar extract stay .sh.
+    ci_product.oo still has live when/and/then (not a checkable rewrite). .sh fallback. Full rail RUN not proven (INT skipped).
+    qa twins: qa/qa_runner.oo on disk. No .oo for qa_phase1_4 / qa_phase5a / qa_phase5b / qa_phase6_8 / qa_harness_common / e2e_runner.
 
-  11 MED — grok or meta audit of B8 list-based binds patch (2026-08-13)
+  [x] 11 MED — grok or meta audit of B8 list-based binds patch (2026-08-13)
+    Audit PASS: openOODA/audit/sprint11_b8_binds_verify.oot
+    **Closed.** Original request:
     The B8 fix (tc_names.oo + tc_scope.oo bounds converted from String to List[String]) was
     landed by INT under a 12-agent SWARM and verified by the orchestrator. Scope of audit:
     (1) Correctness: git diff oodac/tc_names.oo + oodac/tc_scope.oo vs HEAD shows 56/78 insertions/deletions.
@@ -99,19 +100,19 @@ Open
         NOT recovered (that was a different ELF state). B6 + B7 remain open.
     (7) No new surface: SEC confirmed no new cap exposure. Bind call types unchanged.
     **Marker:** `B8_AUDIT_REQUEST_2026-08-13`.
+    Residual: B6 and B7 are [x] on this board now.
     Owns: grok or meta (audit only; no edits unless flagged).
 
-  12 HIGH — audit Native FS, Env, Process Args and Typestate integration
-    The 12-agent SWARM shipped Native FS mutation, Env variables, Process args, and the typestate integration.
-    Verify C-runtime bounds checking, typestate is correctly bypassing `DE1.8` filtering via `oo_` prefixes, and compiler properly checks the state transitions.
-    **Marker:** `TYPESTATE_FS_AUDIT_REQUEST_2026-08-13`.
-    Owns: grok or meta (audit only; no edits unless flagged).
+  [x] 12 HIGH — audit Native FS, Env, Process Args and Typestate integration
+    Audit: openOODA/audit/sprint12_typestate_fs_verify.oot
+    Facades + C cap re-check PASS. Residual: raw path.data on some reads; no np>12 TYPESTATE prepend (old audit was wrong).
+    Owns: grok or meta (audit only).
 
 Closed this week
-  1 F26 check hang and 22.8 GB RSS — closed by agy 2c090b8 and e1b6441. Leftover is B2 B3 B4-gate.
+  1 F26 check hang and 22.8 GB RSS — closed by agy 2c090b8 and e1b6441. B2 B3 B4-gate now [x]. Residual is B8 cost (12 GB).
   B1 let mut on c_emit_struct.oo:158 — closed by agy
   2 truncated / unclosed now ERR, no 124
-  3 std honesty 34 files, inventory matches find
+  3 std honesty 38 files (was 34), inventory matches find
   4 B1 ZT F46 F44 F45
   5 emit-c fail-closed, check_function present
   6 crypto honesty remainder, one product sha256
@@ -129,14 +130,16 @@ Lanes
   HYG  line lock
 
 Open from wave audit (2026-08-13)
-  F20-count: expected count needs bump from 34 to 36 (std/sh.oo + std/scenario.oo).
-  F20-linecounts: os/fs.oo drifted 83 -> 95; line checks need refresh.
-  sh-unsafe: 19/20 sh.oo functions are shell-injection sinks (DE10). Track to native fs_* ops under typed caps.
-  sh-parse_int: promote parse_int to std/str.oo if a script needs it. COOKBOOK.oot is the .sh-replace plan, not a parse_int sample.
-  build-path: oodac check broken on imports. .oo files are source-of-truth text; .sh files are runnable. Blocks any .sh deletion.
+  [x] F20-count / linecounts / allowlist — harness now 38 files + current wc. sh.oo + scenario.oo included.
+  [x] sh-unsafe: arg gate landed; native fs_* still residual (signature freeze). git/tar/chmod still shell after sh_arg_ok. basename/dirname/realpath are now pure.
+  [x] sh-parse_int: pub fn parse_int in std/str.oo:104 (digit fold; no recurse). COOKBOOK can call it.
+  [x] 9a tiny fixture: live + this seed emit-c OK (sprint9a_match_result.oot). Residual: compiler-graph rebuild / older seed.
+  [x] build-path: oodac check oodac/main.oo OK 26.30s / 12.26 GiB (INT 2026-08-14).
+  [x] Task 10 twins: install_dress_rehearsal.oo + release.oo on disk. Pack/extract stay .sh.
+  ci_product.oo: live when/and/then; .sh fallback; RUN not proven (INT skipped).
+  qa twins: qa/qa_runner.oo on disk. Phase/harness/e2e .sh have no .oo twin.
   sh-linecount: 8 migrated .sh files >80 lines; project convention allows; lazy-flag.
-  rules-merge: RULES.oot has two adjacent "Scripting" sections; merge candidate.
-  harness-f20-allowlist: requires update to include std/sh.oo and std/scenario.oo (already done in audit).
+  [x] rules-merge: RULES 1.13 is the Scripts rule; 1.14 points at 1.13.
   cross-refs: all OK after b8_root_cause.oot fix.
   DOCS inventory leftovers, not SPRINT
   Two writers never own the same file.

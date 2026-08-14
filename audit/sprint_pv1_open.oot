@@ -1,0 +1,131 @@
+# sprint_pv1_open.oot
+# PV1 hostile. Read-only product. This file only.
+# Date: 2026-08-14
+# Tree: /home/jeryd/Projects/openOODA
+# Did not run oodac check oodac/main.oo (INT).
+# Did not trust SPRINT.oot. Grep + read only.
+
+Pre-write snapshot (first read)
+  ooda/oodac/tc_call_let.oo:71-76 was call_ret_type_at only. No cap_builtin_ret.
+  ooda/scripts/harness_f26_residual_smoke.oo:27-29 were live when/and/then tokens.
+  install_dress_rehearsal.oo and release.oo were absent.
+Re-read once after writers moved
+  let-init short-circuit landed. F26 when/and/then became comments. release.oo appeared.
+  install_dress_rehearsal.oo still absent on the second existence check.
+
+## Score
+
+| Item | Question | Disk | Verdict |
+|------|----------|------|---------|
+| 1 | let-init cap_builtin_ret before call_ret_type_at; still ret_table? | yes first; yes table | PARTIAL |
+| 2 | no live when/and/then; check would parse; 32 GiB fail-closed | comments; parse unrun; RSS exit in source | PARTIAL |
+| 3 | install_dress_rehearsal.oo + release.oo; comments only; .sh stay | release.oo only; both .sh live | PARTIAL |
+
+Wave: PARTIAL. Not PASS. Dress twin never landed. ret_table still paid. Check of the harness was not run.
+
+## 1 — tc_call_let.oo — PARTIAL
+
+Q: does let-init call cap_builtin_ret before call_ret_type_at? File:line. Still builds ret_table? Honest?
+
+Yes, on the annotated path only.
+
+Proof In
+- ooda/oodac/tc_call_let.oo:71-73 `let mut gty = cap_builtin_ret(field_at(..., p, 3))` on IDENT LPAREN after `let [mut] name : Ann =`.
+- :74-76 nonempty cap type → resolve_type_alias(aliases, gty).
+- :76-82 else `call_ret_type_at(toks, p, ret_table, aliases)`.
+- Helper lives at ooda/oodac/tc_call_ret.oo:219-247. env_get / oo_env_get → "Result".
+- ooda/oodac/main.oo:60 imports tc_call_ret.oo before :67 tc_call_let.oo. Concat sees the name.
+- ooda/oodac/check_drive.oo:111 still calls typecheck_let_ann_call_init.
+
+Proof still paid
+- tc_call_let.oo:20 `let ret_table: String = build_fn_ret_table(toks);` every entry.
+- :12 residual comment admits the table is still built.
+- call_ret_type_at (tc_call_util.oo:93-102) still match_rparen + resolve_type_alias(ret_table, cname). No cap name skip inside the helper.
+- tc_call_ret.oo:14 still `let mut ret_table = build_fn_ret_table(toks)` (`mut` never written).
+- tc_call_ret.oo:114-123 still match_rparen on `return f(...);` before :125 cap_builtin_ret. Comment :218 "Skips ... match_rparen" is false for that walk.
+
+Honest holes
+1. Only `let x: Ann = f(...)`. Unannotated `let x = env_get(...)` never enters :58 COLON. That is the common path. Still unpaid.
+2. tc_ann_let.oo:99-107 still resolve_type_alias(ret_table, cname) and only for zero-arg `()`. No cap_builtin_ret.
+3. cap_builtin_ret returns bare "Result" / "List" / "Bool" / "Int". Not Result[String, String]. A user `fn env_get(...) -> Int` is still typed Result by name text.
+4. Split tables: tc_names.oo:187-188 get_builtin_ret_type maps oo_file_size to Bool. cap_builtin_ret :236-239 maps it to Int.
+5. tc_call_let.oo does not import tc_call_ret.oo. Isolated `oodac check oodac/tc_call_let.oo` has no local cap_builtin_ret. Product concat hides that.
+6. check_drive.oo:110 comment still says "zero-arg call init". The new short-circuit is any arity by name. Stale.
+7. "Cheap" is unproven here. Did not time. Did not run check main.oo.
+
+First snapshot vs re-read: writers paid the annotated let-init. They did not stop building ret_table. SPRINT [x] B6 can stay true while every check still concatenates the whole return table.
+
+## 2 — harness_f26_residual_smoke.oo — PARTIAL
+
+Q: no live when/and/then tokens? check would parse? 32 GiB still fail-closed?
+
+No live tokens. 32 GiB fail-closed in source. Check not run.
+
+Proof no live when/and/then
+- ooda/scripts/harness_f26_residual_smoke.oo:26-28 are `// when` / `// and` / `// then`.
+- No `^\s*when` in that file.
+- ooda/oodac/lex_comment.oo:12-27 eats `//` to newline. Those words are not tokens.
+- SCRIPTING.oot:22: when/and/then are story, not grammar. ebnf has no when/and/then. tc_names_known.oo:73-77 keywords omit them.
+
+Proof check would parse (source only)
+- check_drive.oo:57-67 top-level walker: KW_PUB / KW_FN / KW_TYPE / KW_IMPORT else `ERR\tparse\tunexpected` + exit.
+- After the comment fix, this file's top-level is two imports, pub fn main, fn cat_file, fn digit_val, fn parse_digits. That walk should not ERRparse.
+- Live `when "..." {` inside main (first snapshot :27-29) was IDENT STRING LBRACE. check_function (check_caps.oo:141-145) skip_balanced the body, so that form was not a top-level ERRparse. SPRINT "ERRparse on when/and/then" overstates the check walker. In-body `when` would be undefined variable (tc_names.oo:160-166); is_known_name has no "when".
+- I did not run `oodac check scripts/harness_f26_residual_smoke.oo`. Parse is reasoned, not executed.
+
+Proof 32 GiB fail-closed in source
+- harness :20 `let fail_rss_kb = 32 * 1024 * 1024;`
+- :42 `let bound = expect_lt(rss, fail_rss_kb);`
+- :43-45 `if bound.is_err() { println FAIL ... >= 32 GiB; process_exit(1); }`
+- std/scenario.oo:155-158 expect_lt returns Err when a >= b. Result is not dropped (old PV1 hole is gone).
+- Twin .sh:11-12 same 8 / 32 MiB-of-KB constants. :50-51 rss -gt FAIL → bad; :56-58 fail → exit 1.
+
+Holes
+1. Check of this .oo was not run. Do not stamp parse OK as live.
+2. std/scenario.oo:14 residual: check `within` is message-only. :33 `within: 200` is not a clock. Inner `timeout 180` is the only deadline, and only if that binary exists.
+3. Missing GNU time → awk empty → parse_digits("0") → rss=0. 32 GiB FAIL never fires.
+4. parse_digits :101-109 treats non-digits as 0 and still multiplies. Garbage time file can wrap or stay 0.
+5. :50 `rc == "0" || (rc != "124" && rc != "132" && rc != "137")`. Empty rc (cat_file miss :61-68) is PASS.
+6. :16 hardcodes oodac/oodac. Ignores OODAC_BIN. Twin .sh:6 honors it.
+7. Live board peak ~12 GiB is > 8 GiB WARN and < 32 GiB FAIL. Honest run WARNs and still PASS. Product stays hundreds of times over the 39 MB baseline while B7 is [x].
+8. Edge: .oo expect_lt fails at rss == 32 GiB. .sh :50 `-gt` does not. The twins disagree on the line.
+
+First snapshot had live when/and/then. Re-read moved them to comments and kept the RSS exit.
+
+## 3 — install_dress_rehearsal.oo / release.oo — PARTIAL
+
+Q: exist? when/and/then only comments? .sh still present?
+
+release.oo exists. install_dress_rehearsal.oo does not. Both .sh still present.
+
+Proof exist
+- ooda/scripts/release.oo is on disk (64 lines). Title "Release Packager Rails". Residual :12 pack stays in .sh.
+- ooda/scripts/install_dress_rehearsal.oo: read failed after re-read. Parent only lists install_dress_rehearsal.sh.
+- Grep under /home/jeryd/Projects/openOODA for install_dress_rehearsal.oo: no file.
+
+Proof when/and/then
+- release.oo:32-36 are `// when` / `// and` / `// then` only. No live tokens.
+- install_dress_rehearsal.oo: no file, so no comment conversion to score.
+
+Proof .sh still present
+- ooda/scripts/install_dress_rehearsal.sh:1-5 shebang + job header. :124-128 fail/PASSED. Live dress rail.
+- ooda/scripts/release.sh:1-5 shebang + packager header. :107-111 still calls install_dress_rehearsal.sh. :113 echo release: PASSED.
+- release.oo:21 and :52 require scripts/release.sh to stay. This .oo is a rails smoke, not a packer.
+
+Holes
+1. SPRINT item 10 residual named both missing twins. One landed. Dress is still .sh-only. Task 10 [x] is still a lie if "have a .oo twin" is the bar.
+2. release.oo:26-30 nested `fn tally` inside main. Product grammar is top-level fn (parse_item.oo:20-24 expected fn at item start). check_function skip_balanced will not ERRparse it. `oodac parse` dump of the body is unproven. Nested fn is theater.
+3. release.oo does not pack, sha256, or invoke dress. .sh remains the ship path. Honest residual :12. Do not say release is migrated.
+4. release.oo:38 calls sh_arg_ok (std/sh.oo:21). That is a char gate. sh.oo:15 residual: git/tar/chmod still shell. Not this item's close, but the new .oo sits on that sink.
+
+First snapshot: neither .oo. Re-read: release.oo only.
+
+## What this pass did not do
+
+- No oodac check oodac/main.oo.
+- No oodac check of the harness or release.oo.
+- No ELF strings. No live RSS / wall clock.
+- No edit of SPRINT.oot.
+
+Marker: `SPRINT_PV1_OPEN_2026-08-14`
+end of sprint_pv1_open.oot
