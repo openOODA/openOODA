@@ -1,0 +1,578 @@
+# sprint_sec_fs_native.oot — SEC hostile audit of native fs_* + sh mkdir/copy/clean
+# Date: 2026-08-14
+# Role: SEC. This file only. No product edit. Did not touch fs.oo / sh.oo / chs_rt_fs.c.
+# Marker: post-DE10 partial native land (mkdir_p + copy_tree); clean still shell
+# Surfaces: /home/jeryd/Projects/openOODA/ooda/std/os/fs.oo
+#           /home/jeryd/Projects/openOODA/ooda/std/sh.oo
+#           /home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_fs.c
+#           /home/jeryd/Projects/openOODA/ooda/std/os/process.oo
+#           /home/jeryd/Projects/openOODA/ooda/oodac/check_cap_util.oo
+# Hunt: mkdir_p ignore fs_mkdir Err (TOCTOU / file-in-the-way)
+#       copy recursion
+#       clean still rm -rf injection if arg gate bypassed
+#       OODA_FS_WRITEDIR still required by runtime
+# Method: static re-read. No live rm -rf / mkdir-race probe this turn.
+#         Do not claim secure. Do not green the native wave.
+
+========================================================================
+VERDICT
+========================================================================
+
+**Not sealed. Partial move only. Residual honesty.**
+
+`sh_mkdir_p` is now `&FsWriteCap` → `fs_mkdir_p`.
+`sh_copy` is now `&FsReadCap` + `&FsWriteCap` → `fs_copy_tree`.
+Those two left `sh -c`. That is real.
+
+They did not become a seal.
+
+`fs_mkdir_p` **never returns Err**. Every `fs_mkdir` Result is `let _ =`.
+Writedir deny, EEXIST-as-file, ENOTDIR, EACCES, and the last-component
+fail are all discarded. Callers see `Ok(void)`. `fs_copy_tree`'s
+`if mk.is_err()` is dead.
+
+`fs_copy_tree` follows `stat`/`opendir` (no `lstat`). A symlink in
+`src` walks any readable host tree. Recursion has no depth cap and
+no cycle stop. A link back to `src` is unbounded. `fs_is_dir` clamps
+to 1024 bytes; writes clamp to `PATH_MAX`. Those are not the same
+path.
+
+`sh_clean` is still `ProcessCap` + `process_exec("rm -rf " + dir)`.
+`OODA_FS_WRITEDIR` does not apply. The char gate is not argv. Space
+and `-` are in-class. `--no-preserve-root /` **passes** `sh_arg_ok`.
+If the gate is bypassed, `;` `|` `$()` are the old RCE. Even with
+the gate, GNU `rm` can take a second operand or a wipe flag.
+
+Runtime mutate still **requires** `OODA_FS_WRITEDIR` (unset / empty
+/ `/` deny). Native mkdir/write/remove/link/symlink all call
+`oo_process_policy_getenv("OODA_FS_WRITEDIR")`. The facade hides
+that fail: `fs_mkdir_p` swallows the deny and still returns Ok.
+`sh_clean` never consults the overlay.
+
+Do not say native fs replaced shell. Do not say mkdir_p is mkdir -p.
+Do not say copy is cp -a. Do not say clean is gated.
+
+========================================================================
+WHAT LANDED (do not over-claim)
+========================================================================
+
+Re-read this turn.
+
+| Op | Tip claim | Live | Cap |
+|----|-----------|------|-----|
+| `sh_mkdir_p` | native | `return fs_mkdir_p(fw, dir)` after `sh_arg_ok` | **FsWriteCap** |
+| `sh_copy` | native | `return fs_copy_tree(fr, fw, src, dst)` after gate | **FsReadCap + FsWriteCap** |
+| `sh_clean` | native residual | `process_exec(p, "rm -rf " + dir)` | **ProcessCap** |
+| `fs_mkdir_p` | prefixes | walk `/` + `let _ = fs_mkdir` + **always Ok** | Fw |
+| `fs_copy_file` | one file | `read_file` whole → `write_file` | Fr+Fw |
+| `fs_copy_tree` | walk + mkdir + copy | `fs_is_dir` then recurse `src+"/"+name` | Fr+Fw |
+
+`sh.oo:15` still says "git/tar/chmod/clean still shell after sh_arg_ok
+(no rmdir builtin)". That comment is true. mkdir/copy comments in the
+header (beats L8) are stale: they still list mkdir/copy as path mutators
+next to chmod as if they were the same class.
+
+No `remove_tree` / `rmdir` builtin. That is why clean stayed shell.
+
+========================================================================
+HUNT 1 — fs_mkdir_p ignores fs_mkdir Err (TOCTOU / file-in-the-way)
+========================================================================
+
+Proof of shape (`std/os/fs.oo:102-135`):
+
+    // mkdir every prefix. Existing dirs: fs_mkdir may Err; we continue.
+    pub fn fs_mkdir_p(fw: &FsWriteCap, path: String) -> Result[Void, String]
+    {
+        ...
+                    let _ = fs_mkdir(fw, acc);
+        ...
+            let _ = fs_mkdir(fw, acc);
+        ...
+        return Ok(void);
+    }
+
+There is **no** `is_err` branch. There is **no** `fs_is_dir` confirm
+after a failed mkdir. EEXIST-as-dir and EEXIST-as-file are the same
+discard. Writedir deny is the same discard.
+
+Runtime `oo_fs_mkdir` (`chs_rt_fs.c:133-141`):
+
+    require_fswrite
+    OODA_FS_WRITEDIR fail-closed (unset / empty / `/` / not under)
+    mkdir(cpath, 0777) == 0  → Ok
+    else                     → Err("fs_mkdir failed")
+
+EEXIST is **not** success. POSIX `mkdir(2)` fails if the last
+component exists, dir or not. The .oo layer treats that Err as
+"probably already a dir." That is the mkdir -p happy path **and**
+the file-in-the-way lie.
+
+### File in the way
+
+1. Prefix is a **regular file**.
+   `mkdir(prefix)` → EEXIST → discarded.
+   `mkdir(prefix/child)` → ENOTDIR → discarded.
+   `fs_mkdir_p` → **Ok(void)**.
+   Dest tree does not exist.
+
+2. Prefix is a **symlink to a file**.
+   Same. `stat` later (copy) may disagree with what mkdir created.
+
+3. Last component is a **file**, caller wanted a directory.
+   `mkdir` fails. `fs_mkdir_p` still Ok. `fs_copy_tree` then writes
+   `dst/name` via `write_file`. `writedir_open_trunc` does
+   `open(parent, O_DIRECTORY)` — parent is a file → fail. Copy of
+   children fails **later**, or returns Ok on an empty dirent list
+   if the src walk is also confused. The mkdir_p Result already lied.
+
+### TOCTOU (check vs create)
+
+`oo_fs_mkdir` is not `mkdirat`. Order is:
+
+    path_under_writedir(cpath)     // realpath of path, or parent
+    mkdir(cpath, 0777)             // follows symlink components
+
+No `O_NOFOLLOW`. No dirfd pin. Contrast `write_file`, which uses
+`openat(..., O_NOFOLLOW)` after parent realpath (`chs_rt_fs.c:33-39`).
+
+Race:
+
+    path = $WRITEDIR/subdir/new
+    parent $WRITEDIR/subdir is a real directory → allow
+    attacker replaces subdir with a symlink to /etc
+    mkdir("$WRITEDIR/subdir/new") follows the link → /etc/new
+
+`path_under_writedir` for a **new** leaf uses `realpath(parent)`.
+That is a TOCTOU window, not a seal. Same class as T3 W8 (parent
+dentry rename) plus a follow-symlink create that write_file
+partially closed at the leaf.
+
+If the **new** path's parent is already a symlink whose realpath
+leaves writedir, the check denies. That is the static case. The
+swap-after-check case is open.
+
+### Swallowing the overlay
+
+`fs_mkdir("/tmp/outside")` with `OODA_FS_WRITEDIR=/tmp/wd` is Err.
+`fs_mkdir_p("/tmp/outside/a/b")` is Ok. Every prefix mkdir denied.
+Caller proceeds as if the tree exists.
+
+`fs_mkdir_p("rel/path")` is Ok. Runtime requires `path[0]=='/'`
+(`path_under_writedir` L26). Relative mkdir is always denied. Facade
+hides it.
+
+`fs_mkdir_p("/")` skips (`acc != "/"`). Ok. No-op.
+
+`fs_copy_tree` (`fs.oo:155-156`):
+
+    let mk = fs_mkdir_p(fw, dst);
+    if mk.is_err() { return mk; }
+
+Dead. mkdir_p cannot take that branch.
+
+| Case | mkdir(2) / policy | mkdir_p Result | Honest? |
+|------|-------------------|----------------|---------|
+| new dir under writedir | 0 | Ok | yes |
+| existing dir | EEXIST | Ok | intended mkdir -p |
+| existing **file** | EEXIST | **Ok** | **NO** |
+| parent is file | ENOTDIR | **Ok** | **NO** |
+| outside writedir | policy Err | **Ok** | **NO** |
+| relative path | policy Err | **Ok** | **NO** |
+| parent swapped to symlink | mkdir follows | Ok if create works | **TOCTOU** |
+| EACCES / EROFS | Err | **Ok** | **NO** |
+
+Fix that would be honesty, not this turn: on mkdir Err, `lstat`;
+if not `S_ISDIR`, return that Err. Never discard writedir deny.
+Use `mkdirat` + `O_NOFOLLOW` / `AT_SYMLINK_NOFOLLOW`. Do not
+claim mkdir -p until EEXIST-dir is distinguished.
+
+========================================================================
+HUNT 2 — copy recursion
+========================================================================
+
+`fs_copy_file` (`fs.oo:137-148`): whole-file `fs_read_file` then
+`fs_write_file`. No dest-parent create. No mode. No symlink preserve.
+Read Err is collapsed to `"fs_copy_file: read failed"` (lossy).
+Match after `is_err` still binds `""` on the dead Err arm.
+
+`fs_copy_tree` (`fs.oo:150-169`):
+
+    if fs_is_dir(fr, src) {
+        fs_mkdir_p(fw, dst);          // never errs
+        for name in fs_read_dir(fr, src) {
+            fs_copy_tree(..., src+"/"+name, dst+"/"+name);
+        }
+        return Ok(void);
+    }
+    return fs_copy_file(...);
+
+`sh_copy` is this function plus `sh_arg_ok` on both strings.
+
+### Follows symlinks
+
+`oo_fs_is_dir` (`chs_rt_fs.c:117-122`): `stat`, not `lstat`.
+`oo_fs_read_dir`: `opendir`, follows a dir symlink.
+`oo_read_file`: `fopen(path.data)` — follows a file symlink.
+Reads are **not** under `OODA_FS_WRITEDIR`.
+
+Plant `src/leak → /etc` (dir) or `src/shadow → /etc/shadow` (file).
+`fs_copy_tree` / `sh_copy` copies host bytes into `dst` (writes still
+need writedir). FsReadCap is any-path read. This is copy-out, not
+`cp -P`.
+
+`readdir` skips `.` and `..` (`chs_rt_fs.c:107`). Names do not
+contain `/`. Traversal is the symlink, not `../` in a dirent.
+
+### No cycle / no depth
+
+`src/loop → src` (or `src/up → src/..`):
+
+    copy_tree(src)           // is_dir
+      copy_tree(src/loop)    // is_dir via stat follow
+        copy_tree(src/loop/loop)
+          ...
+
+No visited-inode set. No depth cap. Same class as `fs_walk`
+(`fs.oo:50-76`, already residual). Recursion is host stack, not a
+heap worklist. Deep or cyclic trees: stack smash / unbounded
+mkdir+write under dest.
+
+`fs_walk` residual is now also a **write** residual: copy_tree
+mkdir_p + write_file each hop.
+
+### is_dir 1024 vs write PATH_MAX
+
+`oo_fs_is_dir` `to_cpath(..., 1024)`.
+`oo_fs_mkdir` / `oo_write_file` `to_cpath(..., PATH_MAX)`.
+`to_cpath` truncates silently (sprint12 already named this).
+
+A src path ≥1024 bytes can classify a **prefix** as dir/not-dir.
+Copy then mkdir/write a longer (or different) string. Classification
+and mutate are not the same object.
+
+### Recursion + swallowed mkdir_p
+
+If `dst` mkdir_p lied (file in the way / outside writedir / relative):
+
+- src dir + dest not actually a dir → child writes `dst/name` fail
+  or (if dest is a symlink dir outside) `path_under_writedir` on
+  the child may deny — or, if dest realpath is still under writedir,
+  write lands in an unexpected real directory.
+- src dir + dest missing → `write_file` parent realpath fails → Err
+  on the first file. Empty src dir: **Ok** after a failed mkdir_p.
+  Silent no-op success.
+
+### TOCTOU on the is_dir fork
+
+    if fs_is_dir(src) { read_dir / recurse }
+    else              { copy_file }
+
+Swap src dir→file between `is_dir` and `opendir`: empty list, Ok.
+Swap file→dir between `is_dir` and `fopen`: read fails, Err.
+Swap file→symlink-to-secret between `is_dir` and `fopen`: copy-out.
+
+Not a check-then-openat. Two independent path lookups.
+
+### Memory / shape
+
+Whole file in one `String`. No size cap. Large file is host-heap DoS
+under Fr+Fw. Not sendfile. NULs: `oo_read_file` keeps `len`; write
+uses `content.len`. Adjacent: `buf[n]=0` after `oo_str_alloc_payload(sz)`
+when `n==sz` is one-past (chs_rt_fs.c:47-51). Not owned this hunt.
+
+No native copy of fifo/socket/device. `fopen`/`stat` decide. A fifo
+`fopen` blocks. Residual hang, not a cap hole.
+
+`sh_copy` adds `sh_arg_ok`. Direct `fs_copy_tree` has **no** char
+gate. Product API is the ungated recurse.
+
+| Vector | Path-A want | Live |
+|--------|-------------|------|
+| symlink dir in src | copy link or refuse | **follow + recurse** |
+| symlink file in src | copy link or refuse | **follow + read** |
+| cycle link | refuse / cap | **unbounded recurse** |
+| depth | cap | **none** |
+| dest mkdir fail | Err | **Ok then later fail/no-op** |
+| dest file-in-the-way | Err | **mkdir_p Ok** |
+| is_dir vs mutate race | one lookup | **two lookups** |
+| path clamp | deny long | **1024 vs PATH_MAX truncate** |
+| relative dest | deny or cwd policy | mkdir deny + **Ok** facade |
+| metadata / mode | document | **dropped** (0666 write leaf) |
+
+Do not call this `cp -r`. It is follow-everything recurse + lie-Ok
+mkdir + whole-file rewrite.
+
+========================================================================
+HUNT 3 — sh_clean still rm -rf; injection if gate bypassed
+========================================================================
+
+Live (`sh.oo:38-45`):
+
+    pub fn sh_clean(p: &ProcessCap, dir: String) -> Result[Void, String]
+        requires chars_len(dir) > 0
+    {
+        if !sh_arg_ok(dir) { return Err("sh: rejected unsafe arg"); }
+        let r = process_exec(p, "rm -rf " + dir);
+        ...
+    }
+
+`process_exec` → `sys_exec(p, "sh", "-c", shell_cmd)` (`process.oo:34-38`).
+Child env is DE1.8 (`OODA_*`/`OO_*` + `PATH=/usr/bin:/bin`). That is
+not a quote. `shell_cmd` is one string. `rm` sees whatever `sh` word-splits.
+
+No FsWriteCap. No writedir. No `unlinkat`. No `remove_tree`.
+`fs_remove_file` is `unlink` of one leaf under writedir only
+(`chs_rt_fs.c:123-131`). It cannot replace `rm -rf`.
+
+### Gate (what it actually is)
+
+`sh_arg_ok` (`sh.oo:21-34`): whitelist
+
+    A-Za-z0-9 / . - _ = : + space
+
+Reject: `;|&$`(){}<> \n\r'"\\` and anything else (incl. `* ? [ ] ~`
+and non-ASCII; `char_at` is a UTF-8 scalar, `char_is_alpha` is
+`len==1 && isalpha`).
+
+Empty string: loop does not run → **true**. `requires chars_len(dir)>0`
+is the empty check, if emit lowers it (`c_emit_contract.oo`). Do not
+treat `requires` as a second security gate on the interpreter path
+until a prove says so.
+
+Smoke (`scripts/sh_arg_ok_smoke.oo`) only refuses `;` `&&` `$(`.
+It does **not** refuse space, `-`, `=`, `../`, `/`.
+
+### In-class (gate not bypassed — still destuctive)
+
+These **pass** `sh_arg_ok`:
+
+| `dir` | `sh -c` line | Effect |
+|-------|--------------|--------|
+| `/` | `rm -rf /` | GNU rm refuses without `--no-preserve-root`; still a wipe attempt |
+| `--no-preserve-root /` | `rm -rf --no-preserve-root /` | **GNU wipe** |
+| `foo /` | `rm -rf foo /` | second operand is `/` |
+| `foo /tmp` | `rm -rf foo /tmp` | two trees |
+| `-rf /home` | `rm -rf -rf /home` | extra flags + path |
+| `--one-file-system x` | flag injection | tool semantics |
+| `../../` | `rm -rf ../../` | cwd-relative climb |
+| `/tmp/wd/../outside` | climb | **not** writedir-bound |
+
+Space is the multi-argv hole. `-` is the option hole. `/` and `..`
+are the path hole. The class was built so `+x`, `https://`, and
+`-d /tmp/foo -t x` keep compiling. It cannot be a single-path seal.
+
+`sh_clean` is the worst sink left: the prefix is already `-rf`.
+
+Live caller shape (not an inject prove; shows ProcessCap + path
+concat still hits this function):
+
+    scripts/ooda_emit_health.oo:56  sh_clean(p, err_base + "*.err")
+    → `*` **rejected** now (FP vs old glob clean)
+
+    scripts/fs_writedir_smoke.oo:70  sh_clean(p, wd)
+    → if `wd` is an absolute `/tmp/...` string, **allowed**,
+      and delete is **not** limited to OODA_FS_WRITEDIR
+
+### If the gate is bypassed
+
+Bypass = `sh_arg_ok` not called, or a string that should fail
+reaches `process_exec`. Then the pre-DE1 matrix is live again:
+
+| Payload | Line | Result |
+|---------|------|--------|
+| `x; id` | `rm -rf x; id` | **RCE** |
+| `x && id` | `&&` | **RCE** (`&` not in class; only if bypass) |
+| `x\|id` | pipe | **RCE** |
+| `x$(id)` | subst | **RCE** |
+| `x`id`` | backticks | **RCE** |
+| `x $OODA_FS_WRITEDIR` | `$` | env expand in **sh**, not in child `printenv` |
+| `x\nid` | newline | second command |
+| `*` / `/*` | glob | `rm -rf /*` if shell globbing |
+
+`oo_sys_exec` does not parse `shell_cmd`. Fork+execvp of
+`sh -c <string>`. Parent IFS/PATH/LD_* are stripped. That does
+not stop metacharacters **inside** the string.
+
+Bypass routes (honesty, not a live probe):
+
+1. Call `process_exec` / `sys_exec` directly with the same concat.
+2. Future edit drops the `if !sh_arg_ok` and keeps the concat.
+3. `sh_arg_ok` on a different string than the one concatenated
+   (not today's code; one `dir`).
+4. Interpreter / seed path that does not emit `requires` and
+   somehow skips the `if` — not claimed; not disproved here.
+
+The gate is a filter in front of a shell. It is not argv. It is
+not a cap. Bypass restores Critical injection. **Non-bypass
+already has wipe-class option injection.**
+
+git / tar / chmod remain shell on the same gate (`sh.oo:62-99`).
+Out of this hunt except as proof the class was never a tool seal.
+See `audit/sprint_sec_sh.oot`.
+
+========================================================================
+HUNT 4 — OODA_FS_WRITEDIR still required by runtime
+========================================================================
+
+Still the write overlay. Not removed. Not optional. Fail-closed.
+
+| C op | getenv | Deny when |
+|------|--------|-----------|
+| `oo_write_file` | `OODA_FS_WRITEDIR` | unset / empty / `/` / not under (`chs_rt_fs.c:57-59`) |
+| `oo_fs_remove_file` | same | L127-129 |
+| `oo_fs_mkdir` | same | L137-139 |
+| `oo_fs_hardlink` | same on **old and new** | L147-148 |
+| `oo_fs_symlink` | same on **link and target** | L156-157 |
+
+Policy read is `oo_process_policy_getenv` — key must be `OODA_` /
+`OO_`. `OODA_FS_WRITEDIR` matches. A renamed `FS_WRITEDIR` would
+be NULL → deny all. Good fail-closed.
+
+`path_under_writedir` (`chs_rt_fs.c:24-32`):
+
+- both path and dir must be absolute
+- dir `/` refused
+- `realpath(dir)` must work (writedir must exist)
+- existing path: `realpath(path)` prefix+boundary
+- missing leaf: parent realpath + basename not `.`/`..`/`/`
+
+`write_file` then `openat(O_NOFOLLOW)`. **mkdir / unlink / link /
+symlink do not.** Overlay is necessary and insufficient.
+
+### What still needs the env
+
+Every native mutate used by this wave:
+
+    fs_mkdir / fs_mkdir_p / sh_mkdir_p
+    fs_write_file / fs_copy_file / fs_copy_tree / sh_copy
+    fs_remove_file
+    fs_hardlink / fs_symlink
+
+Without the env, each `oo_*` returns Err `… denied: path not under
+OODA_FS_WRITEDIR` (mkdir/write/remove wording). Scripts that only
+hold FsWriteCap cannot write. That is the T3 6.4 contract. It is
+still there.
+
+### What the env does **not** cover
+
+| Surface | Writedir? |
+|---------|-----------|
+| `read_file` / `path_exists` / `file_size` | **no** — any-path `fopen(path.data)` |
+| `fs_read_dir` / `fs_is_dir` / `fs_walk` | **no** |
+| `fs_copy_tree` **src** | **no** (read side) |
+| `sh_clean` `rm -rf` | **no** |
+| `sh_chmod` / git / tar / find / curl | **no** |
+| `process_exec` generally | **no** |
+
+So: native mkdir/copy **still need** the env to succeed at C.
+`fs_mkdir_p` **hides** the need (Ok on deny). `sh_clean` **ignores**
+the need (shell delete anywhere uid can unlink).
+
+Hardlink residual (T3 W7) is still open: hardlink an outside file
+into writedir, then `write_file` / copy dest overwrites the outside
+inode. `path_under_writedir` on the writedir leaf is true.
+
+### Check map vs runtime
+
+`sealed_fs_kind_of` still only names
+
+    read_file / fs_read / path_exists / file_size
+    write_file / fs_write
+
+It does **not** name `oo_fs_mkdir`, `fs_mkdir`, `oo_fs_remove_file`,
+`oo_fs_read_dir`, `oo_fs_is_dir`, `oo_fs_hardlink`, `oo_fs_symlink`.
+
+Runtime still `require_fswrite` / `require_fsread` on those C ops.
+Check-path seal for the new names is a **gap**. User wrappers take
+typed caps, so `fs_mkdir_p(fw, …)` still needs a Fw argument to
+typecheck the call. A direct `oo_fs_mkdir` free call is not
+preferred-kind denied the way `write_file` is. Runtime exits 1 on
+a forged/missing token (`oo_cap_require_fswrite`). Do not call the
+check map complete for native mkdir/copy.
+
+CAPS.oot still says "FsWriteCap — write_file. Writes also obey
+OODA_FS_WRITEDIR". mkdir/remove/copy are not in that sentence.
+Doc lag, not a runtime drop.
+
+========================================================================
+ATTACK MATRIX (this wave only)
+========================================================================
+
+Verdict: BLOCK / BYPASS / LIE-OK / FAIL-CLOSED / residual.
+
+| # | Attack | Want | Live |
+|---|--------|------|------|
+| M1 | mkdir_p when prefix is a file | Err | **LIE-OK** |
+| M2 | mkdir_p outside writedir | Err | **LIE-OK** (C deny swallowed) |
+| M3 | mkdir_p relative | deny or Err | **LIE-OK** |
+| M4 | parent dir → symlink between allow and mkdir | deny | **residual TOCTOU** (no mkdirat) |
+| M5 | mkdir 0777 | umask | **0777 request**; umask is host TCB |
+| C1 | copy_tree src symlink → /etc | refuse or copy-link | **BYPASS copy-out** (Fr any-path) |
+| C2 | copy_tree cycle symlink | refuse | **unbounded recurse** |
+| C3 | copy_tree dest mkdir fail | Err | **LIE-OK** then child write fail / empty Ok |
+| C4 | is_dir 1024 vs PATH_MAX write | one path | **truncate split** |
+| C5 | sh_copy after gate | native + bound | native recurse + **same holes**; gate only charset |
+| R1 | sh_clean `--no-preserve-root /` | refuse | **in-class**; GNU wipe |
+| R2 | sh_clean `foo /` | one path | **in-class**; second operand |
+| R3 | sh_clean `x; id` with gate | refuse | **BLOCK** (`;` not in class) |
+| R4 | same if gate bypassed | refuse | **BYPASS RCE** |
+| R5 | sh_clean `/tmp/out` with writedir=/tmp/wd | deny | **BYPASS** (no overlay) |
+| W1 | native write/mkdir unset WRITEDIR | deny | **FAIL-CLOSED** at C |
+| W2 | mkdir_p unset WRITEDIR | deny | **LIE-OK** at .oo |
+| W3 | hardlink outside + write | deny | **BYPASS** (T3 W7 still) |
+| W4 | write_file leaf symlink | deny | **BLOCK** openat O_NOFOLLOW |
+| S1 | check `oo_fs_mkdir` without Fw | deny prefer Fw | **map miss** (runtime still require) |
+
+No live dual-repro this turn. M1/M2/R1/C1 are code-path FN, not
+paper.
+
+========================================================================
+RESIDUAL (do not close on paper)
+========================================================================
+
+- **mkdir_p always Ok.** File-in-the-way, writedir deny, relative,
+  EACCES: discarded. `fs_copy_tree` err-check is dead. HIGH honesty.
+- **mkdir TOCTOU / follow.** `mkdir(2)` after realpath; no
+  `mkdirat`/`O_NOFOLLOW`. MED/HIGH, same family as T3 parent-dentry.
+- **copy_tree follows symlinks, no cycle, no depth.** Copy-out +
+  stack. HIGH. `fs_walk` residual is now a write amplifier.
+- **is_dir 1024 vs PATH_MAX.** Silent truncate. MED.
+- **sh_clean still `rm -rf` + ProcessCap.** No writedir. No Fw.
+  In-class space/`-`/`/` wipe. Gate bypass restores `;` RCE.
+  **CRITICAL** while any caller feeds a non-literal `dir`.
+- **No rmdir / remove_tree.** DE10 item not landed. Clean cannot
+  move without it (or a careful native walk+unlink that still
+  needs a dir-remove op).
+- **OODA_FS_WRITEDIR still required** at C for mkdir/write/remove/
+  link/symlink. Unset still fail-closed. Facade mkdir_p **lies**
+  about that. Clean **ignores** it.
+- **Reads still any-path.** Copy src is the read hole.
+- **Hardlink writedir escape** still open (T3 W7).
+- **sealed_fs_kind_of** not extended to mkdir/remove/dir/is_dir.
+  Runtime require holds; check preferred-kind does not.
+- **sh_arg_ok smoke** does not cover space / leading `-` / `../` /
+  `--no-preserve-root`. A green smoke is not this seal.
+- **git/tar/chmod/find/curl/printenv** still shell. Not this hunt;
+  still product API.
+
+**Not path-A.** Native mkdir/copy is a ProcessCap→Fs* move plus a
+Result lie. Clean is the same sink `sprint_sec_sh.oot` named.
+
+========================================================================
+LEAVE-OFF
+========================================================================
+
+- `sh_mkdir_p` / `sh_copy` left the shell. Caps are Fw / Fr+Fw.
+- `fs_mkdir_p` ignores every `fs_mkdir` Err and always returns Ok.
+  File-in-the-way and writedir deny are silent. TOCTOU on `mkdir(2)`.
+- `fs_copy_tree` recurses with `stat`/`opendir` follow, no cycle,
+  no depth. mkdir_p lie is in the dest path.
+- `sh_clean` is still `rm -rf ` + `dir` under ProcessCap. Gate
+  allows space and `-`. Bypass restores classic `sh -c` inject.
+- `OODA_FS_WRITEDIR` is still required by runtime mutate. mkdir_p
+  hides deny. clean never asks.
+
+Do not edit product from this file. Do not green DE10.
+
+Marker: `SPRINT_SEC_FS_NATIVE_2026-08-14`
+end of sprint_sec_fs_native.oot

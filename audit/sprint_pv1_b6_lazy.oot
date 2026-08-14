@@ -1,0 +1,133 @@
+# sprint_pv1_b6_lazy.oot
+# PV1 hostile. Read-only product. This file only.
+# Date: 2026-08-14
+# Tree: /home/jeryd/Projects/openOODA
+# Did not run oodac check oodac/main.oo (INT).
+# Did not trust SPRINT.oot. Grep + read only.
+
+Q: do ooda/oodac/tc_call_let.oo and tc_call_ret.oo refuse to call
+build_fn_ret_table at function entry? Start ret_table as ""? Build only
+on first non-cap miss (ret_table == "")?
+
+## Score
+
+| Item | Disk | Verdict |
+|------|------|---------|
+| tc_call_let.oo typecheck_let_ann_call_init | :20 `""`; :77-78 first miss | PASS |
+| tc_call_ret.oo typecheck_return_and_assign_calls | :14 `""`; :131-132 and :185-186 first miss | PASS |
+| B6 lazy (the two named files) | both match the required shape | PASS |
+
+Wave: PASS. Not a cheap-check claim. Siblings still build at entry.
+
+Prior audits that said let:20 / ret:14 were `build_fn_ret_table(toks)`
+(sprint_pv1_open.oot, sprint_pv1_close_open.oot, sprint_mem_close.oot,
+sprint_pv1_b2b4b6b7.oot) are stale vs this disk.
+
+SPRINT.oot:37 still says "Residual: full ret_table still built." False
+for these two files. True for the residual list below.
+
+## 1 — tc_call_let.oo — PASS
+
+`typecheck_let_ann_call_init` starts at ooda/oodac/tc_call_let.oo:18.
+
+No `build_fn_ret_table` between the `{` and the first use of `ret_table`.
+
+Proof start empty
+- :12 residual: "ret_table built on first non-cap miss, not at entry"
+- :20 `let mut ret_table: String = "";`
+
+Proof first non-cap miss
+- :71-73 annotated `let [mut] name : Ann = IDENT LPAREN`: `cap_builtin_ret` first.
+- :74-76 cap hit: resolve_type_alias only. No table.
+- :77-78 cap miss: `if ret_table == "" { ret_table = build_fn_ret_table(toks); }`
+- :80-85 then `call_ret_type_at(..., ret_table, aliases)`.
+
+Grep of this file: one live call, at :78. Not at entry.
+
+Holes (not a FAIL of the lazy bar)
+1. Unannotated arm :109-117 (`else if` EQ, no COLON) calls cap_builtin_ret
+   and drops `gty`. No `ret_table == ""` build. No call_ret_type_at.
+   `let x = foo()` never pays and never types. Dead store.
+2. Isolated `oodac check oodac/tc_call_let.oo` still has no local
+   `cap_builtin_ret` (no import of tc_call_ret.oo). Product concat
+   (main.oo:60 then :67) hides that.
+3. :21-41 still concatenates `aliases` on every entry. Not ret_table.
+
+## 2 — tc_call_ret.oo — PASS
+
+`typecheck_return_and_assign_calls` starts at ooda/oodac/tc_call_ret.oo:12.
+
+Proof start empty
+- :5 setup: "build_fn_ret_table is lazy on first non-cap miss"
+- :14 `let mut ret_table: String = "";`
+
+Proof first non-cap miss
+- return IDENT LPAREN … SEMI :125-133: cap_builtin_ret first; else
+  `if ret_table == "" { ret_table = build_fn_ret_table(toks); }` then
+  call_ret_type_at.
+- mut assign IDENT = IDENT LPAREN :179-187: same guard.
+
+Grep of this file: two live calls, :132 and :186. Both behind
+`ret_table == ""`. Neither is the first statement of the fn.
+
+Sentinel is real: ooda/oodac/tc_tables_ret.oo:14 seeds `table = "\t"`
+and :52 returns that. A built table is never `""`. Next miss does not
+rebuild.
+
+Holes (not a FAIL of the lazy bar)
+1. :37 still `let lit_env: String = build_pure_lit_env(toks);` at entry.
+   That helper (tc_tables.oo:11) rebuilds a *local* ret_table at
+   tc_tables.oo:208 on each untyped `let x = g()` inside the env walk.
+   The fn's own `ret_table` stays `""`. The process can still concat
+   a full table before any cap miss on this walker.
+2. :115-123 still `match_rparen` on `return f(...);` before :125
+   cap_builtin_ret. Comment :224 "Skips ret_table scan and match_rparen"
+   is still false for match_rparen.
+3. cap_builtin_ret :226-253 still returns bare "Result" / "List" /
+   "Bool" / "Int". Split vs tc_names.oo get_builtin_ret_type
+   (oo_file_size Bool vs Int) is unchanged.
+
+## Residual — still build at entry (named; not edited)
+
+These still do `let ret_table: String = build_fn_ret_table(toks);`
+as an entry local. check_drive.oo still calls the walkers every module.
+
+| File | Fn | Line |
+|------|----|-----:|
+| ooda/oodac/tc_ann_prep.oo | ann_prep | 16 |
+| ooda/oodac/tc_call_arg_prep.oo | call_arg_prep | 15 |
+| ooda/oodac/tc_call_order.oo | typecheck_call_order_lits | 14 |
+| ooda/oodac/tc_call_logic.oo | typecheck_call_logic_lits | 14 |
+| ooda/oodac/tc_call_eq.oo | typecheck_call_eq_lits | 14 |
+| ooda/oodac/tc_call_binop.oo | typecheck_call_binop_lits | 14 |
+| ooda/oodac/tc_struct_method.oo | typecheck_field_method | 15 |
+| ooda/oodac/tc_ops_unary.oo | typecheck_unary_bang_lit | 15 |
+| ooda/oodac/tc_ops_unary.oo | typecheck_unary_minus_lit | 92 |
+
+Indirect entry pay (prep, not their own builder):
+- ooda/oodac/tc_ann.oo:117 `ann_prep(toks)` → ret_table at prep :16
+  (consumed :121).
+- ooda/oodac/tc_call_arg_lits.oo:14 `call_arg_prep(toks)` → ret_table
+  at prep :15 (consumed :18).
+
+In-loop rebuilds (not entry; still a full concat per hit):
+- ooda/oodac/tc_tables.oo:208 inside build_pure_lit_env, per
+  zero-arg `let x = g()`.
+- ooda/oodac/tc_control_cond.oo:200 inside
+  typecheck_if_while_lit_cond, per `if g()` / `while g()`.
+  That fn skips entirely when n>1000 (:14-16).
+
+check_drive.oo call sites that still force an entry-time table
+(or a prep that builds one): :83 ann, :92/:94 unary, :98 if/while
+(in-loop), :107 call_arg_lits → arg_prep, :113 eq, :115 order,
+:117 binop, :118 logic, :120 field_method. :109 ret and :111 let
+are the two lazy walkers.
+
+## What this pass did not do
+
+- No oodac check oodac/main.oo.
+- No RSS / wall. Lazy in two walkers does not prove cheap.
+- No edit of SPRINT.oot or of the residual files.
+
+Marker: `SPRINT_PV1_B6_LAZY_2026-08-14`
+end of sprint_pv1_b6_lazy.oot
