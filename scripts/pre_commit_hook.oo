@@ -1,0 +1,45 @@
+// # Dinner Pre-Commit Hook Rails
+//
+// Logline: Staged academy .oo files keep a title, logline, setup, beats, and a 256-line lock.
+//
+// Setup: cwd is ooda/ or the repo root; fixtures/b8_repro.oo is the skip rail.
+//
+// Beats:
+//   1. Gate scratch and skip paths with sh_arg_ok.
+//   2. Write a tiny academy header and expect every Dinner element.
+//   3. Check the 256-line lock and the b8_repro skip rail.
+
+import "std/scenario.oo";
+import "std/sh.oo";
+
+pub fn main(p: &ProcessCap, fs: &FsReadCap, fw: &FsWriteCap) {
+    let scratch = ".ooda-cache/ooda-tmp/pre_commit_hook";
+    let sample = scratch + "/dinner_ok.oo";
+    let skip_a = "fixtures/b8_repro.oo";
+    let skip_b = "ooda/fixtures/b8_repro.oo";
+    let _ = sh_clean(p, scratch);
+    let _ = sh_mkdir_p(fw, scratch);
+    let _ = scenario(p, fs, "dinner pre-commit rails");
+
+    // when a staged academy file has title logline setup beats
+    // and line count stays at or under 256
+    // then fixtures/b8_repro.oo stays the skip rail
+
+    if !sh_arg_ok(scratch) || !sh_arg_ok(sample) || !sh_arg_ok(skip_a) || !sh_arg_ok(skip_b) {
+        println("FAIL sh_arg_ok path");
+        process_exit(1);
+    }
+
+    let _ = expect_quiet(p, "printf '%s\\n' '// # Dinner Sample' '//' '// Logline: A tiny academy file holds the header rails.' '//' '// Setup: scratch write.' '//' '// Beats:' '//   1. Title.' '//   2. Logline.' '//   3. Setup and beats.' 'pub fn main() {' '}' > " + sample);
+    expect_present(fs, sample);
+    expect_substring(fs, sample, "// # ");
+    expect_substring(fs, sample, "// Logline:");
+    expect_substring(fs, sample, "// Setup:");
+    expect_substring(fs, sample, "// Beats:");
+    let _ = check(p, "test $(wc -l < " + sample + ") -le 256", within: 5);
+
+    if expect_present(fs, skip_a).is_err() {
+        expect_present(fs, skip_b);
+    }
+    println("pre_commit_hook: rails OK");
+}

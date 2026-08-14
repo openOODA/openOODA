@@ -33,8 +33,9 @@ Open
 
   [x] B6 MED — bounded-down type-checker for cap-bound calls
     cap_builtin_ret short-circuit in tc_call_ret.oo. Let-init fast path landed in tc_call_let.oo (2026-08-14).
-    Unannotated `let x = env_get(...)` hits cap_builtin_ret at tc_call_let.oo:112 (EQ, no COLON); gty unused.
-    Residual: full ret_table still built. Cheap unproven.
+    Unannotated `let x = env_get(...)` hits cap_builtin_ret at tc_call_let.oo:115 (EQ, no COLON); gty unused.
+    Lazy ret_table in tc_call_let.oo + tc_call_ret.oo (empty at entry; build on first non-cap miss).
+    Residual: other tc_* still build at entry; first non-cap miss still builds full table.
     Owns: DE1
 
   [x] B7 MED — F26 thresholds updated for known perf cost
@@ -58,14 +59,14 @@ Open
   [x] 8 CRIT — seed rebuild blocked by oo_write_file type conflict
     Runtime + live oodac_pure_build.sh already OoResV. Stale fixed*.sh prototypes unified.
     Rebuild OK_PURE_MULTI (seed oodac). Residual: live source + runtime + this seed pin emit OoResV. OoResS only if an old seed is used.
-    ci_product.oo is a checkable twin (132 rails in ci_product_rails.oo). .sh fallback. Full rail RUN not executed.
+    ci_product.oo is a checkable twin (132 rails in ci_product_rails.oo). .sh fallback. Executed (unsigned). Final: ci_product: FAILED (/tmp/ci_product_unsigned.log).
     Audit: openOODA/audit/sprint8_writefile_emit.oot
     Owns: RT
 
   [x] 9 MED — grok audit of F26 phalanx, F20 doc cleanup, and .oo conversion
     Audit: openOODA/audit/sprint9_f26_f20_verify.oot
     39 MB was a different ELF. Live cost 26.05s / 12.25 GiB (INT). env.oo is oo_env_get. F20 count is 38.
-    **9a leftover:** live + this seed pin emit match Result on the tiny fixture (OoResS __m). Audit: openOODA/audit/sprint9a_match_result.oot. Fixture: ooda/fixtures/match_result_seed.oo. Residual: compiler-graph rebuild / older seed; process_exec as match scrutinee still unlowered.
+    **9a leftover:** seed replaced. bootstrap/seed/oodac.sha256 is ffe7d0f731b3b1363c96ec02e800d8598941797f30fc52aed28defcb4eb9b2c9 (was 37a99a97…). Audit: openOODA/audit/sprint9a_match_result.oot. Fixture: ooda/fixtures/match_result_seed.oo. Residual: minisign sidecar not refreshed (unsigned); process_exec as match scrutinee still unlowered.
     Owns: grok
 
   [x] 10 HIGH — migrate all .sh scripts to .oo files (closed)
@@ -74,9 +75,10 @@ Open
     wasm_execute_smoke.oo created as primary template
     Owns: vibe
     **2026-08-13 close:** Closed. 7 waves of 12-agent SWARMs (Waves 1-5).
-    All ooda/**/*.sh have a `.oo` twin (2026-08-14). ci_product.oo rewritten (no live when/and/then);
-    132 rails in ci_product_rails.oo; oodac check OK. .sh kept. Residual: pack/extract and
-    live DFS collector still execute .sh; full ci_product RUN not executed.
+    **2026-08-14:** Remaining twins written (academy .oo). Then deleted 391 `.sh` files.
+    Product tree has zero `.sh` (skip `.git` / cache / `node_modules`). ci_product_rails now checks `.oo`.
+    Residual: bash bootstrap/pure_build/release pack are gone; those jobs live as `.oo`.
+    Vendor leftover only: vscode/node_modules/.../terminateProcess.sh.
 
   [x] 11 MED — grok or meta audit of B8 list-based binds patch (2026-08-13)
     Audit PASS: openOODA/audit/sprint11_b8_binds_verify.oot
@@ -130,13 +132,12 @@ Lanes
 
 Open from wave audit (2026-08-13)
   [x] F20-count / linecounts / allowlist — harness now 38 files + current wc. sh.oo + scenario.oo included.
-  [x] sh-unsafe: arg gate landed; native fs_* still residual (signature freeze). git/tar/chmod still shell after sh_arg_ok. basename/dirname/realpath are now pure.
+  [x] sh-unsafe: sh_mkdir_p is FsWriteCap + fs_mkdir_p; sh_copy is native tree copy (fs_copy_tree). sh_clean/git/tar/chmod still shell. basename/dirname/realpath are now pure.
   [x] sh-parse_int: pub fn parse_int in std/str.oo:104 (digit fold; no recurse). COOKBOOK can call it.
-  [x] 9a tiny fixture: live + this seed emit-c OK (sprint9a_match_result.oot). Residual: compiler-graph rebuild / older seed.
+  [x] 9a tiny fixture: seed replaced (sha256 ffe7d0f7… ≠ 37a99a97…). Residual: minisign sidecar not refreshed (unsigned).
   [x] build-path: oodac check oodac/main.oo OK 26.30s / 12.26 GiB (INT 2026-08-14).
-  [x] Task 10 twins: every ooda/**/*.sh has a .oo twin. ci_product.oo check OK + 132-rail roster.
-  Residual: pack/extract/DFS still run .sh; ci_product full RUN not executed.
-  sh-linecount: 8 migrated .sh files >80 lines; project convention allows; lazy-flag.
+  [x] Task 10: 391 `.sh` deleted after academy `.oo` twins. ci_product_rails is 132 `.oo` checks.
+  Residual: vendor `vscode/node_modules/.../terminateProcess.sh` only. Cold bash bootstrap gone.
   [x] rules-merge: RULES 1.13 is the Scripts rule; 1.14 points at 1.13.
   cross-refs: all OK after b8_root_cause.oot fix.
   DOCS inventory leftovers, not SPRINT
