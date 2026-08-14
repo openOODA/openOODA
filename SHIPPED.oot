@@ -9,36 +9,51 @@ REAL
 
 Product path: the seed (trusted first oodac binary), then gcc.
 
-  Compiler loop
-    oodac check, emit-c, run / ooda CLI
+  1. Core Toolchain & Compiler
+    Compiler loop
+      oodac check, emit-c, run / ooda CLI
+    Self-host floor
+      Backend-C: emit C, link the C runtime (chs_rt), then gcc, via the seed
+    Memory model
+      ARC frees when the last ref drops (default PURE_NO_ARC=0)
+    CPU bound
+      MAX_CYCLES: N on while, for, and recursion
 
-  Self-host floor
-    Backend-C: emit C, link the C runtime (chs_rt), then gcc, via the seed
+  2. Capability Tokens & Sandboxing
+    File seals
+      read_file, write_file, path_exists, file_size, fs_mkdir, fs_remove_file
+      Tokens: FsReadCap, FsWriteCap (old FsCap still accepted)
+    Net seals
+      fetch uses HttpCap
+      TCP / UDP / bind slot IO uses TcpCap, UdpCap, BindCap
+      ooda-pm (package manager) uses NetCap and FsWriteCap (sandbox)
+    Process exec
+      sys_exec and process_exec use ProcessCap (or SysCap)
+    Process args and walk
+      process_args(ProcessCap) in ../ooda/std/os/process.oo
+      fs_walk(FsReadCap) in ../ooda/std/os/fs.oo
+    Env, time, rand, alloc
+      EnvCap (OODA_ and OO_ keys), TimeCap, RandCap, AllocCap
+    Threads & Concurrency
+      mutex, spawn, join, channels — ThreadCap
+    Secrets
+      SECRET: checked at compile time. Separate from Caps.
 
-  File seals
-    read_file, write_file, path_exists, file_size, fs_mkdir, fs_remove_file
-    Tokens: FsReadCap, FsWriteCap (old FsCap still accepted)
+  3. Foundation Tracks 1-4
+    Track 1: AST Macros & Metaprogramming
+      std/src/ooda/macro/ (ast_types, ast_quote, ast_expand, ast_transform), oodac/ast_macros.oo
+      Compile-time AST macro expansion, quasiquotation, and AST transformations.
+    Track 2: WebAssembly Backend Emitter
+      oodac/wasm_emit_*.oo (wasm_emit, preamble, primary, expr, stmt, fn, mem)
+      Pratt operator climbing, while/for control flow, memory allocator, WASI preview1.
+    Track 3: Finer Object-Capabilities & Landlock Sandboxing
+      std/src/ooda/sec/sys/ (landlock_*.oo, objcap_*.oo)
+      Cryptographic capability sealing, monotonic rights diminution, and Landlock OS sandbox translation.
+    Track 4: Data-Oriented Design & Struct-of-Arrays
+      std/src/ooda/dod/ (soa_layout_*.oo, dod_layout_*.oo)
+      Columnar SoA buffers, 64-byte cache alignment, SIMD streaming transforms.
 
-  Net seals
-    fetch uses HttpCap
-    TCP / UDP / bind slot IO uses TcpCap, UdpCap, BindCap
-    ooda-pm (package manager) uses NetCap and FsWriteCap (sandbox)
-
-  Process exec
-    sys_exec and process_exec use ProcessCap (or SysCap)
-
-  Process args and walk
-    process_args(ProcessCap) in ../ooda/std/os/process.oo
-    fs_walk(FsReadCap) in ../ooda/std/os/fs.oo
-
-  Env, time, rand, alloc
-    EnvCap (OODA_ and OO_ keys)
-    TimeCap, RandCap, AllocCap
-
-  Threads
-    mutex, spawn, join, channels — ThreadCap
-
-  Super SWARM Waves A-F (Shipped 2026-08-14)
+  4. Super SWARM Waves A-F (Shipped 2026-08-14)
     Wave A: Type-State Proofs & Refinement Solver
       std/src/ooda/typestate/ (typestate_types, typestate_transition, typestate_verify, typestate)
       std/src/ooda/proofs/ (refinement_types, refinement_solve, refinement)
@@ -62,7 +77,7 @@ Product path: the seed (trusted first oodac binary), then gcc.
       std/src/ooda/sec/mint/ (mint_types, mint_authority, mint_token, mint_verify, mint)
       SemVer Caret/Tilde constraint solving, zero-trust token provenance, and monotonic attenuation.
 
-  Super SWARM Packages 1-4 (Shipped 2026-08-14)
+  5. Super SWARM Packages 1-4 (Shipped 2026-08-14)
     Package 1: Agent Tools & Developer AI Surface
       std/src/ooda/reflect/ (reflect_types, reflect_outline, reflect_doc, reflect)
       std/src/ooda/fix/ (fix_types, fix_engine, fix)
@@ -81,20 +96,13 @@ Product path: the seed (trusted first oodac binary), then gcc.
       std/src/ooda/sec/metamorphic/ (meta_types, meta_pad, meta_layout, meta)
       Content-addressable DAG state snapshots, inclusion proofs, METAMORPHIC: path-a layout perturbation.
 
-  Foundation Tracks 1-4
-    Track 1: AST Macros & Metaprogramming (std/src/ooda/macro/, oodac/ast_macros.oo)
-    Track 2: WebAssembly Backend Emitter (oodac/wasm_emit_*.oo)
-    Track 3: Finer Object-Capability Seals & Landlock Sandboxing (std/src/ooda/sec/sys/)
-    Track 4: Data-Oriented Design & Struct-of-Arrays (std/src/ooda/dod/)
-
-  Std product
-    ../ooda/std and ../std modules (over 1,000 files across crypto, sys, sec, dod, macro, 3d, robot, quantum, fin, enterprise)
-    100% DINNER.oot Academy-style headers and <= 256-line modular decomposition.
-
-  Scripts
-    ../ooda/scripts/*_smoke.oo — 100% Academy-style headers and <= 256 lines.
-    Plan: ../ooda/COOKBOOK.oot. Rules: SCRIPTING.oot.
-    Automated pre-commit hooks and dinner_lint.oo active.
+  6. Standard Library & QA Invariants
+    Standard library modules
+      ../ooda/std and ../std (over 1,000 files across crypto, sys, sec, dod, macro, 3d, robot, quantum, fin, enterprise)
+      100% DINNER.oot Academy-style headers and <= 256-line modular decomposition.
+    Smoke test suite
+      ../ooda/scripts/*_smoke.oo — 100% Academy-style headers and <= 256 lines.
+      Automated pre-commit hooks and dinner_lint.oo active.
 
 Ops: ../ooda/bootstrap/CAPS_MATRIX.oot
 Token names: CAPS.oot
