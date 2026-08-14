@@ -1,0 +1,110 @@
+# items 1-4 docs match — DOCS
+**Marker:** `ITEMS_1_4_DOCS_MATCH_2026-08-13`
+**Date:** 2026-08-13
+**Role:** DOCS. This file only. No SPRINT. No SCRIPTING. No product edit.
+**Axiom:** RULES 1.9 zero trust. 1.10 short words.
+**Scope:** phalanx items 1-4 (B6, B2, SPRINT 11+12, SECRET). Live code vs boards.
+
+## Verdict
+
+| Item | Board | Live code | Match |
+|------|-------|-----------|-------|
+| 1 B6 `cap_builtin_ret` | short path in `tc_call_ret.oo`; cuts B8 cost | helper lives in `tc_call_util.oo:154-173`; `call_ret_type_at:86-88` skips paren walk | **partial** |
+| 2 B2 token cap | cap in `tokenize_lines` / `collect_tokens`; closes `let y:Int="s"` | cap in `collect_tokens` only; wrap at `token_fmt.oo:7-8`; 100000 toks + 8192 chars | **partial** |
+| 3 SPRINT 11 B8 binds | `list_push` + `list_filter`; 50s/30GB → 28.5s/12GB | 7 `list_push` sites; `drop_depth` is an inlined loop, not `list_filter` | **mostly** |
+| 3 SPRINT 12 FS/Env/args/ts | `oo_*` + caps; typestate on check | `env.oo:6` `oo_env_get`; `process_args` → `oo_sys_args`; `check_drive.oo:98` typestate | **mostly** |
+| 4 SECRET mark loop | path A In; 6-pass; helper rails | check 1+6 marks (`c_emit_secret.oo:139-149`); emit marks once (`c_emit.oo:85`) | **partial** |
+
+B2 / B6 / SECRET: **source-only** this pass. No `strings` run here. ELF grep is silent (binary / gitignore). Sibling `oodac/oodac.tmp.c` has SECRET text (`__fr_secret__`, sink refuse). It has **no** `too many tokens` and **no** `cap_builtin_ret`. INT file `/tmp/int_1_4_prove.txt` claims ELF strings for B2+SECRET. That is INT, not this grep.
+
+## Lie watch — 1.7 s / 41 MB
+
+Does **not** reappear as a current fact.
+
+Named as false in: `SPRINT.oot` task 11, `audit/b8_root_cause.oot`, `audit/b8_list_binds_audit.oot`, COORD rollup `audit/items_1_4_phalanx_rollup.oot`.
+
+Honest last board clock (one run, not re-timed here): **28.5 s / 12 GB** after B8. Before: **50 s / 30 GB**. Old **1-2 s / 39 MB** was a different ELF. Not back.
+
+## Stale / wrong board lines
+
+| Claim | Where | Live |
+|-------|-------|------|
+| 1.7 s / 41 MB (old DOCS) | named lie only | **false**. Do not reuse. |
+| B4: "22.8 GB down to 39 MB" as if now | `SPRINT.oot` B4 | **stale**. Pin + B8 say 28 s / 12 GB. |
+| B7: B8 peak "~28 GiB" | `SPRINT.oot` B7 | **stale**. Post-B8 board is 12 GB. Thresholds 8 / 32 GiB still on disk. |
+| `f26_residual.oot` "39 MB is the new floor" | snapshot 02:14 | **stale** if read as now. |
+| B2 closes `let y:Int="s"` | `SPRINT.oot` B2 | **wrong**. That line is a few toks. Caps fire on 100000 toks or 8192-char text. |
+| B6 "in `tc_call_ret.oo`" / "resolves B8 cost" | `SPRINT.oot` B6 | **wrong site**. Util helper. B8 was binds concat, not this short path. Untimed. |
+| B8 `drop_depth` is `list_filter` | `b8_root_cause.oot`, SPRINT 11 | **wording**. Loop + `str_ends_with` + `list_push`. Same job. Audit 11 already notes this. |
+| `_drop = 0` leftover | `b8_root_cause.oot` residual | **gone** from live `tc_scope.oo`. |
+| `secret_t1_return_smoke.sh` runs helper rails | COORD + `SECRET_TAINT.oot` pairing | **no**. Smoke is return / alias / if-taint only. No script names `secret_helper`. |
+| PM / F20: std is 34 `.oo` | `PM.oot`, `f20_std_inventory.oot` | **36** live under `ooda/std` (extra: `math/tensor.oo`, `src/net/dns.oo`). |
+| PM pin v0.185.0 / tip fe34439 | `PM.oot` | **vs** `SPRINT.oot` pin v0.184.4 / 89a3da0. Board/board drift. |
+| F45: `process_args` removed | `audit/f45_sys_args.oot` | **stale**. Live `std/os/process.oo:15-17` + SHIPPED. |
+| SHIPPED "SECRET: checked at compile time" | `SHIPPED.oot` | **broad**. Path A only. Full IFC residual. |
+
+## Item 1 — B6
+
+Board: cap-type short-circuit after env.oo; stop per-call alloc; close B8 cost.
+
+Code: `cap_builtin_ret` returns fixed types for `env_get` / `oo_env_get`, FS, `fetch`, `sys_exec`, `process_args` / `oo_sys_args`, walk/dir. `call_ret_type_at` returns before `match_rparen`. `tc_call_ret.oo` calls that helper. `env.oo:6` is `return oo_env_get(cap, key);`.
+
+Not done: no new clock. SPRINT still Open. `nth_csv` still one-char concat. **source-only**.
+
+## Item 2 — B2
+
+Board: token-count cap in `tokenize_lines` / `collect_tokens`.
+
+Code: `token_stream.oo:9-18` `max_toks=100000` → `ERR lex too many tokens`. `:10,39-41` `max_text=8192` → `ERR lex token too long`. `tokenize_lines` is a one-line wrap. `check_drive.oo:29` tokenizes once.
+
+`fixtures/token_too_long_bad.oo` is the **length** rail. INT: live ELF `check` rc=1 `ERR lex token too long at line 2`.
+
+No product smoke that a flood prints `too many tokens`. `/tmp/b2_flood/` and `/tmp/token_flood.oo` are tmp, not product. SPRINT still Open. **source-only**.
+
+## Item 3 — SPRINT 11 + 12
+
+11 B8. Live `tc_names.oo` binds are `List[String]`. `list_push` at 47, 76, 94, 113, 122, 140, 147. Extra-binds tab split 20-37. `scope_has` 11-26 is `name@d`. `drop_depth` 28-43 uses `str_ends_with`. `env.oo` is not the cause. Audit `b8_list_binds_audit.oot` matches disk. Metrics: see lie watch. No new clock this file.
+
+12 FS/Env/args/typestate. `std/os/fs.oo` wraps `oo_*`. `process.oo:16` `oo_sys_args`. Runtime `oo_sys_args` re-checks ProcessCap; 4096-byte cmdline; drops argv0. `check_drive.oo:73` secret then `:98` typestate. `check_mod.oo:59` prepends TYPESTATE when `np>12`. `check_cache.oo:63` `t_ts3_`. DE1.8 `OODA_`/`OO_` is the env seal, not a typestate bypass. Holes named in `typestate_fs_env_args_audit.oot`: read-path NUL / no `to_cpath`; `fs_walk` no depth cap; heap alias residual.
+
+## Item 4 — SECRET mark loop
+
+Board: path A `__fr_secret__` In. Check marks, then up to 6 more passes.
+
+Code: `c_secret_mark_returning_fns` is in `c_emit_secret_prop.oo` (not `c_emit_secret.oo`). Check loop is `c_emit_secret.oo:139-149`. Marks only if body is secret **and** (`ret_str` or `ret_secret`). Tighter than "any secret-bearing body". Emit `c_emit.oo:85` marks **once**. Chains past 6 hops residual.
+
+`SECRET_TAINT.oot` path A table matches sinks in `check_secret_println_sinks`. `#[Secret]` / full IFC / cross-file stay residual. Honest.
+
+Rails gap: pack lists `secret_helper_*` + `secret_t1_return_smoke.sh`. Smoke does **not** run helper files. No `scripts/` hit on `secret_helper`. INT did emit-c those five by hand.
+
+## New fixtures
+
+No new fixture written by this DOCS pass. HARN did not land a B2 count smoke.
+
+On disk, used or named this turn:
+
+- `ooda/fixtures/token_too_long_bad.oo` — B2 **length** (not count)
+- `ooda/fixtures/b8_repro.oo` — B8 bind churn
+- `ooda/fixtures/secret_helper_println_hide_fail.oo`
+- `ooda/fixtures/secret_helper_order_fail.oo`
+- `ooda/fixtures/secret_helper_chain_order_fail.oo`
+- `ooda/fixtures/secret_helper_let_return_fail.oo`
+- `ooda/fixtures/secret_helper_println_clean_pass.oo`
+- extra, not in SECRET_TAINT rail list: `secret_helper_eprintln_hide_fail.oo`, `secret_helper_write_file_hide_fail.oo`
+- item-2 corpus (old): `bootstrap/corpus/check/fail/harness_{unclosed_body,trunc_rbrace,trunc_rparen}.oo`
+
+Missing: product flood that must print `too many tokens`. Tmp only: `/tmp/b2_flood/*.oo`, `/tmp/token_flood.oo`.
+
+## ELF (honest)
+
+This pass: **source-only** for B2, B6, SECRET.
+
+INT `/tmp/int_1_4_prove.txt` (2026-08-13 05:21, ELF `oodac/oodac` BuildID `7e0666f7…`): strings `ERRlextoo many tokens`, `ERRlextoken too long`, `__fr_secret__`. Helper emit-c PASS. `token_too_long_bad` PASS. Typestate smoke PASS. COORD said SECRET rails "not re-run"; INT did re-run helpers. Sibling-doc clash.
+
+`oodac.tmp.c` next to the ELF is **stale** vs B2/B6 source.
+
+## Residual
+
+B6 untimed. B2 count smoke absent. Emit 1-pass vs check 6-pass. 12 GB > F26 WARN 8 GiB. B3 B4 B7 Task 8 open. Full IFC residual.
+
+**Marker:** `ITEMS_1_4_DOCS_MATCH_2026-08-13`
