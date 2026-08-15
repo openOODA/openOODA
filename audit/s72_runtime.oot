@@ -10,11 +10,7 @@
 #      not `oo_str_concat`; leftover stack `char[N]` in this walk; chs_rt
 #      `oo_sys_exec` not primary unless emit ABI break.
 #      Comment-only honesty. No large refactors. No push.
-
-========================================================================
-SUMMARY
-========================================================================
-
+## SUMMARY
 | Claim | Expected | Actual | VERDICT |
 |-------|----------|--------|---------|
 | Product oodac defines `c_sys_exec_last_arg` | `T` text symbol, not `U` | `nm -S`: `T` @ `0x452e10` **968** B (`0x3c8`); `readelf` FUNC GLOBAL | **PASS** |
@@ -31,10 +27,7 @@ SUMMARY
 
 Do **not** greenwash seed or `c_args_strip_cr` (`out = out + c` still concat). Those are **not** this symbol.
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Static: `ooda/oodac/c_emit_args.oo`, `c_emit_secret_guard.oo` (call site),
    `c_emit_lower.oo` (`sys_exec` → `oo_sys_exec`), `c_emit_preamble.oo`,
    `c_emit_ty.oo` / `c_emit_let_ext.oo` (OoStr allowlist), `runtime/chs_rt_sys.c`,
@@ -50,12 +43,11 @@ METHOD
 `chs_rt` inspected only as the floor behind `oo_str_slice` / `oo_char_at` and
 to confirm `oo_sys_exec` ABI was **not** broken by the last-arg close.
 
-========================================================================
+---
 1. Well-defined symbol (no implicit decl / missing symbol)
-========================================================================
+---
 
 ### Product host — PASS
-
 | Probe | Result |
 |-------|--------|
 | `strings` | `c_sys_exec_last_arg` present |
@@ -70,7 +62,6 @@ Sole product call site (`.oo` + ELF): `c_secret_emit_guard` sys_exec branch —
 `let last: String = c_sys_exec_last_arg(args)` then cap-ident refuse.
 
 ### Emit-time declaration order — PASS
-
 `.oo` order: `c_sys_exec_last_arg` defined in `c_emit_args.oo`; callee in
 `c_emit_secret_guard.oo`. Product `cli_emit.oo` default `emit-c` is
 `protos` then `bodies`. Live emit of the args module printed, before any `{`:
@@ -86,7 +77,6 @@ this is why **this** helper re-emits on the current host (7.1 walker did not:
 untyped `let is_start` → `unknown free call oo_str_eq`).
 
 ### Implicit-decl contrast — PASS (mechanism)
-
 | TU | `gcc -std=c11 -Werror=implicit-function-declaration` |
 |----|------------------------------------------------------|
 | proto present, take address of `c_sys_exec_last_arg` | **PROBE_COMPILE_OK** |
@@ -94,12 +84,11 @@ untyped `let is_start` → `unknown free call oo_str_eq`).
 
 Product TU shape is the first row (protos pass).
 
-========================================================================
+---
 2. `oo_str_slice` not concat; no leftover `char[N]`
-========================================================================
+---
 
 ### Source (.oo) — PASS
-
 `c_sys_exec_last_arg` (`ooda/oodac/c_emit_args.oo` L71–131 after honesty comment):
 
 - Scanner: string-/escape-/depth-aware top-level commas; records `last_start`.
@@ -112,7 +101,6 @@ SPRINT “stack buffer” wording = do not cap the last arg in a fixed C array
 (`t1_memory.oot` M-SG3).
 
 ### Product machine code — PASS
-
 `objdump` of `c_sys_exec_last_arg` (968 B):
 
 | Callee | Count | Role |
@@ -143,7 +131,6 @@ No `oo_str_concat` / `char[` inside that function. (Module-level concat at
 Adjacent `c_args_drop_first`: also `oo_str_slice`×1, **0** concat (bonus; not SPRINT 7.2).
 
 ### Seed ELF contrast — honesty (not the product host)
-
 `ooda/bootstrap/seed/oodac` (`878392` B, 2026-08-11):
 
 | Probe | Result |
@@ -156,7 +143,6 @@ Seed is the **old** per-char / concat last-arg. Product host at
 `ooda/oodac/oodac` is the **fixed** ELF. 7.2 proof is the latter.
 
 ### Floor (chs_rt, not primary) — note only
-
 `runtime/chs_rt_str.c`:
 
 - `oo_char_at` — heap 1-char (or UTF-8 1–4 byte) `OoStr` via `oo_str_alloc_payload`.
@@ -166,14 +152,13 @@ These are the **runtime** implementations the emitted walk calls. There is
 **no** `c_sys_exec_last_arg` in `chs_rt*.c` / `chs_rt.h`.
 
 ### Unreclaimed temps (residual, not 7.2 CRIT)
-
 Space-skip uses **inline** `char_at(args, j)` inside `oo_str_eq(...)` (emit L265).
 Stored loop `c` is `oo_str_release`d. Inline results are not. O(n) 1-char leak
 on whitespace after commas — not a stack overflow and not last-arg concat.
 
-========================================================================
+---
 3. Re-emit (current host vs this .oo)
-========================================================================
+---
 
 Live (this pass):
 
@@ -188,9 +173,9 @@ Honesty: **this host can re-emit its own last-arg helper.** Contrast 7.1
 (`c_guard_scan_idents` dies on untyped `let is_start`). Do not assume every
 7.x sibling re-emits.
 
-========================================================================
+---
 4. chs_rt `sys_exec` not primary (no emit ABI break)
-========================================================================
+---
 
 | Surface | `c_sys_exec_last_arg` | `oo_sys_exec` |
 |---------|----------------------|---------------|
@@ -208,9 +193,9 @@ arg. It does **not** change how product `sys_exec` is lowered. Because emit ABI
 is unchanged, this auditor does **not** treat `chs_rt_sys.c` as a second
 implementation of 7.2 and does **not** require a runtime-sys_exec re-home.
 
-========================================================================
+---
 5. Comment-only honesty this pass
-========================================================================
+---
 
 File: `ooda/oodac/c_emit_args.oo` (comments only; **240** lines after this pass,
 under soft 256 / pack 300).
@@ -220,10 +205,7 @@ under soft 256 / pack 300).
 
 No logic / comma-scanner / return-path change.
 
-========================================================================
-RESIDUAL
-========================================================================
-
+## RESIDUAL
 | ID | Sev | Residual |
 |----|-----|----------|
 | R-S72-1 | LOW | Classification is still per-char `oo_char_at` (O(n) 1-char heap), not a last-arg concat leak |
@@ -233,10 +215,7 @@ RESIDUAL
 | 7.1 | sibling | `c_guard_scan_idents` re-emit residual remains (`s71_runtime.oot`) |
 | 7.10 | HIGH | `c_parse_secret_env` `name = name + c` — other OWN |
 
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 | Bucket | Result |
 |--------|--------|
 | Well-defined `c_sys_exec_last_arg` on product oodac (no missing symbol) | **PASS** |

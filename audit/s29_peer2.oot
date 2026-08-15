@@ -5,13 +5,8 @@
 #       OWN = stmt `println` vs free-call `eprintln` shape parity
 # Tree: /home/jeryd/Projects/openOODA
 # Write: this audit only. No product/std/oodac edits. No push.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 ## **REJECT** walker vs guard parity
-
 Assigned question: **Does stmt `println` miss any shape that free-call
 `eprintln` catches?**
 
@@ -37,14 +32,11 @@ FN on these shapes for both (parity of a hole). emit-c still runs that
 front-door first; when it misses, **only** the eprintln guard saves
 the sink. Stmt println then **prints the SECRET ident**.
 
-Do **not** ACCEPT 2.9 parity from `s29_println_guard_smoke.sh` (bare
+Do **not** ACCEPT 2.9 parity from `s29_println_guard_smoke.oo` (bare
 IDENT + string no-FP only). Do **not** treat Peer 1 “assigned FN=0”
 as this OWN — Peer 1 did not probe grouping/`RPAREN`-before-SECRET.
 
-========================================================================
-SUMMARY TABLE
-========================================================================
-
+## SUMMARY TABLE
 | # | Probe | eprintln (guard) | println (stmt) | VERDICT |
 |---|--------|------------------|----------------|---------|
 | 1 | bare `sink(tok)` | BLOCK dual | BLOCK dual | **PASS** parity |
@@ -63,16 +55,13 @@ SUMMARY TABLE
 | 14 | `f(g(), tok)` unknown helpers | emit-c **BLOCK**; check TYPE | emit-c **FN leak** | **REJECT** |
 | 15 | `"x".len() + tok` | emit-c **BLOCK**; check **FN** | emit-c **FN** (truncated print) | **REJECT** |
 | 16 | emit-llvm on 11–15 | **FN both** (no guard) | **FN both** | LLVM parity of a hole |
-| 17 | `s29_println_guard_smoke.sh` | exit 0 | exit 0 | **PASS** smoke; **not** this OWN |
+| 17 | `s29_println_guard_smoke.oo` | exit 0 | exit 0 | **PASS** smoke; **not** this OWN |
 | 18 | product sink / eprintln / multi / T2 real / string-FP fixtures | BLOCK / ALLOW as named | same | **PASS** floor |
 
 **OVERALL: REJECT** (stmt println misses ≥4 live emit-c shapes the
 eprintln guard catches; three of them emit C that still names `tok`).
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Static split: `c_emit_ident_stmt` `id == "println"` only;
    `eprintln` falls through to `c_emit_expr_c` → `c_secret_emit_guard`
    (`c_emit_lower.oo` L90). Check walk treats both names the same and
@@ -85,10 +74,7 @@ METHOD
    (front-door exits first) and **false** once the front-door’s first
    `RPAREN` hides `tok`.
 
-========================================================================
-HOST / TIP / WT
-========================================================================
-
+## HOST / TIP / WT
 | Item | Value |
 |------|--------|
 | When (UTC) | 2026-08-12T19:27Z |
@@ -107,9 +93,9 @@ HOST / TIP / WT
 `c_secret_emit_guard(` is **absent** from `c_emit_print.oo`.
 `id == "eprintln"` is **absent** from `c_emit_ident.oo`.
 
-========================================================================
+---
 MECHANISM (why eprintln sees it and stmt println does not)
-========================================================================
+---
 
 Stmt rail (`c_emit_print.oo` L19–30):
 
@@ -155,9 +141,9 @@ uses `c_emit_expr_c` → guard. Alias `let f = println; f(tok)` is
 front-door `resolve_alias`. Those are **not** counterexamples to this
 OWN.
 
-========================================================================
+---
 LIVE (product host)
-========================================================================
+---
 
 Probes: `/tmp/s29_peer2_1136749/` (ephemeral; not committed).
 
@@ -167,13 +153,11 @@ oodac emit-c p_groupplus.oo   # rc=0  oo_print_str(oo_str_concat((oo_str_lit("x"
 oodac emit-c p_igroup.oo      # rc=0  oo_print_int(((1LL) + tok))
 oodac emit-c p_nest.oo        # rc=0  oo_print_str(f(g(), tok))
 oodac check  p_groupplus.oo   # rc=0  OK   (front-door miss)
-
 # TP — free-call eprintln guard
 oodac emit-c e_groupplus.oo   # rc=1  ERR	secret	eprintln sink refuses SECRET tok
 oodac emit-c e_igroup.oo      # rc=1  same
 oodac emit-c e_nest.oo        # rc=1  same
 oodac check  e_groupplus.oo   # rc=0  OK   (same front-door miss; emit-only save)
-
 # dual-repro (second run, same host)
 p_groupplus emit-c rc=0
 e_groupplus emit-c rc=1 ERR	secret	eprintln sink refuses SECRET tok
@@ -182,9 +166,8 @@ e_nest      emit-c rc=1 ERR	secret	eprintln sink refuses SECRET tok
 
 # LLVM: no c_guard_scan_idents — both FN on hole shapes
 oodac emit-llvm p_groupplus.oo / e_groupplus.oo   # rc=0, no ERR secret
-
 # smoke / floor (not this OWN)
-scripts/s29_println_guard_smoke.sh                 # exit 0 (bare only)
+scripts/s29_println_guard_smoke.oo                 # exit 0 (bare only)
 fixtures/secret_sink_fail.oo                       # emit-c rc=1 SECRET
 fixtures/secret_eprintln_fail.oo                   # emit-c rc=1 SECRET
 fixtures/secret_multi_arg_println_fail.oo          # emit-c rc=1 SECRET
@@ -202,9 +185,9 @@ pub fn main() {
 }
 ```
 
-========================================================================
+---
 WHAT STILL HAS PARITY (do not over-claim the REJECT)
-========================================================================
+---
 
 Bare IDENT, top-level multi-arg, ungrouped concat, simple `wrap(tok)` /
 `id(id(tok))`, string-lit no-FP, callee-alias, and expr-position
@@ -218,9 +201,9 @@ call) is emit-c BLOCK on stmt println because after `c_emit_expr_c`
 consumes `g()`, the **next** arg scan sees `tok`. Check still FN both.
 That is **not** a stmt miss vs eprintln.
 
-========================================================================
+---
 NAMED RESIDUALS (not this REJECT)
-========================================================================
+---
 
 R1. **Check front-door** is FN on the same `RPAREN` class for **both**
     names. Dual-path secret is **emit-only** for eprintln. Fixing only
@@ -237,9 +220,9 @@ R7. `println((tok))` check TYPE “expects at least 1 argument” (inner
     `RPAREN` stolen as closer). eprintln check still SECRET. Separate
     arity-desync; not required for this REJECT.
 
-========================================================================
+---
 VS SIBLINGS (independent; do not rubber-stamp)
-========================================================================
+---
 
 | Sibling | Their claim | This OWN |
 |---------|-------------|----------|
@@ -249,10 +232,7 @@ VS SIBLINGS (independent; do not rubber-stamp)
 | `s29_peer1` | REJECT unify; assigned FN=0 | **agree unify OPEN**; **disagree FN=0** once grouping/nest is in scope |
 | `s71_security` R1 / Z2 | stmt skip of walker “not fail-open” | **false** on these shapes; 7.1 already named 2.9 as residual |
 
-========================================================================
-FILES
-========================================================================
-
+## FILES
 | Path | Role |
 |------|------|
 | `openOODA/audit/s29_peer2.oot` | this report (OWN) |
@@ -260,10 +240,7 @@ FILES
 
 No product / std / oodac / SPRINT edits. No push.
 
-========================================================================
-FINAL
-========================================================================
-
+## FINAL
 **REJECT** 2.9 walker vs guard parity. Stmt `println` **does** miss
 shapes that free-call `eprintln` catches: any SECRET IDENT that appears
 **after a nested `RPAREN` still inside the sink args**. Live emit-c

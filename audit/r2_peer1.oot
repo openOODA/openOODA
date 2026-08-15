@@ -10,13 +10,8 @@
 #   strings still contain: "ERR\timport\tNUL in name rejected"
 # Source tip note: oodac/load_import.oo DIRTY (digit-0/NUL scan removed in tree
 #   07:38) but **binary not rebuilt** — live prove uses stale host.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 ## **REJECT path-A close**
-
 R2 multi-import is **partially green** on happy-path multi-file check, cycle /
 missing rails, and several cross-module type fails — but **cannot close path-A**
 while the product host still ships a known false-positive import reject, leaves
@@ -24,17 +19,15 @@ non-zero-arg return-type annotation silent OK, accepts empty import, and follows
 symlink import escapes. Domain Expert left `typecheck_bug_rails_smoke` red.
 
 ### Blockers (must clear before ACCEPT)
-
 | Sev | Issue | Evidence |
 |-----|-------|----------|
 | **CRIT** | Product binary still rejects any import name containing digit **`0`** as "NUL" | Live: `import "a0.oo"` / `f0.oo` / `mod10.oo` → `ERR import NUL in name rejected` rc=1. Source `load_import.oo` removed the scan (comment admits `"\0"` lexed as digit `0`) but **oodac not rebuilt** after 07:38 source edit (binary 06:41). |
 | **HIGH** | Silent OK when type should fail: let-ann vs **non-zero-arg** call return | `let s: String = add(1, 2);` and `let a: String = shared_helper(3);` → **OK** (single-file and multi-import). Zero-arg `let s: String = f();` correctly fails. Root: `tc_call_let.oo` / `tc_ann_let.oo` only match `IDENT LPAREN RPAREN`. |
 | **HIGH** | Empty import silent OK | `import "";` → **OK** rc=0. `parse_import_line` returns `""` for empty name → body keeps `import "";` → check skips `KW_IMPORT` via `skip_until_semi`; `reject_bad_import_name` never runs. |
 | **MED** | Symlink path escape (no `..` in name string) | `import "nest/out/pwn.oo"` with `nest/out` → abs dir outside tree → **OK**, loads outsider module. String rails reject `..` / abs / `~` only — no realpath. |
-| **MED** | Domain Expert smoke red | `scripts/typecheck_bug_rails_smoke.sh` → **FAILED** (fail rails accepted: `if_field_eq_false_type_bad`, `if_missing_field_eq_false`). Not multi-import-only, but DE left broken smoke. |
+| **MED** | Domain Expert smoke red | `scripts/typecheck_bug_rails_smoke.oo` → **FAILED** (fail rails accepted: `if_field_eq_false_type_bad`, `if_missing_field_eq_false`). Not multi-import-only, but DE left broken smoke. |
 
 ### Non-blockers / green rails (do not over-claim)
-
 - Basic multi-import typecheck OK (`multi_ok`, diamond, 20-wide import fan-in).
 - Cycle + missing fail-closed (corpus + ad-hoc).
 - Path string rails: `/abs`, `..`, `~/`, nested `..`, backslash — reject.
@@ -42,12 +35,12 @@ symlink import escapes. Domain Expert left `typecheck_bug_rails_smoke` red.
 - No hang/crash on cycle / diamond / wide (timeout 10–20s clean).
 - `import_load_smoke` **ALL OK**; `typecheck_line_smoke` **ALL OK** (single-file residual note retained).
 
-========================================================================
+---
 HUNT MATRIX (live oodac check)
-========================================================================
+---
 
-Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`  
-Also: `ooda/bin/ooda check` from `ooda/` root (product CLI dispatch).  
+Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`
+Also: `ooda/bin/ooda check` from `ooda/` root (product CLI dispatch).
 Fixtures: `/tmp/r2_peer1_probes/**`, Domain Expert `/tmp/r2_*`, corpus
 `ooda/bootstrap/corpus/import/{pass,fail}`.
 
@@ -87,18 +80,18 @@ Fixtures: `/tmp/r2_peer1_probes/**`, Domain Expert `/tmp/r2_*`, corpus
 | P43 | DE `type_fail` / `struct_fail` / `arity` / `undef` | DE fail rails | type ERR | type ERR | **PASS** |
 | P44 | DE `wrong_ret` / `shim_type_fail` | DE silent-OK hunt | type ERR | **OK** silent | **FAIL** |
 | P45 | DE `r2_chain` (f0…) | DE chain | OK | NUL reject | **FAIL** |
-| P46 | `import_load_smoke.sh` | DE/product import smoke | exit 0 | ALL OK | **PASS** |
-| P47 | `typecheck_line_smoke.sh` | single-file LINE local | exit 0 | ALL OK | **PASS** |
-| P48 | `typecheck_bug_rails_smoke.sh` | DE left smoke | exit 0 | **FAILED** (2 fail rails greenwash) | **FAIL** |
+| P46 | `import_load_smoke.oo` | DE/product import smoke | exit 0 | ALL OK | **PASS** |
+| P47 | `typecheck_line_smoke.oo` | single-file LINE local | exit 0 | ALL OK | **PASS** |
+| P48 | `typecheck_bug_rails_smoke.oo` | DE left smoke | exit 0 | **FAILED** (2 fail rails greenwash) | **FAIL** |
 | P49 | `ooda check` multi_ok + cycle from `ooda/` | product CLI multi | OK / cycle ERR | OK / cycle ERR | **PASS** |
 | P50 | dup free-name two modules | collision policy (Issue #10 residual) | documented residual | OK (accepts) | **NOTE** residual, not R2 close |
 
-**Score (strict hunt rows excluding residual NOTE): 35 PASS / 11 FAIL** among enumerated probes.  
+**Score (strict hunt rows excluding residual NOTE): 35 PASS / 11 FAIL** among enumerated probes.
 **Path-A close gate: FAIL** (CRIT + HIGH blockers open).
 
-========================================================================
+---
 COMMANDS (reproducible)
-========================================================================
+---
 
 ```bash
 cd /home/jeryd/Projects/openOODA/ooda
@@ -115,7 +108,6 @@ echo 'pub fn h() {}' > /tmp/r2z/a0.oo
 printf 'import "a0.oo";\npub fn main() {}\n' > /tmp/r2z/main.oo
 $OODAC check /tmp/r2z/main.oo
 # actual: ERR import NUL in name rejected  (want: OK after rebuild of fixed source)
-
 # HIGH: silent OK non-zero-arg call return vs ann
 rm -rf /tmp/r2_wr && mkdir /tmp/r2_wr
 cat > /tmp/r2_wr/lib.oo <<'EOF'
@@ -127,12 +119,10 @@ pub fn main() { let s: String = add(1, 2); }
 EOF
 $OODAC check /tmp/r2_wr/main.oo
 # actual: OK  (want: type ERR)
-
 # HIGH: empty import
 printf 'import "";\npub fn main() {}\n' > /tmp/r2_empty2.oo
 $OODAC check /tmp/r2_empty2.oo
 # actual: OK  (want: ERR import empty)
-
 # MED: symlink escape
 rm -rf /tmp/r2_peer1_sym /tmp/r2_peer1_escape_target
 mkdir -p /tmp/r2_peer1_sym/nest /tmp/r2_peer1_escape_target
@@ -142,15 +132,14 @@ printf 'import "nest/out/pwn.oo";\npub fn main() { let x: Int = pwn(); }\n' \
   > /tmp/r2_peer1_sym/main.oo
 $OODAC check /tmp/r2_peer1_sym/main.oo
 # actual: OK  (want: reject out-of-tree / symlink escape)
-
 # Smokes
-OODAC_BIN=./oodac/oodac bash scripts/import_load_smoke.sh
-OODAC_BIN=./oodac/oodac bash scripts/typecheck_bug_rails_smoke.sh
+OODAC_BIN=./oodac/oodac bash scripts/import_load_smoke.oo
+OODAC_BIN=./oodac/oodac bash scripts/typecheck_bug_rails_smoke.oo
 ```
 
-========================================================================
+---
 SOURCE vs BINARY HONESTY
-========================================================================
+---
 
 `git diff oodac/load_import.oo` (uncommitted) removes the mid-string NUL loop and
 documents that `"\0"` in OO lexes as digit `0`, falsely rejecting `f0.oo` /
@@ -165,9 +154,9 @@ documents that `"\0"` in OO lexes as digit `0`, falsely rejecting `f0.oo` /
 Path-A rule: close only on **rebuilt host prove**, not source commentary.
 Domain Expert must pure-multi (or equivalent) rebuild, then re-run P03/P36/P45.
 
-========================================================================
+---
 TYPECHECK GAP DETAIL (silent OK)
-========================================================================
+---
 
 `typecheck_let_ann_call_init` / `ann_check_let` only accept call init when tokens
 are exactly `IDENT ( )` (zero-arg). Any call with arguments skips return-type
@@ -187,10 +176,7 @@ Broken (silent OK):
 This is **broader than multi-import** (single-file same gap) but is exactly the
 peer hunt "Silent OK when type should fail across imports".
 
-========================================================================
-CACHE
-========================================================================
-
+## CACHE
 `run_check_path` hashes **expanded** import source (`content_hash(load_source_with_imports(...))`),
 tree key `t_<hash>`, stores `OK\n` under `.ooda-cache/check/`.
 
@@ -199,11 +185,8 @@ Live:
 - Mutate main zero-arg ann after warm → recheck fails (PASS).
 - Apparent "cache OK" on multi-arg wrong ann is the **typecheck gap**, not cache.
 
-========================================================================
-DOMAIN EXPERT LEFTOVER SMOKE
-========================================================================
-
-`typecheck_bug_rails_smoke.sh` on product host:
+## DOMAIN EXPERT LEFTOVER SMOKE
+`typecheck_bug_rails_smoke.oo` on product host:
 
 ```
 FAIL fail rail accepted (want ERR): if_field_eq_false_type_bad.oo
@@ -214,9 +197,9 @@ typecheck_bug_rails_smoke: FAILED (pass=5 fail=3 xfail_notes=2)
 Note: `fixtures/xfail/dup_import_names` still green by design (Issue #10 residual).
 Peer does not promote xfail to PASS rail.
 
-========================================================================
+---
 ACCEPTANCE CHECKLIST (for next re-prove)
-========================================================================
+---
 
 Re-run Peer1 matrix after Domain Expert:
 
@@ -230,10 +213,7 @@ Re-run Peer1 matrix after Domain Expert:
 
 Until 1–4 are live-green on product host: **do not ACCEPT path-A close**.
 
-========================================================================
-SUMMARY
-========================================================================
-
+## SUMMARY
 | Axis | Result |
 |------|--------|
 | Multi-import happy path | PASS (no hang; diamond/wide OK) |
@@ -247,7 +227,7 @@ SUMMARY
 | DE bug-rails smoke | **FAIL** left red |
 | **Path-A close** | **REJECT** |
 
-Audit path: `openOODA/audit/r2_peer1.oot`  
+Audit path: `openOODA/audit/r2_peer1.oot`
 Ephemeral fixtures: `/tmp/r2_peer1_probes/`, `/tmp/r2_peer1_sym/`, DE `/tmp/r2_*`
 
 end of r2_peer1.oot

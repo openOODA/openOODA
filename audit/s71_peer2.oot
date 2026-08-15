@@ -6,13 +6,8 @@
 # Scope: prove `c_guard_scan_idents` has no `name = name + c`; host not stale
 #        vs that slice body; long arg lists / long ident names — no hang (10s).
 # Write: this audit only. No product/std/oodac edits. No push.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 ## **ACCEPT** 7.1 walker memory/perf honesty
-
 SPRINT **7.1** (`c_guard_scan_idents` — no per-char OoStr concat / “stack
 buffer”) is **true on source and on the live product host**:
 
@@ -37,10 +32,7 @@ ident length ≥16k; 7.10 closed; lexer ident scan sliced.
 **Do not REJECT 7.1** solely because WT `c_secret_emit_guard` grew
 `__sec_sink__` after host build — 7.1 slice body is identical HEAD↔WT↔host.
 
-========================================================================
-SUMMARY TABLE
-========================================================================
-
+## SUMMARY TABLE
 | # | Probe | Expected for 7.1 honesty | Actual | VERDICT |
 |---|--------|--------------------------|--------|---------|
 | 1 | Source `c_guard_scan_idents` has no `name = name + c` | none | **0** hits; `let name = str_slice(args, start, i)` L105 | **PASS** |
@@ -71,10 +63,7 @@ SUMMARY TABLE
 **Scale no-hang at 10s: FAIL** for N≥200 args and L≥16k idents — **attributed
 outside 7.1**.
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Static read of live WT + `git show HEAD:oodac/c_emit_secret_guard.oo`.
 2. Python extract of `c_guard_scan_idents` body: concat-pattern scan.
 3. Host: `stat` / `md5sum` / `nm` / `objdump -d` over
@@ -87,10 +76,7 @@ METHOD
    to finish and attribute.
 7. No product rebuild. No push.
 
-========================================================================
-HOST / TIP / WT
-========================================================================
-
+## HOST / TIP / WT
 | Item | Value |
 |------|--------|
 | When (UTC) | 2026-08-12T18:44Z |
@@ -108,9 +94,9 @@ HOST / TIP / WT
 `__sec_sink__` a0/a1/a2 refuse + `str_starts_with` on the sealed-sink
 predicate. Walker L18–118 **untouched**.
 
-========================================================================
+---
 SOURCE (7.1 walker — live)
-========================================================================
+---
 
 ```
 pub fn c_guard_scan_idents(env, sink, args)
@@ -138,150 +124,9 @@ the language floor, not quadratic ident accumulate. Domain A
 **7.10** remains `c_parse_secret_env` (`c_emit_secret.oo:60`)
 `name = name + c` — **different function**.
 
-========================================================================
+---
 HOST DISASSEMBLY (product `oodac`)
-========================================================================
 
-```
-nm:  000000000045fb90 T c_guard_scan_idents   (size 0x14ea / 5354)
-     0000000000461080 T c_secret_emit_guard   (size 0x1282)
-     0000000000404570 T oo_str_slice
-     0000000000403f30 T oo_str_concat
-```
+*(Continued in `openOODA/audit/s71_peer2_part2.oot`)*
 
-Calls inside `c_guard_scan_idents` only:
-
-| Callee | Count | Role |
-|--------|-------|------|
-| `oo_str_slice` | **1** | ident span (7.1 close) |
-| `oo_str_concat` | **0** | no per-char rebuild |
-| `oo_char_at` | 6 | classify / skip |
-| `oo_str_eq` / `oo_str_lit` | many | letter-class giant `==` |
-| `c_secret_resolve_alias` + `c_secret_refuse_sink_ident` | 1 each | refuse |
-
-Generated C (`stage1_noarc.tmp.c:46344`) matches:
-`OoStr name = oo_str_slice(args, start, i);`
-
-========================================================================
-SCALE PROBES (product host — `/tmp/s71_peer2`)
-========================================================================
-
-Hang budget = **10s** (`timeout`). Dual-repro where noted.
-
-### Long arg lists (`println(a0, …, aN-1)` + N lets)
-
-| N | tokens | check | emit-c (10s) | emit-c (30s) |
-|---|--------|-------|--------------|--------------|
-| 50 | 0.06–0.13s | 1.03s | **0.42–1.37s PASS** dual | — |
-| 200 | 1.23s | **12.93s** rss 250 MB | **HANG/TERM 10s** | **10.85s** rss 135 MB |
-| 500 | — | — | TERM 10s | — |
-| 1000 | — | — | TERM 10s | — |
-
-**Attribution:** `check` does **not** call `c_guard_scan_idents`.
-check(200) > emit-c(200) ⇒ cost is typecheck / env / check-path secret
-walk, not the 7.1 emit walker. args string for N=200 is ~1–2 KiB;
-linear slice scan cannot explain 10s.
-
-### Long ident names (`let xaaa… = 1; println(xaaa…)`)
-
-| L | tokens | check | emit-c |
-|---|--------|-------|--------|
-| 256 | 0.08s | 0.11s | **0.13–0.39s PASS** dual |
-| 1024 | 0.17s | 0.45s | **0.46–0.83s PASS** dual |
-| 4096 | 0.50–0.93s | 9.09s | **5.91–8.39s PASS** (tight) |
-| 16384 | **7.46s** | (not finished in 10s budget) | **HANG 10s** |
-| 65536 | — | — | **ERR load 64KiB per-file** (honest) |
-
-**Attribution:** `try_scan_ident` (`token_scan_ident.oo:28`)
-`id = id + c2` per character — O(L²) lexer. tokens(16384)=7.46s already
-eats most of the 10s budget before emit guard runs.
-
-### Fail rail (correctness + no hang)
-
-| Probe | Result |
-|-------|--------|
-| `// SECRET: tok…` L=256 + `println(tok…)` | rc=1 `ERR	secret	println sink refuses SECRET tok…` **0.08–0.16s** dual **PASS** |
-| 500 args, last SECRET | 10s timeout — **no refuse witness** (pipeline, not FN proof) |
-
-### Combo
-
-200 idents × 64 chars: emit-c TERM at 10s — same class as N=200 + long names.
-
-========================================================================
-HOST vs SOURCE (the REJECT rail)
-========================================================================
-
-Assigned rule: *if source fixed but host stale, REJECT until rebuilt
-or document.*
-
-| Layer | Fixed? | In host? |
-|-------|--------|----------|
-| 7.1 `str_slice` walker | yes (HEAD L105) | **yes** (objdump + stage1 C) |
-| WT `__sec_sink__` emit_guard | WT-only, not 7.1 concat | **no** — host predates; **not** a 7.1 leak |
-
-**Document, do not REJECT 7.1:** host is current for the slice body;
-stale only vs concurrent WT `__sec_sink__` (2.10-class wrapper). A later
-pure-multi rebuild should pick that up; this peer did **not** rebuild.
-
-Do **not** use `oodac_bin` (Aug 11, 908632 B) as product host.
-
-========================================================================
-RESIDUALS (honest, out of 7.1 close)
-========================================================================
-
-1. **Lexer ident concat** — `token_scan_ident.oo` `id = id + c2`. Dominates
-   L≥4k–16k. Not 7.1.
-2. **Check/emit scale** — N=200 `println` ~11–13s, 135–250 MB. Not the
-   ident walker (check path).
-3. **7.10** — `c_parse_secret_env` still `name = name + c`.
-4. **7.2** — sibling last-arg slice; not re-proved here.
-5. **Letter-class giant `||`** — O(62) `str_eq` per char in the walker.
-   Linear factor, not quadratic concat. Residual cost only.
-6. **64KiB per-file load cap** — L=65536 never reaches the walker.
-
-========================================================================
-WHAT THIS PEER WILL NOT RUBBER-STAMP
-========================================================================
-
-- Peer1 ACCEPT of **scan contract** (IDENT refuse / string FP) — not
-  re-litigated; different OWN. See `s71_peer1.oot`.
-- Rollup “path-A closed including scale no-hang.”
-- Any claim that 10s no-hang holds for N=200 or L=16k on product host.
-
-========================================================================
-REPRO
-========================================================================
-
-```
-OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
-# static
-python3 -c '...'   # extract fn; assert "name = name + c" not in body
-nm -C $OODAC | grep c_guard_scan_idents
-objdump -d --start-address=0x45fb90 --stop-address=0x46107a $OODAC \
-  | grep -c oo_str_slice    # 1
-objdump ... | grep -c oo_str_concat   # 0
-
-# scale (fixtures in /tmp/s71_peer2)
-timeout 10 $OODAC emit-c /tmp/s71_peer2/args_50_ok.oo      # rc=0 ~0.5s
-timeout 10 $OODAC emit-c /tmp/s71_peer2/ident_1024_ok.oo   # rc=0 ~0.6s
-timeout 10 $OODAC emit-c /tmp/s71_peer2/ident_256_secret_fail.oo
-# rc=1 ERR secret
-timeout 30 $OODAC emit-c /tmp/s71_peer2/args_200_ok.oo     # ~11s (fails 10s)
-```
-
-========================================================================
-FILES
-========================================================================
-
-| Path | Role |
-|------|------|
-| `ooda/oodac/c_emit_secret_guard.oo` | 7.1 walker (read-only) |
-| `ooda/oodac/oodac` | product host (read-only) |
-| `ooda/oodac/token_scan_ident.oo` | residual lexer concat |
-| `ooda/oodac/c_emit_secret.oo` | residual 7.10 concat |
-| `/tmp/s71_peer2/` | ephemeral scale fixtures + logs |
-| `openOODA/audit/s71_peer2.oot` | this file |
-
-**No peer code fix. No push.**
-
-end of s71_peer2.oot
+end of s71_peer2.oot (part 1)

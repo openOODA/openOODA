@@ -18,13 +18,8 @@
 #   emit-c refuse). Do not claim a post-11:46 rebuild.
 # ID collision: DESIGN/PM 6.1 = metamorphic vs deterministic (different OWN).
 # This file is SPRINT backlog 6.1 — Confirm env_set in SECRETSINK.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 ## **ACCEPT path-A close of 6.1** (emit SECRETSINK re-prove)
-
 SPRINT **6.1** (`env_set` in SECRETSINK; partially landed with 2.3 — re-prove)
 is a real path-A **emit** floor on the live product host:
 
@@ -38,7 +33,7 @@ is a real path-A **emit** floor on the live product host:
      (`ERR\tsecret\tenv_set sink refuses SECRET tok`)
    - `env_set(envc, "KEY", "tok")` string literal **no secret FP**
      (no `ERR\tsecret`; dies later as unknown free call)
-3. Official harness `scripts/s61_env_set_secretsink_smoke.sh` **exit 0**.
+3. Official harness `scripts/s61_env_set_secretsink_smoke.oo` **exit 0**.
 4. Regression: `secret_t1_return_smoke`, `secret_t2_depth_smoke`,
    `s71_guard_scan_smoke`, `s72_sys_exec_last_arg_smoke`,
    `s710_parse_secret_env_smoke` all **exit 0**.
@@ -54,12 +49,9 @@ dual-path green.
 Do **not** over-claim: no product `oo_env_set` / no `c_emit_lower` branch.
 Clean `env_set` is fail-closed as `unknown free call needs annotation`
 (CAPS_MATRIX unlowered residual). Full IFC / `#[Secret]` / `${}` stay
-residual. `s61` is **not** wired in `ci_product.sh` (harness residual).
+residual. `s61` is **not** wired in `ci_product.oo` (harness residual).
 
-========================================================================
-CLAIM UNDER PRESSURE
-========================================================================
-
+## CLAIM UNDER PRESSURE
 | Slice | Path-A claim | Peer gate |
 |-------|--------------|-----------|
 | `env_set` in SECRETSINK | named emit + check + alias | source 3 guard sites + check sid + `c_secret_is_sink_name` |
@@ -75,9 +67,9 @@ Walker honesty:
   `"tok"` does not trip `ERR\tsecret`.
 - Ticket is **re-prove SECRETSINK**, not “ship `oo_env_set`.”
 
-========================================================================
+---
 SOURCE REVIEW (6.1 — no product edit)
-========================================================================
+---
 
 `ooda/oodac/c_emit_secret_guard.oo` (228 lines, under monofile ratchet):
 
@@ -104,34 +96,32 @@ if sid == "setenv" || sid == "env_set" || sid == "unsetenv" || mmap-family
 
 `tc_names.oo` — `env_get` known; **`env_set` unknown** → check type-first.
 
-========================================================================
+---
 PROBE TABLE (live product host)
-========================================================================
+---
 
-Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`  
-Probes: `/tmp/s61_peer1/probes/*.oo` (ephemeral; **not** landed)  
+Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`
+Probes: `/tmp/s61_peer1/probes/*.oo` (ephemeral; **not** landed)
 Re-prove cwd: `/tmp/s61_peer1/clean` (no `.ooda-cache`).
 
-Expect refuse = emit-c rc≠0 + `ERR\tsecret`.  
+Expect refuse = emit-c rc≠0 + `ERR\tsecret`.
 Expect string no-FP = **no** `ERR\tsecret` (unknown-call residual allowed).
 
 ### Assigned red-team (gate)
-
 | # | Probe | Shape | Expect | emit-c | check | Verdict |
 |---|-------|-------|--------|--------|-------|---------|
 | P01 | `P01_env_set_value.oo` | `env_set(envc, "KEY", tok)` SECRET `tok` | refuse | rc=1 `env_set sink refuses SECRET tok` | rc=1 type `undefined env_set` | **PASS** emit |
 | P03 | `P03_string_lit.oo` | `env_set(envc, "KEY", "tok")` | no secret FP | rc=1 `unknown free call … env_set` **no** `ERR\tsecret` | rc=1 type undefined | **PASS** no-FP |
-| R1 | `scripts/secret_t1_return_smoke.sh` | T1 return / alias / if-taint | exit 0 | — | — | **PASS** |
-| R2 | `scripts/secret_t2_depth_smoke.sh` | T2 field / method / args / midline | exit 0 | — | — | **PASS** |
-| R3 | `scripts/s71_guard_scan_smoke.sh` | 7.1 ident scan | exit 0 | — | — | **PASS** |
-| R4 | `scripts/s72_sys_exec_last_arg_smoke.sh` | 7.2 last-arg | exit 0 | — | — | **PASS** |
-| R5 | `scripts/s710_parse_secret_env_smoke.sh` | 7.10 parse-env | exit 0 | — | — | **PASS** |
-| H1 | `scripts/s61_env_set_secretsink_smoke.sh` | official 6.1 rails | exit 0 | refuse + setenv + string no-FP | — | **PASS** |
+| R1 | `scripts/secret_t1_return_smoke.oo` | T1 return / alias / if-taint | exit 0 | — | — | **PASS** |
+| R2 | `scripts/secret_t2_depth_smoke.oo` | T2 field / method / args / midline | exit 0 | — | — | **PASS** |
+| R3 | `scripts/s71_guard_scan_smoke.oo` | 7.1 ident scan | exit 0 | — | — | **PASS** |
+| R4 | `scripts/s72_sys_exec_last_arg_smoke.oo` | 7.2 last-arg | exit 0 | — | — | **PASS** |
+| R5 | `scripts/s710_parse_secret_env_smoke.oo` | 7.10 parse-env | exit 0 | — | — | **PASS** |
+| H1 | `scripts/s61_env_set_secretsink_smoke.oo` | official 6.1 rails | exit 0 | refuse + setenv + string no-FP | — | **PASS** |
 
 **Gate: 8/8 PASS** (assigned + official smoke).
 
 ### Bonus / control (not required to ACCEPT)
-
 | # | Probe | Shape | Expect | emit-c | check | Verdict |
 |---|-------|-------|--------|--------|-------|---------|
 | P02 | `P02_env_set_key.oo` | `env_set(envc, tok, "public")` | refuse | rc=1 SECRET `tok` | type-first | **PASS** emit |
@@ -149,14 +139,13 @@ Expect string no-FP = **no** `ERR\tsecret` (unknown-call residual allowed).
 | F4 | `fixtures/secret_env_get_pass.oo` | public env_get | allow | rc=0 | rc=0 | **PASS** |
 
 ### Adversarial miss that is **not** a 6.1 FN
-
 | # | Probe | What happened | Classification |
 |---|-------|---------------|----------------|
 | P06 | `let f = env_set; f(envc, "KEY", tok)` | emit-c **abort** rc=134 (`unaligned tcache chunk` / malloc) | Host crash on alias-of-unlowered name. Path-A **does** list `env_set` as alias sink, but the assigned shape is a **direct** `env_set(...)` call (P01 green). Crash is fail-closed-ugly, not a SECRET allow. Residual: alias×unlowered. **Not** a 6.1 SECRETSINK FN. |
 
-========================================================================
+---
 COMMAND (repro)
-========================================================================
+---
 
 ```
 OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
@@ -168,20 +157,16 @@ $OODAC emit-c /tmp/s61_peer1/probes/P03_string_lit.oo
 $OODAC check /tmp/s61_peer1/probes/P01_env_set_value.oo
 # rc=1  ERR<tab>type<tab>undefined variable 'env_set'   (type-first residual)
 cd /home/jeryd/Projects/openOODA/ooda
-OODAC=./oodac/oodac bash scripts/s61_env_set_secretsink_smoke.sh   # exit 0
-OODAC=./oodac/oodac bash scripts/secret_t1_return_smoke.sh        # exit 0
-OODAC=./oodac/oodac bash scripts/secret_t2_depth_smoke.sh         # exit 0
-OODAC=./oodac/oodac bash scripts/s71_guard_scan_smoke.sh          # exit 0
-OODAC=./oodac/oodac bash scripts/s72_sys_exec_last_arg_smoke.sh   # exit 0
-OODAC=./oodac/oodac bash scripts/s710_parse_secret_env_smoke.sh   # exit 0
+OODAC=./oodac/oodac bash scripts/s61_env_set_secretsink_smoke.oo   # exit 0
+OODAC=./oodac/oodac bash scripts/secret_t1_return_smoke.oo        # exit 0
+OODAC=./oodac/oodac bash scripts/secret_t2_depth_smoke.oo         # exit 0
+OODAC=./oodac/oodac bash scripts/s71_guard_scan_smoke.oo          # exit 0
+OODAC=./oodac/oodac bash scripts/s72_sys_exec_last_arg_smoke.oo   # exit 0
+OODAC=./oodac/oodac bash scripts/s710_parse_secret_env_smoke.oo   # exit 0
 ```
 
-========================================================================
-FP / FN NOTES
-========================================================================
-
+## FP / FN NOTES
 ### False positives (secret-refuse when should allow)
-
 | Probe | Result |
 |-------|--------|
 | `"tok"` as env_set value literal | **no secret FP** |
@@ -194,7 +179,6 @@ FP / FN NOTES
 **Assigned string-lit FP count: 0.**
 
 ### False negatives (allow when should refuse)
-
 | Probe | Result |
 |-------|--------|
 | `env_set(..., tok)` value IDENT | **no FN** emit-c |
@@ -208,9 +192,9 @@ FP / FN NOTES
 Check-path secret for `env_set` is **unreachable** (type-first). That is
 **not** counted as an emit FN.
 
-========================================================================
+---
 RESIDUALS (honest, out of 6.1 gate)
-========================================================================
+---
 
 1. **No product `oo_env_set`.** CAPS_MATRIX: sealed but not lowered.
    Clean calls fail-closed as unknown free call. Not this re-prove.
@@ -219,23 +203,17 @@ RESIDUALS (honest, out of 6.1 gate)
 3. **`let f = env_set` abort** (P06) — host malloc smash on alias of an
    unlowered sink. Assigned direct-call rail is green. Do not close as
    alias prove.
-4. **`s61` not in `ci_product.sh`.** Harness residual.
+4. **`s61` not in `ci_product.oo`.** Harness residual.
 5. **No in-tree `secret_env_set_*.oo`.** Ephemeral + official smoke only.
 6. **`diag_json` help omits `env_set`** (runtime auditor). Doc-only.
 7. Full IFC / `#[Secret]` / `${}` — SECRET_TAINT residual.
 8. DESIGN/PM **6.1** metamorphic-vs-deterministic — different ID.
 
-========================================================================
-PEER OWN
-========================================================================
-
-No product compiler edit. No fixture land. No smoke change.  
+## PEER OWN
+No product compiler edit. No fixture land. No smoke change.
 Write: `openOODA/audit/s61_peer1.oot` only.
 
-========================================================================
-CLOSE TABLE
-========================================================================
-
+## CLOSE TABLE
 | Item | Status |
 |------|--------|
 | `env_set` named in SECRETSINK (source + host) | **PASS** |

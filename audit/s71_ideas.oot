@@ -3,9 +3,7 @@
 # Role: creative but **shippable** residual ideas — **no product code** this pass
 # Audience: Domain Experts (implement winner) · peers (smoke / FP-FN) · Memory
 # Scope: `c_guard_scan_idents` 7.1 close — **not** M1–M20, not full IFC
-
 ## Problem (tree truth)
-
 | Fact | Evidence |
 |------|----------|
 | Sprint pin | `SPRINT.oot` 7.1 CRIT: `c_guard_scan_idents` **stack buffer** (no per-char OoStr leak) |
@@ -18,13 +16,12 @@
 | Shared state machines | String/escape skip copied in `c_guard_scan_idents`, `c_sys_exec_last_arg`, `c_count_top_args`. Alpha-class oracles copied in 7.1 + 7.10 |
 | Handoff | `audit/shutdown_handoff_2026-08-12_r2_swarm.oot`: 7.1 “source comments claim str_slice already; **needs prove/close only?**” |
 | T2 security already probed | `audit/t2_security.oot`: string/comment FP = 0 on product host; real IDENT refuse dual-path. **Fixtures exist** under `ooda/fixtures/secret_t2_*.oo` |
-| T2 smoke gap | `scripts/secret_t2_depth_smoke.sh` does **not** wire `secret_t2_string_*` / `secret_t2_comment_*` (field/method/multi-arg/midline only) |
+| T2 smoke gap | `scripts/secret_t2_depth_smoke.oo` does **not** wire `secret_t2_string_*` / `secret_t2_comment_*` (field/method/multi-arg/midline only) |
 | Alias rail | Token + resolve: `c_secret_refuse_sink_resolved` / `__alias__`. Fixtures: `secret_alias_rebind_{pass,fail}.oo`, `secret_t1_alias_println.oo`. T1 smoke owns rebind; 7.1 smoke should not re-own sticky-clear |
 
 **Not this wave:** full IFC, AST multi-arg lattice, `${}` interp (5.8), macro-body second pass (2.8), replacing emit with a new IR.
 
 ## Constraints (hard)
-
 1. **Path A only** — fail-closed ident scan residual, not “perfect taint.”
 2. **Do not greenwash 7.1 from comments.** Close only on **static slice proof + immune smoke**.
 3. **Keep dual-path honesty.** Token IDENT walk (check) and C-text belt (emit args) disagree on some edges; deleting one without prove is FN risk.
@@ -34,7 +31,6 @@
 7. **Fairy writes ideas only** — DE owns land + prove.
 
 ## Darwin scorecard (path-A residual)
-
 Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 
 | Axis | Meaning |
@@ -50,7 +46,6 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 ---
 
 ## Ideas evaluated
-
 ### I1 — Prove/close 7.1 as **already sliced** (no walker rewrite) ⭐
 **Shape:** Treat 7.1 product code as landed (`str_slice` per span; no `name = name + c` in the walker). Close the CRIT with:
 1. Static grep: `c_guard_scan_idents` contains `str_slice`; **no** ident concat in that fn.
@@ -58,22 +53,22 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 3. Rewrite SPRINT 7.1 line from “stack buffer” → **FIXED path-A (slice + prove)** or drop to residual note.
 4. Named residual: C-text scan is still a **re-lexer** of lowered args, not token-stream (I2 later).
 
-**Smoke:** I5 matrix.  
-**Darwin:** Close 9 · Honest 10 · Smoke 9 · Entropy 9 · Ship 10 → **avg 9.4**  
+**Smoke:** I5 matrix.
+**Darwin:** Close 9 · Honest 10 · Smoke 9 · Entropy 9 · Ship 10 → **avg 9.4**
 **Why winner-class:** Handoff already asked “prove/close only?” Tree matches. Avoids thrash rewrite of a working belt.
 
 ### I2 — Replace C-text scan with **token-stream** only
 **Shape:** Delete (or never call) `c_guard_scan_idents`. Rely solely on `c_secret_scan_call` / println IDENT walk over lexer toks. Strings/comments never become IDENT → FP class dissolves by construction.
 
-**Smoke:** same T2 matrix; plus a case where lowered C text contains an ident that **tokens already classified** (must still refuse).  
-**Darwin:** Close 5 · Honest 6 · Smoke 6 · Entropy 4 · Ship 4 → **avg 5.0**  
-**Why weak now:** Emit guard runs on **joined C arg text** after `c_emit_call_args` (`c_emit_lower.oo`) — toks are not in that helper’s contract. Dropping C-text without passing toks is an **FN hole** on any sink that only the emit belt covers (full `args` after a0/a1/a2). Dual-path is the Path-A floor (`SECRET_TAINT.oot` §4–5).  
+**Smoke:** same T2 matrix; plus a case where lowered C text contains an ident that **tokens already classified** (must still refuse).
+**Darwin:** Close 5 · Honest 6 · Smoke 6 · Entropy 4 · Ship 4 → **avg 5.0**
+**Why weak now:** Emit guard runs on **joined C arg text** after `c_emit_call_args` (`c_emit_lower.oo`) — toks are not in that helper’s contract. Dropping C-text without passing toks is an **FN hole** on any sink that only the emit belt covers (full `args` after a0/a1/a2). Dual-path is the Path-A floor (`SECRET_TAINT.oot` §4–5).
 **Later:** only after emit-guard is wired to the same tok cursor as check (I3).
 
 ### I3 — Token-stream **at emit** (pass toks into `c_secret_emit_guard`)
 **Shape:** Change `c_secret_emit_guard` / call sites to take `toks + start/end` of the arg list; walk IDENT the same as `c_secret_scan_call`. C-text scan becomes optional belt or dies.
 
-**Darwin:** Close 7 · Honest 8 · Smoke 5 · Entropy 5 · Ship 2 → **avg 5.4**  
+**Darwin:** Close 7 · Honest 8 · Smoke 5 · Entropy 5 · Ship 2 → **avg 5.4**
 **Why later:** Signature change across `c_emit_lower` / `c_emit_call` / LLVM sibling. Architecture-adjacent. Does **not** fix 7.1 heap (already sliced). Correct long-term DRY vs dual re-lexers — **not this CRIT turn.**
 
 ### I4 — Shared **ident-slice** helper for 7.1 / 7.2 / 7.10 ⭐
@@ -85,12 +80,12 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 
 **Minimal path-A:** helper in `c_emit_secret.oo` or `c_emit_args.oo` (already imported). No new package.
 
-**Smoke:** 7.1 matrix (I5) + existing `secret_midline_safe` + one `// SECRET: longish_name` still tags; invalid empty name still `ERR secret`.  
-**Darwin:** Close 8 · Honest 9 · Smoke 8 · Entropy 9 · Ship 8 → **avg 8.4**  
+**Smoke:** 7.1 matrix (I5) + existing `secret_midline_safe` + one `// SECRET: longish_name` still tags; invalid empty name still `ERR secret`.
+**Darwin:** Close 8 · Honest 9 · Smoke 8 · Entropy 9 · Ship 8 → **avg 8.4**
 **Why ship-with-winner:** 7.1 itself is already slice-correct; helper **closes 7.10** with the 7.1 pattern and prevents the next agent from “fixing” 7.1 via concat or a fake C buffer.
 
 ### I5 — Smoke matrix: string / comment / alias (7.1 prove rail) ⭐
-**Shape:** One small script (new `secret_s71_ident_scan_smoke.sh` **or** extend `secret_t2_depth_smoke.sh` — prefer **extend** to avoid dual truth). Dual-path `emit-c` + `check` where cheap.
+**Shape:** One small script (new `secret_s71_ident_scan_smoke.oo` **or** extend `secret_t2_depth_smoke.oo` — prefer **extend** to avoid dual truth). Dual-path `emit-c` + `check` where cheap.
 
 | Case | Fixture (exists unless noted) | Expect |
 |------|-------------------------------|--------|
@@ -106,38 +101,37 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 | Alias sink name | `secret_t1_alias_println.oo` (`let f = println; f(secret)`) | REFUSE **or named residual** if Path-A only tracks IDENT→IDENT data alias, not callee alias on every emit path — **do not soft-OK** |
 | Static 7.1 | grep walker | `str_slice` present; no per-char ident concat in `c_guard_scan_idents` |
 
-**Darwin:** Close 9 · Honest 10 · Smoke 10 · Entropy 10 · Ship 9 → **avg 9.6** (rails; not a solo product rewrite)  
+**Darwin:** Close 9 · Honest 10 · Smoke 10 · Entropy 10 · Ship 9 → **avg 9.6** (rails; not a solo product rewrite)
 **Why must-bundle:** Without this, “7.1 FIXED” is comment-greenwash (Zero Trust Agency). Fixtures are **already on disk** from T2 security — wire them.
 
 ### I6 — Literal SPRINT: C stack buffer in emit / runtime
-**Shape:** Lower walker to C `char buf[64]` / `oodac` helper in `chs_rt`.  
-**Darwin:** Close 3 · Honest 1 · Smoke 2 · Entropy 0 · Ship 1 → **avg 1.4 — DISQUALIFIED**  
+**Shape:** Lower walker to C `char buf[64]` / `oodac` helper in `chs_rt`.
+**Darwin:** Close 3 · Honest 1 · Smoke 2 · Entropy 0 · Ship 1 → **avg 1.4 — DISQUALIFIED**
 **Why dies:** Wrong language layer; new FFI surface; SPRINT words are a **memory-class hint**, not a C ABI. `t1_memory.oot` already rejected this.
 
 ### I7 — Full AST / IFC multi-arg lattice (drop string scan)
-**Shape:** Typed arg nodes; no C-text; interproc lattice.  
-**Darwin:** Close 6 · Honest 4 · Smoke 1 · Entropy 0 · Ship 0 → **avg 2.2 — REJECT**  
+**Shape:** Typed arg nodes; no C-text; interproc lattice.
+**Darwin:** Close 6 · Honest 4 · Smoke 1 · Entropy 0 · Ship 0 → **avg 2.2 — REJECT**
 **Why dies:** Moonshot / DESIGN full taint. Out of residual 7.1.
 
 ### I8 — Naive `contains` / grep secret names on raw `args`
-**Shape:** For each `__sec__*` name, `str` search in args.  
-**Darwin:** Close 2 · Honest 0 · Smoke 1 · Entropy 0 · Ship 6 → **avg 1.8 — DISQUALIFIED**  
+**Shape:** For each `__sec__*` name, `str` search in args.
+**Darwin:** Close 2 · Honest 0 · Smoke 1 · Entropy 0 · Ship 6 → **avg 1.8 — DISQUALIFIED**
 **Why dies:** Guaranteed string/comment **FP**. Undoes T2-1/T2-2. Opposite of Path-A.
 
 ### I9 — Keep dual scan; document C-text as emit belt only
-**Shape:** No code. `SECRET_TAINT.oot` already says this. Add one line to SPRINT 7.1 residual: “emit C-text belt; check is IDENT tokens.”  
-**Darwin:** Close 4 · Honest 9 · Smoke 2 · Entropy 5 · Ship 9 → **avg 5.8**  
+**Shape:** No code. `SECRET_TAINT.oot` already says this. Add one line to SPRINT 7.1 residual: “emit C-text belt; check is IDENT tokens.”
+**Darwin:** Close 4 · Honest 9 · Smoke 2 · Entropy 5 · Ship 9 → **avg 5.8**
 **Why not alone:** Honesty without prove. Ship **as a comment** inside I1+I5, not as the close.
 
 ### I10 — Shared **string-skip** walker only (no ident helper)
-**Shape:** Extract `c_skip_c_quote` used by 7.1 + 7.2 last-arg + `c_count_top_args`.  
-**Darwin:** Close 4 · Honest 8 · Smoke 5 · Entropy 6 · Ship 7 → **avg 6.0**  
+**Shape:** Extract `c_skip_c_quote` used by 7.1 + 7.2 last-arg + `c_count_top_args`.
+**Darwin:** Close 4 · Honest 8 · Smoke 5 · Entropy 6 · Ship 7 → **avg 6.0**
 **Why later hygiene:** Lowers copy-paste drift; does **not** close 7.1 or 7.10. Optional same-wave if line budget allows; not the CRIT.
 
 ---
 
 ## Rank (path-A survivors)
-
 | Rank | ID | Avg | Verdict |
 |-----:|----|----:|---------|
 | **1** | **I5 + I1** | 9.6 / 9.4 | **WINNER BUNDLE — ship now** prove 7.1 slice + string/comment/alias matrix |
@@ -151,7 +145,6 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 | — | I6 | 1.4 | Disqualified (fake C stack buffer) |
 
 ## Token-stream vs C-text (Decide card)
-
 | | Token-stream (`c_secret_scan_call`) | C-text (`c_guard_scan_idents`) |
 |--|-------------------------------------|--------------------------------|
 | Input | Lexer toks (`IDENT` field 3) | Lowered joined C `args` string |
@@ -164,20 +157,17 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 **Ship-now decision:** keep **both**. Close 7.1 on the C-text walker’s **slice + skip prove**. Token unification = later (I3), not a substitute for I1.
 
 ## Top recommendation (this turn — path-A residual close)
-
 ### **Ship: Prove/close 7.1 (I1) + string/comment/alias smoke matrix (I5). Optionally land ident-slice helper (I4) on 7.10 same wave.**
-
 **Why this closes 7.1:**
 - Walker is already the Path-A fix (`str_slice`, no per-char OoStr). SPRINT “stack buffer” is a **wrong tool**.
-- Unclosed part is **untested claim** (\(U\)): T2 fixtures for string/comment sit **unwired** to `secret_t2_depth_smoke.sh`.
+- Unclosed part is **untested claim** (\(U\)): T2 fixtures for string/comment sit **unwired** to `secret_t2_depth_smoke.oo`.
 - Alias resolve is already on the refuse path (`c_secret_refuse_sink_resolved`); smoke must show dest-alias refuse, and must **name** callee-alias (`let f = println`) if emit C-text does not rewrite `t`.
 - Shared helper is the right **7.10** close using the **7.1** pattern — not a 7.1 rewrite.
 
 ### DE winner advice (plain English)
-
 1. **Do not rewrite** `c_guard_scan_idents` into tokens or a C `char[]`.
 2. **Prove static:** in `c_emit_secret_guard.oo`, ident materialization is `str_slice` only.
-3. **Wire smoke (I5):** extend `secret_t2_depth_smoke.sh` (preferred) **or** add `secret_s71_ident_scan_smoke.sh` called from `ci_product.sh`. Minimum new cases: `secret_t2_string_fp`, `secret_t2_string_lit_arg_fp`, `secret_t2_comment_fp`, `secret_t2_real_arg_fail`. Add alias: `secret_alias_rebind_pass` refuse. Dual-path check if cheap (T2 security already showed emit+check).
+3. **Wire smoke (I5):** extend `secret_t2_depth_smoke.oo` (preferred) **or** add `secret_s71_ident_scan_smoke.oo` called from `ci_product.oo`. Minimum new cases: `secret_t2_string_fp`, `secret_t2_string_lit_arg_fp`, `secret_t2_comment_fp`, `secret_t2_real_arg_fail`. Add alias: `secret_alias_rebind_pass` refuse. Dual-path check if cheap (T2 security already showed emit+check).
 4. **SPRINT 7.1:** mark FIXED path-A **only after** smoke exit 0 on rebuilt host. Replace “stack buffer” wording.
 5. **If same-wave budget:** I4 `c_ident_end` / `c_slice_ident_at` → rewrite **7.10** `c_parse_secret_env` name loop to one slice. Leave 7.2 last-arg as-is (already sliced; not an ident).
 6. **Done bar:**
@@ -189,31 +179,27 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 7. **Out of scope:** I2 drop C-text; I3 emit tok plumbing; I6 C buffer; I7 lattice; I8 grep.
 
 ### Explicit non-winners (do not build this turn)
-
-- C stack buffer / runtime C helper as the 7.1 “fix” (I6)  
-- Delete C-text scan “because tokens exist” (I2)  
-- Emit-guard signature rewrite to toks (I3)  
-- Full IFC / AST lattice (I7)  
-- Raw `contains` of secret names (I8)  
-- M1–M20 moonshots  
+- C stack buffer / runtime C helper as the 7.1 “fix” (I6)
+- Delete C-text scan “because tokens exist” (I2)
+- Emit-guard signature rewrite to toks (I3)
+- Full IFC / AST lattice (I7)
+- Raw `contains` of secret names (I8)
+- M1–M20 moonshots
 
 ## Entropy report (expected after winner)
-
-`S: ↓` — 7.1 “FIXED in comments” → **smoke-proved** slice + FP/FN matrix; SPRINT wording debt cleared.  
-`U` holds only for: token/C-text unification (I3), 7.10 until I4 lands, callee-alias completeness, `${}` (5.8).  
+`S: ↓` — 7.1 “FIXED in comments” → **smoke-proved** slice + FP/FN matrix; SPRINT wording debt cleared.
+`U` holds only for: token/C-text unification (I3), 7.10 until I4 lands, callee-alias completeness, `${}` (5.8).
 `O` does not rise (no second scanner architecture).
 
 ## Leave-off
-
-- Fairy: ideas only in this file.  
-- DE owns land + prove; peers: string/comment **0 FP**, real IDENT **0 FN**, no SPRINT “stack buffer” lie.  
-- Memory: 7.2 already sliced; 7.10 is the leftover concat.  
+- Fairy: ideas only in this file.
+- DE owns land + prove; peers: string/comment **0 FP**, real IDENT **0 FN**, no SPRINT “stack buffer” lie.
+- Memory: 7.2 already sliced; 7.10 is the leftover concat.
 - Security: do not regress T2 string-aware skip; do not add grep.
 
 ---
 
 ## One-page DE pocket card (I1+I5, optional I4)
-
 ```
 7.1 ship-now:
   KEEP  c_guard_scan_idents  (C-text belt, str_slice per ident)
@@ -225,13 +211,12 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 
 7.10 same-wave (I4) if budget:
   name = str_slice(src, name_start, k)   # not name = name + c
-
 LATER (not 7.1):
   pass toks into emit-guard  (I3)
   share c_skip_c_quote       (I10)
 ```
 
-Path-A residual callout after land:  
+Path-A residual callout after land:
 “7.1 = slice C-text ident belt + proved skip. Not token-stream-only. Not stack buffer. Not full IFC.”
 
 end of s71_ideas.oot

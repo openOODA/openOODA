@@ -9,9 +9,7 @@
 # Adjacent dirty (not 2.9b): `c_emit_secret_guard.oo` (9779 B, 228 L, 11:46) — **2.10** `__sec_sink__` only
 # Wave-1 pointer: `audit/s29_memory.oot` (no-unify concat bar; walker was first-`RPAREN`)
 # OWN: audit only (no product code changes this pass)
-
 ## Scope
-
 Prove or reject SPRINT **2.9 wave-2** memory floor:
 
 > Hunt: **no new concat in the depth walk**
@@ -37,7 +35,6 @@ Out of scope (named residual only): helper unify (`s29_memory.oot` H3 / I5/I9 st
 ID collision: none. This file is SPRINT **2.9 wave-2** = paren-depth on the existing token walks. Wave-1 `s29_memory.oot` stays the no-unify / no-join bar.
 
 ## Verdict — path-A memory floor
-
 | Result | Meaning |
 |--------|---------|
 | **PASS** | Wave-2 added **Int `depth` / Int `d` + index `+ 1`**. Zero `name = name + c`. Zero `args = args + …`. Zero new `str_slice` in any of the three depth walks. IDENT text is still `field_at(..., 3)` (token already paid). `c_secret_scan_call` and stmt `c_emit_println` reuse the same Int pattern. No third extract. No fake `args`. |
@@ -57,9 +54,7 @@ ID collision: none. This file is SPRINT **2.9 wave-2** = paren-depth on the exis
 ---
 
 ## H1 — No new concat (the 2.9b close bar)
-
 ### What wave-2 actually landed
-
 | Site | Form | Alloc? |
 |------|------|--------|
 | `c_emit_secret.oo` L179–190 | `let mut depth = 1` then `depth ± 1` / `p + 1` on LPAREN/RPAREN | **none** (Int) |
@@ -67,7 +62,7 @@ ID collision: none. This file is SPRINT **2.9 wave-2** = paren-depth on the exis
 | `c_emit_secret.oo` L97–129 | `c_secret_scan_call` same Int depth (COMMA only at `depth == 1`) | **none** (Int) |
 | `c_emit_print.oo` L19–32 | `let mut d = 0`; LPAREN `d+1`; RPAREN/COMMA/SEMI break only if `d <= 0` | **none** (Int) |
 | `c_emit_print.oo` L34–38 | IDENT → `"__sec__" + sn` ( **existing** env key) | once-per-ident (not new) |
-| `scripts/s29_println_guard_smoke.sh` | + grouped rail `println((1), tok)` | none (script) |
+| `scripts/s29_println_guard_smoke.oo` | + grouped rail `println((1), tok)` | none (script) |
 | `audit/s29b_*.oot` | phalanx evidence | none (doc) |
 
 Check-walk diff vs `52cc4b5` (only the depth hunk; if-chain collapse / 7.10 / 2.10 sit in the same file):
@@ -137,201 +132,7 @@ Existing (not new, not 2.9b-owned) string `+`:
 
 ---
 
-## H2 — Grouped / nested heap vs sibling class
 
-### Mechanism
+*(Continued in `openOODA/audit/s29b_memory_part2.oot`)*
 
-| Rail | File | After wave-2 source | Concat? | In 07:49 ELF? |
-|------|------|---------------------|---------|---------------|
-| check / llvm / emit-c **front door** | `c_emit_secret.oo` L173–200 | Int `depth`; IDENT via `field_at` | **none** | **no** (still first-`)`) |
-| `c_secret_scan_call` | same file L89–130 | same Int `depth` | **none** | **no** |
-| stmt `println` emit | `c_emit_print.oo` L19–41 | Int `d`; IDENT still `"__sec__"+sn` | no ident rebuild; no join | **no** (still first-`)`) |
-| free-call `eprintln` | `c_emit_lower.oo` L90 → `c_secret_emit_guard` | C-text `c_guard_scan_idents` (7.1 slice) | join is **`c_emit_call_args` L40** (pre-existing) | **yes** |
-
-Wave-2 **source** check + stmt depth both **see `tok` after a nested `)`**. Host ELF still does **not**. On this binary, stmt println still stops at first `RPAREN` except when `tok` is a **later top-level arg** after `c_emit_expr_c` consumed the grouped first arg (`println((1), tok)` — 2nd-arg rescan). `println(("x") + tok)` stays one arg on this ELF: scan hits the grouping `RPAREN` and **never** looks at `tok`. WT stmt `d` would continue.
-
-Host `oodac` is the **07:49** ELF (same as s61/s71/s72/s710/s28/s29). `nm -S` this binary (sizes unchanged):
-
-| Sym | Addr | Size |
-|-----|------|-----:|
-| `c_emit_println` | `0x4651b0` | 2583 |
-| `c_secret_emit_guard` | `0x461080` | 4738 |
-| `c_guard_scan_idents` | `0x45fb90` | 5354 |
-| `check_secret_println_sinks` | `0x475c50` | 5316 |
-| `c_secret_scan_call` | `0x45e020` | 783 |
-| `c_secret_refuse_println_ident` | `0x45de80` | 175 |
-
-Live RSS below is **this ELF**, not the WT walker. Same honesty class as `s710_memory.oot` H2.
-
-### Live rails (this binary)
-
-Ephemeral `/tmp/s29b_mem_1171777/` (removed). `/usr/bin/time` `%e` / `%M`. `OODA_SRC_ROOT=ooda`. Isolated HOME (s71 R9). Taken **before** the 12:35 stmt `d` land; ELF unchanged so the table still holds.
-
-Direct tiny fixtures:
-
-| Case | cmd | rc | sec | RSS KB | Note |
-|------|-----|---:|----:|-------:|------|
-| `println(tok)` bare | emit-c | 1 | 0.07 | 4416 | `ERR secret println … tok` |
-| same | check | 1 | 0.03 | 5108 | dual refuse |
-| `println((1), tok)` grouped later | emit-c | 1 | 0.03 | 4792 | stmt 2nd-arg rescan; `oo_print_int((1LL));` then refuse |
-| same | check | **0** | 0.03 | 5232 | **FN** — ELF has no depth |
-| `eprintln((1), tok)` | emit-c | 1 | 0.04 | 4652 | guard |
-| same | check | **0** | 0.02 | 5284 | same front-door miss |
-| `println(("x") + tok)` | emit-c | **0** | 0.03 | 4920 | **FN leak** `oo_str_concat((oo_str_lit("x")), tok)` — ELF stmt no `d` |
-| same | check | **0** | 0.03 | 5272 | FN |
-| `eprintln(("x") + tok)` | emit-c | 1 | 0.03 | 4848 | guard still sees `tok` |
-| same | check | **0** | 0.02 | 5328 | FN |
-| public `println(1)` | emit-c | 0 | 0.02 | 4532 | no secret |
-
-**Read:** grouped emit-c RSS **tracks** bare / eprintln (~4.4–4.8 MB). Check on the hole is the same 5.2 MB class as a public check (FN → typecheck, no refuse). **No** extra join buffer on the stmt rail. The eprintln save of concat-after-group is the **existing** 7.1 C-text scan, not a 2.9b alloc.
-
-Harness `scripts/s29_println_guard_smoke.sh` (wave-2 rail added): wave-1 rails **OK**; `println((1), tok)` emit-c **OK** / check **FAIL**. Smoke **exit 1**. `s29b_harness.oot` names this. Do **not** treat exit 1 as a harness bug. Do **not** treat it as a memory FAIL.
-
-Nested grouping `println( (^{d} 1 )^{d} , tok)` (stmt still refuses via 2nd-arg rescan; check FN so typechecks the nest):
-
-| d | src B | emit-c sec / RSS | check sec / RSS |
-|--:|------:|-----------------:|----------------:|
-| 1 | 80 | 0.08 / 4732 | 0.03 / 5308 |
-| 8 | 94 | 0.05 / 4728 | 0.07 / 5820 |
-| 32 | 142 | 0.06 / 5988 | 0.06 / 7868 |
-| 64 | 206 | 0.19 / 6712 | 0.11 / 10300 |
-| 128 | 334 | 0.13 / 8880 | 0.25 / 15168 |
-| 256 | 590 | 0.23 / 12984 | 0.38 / 24692 |
-
-**Read:** RSS grows with **parse/typecheck of nested parens** (and with source bytes), **not** a prefix-chain. 64→128→256 check ≈ 1.47× / 1.63× RSS for 2× depth. A concat bomb on the walk would be tens–hundreds of MB at d=256. A rebuilt ELF that actually **runs** the Int depth walks pays `field_at` on the extra tokens the old walk skipped — O(#toks) slices, still **no** growing `args`.
-
-Long SECRET ident after grouped first arg (`// SECRET: A+a*(N-1)` then `println((1), NAME)`):
-
-| N | src B | emit-c sec / RSS (BLOCK) | check sec / RSS (FN on this ELF) |
-|--:|------:|-------------------------:|---------------------------------:|
-| 64 | 258 | 0.06 / 5816 | 0.03 / 5756 |
-| 256 | 834 | 0.17 / 8696 | 0.12 / 6628 |
-| 1024 | 3138 | 2.63 / 19696 | 0.61 / 11312 |
-| 2048 | 6210 | 5.15 / 35028 | 1.83 / 16992 |
-
-**Read:** time 1024→2048 ≈ 2.0–3.0× for 2× N — `char_at` / lex (same class as s29 H2 / s61 H2). emit-c RSS is the **ident token** + first-arg emit, then refuse — not a depth-walk concat. Check is cheaper here **because it FNs** (no secret walk of `NAME` on this ELF). Wave-1 bare-ident emit-c at N=2048 was 18.1 MB; this 35 MB includes the `let NAME = "s"` bind of a 2 KiB lexeme (`token_scan_ident` still per-char — **not** 2.9b).
-
-Many public idents with a grouped dummy (`println|eprintln((1), a0000, …)`):
-
-| N | src B | println emit sec / RSS / C B | eprintln emit sec / RSS / C B | println check | eprintln check |
-|--:|------:|-----------------------------:|------------------------------:|--------------:|----------------:|
-| 16 | ~458 | 0.08 / 7864 / 9912 | 0.09 / 8000 / 9636 | 0.13 / 11600 | 0.10 / 11556 |
-| 64 | ~1754 | 0.64 / 26424 / 12264 | 0.72 / 26492 / 11220 | 0.52 / 46672 | 0.63 / 46408 |
-
-**Read:** println **tracks eprintln** (same ~26 MB / ~46 MB class as s29 H2 N=64). Join on eprintln is still cheaper C text. Grouped dummy does **not** change the class.
-
-**H2 heap class: PASS. H2 time: residual. H2 new-walk product-binary RSS: unproved (pre-depth host).**
-
----
-
-## H3 — Mechanism (Int depth, not a new extract)
-
-| Artifact | What it says / does |
-|----------|---------------------|
-| WT `check_secret_println_sinks` L179 | `let mut depth = 1` — **Int** |
-| WT `c_secret_scan_call` L97 | same Int — **reuse of the other-sink scanner**, not a third walk |
-| WT `c_emit_println` L19 | `let mut d = 0` — **Int** (same recipe; landed 12:35) |
-| `c_secret_emit_guard` | **still not** called from check or stmt println |
-| `s29b_harness.oot` | grouped dual-path; live prove names ELF check **FN** |
-| `s29b_peer1.oot` | REJECT dual-path on this ELF (3/4 MUST shapes) — **functional**, not concat |
-| `s29b_integration.oot` | smoke exit 0 / “walker unchanged” — **stale vs this tree** (ran before grouped rail + missed both depth hunks). RULES §1.9: do not stamp. |
-| `s29_memory.oot` H3 | I5/I9 still **FORBIDDEN** |
-
-### Recipes (Memory OWN — hard; wave-2 addendum)
-
-Wave-1 bar still stands. Wave-2 **landed the OK rows**:
-
-| Recipe | Heap | Memory |
-|--------|------|--------|
-| **Int `depth` on the existing check token walk** | 0 delta | **PASS** (H1) |
-| Same Int depth on `c_secret_scan_call` | 0 delta | **PASS** (reuse) |
-| **Int `d` on stmt `c_emit_println` scan** (12:35) | 0 delta | **PASS** (reuse; no join) |
-| **I3** check loop → `c_secret_scan_call(...)` | token fields; **0** concat | **OK** (would DRY the two Int walks) |
-| Per-arg emit: `c_secret_emit_guard(env, "println", arg, "", "", arg)` after existing `c_emit_expr_c` | one slice-walk of **already-lowered** `arg` | **OK** (reuse; no join) |
-| **I5** `joined = joined + ", " + arg` inside `c_emit_println` | **new** prefix-chain | **FAIL** |
-| Keep per-arg `oo_print_*` **and** add a second join just to feed the guard | double lower + new concat | **FAIL** |
-| **I9** check calls `c_secret_emit_guard` with fabricated `args` | new string rebuild or empty-args FN | **FAIL** |
-
-`c_secret_emit_guard` still takes **C arg texts**, not toks. Depth is how you fix first-`)` **without** that signature lie.
-
-Progress: every branch of the check / scan_call loops does `p = p + 1`. Stmt loop does `sp = p + 1` after the depth test. `depth` / `d` are scalars. No spin. No new string buffer.
-
-**H3: PASS.**
-
----
-
-## Complexity (memory class)
-
-| Function | Time | Aux heap (2.9b delta) |
-|----------|------|------------------------|
-| check println/eprintln IDENT walk | O(#toks in args) — now **past** nested `)` | **0** (`depth: Int` + `field_at`) |
-| `c_secret_scan_call` | O(#toks) — same | **0** (`depth: Int`) |
-| `c_emit_println` token refuse | O(#toks in args) — now **past** nested `)` | `"__sec__"+sn` once/ident (**existing**) |
-| `c_secret_emit_guard` + `c_guard_scan_idents` | Θ(\|args\|²) `char_at` | one `str_slice` / ident (7.1 floor) |
-| `c_emit_call_args` join | O(\|joined\|²) concat | growing `args` **once per free-call** (adjacent) |
-| New join in `c_emit_println` | — | **still forbidden** |
-
----
-
-## Scorecard
-
-| ID | Sev | Site | Finding | Status |
-|----|-----|------|---------|--------|
-| S29B-1 / 2.9b | HIGH | secret L179–190 / L97–129 / print L19–32 | New per-char / per-arg concat in the depth walk | **ABSENT** |
-| S29B-2 / 2.9b | MED | check println walk | Int `depth` landed in WT | **PASS** (source) |
-| S29B-3 | HIGH | host ELF 07:49 | Depth **not** in shipping `check_secret_println_sinks` / `c_emit_println` | **HONEST residual** (not a concat FAIL) |
-| S29B-4 | HIGH | emit-c grouped vs eprintln | RSS same class; stmt rescan BLOCK `(1), tok` | **PASS** |
-| S29B-5 | HIGH | `oo_char_at` / lex / nest typecheck | Θ(n²) time; d=256 check ~24 MB | **RESIDUAL cost** (not 2.9b) |
-| S29B-6 | MED | `c_emit_print.oo` L19 | Int `d` landed 12:35; **not** in ELF | **PASS source** / ELF residual |
-| S29B-7 | MED | I5 / I9 unify | new join or fabricated `args` | **FORBIDDEN** if landed |
-| S29B-8 | LOW | `s29_println_guard_smoke` wave-2 | emit-c OK / check FN → exit 1 | **HONEST** (Harness) |
-| S29B-9 | LOW | workspace `.ooda-cache/check` | can false-OK | **RESIDUAL adjacent** (s71 R9) |
-| S29B-10 | — | `c_emit_call_args` L40 | `args = args + ", " + a` | **OPEN adjacent** (not 2.9b) |
-| S29B-11 | — | dirty 7.10 / 2.10 / 6.1 | slice + `__sec_sink__` + check-first | **not 2.9b; no new concat** |
-| S29B-12 | LOW | `c_emit_secret.oo` 219 L / `c_emit_print.oo` 97 L | secret was 264 (s29 S29-11); both ≤256 soft | **hygiene OK** |
-| S29B-13 | LOW | `s29b_integration.oot` | “walker unchanged” / smoke 0 | **STALE sibling** (do not stamp) |
-
-## Close bar for 2.9 wave-2 (memory)
-
-Path-A **may close 2.9b as memory-floor PASS** if process accepts:
-
-1. No new concat in the depth walk (proven this pass on WT source; **must stay true**).
-2. Depth stays **Int** (or reuse `c_secret_scan_call`) — not a third ident builder and not a fabricated `args` buffer.
-3. stmt `println` RSS stays in the `eprintln` class on ≤64 KiB args / ≤200 idents (wave-1 baseline + this grouped class).
-4. Host ELF lag / check FN / `char_at` time stay **named residuals**, not silent 2.9b FAILs.
-
-Re-open 2.9b memory **only** if any depth walk grows a per-char `OoStr` rebuild, a **new** `args = args + …` join (in `c_emit_println` **or** in the check walk), or emit-c / check of a ≤64 KiB println args string **OOMs** / walker RSS grows as Θ(n²) **beyond** the eprintln sibling **after** a binary that contains secret L179 `depth` **and** print L19 `d`.
-
-Wave-2 Int depth needs **no** heap change. Memory will not block this land. Memory **will** still block I5/I9.
-
-## Evidence paths
-
-| Item | Path |
-|------|------|
-| Check println/eprintln **depth** walk | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret.oo` L173–200 |
-| `c_secret_scan_call` **depth** | same file L89–130 |
-| 7.10 slice (not 2.9b) | same file L53 |
-| 2.10 prefix (not 2.9b) | same file L210 |
-| Stmt println **depth** | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_print.oo` L19–41 |
-| Stmt dispatch | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_ident.oo` L129–131 |
-| Emit guard + 7.1 scan | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo` L18–112, L213–226 |
-| Free-call in | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_lower.oo` L90 |
-| Adjacent join | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_call.oo` L40 |
-| `field_at` | `ooda/oodac/token_fmt.oo` L75–114 |
-| Smoke + grouped rail | `ooda/scripts/s29_println_guard_smoke.sh` |
-| Wave-2 harness / peer / integ | `audit/s29b_harness.oot` · `s29b_peer1.oot` · `s29b_integration.oot` |
-| Wave-1 memory bar | `audit/s29_memory.oot` |
-| Prior floors | `s61_memory.oot` / `s71_memory.oot` / `s72_memory.oot` / `s710_memory.oot` / `s28_memory.oot` / `t1_memory.oot` |
-
-## Notes (return)
-
-1. Did **not** edit product `.oo`. Audit + ephemeral `/tmp/s29b_mem_1171777` only (removed).
-2. Did **not** add fixtures (Harness OWN; grouped rail already in smoke).
-3. Did **not** rebuild `oodac`. Host ELF is pre-depth; H1 is source. H2 new-walk RSS waits on a binary that contains secret L179 **and** print L19.
-4. Did **not** implement Domain A unify. Stmt Int `d` landed mid-pass and was re-read; it is the Memory-OK recipe (no join).
-5. Dirty 7.10 / 2.10 / 6.1 in `c_emit_secret.oo` — **do not** credit or blame 2.9b.
-6. `s29b_integration.oot` “walker body unchanged” is **false** on disk (secret L179 `depth`, print L19 `d`). Independently verified.
-
-**2.9 wave-2 path-A memory floor: PASS** (no new concat in the depth walk).
-
-end of s29b_memory.oot
+end of s29b_memory.oot (part 1)

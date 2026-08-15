@@ -8,11 +8,7 @@
 # OWN: prove multiple `// SECRET:` names still populate env; empty name after
 #      SECRET still fail-closed; midline SECRET (not line-start) still ignored.
 #      Do not rewrite 7.1 or 7.2. No moonshots; no auto-push; monofile ≤600.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 **PASS** (parse-env contract holds). No source change this turn.
 
 `c_parse_secret_env` still tags **only** line-start `// SECRET: <ident>`
@@ -32,9 +28,9 @@ Domain A (`s710_domain_a.oot` / slice) owns `name` extract hygiene
 (tip source is now one `str_slice(src, start, k)`). This file owns the
 **tag contract**: multi-name env populate, empty fail-closed, midline skip.
 
-========================================================================
+---
 SCOPE (orthogonal to Domain A)
-========================================================================
+---
 
 | In | Out |
 |----|-----|
@@ -44,9 +40,9 @@ SCOPE (orthogonal to Domain A)
 | Isolated probes that stress parse-env | Full IFC / `#[Secret]` / `${}` |
 | Product fixtures + check dual-path | SPRINT flip, remotes, moonshots |
 
-========================================================================
+---
 STATIC (tip source; B did not edit)
-========================================================================
+---
 
 File: `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret.oo`
 
@@ -88,9 +84,9 @@ Wire (parse-env is the **only** directive → env path):
 7.1 walker (`c_emit_secret_guard.oo` L18 / L105 `str_slice`) and 7.2
 last-arg (`c_emit_args.oo` L71 / L127 `str_slice`) **untouched**.
 
-========================================================================
+---
 ORACLE (independent reimplementation of L7–81)
-========================================================================
+---
 
 Python mirror: line-start + exact `"// SECRET:"` + skip space/tab +
 `[_A-Za-z0-9]+` ident; empty → invalid; else `__sec__` + `__secref__`.
@@ -113,9 +109,9 @@ Python mirror: line-start + exact `"// SECRET:"` + skip space/tab +
 mid-line needle does not populate; two line-start names both populate;
 empty after colon is invalid (not a silent skip).
 
-========================================================================
+---
 LIVE MATRIX — product fixtures (emit-c + check)
-========================================================================
+---
 
 | Fixture | Claim | emit-c | check | Result |
 |---------|-------|--------|-------|--------|
@@ -126,14 +122,13 @@ LIVE MATRIX — product fixtures (emit-c + check)
 
 Product multi/empty/midline FN=0, FP=0. Dual-path on all four.
 
-========================================================================
+---
 LIVE MATRIX — isolated parse-env probes (tmp)
-========================================================================
+---
 
 Dir: `$TMPDIR/s710_b_probes` (not committed). Host `oodac emit-c` / `check`.
 
 ### Populate — multiple names (no FN)
-
 | Probe | Claim | emit-c | check | Note |
 |-------|-------|--------|-------|------|
 | `// SECRET: alpha` + `beta`; `println(alpha)` | first name in env | **BLOCK** `SECRET alpha` | **BLOCK** | not only last tag |
@@ -142,7 +137,6 @@ Dir: `$TMPDIR/s710_b_probes` (not committed). Host `oodac emit-c` / `check`.
 | `one` + `two` + `three_name`; `println(three_name)` | third ident + `_` | **BLOCK** `SECRET three_name` | **BLOCK** | `_` in ident class |
 
 ### Fail-closed — empty name (no accept)
-
 | Probe | After colon | emit-c | check | Needle |
 |-------|-------------|--------|-------|--------|
 | `empty_bare` | EOF/newline | **BLOCK** | **BLOCK** | `invalid name` |
@@ -153,7 +147,6 @@ Dir: `$TMPDIR/s710_b_probes` (not committed). Host `oodac emit-c` / `check`.
 Empty is **not** a skip-and-continue: host exits 1. Dual-path.
 
 ### Ignore — midline (no FP)
-
 | Probe | Form | emit-c | check | Result |
 |-------|------|--------|-------|--------|
 | `midline_comment` | `// Mention // SECRET: x …` | rc=0 | rc=0 | **PASS** |
@@ -169,27 +162,21 @@ Populate is still **this** parse: without `__sec__name=1` the sink
 would not print `SECRET <that name>`. Independent first-vs-second
 probes prove both keys exist (not last-wins, not first-only).
 
-========================================================================
-RAILS
-========================================================================
-
+## RAILS
 | Smoke | Result |
 |-------|--------|
-| `scripts/s710_parse_secret_env_smoke.sh` | **PASS** exit 0 (tok refuse; two names a **and** b; empty invalid) |
+| `scripts/s710_parse_secret_env_smoke.oo` | **PASS** exit 0 (tok refuse; two names a **and** b; empty invalid) |
 | product `secret_multi_name_{fail,pass}` | **PASS** emit+check |
 | product `secret_invalid_empty` | **PASS** emit+check |
 | product `secret_midline_safe` | **PASS** emit+check |
-| `scripts/secret_t2_depth_smoke.sh` subset (multi + midline) | **PASS** (same four rails) |
+| `scripts/secret_t2_depth_smoke.oo` subset (multi + midline) | **PASS** (same four rails) |
 
 Harness residual line still says product concat; tip **source** is
 already sliced by A (`str_slice` L65). Host binary md5
 `a44ee35eb344837009697e2c9d4e4662` is the live prove target (behavior
 holds either extract). B did not rebuild.
 
-========================================================================
-FILES TOUCHED
-========================================================================
-
+## FILES TOUCHED
 | File | Change |
 |------|--------|
 | `ooda/oodac/c_emit_secret.oo` (7.10) | **none** (A may have sliced; B did not edit) |
@@ -200,9 +187,9 @@ FILES TOUCHED
 **Not touched:** 7.1 walker, 7.2 last-arg, sink list, check-path walk,
 smokes, SPRINT, remotes (no push).
 
-========================================================================
+---
 RESIDUAL (honest; do not close)
-========================================================================
+---
 
 1. **Column-0 line-start only.** `at_line` requires `i==0` or prev
    `"\n"`, then the **next** chars must be `// SECRET:`. Indented
@@ -228,10 +215,7 @@ RESIDUAL (honest; do not close)
    only. `\r` alone would not start a line. Adjacent (8.6 strip_cr),
    not 7.10 B.
 
-========================================================================
-STATUS FOR SPRINT/PM
-========================================================================
-
+## STATUS FOR SPRINT/PM
 | Item | Status |
 |------|--------|
 | multi `// SECRET:` names populate env | **PASS** (oracle + live first/second/third) |

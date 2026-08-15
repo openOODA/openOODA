@@ -4,15 +4,13 @@
 # Cwd: /home/jeryd/Projects/openOODA/ooda
 # Scope: live tip oodac secret rails after 7.1/7.2 slice closes; 7.10 `c_parse_secret_env`
 # Policy: no push; no seed_pure_multi; run listed smokes (90s each); run any s710_* if present
-
 ## Verdict (honest)
-
 | Layer | Result | Exit | Notes |
 |-------|--------|------|-------|
-| **`secret_t1_return_smoke.sh`** | **PASS** | **0** | return / alias / if-taint refuse+allow + CI wire |
-| **`secret_t2_depth_smoke.sh`** | **PASS** | **0** | field/method/args/dlopen/sys_exec argv/comment-skip + CI wire |
-| **`s71_guard_scan_smoke.sh`** (7.1 regression) | **PASS** | **0** | println IDENT refuse + write_file payload refuse + string-lit no-FP |
-| **`s72_sys_exec_last_arg_smoke.sh`** (7.2 regression) | **PASS** | **0** | last-arg IDENT refuse + quoted commas/SECRET-spelling no-FP |
+| **`secret_t1_return_smoke.oo`** | **PASS** | **0** | return / alias / if-taint refuse+allow + CI wire |
+| **`secret_t2_depth_smoke.oo`** | **PASS** | **0** | field/method/args/dlopen/sys_exec argv/comment-skip + CI wire |
+| **`s71_guard_scan_smoke.oo`** (7.1 regression) | **PASS** | **0** | println IDENT refuse + write_file payload refuse + string-lit no-FP |
+| **`s72_sys_exec_last_arg_smoke.oo`** (7.2 regression) | **PASS** | **0** | last-arg IDENT refuse + quoted commas/SECRET-spelling no-FP |
 | **`scripts/s710_*`** | **SKIP** | — | **no** `s710_*` smoke on disk (repo-wide find empty) |
 | **7.10 `c_parse_secret_env` slice** | **OPEN** | — | still `name = name + c` at `c_emit_secret.oo` L60 |
 | **Push** | **NOT DONE** | — | human-gated |
@@ -23,12 +21,11 @@
 
 **Overall 7.10 integration status: GREEN** (assigned rails) / **OPEN** (7.10 parse-env concat; no s710 harness; CI does not wire s71/s72/s710)
 
-Do **not** greenwash: residual 7.10 `c_parse_secret_env` char concat remains **OPEN**. Dirty-tree delta on `c_emit_secret.oo` is **2.10** `__sec_sink__` prefix scan (+5 lines at L250–254), **not** a 7.10 slice rewrite. Full IFC / `#[Secret]` / `${}` interp not claimed. `ci_product.sh` wires T1/T2 only — **not** s71/s72/s710.
+Do **not** greenwash: residual 7.10 `c_parse_secret_env` char concat remains **OPEN**. Dirty-tree delta on `c_emit_secret.oo` is **2.10** `__sec_sink__` prefix scan (+5 lines at L250–254), **not** a 7.10 slice rewrite. Full IFC / `#[Secret]` / `${}` interp not claimed. `ci_product.oo` wires T1/T2 only — **not** s71/s72/s710.
 
 ---
 
 ## TIP SHA / binary
-
 ```
 git rev-parse --short HEAD → 52cc4b5
 git log -1 --oneline       → 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
@@ -43,20 +40,19 @@ date -u                    → 2026-08-12T18:54:06Z
 | Side / older | `oodac/oodac` 962888 (07:43) — **not** used |
 | Seed | `bootstrap/seed/oodac` present — pure multi **not** re-run this pass |
 | Host used | `OODAC_BIN=/home/jeryd/Projects/openOODA/ooda/oodac/oodac` |
-| Working tree | dirty: `c_emit_secret*.oo` + `c_emit_args.oo` + untracked `scripts/s71_guard_scan_smoke.sh`, `scripts/s72_sys_exec_last_arg_smoke.sh` |
+| Working tree | dirty: `c_emit_secret*.oo` + `c_emit_args.oo` + untracked `scripts/s71_guard_scan_smoke.oo`, `scripts/s72_sys_exec_last_arg_smoke.oo` |
 
 ---
 
 ## 0) DE / Harness landing observed
-
 | Path | Role |
 |------|------|
 | `ooda/oodac/c_emit_secret.oo` (265) | `c_parse_secret_env` — **7.10 still concat**; dirty +5 is 2.10 `__sec_sink__` |
 | `ooda/oodac/c_emit_secret_guard.oo` | 7.1 walker (already sliced; not rewritten this pass) |
 | `ooda/oodac/c_emit_args.oo` | 7.2 last-arg (already sliced; dirty from 7.2 wave) |
-| `ooda/scripts/s71_guard_scan_smoke.sh` | 7.1 regression (untracked until human commit) |
-| `ooda/scripts/s72_sys_exec_last_arg_smoke.sh` | 7.2 regression (untracked until human commit) |
-| `ooda/scripts/secret_{t1,t2}_*.sh` | listed T1/T2 integration rails |
+| `ooda/scripts/s71_guard_scan_smoke.oo` | 7.1 regression (untracked until human commit) |
+| `ooda/scripts/s72_sys_exec_last_arg_smoke.oo` | 7.2 regression (untracked until human commit) |
+| `ooda/scripts/secret_{t1,t2}_*.oo` | listed T1/T2 integration rails |
 | `openOODA/audit/s71_integration.oot` | prior 7.1 live prove |
 | `openOODA/audit/s72_integration.oot` | prior 7.2 live prove |
 
@@ -79,11 +75,9 @@ if is_al {
 ---
 
 ## 1) Primary smokes — exit codes
-
 All runs: `cd ooda && OODAC_BIN=./oodac/oodac` ; `timeout 90s`. Logs under `/tmp/s710_integration/`.
 
 ### 1a) secret_t1_return_smoke — exit 0
-
 ```
 OK secret_function_return_fail emit refuses (rc=1)
 OK secret_function_return_pass emit OK
@@ -98,7 +92,6 @@ OK secret_t1_return_smoke
 Log: `/tmp/s710_integration/secret_t1_return_smoke.out`
 
 ### 1b) secret_t2_depth_smoke — exit 0 (includes sys_exec argv)
-
 ```
 OK secret_field_assign_fail emit refuses (rc=1)
 OK secret_field_assign_pass emit OK
@@ -121,7 +114,6 @@ OK secret_t2_depth_smoke
 Log: `/tmp/s710_integration/secret_t2_depth_smoke.out`
 
 ### 1c) s71_guard_scan_smoke (7.1 regression) — exit 0
-
 `bash -n` **OK** (123 lines).
 
 ```
@@ -137,7 +129,6 @@ RESIDUAL interproc SECRET beyond path-A __fr_secret__
 Log: `/tmp/s710_integration/s71_guard_scan_smoke.out`
 
 ### 1d) s72_sys_exec_last_arg_smoke (7.2 regression) — exit 0
-
 `bash -n` **OK** (111 lines).
 
 ```
@@ -152,7 +143,6 @@ RESIDUAL last-arg slice hygiene is product (c_sys_exec_last_arg); this smoke pro
 Log: `/tmp/s710_integration/s72_sys_exec_last_arg_smoke.out`
 
 ### 1e) s710_* smoke — SKIP
-
 ```
 find /home/jeryd/Projects/openOODA -name 's710_*'  →  (empty at prove time)
 ls ooda/scripts/s710_*                             →  No such file
@@ -163,13 +153,12 @@ No Domain/Harness extra to run. Integration does **not** invent a 7.10 smoke.
 ---
 
 ## 2) Exit-code scoreboard
-
 | Script | Timeout | Exit | Color |
 |--------|---------|------|-------|
-| `ooda/scripts/secret_t1_return_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/secret_t2_depth_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s71_guard_scan_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s72_sys_exec_last_arg_smoke.sh` | 90s | **0** | GREEN |
+| `ooda/scripts/secret_t1_return_smoke.oo` | 90s | **0** | GREEN |
+| `ooda/scripts/secret_t2_depth_smoke.oo` | 90s | **0** | GREEN |
+| `ooda/scripts/s71_guard_scan_smoke.oo` | 90s | **0** | GREEN |
+| `ooda/scripts/s72_sys_exec_last_arg_smoke.oo` | 90s | **0** | GREEN |
 | `ooda/scripts/s710_*` | — | **SKIP** | — |
 
 Listed 4 + any s710: **4 GREEN / 0 RED / 1 SKIP class**.
@@ -177,7 +166,6 @@ Listed 4 + any s710: **4 GREEN / 0 RED / 1 SKIP class**.
 ---
 
 ## 3) What GREEN is (and is not)
-
 | Claim | Status |
 |-------|--------|
 | T1 return / alias / if taint | **YES** (exit 0) |
@@ -187,23 +175,21 @@ Listed 4 + any s710: **4 GREEN / 0 RED / 1 SKIP class**.
 | 7.10 `c_parse_secret_env` defined on tip | **YES** (`c_emit_secret.oo` L7–82) |
 | 7.10 name extract is `str_slice` (no `name = name + c`) | **NO** — L60 still concat |
 | Dedicated `s710_*` smoke | **NO** — absent |
-| `ci_product.sh` wires s71/s72/s710 | **NO** — T1/T2 only (`ci_product.sh` L157–158) |
+| `ci_product.oo` wires s71/s72/s710 | **NO** — T1/T2 only (`ci_product.oo` L157–158) |
 | Full IFC / `#[Secret]` / `${}` | **residual** |
 | 2.10 `__sec_sink__` wrapper scan | **dirty-tree only** (not 7.10 OWN; not proved here) |
 
 ---
 
 ## 4) Follow-ups (not this worker)
-
 1. Domain Expert / Memory: replace `name = name + c` in `c_parse_secret_env` with one `str_slice(src, name_start, k)` (7.1/7.2 pattern). Do **not** invent a C stack buffer.
-2. Harness: land `scripts/s710_parse_secret_env_smoke.sh` (or similar) once the slice lands — fail-closed invalid name + allow ident parse + prove no concat if product wants a dedicated rail. Until then s71/s72 residual lines stay honest.
-3. Wire s71/s72 (and future s710) into `ci_product.sh` if product wants those rails in CI. Harness scripts are **untracked** until human commit.
+2. Harness: land `scripts/s710_parse_secret_env_smoke.oo` (or similar) once the slice lands — fail-closed invalid name + allow ident parse + prove no concat if product wants a dedicated rail. Until then s71/s72 residual lines stay honest.
+3. Wire s71/s72 (and future s710) into `ci_product.oo` if product wants those rails in CI. Harness scripts are **untracked** until human commit.
 4. Do not treat the 2.10 `__sec_sink__` dirty hunk as a 7.10 close.
 
 ---
 
 ## Evidence paths
-
 | Item | Path |
 |------|------|
 | This audit | `/home/jeryd/Projects/openOODA/openOODA/audit/s710_integration.oot` |

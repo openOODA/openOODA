@@ -6,11 +6,7 @@
 # Scope: time N=2/5/10/20 module chains; time oodac/main.oo multi check (120s);
 #        PURE_SKIP_CHECK=0 pure multi briefly; struct/enum cross-module edges.
 # Write: this audit only. No product/std/oodac edits. No push.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 **R2 path-A: REJECT**
 
 Product host proves a **small multi-import typecheck floor** (N≤20 letter-named
@@ -42,10 +38,7 @@ struct-lit field TC complete.
 missing/cycle fail-closed; cross-module call arity + arg type + annotated let
 init; nested struct field read OK; N=20 chain/fan sub-second on tiny bodies.
 
-========================================================================
-SUMMARY TABLE
-========================================================================
-
+## SUMMARY TABLE
 | # | Probe | Expected for path-A | Actual (product host) | VERDICT |
 |---|--------|---------------------|------------------------|---------|
 | 1 | Chain N=2 check | OK, fast | OK ~0.05–0.07s | **PASS** |
@@ -55,7 +48,7 @@ SUMMARY TABLE
 | 5 | Fan-out N=2/5/10/20 | OK, bounded | OK ~0.06 / 0.18 / 0.3–0.7 / 0.9–1.3s | **PASS** |
 | 6 | Import name with digit `0` (`m10.oo`, `mod0.oo`) | accept or honest residual | **ERR import NUL in name rejected** | **FAIL** host residual |
 | 7 | `oodac check oodac/main.oo` ≤120s | OK or honest residual | **timeout >120s**, empty out/err, CPU-bound | **FAIL** scale |
-| 8 | `import_load_smoke.sh` | exit 0 | ALL OK ~0.62s | **PASS** |
+| 8 | `import_load_smoke.oo` | exit 0 | ALL OK ~0.62s | **PASS** |
 | 9 | Cross-module wrong arg type | type ERR | ERR expects Point/S got Int | **PASS** |
 | 10 | Cross-module arity | type ERR | ERR expects 2 got 1 | **PASS** |
 | 11 | Cross-module ret ann mismatch | type ERR | ERR Int vs String | **PASS** |
@@ -68,25 +61,19 @@ SUMMARY TABLE
 
 **OVERALL: REJECT** — R2 path-A not closed under scale/performance honesty.
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Product host only for behavioral proves: `ooda/oodac/oodac` (see HOST table).
 2. Generated independent fixtures under `/tmp/r2_peer2_scale` and
    `/tmp/r2_peer2_struct` (letter-named modules to avoid digit-0 trap).
 3. Timed with `/usr/bin/time`; triple-run sample for N chains/fans.
 4. `timeout 120 oodac check oodac/main.oo` — prior 30s sample also empty.
 5. Pure multi: `PURE_SKIP_CHECK=0` then `=1` on
-   `bootstrap/corpus/import/pass/multi_ok.oo` via `scripts/oodac_pure_build.sh`.
+   `bootstrap/corpus/import/pass/multi_ok.oo` via `bootstrap/oodac_pure_build`.
 6. Static: HEAD vs WT `load_import.oo` (NUL loop); module graph walk of
    `oodac/main.oo` imports.
 7. No ooda/std/openOODA product code edits by this peer. No push.
 
-========================================================================
-HOST / TIP / WT CONTEXT
-========================================================================
-
+## HOST / TIP / WT CONTEXT
 | Item | Value |
 |------|--------|
 | When (UTC) | 2026-08-12T14:42:27Z |
@@ -100,12 +87,11 @@ HOST / TIP / WT CONTEXT
 | HEAD `reject_bad_import_name` | still scans `char_at(imp, j) == "\0"` (digit-0 FP) |
 | Peer OWN | audit only |
 
-========================================================================
+---
 SCALE / PERFORMANCE (core OWN)
-========================================================================
+---
 
 ### A. Module chain (linear import depth)
-
 Fixtures: `/tmp/r2_peer2_scale/c{N}/` — leaf `m_a.oo` … chain to letter N;
 main imports last. **Names avoid digit `0`.**
 
@@ -121,7 +107,6 @@ main imports last. **Names avoid digit `0`.**
 that product-scale trees are fine.
 
 ### B. Fan-out (main imports N siblings)
-
 Fixtures: `/tmp/r2_peer2_scale/fanL{N}/`.
 
 | N | check rc | times (s, 3 runs) |
@@ -135,14 +120,12 @@ Fan-out costs more than depth chain at same N (more symbols in one expanded
 stream). Still ≤ ~1.3s for N=20 toy modules.
 
 ### C. Single-file + corpus baseline
-
 | Case | times (s) |
 |------|-----------|
 | single `main` only | 0.02 0.03 0.01 |
 | `bootstrap/corpus/import/pass/multi_ok.oo` | 0.06 0.01 0.03 |
 
 ### D. Product self-host multi check — **FAIL**
-
 | Item | Value |
 |------|--------|
 | Command | `timeout 120 oodac/oodac check oodac/main.oo` |
@@ -159,7 +142,6 @@ algorithmic cost on expanded stream**, already noted in WT comment draft
 (`residual R2/latency: full-tree check on oodac-scale expand still slow`).
 
 ### E. Digit-`0` import name residual — **FAIL on product host**
-
 ```
 # product host (962680 B @ 06:41)
 import "m10.oo";   → ERR import NUL in name rejected   rc=1
@@ -188,121 +170,7 @@ looked like a scale cliff; re-run with letter names recovered OK. Any R2 close
 writeup that only timed letter names and claimed "N=20 green" without the
 digit-0 prove is incomplete.
 
-========================================================================
-STRUCT / ENUM CROSS-MODULE EDGES
-========================================================================
 
-Fixtures: `/tmp/r2_peer2_struct/`.
+*(Continued in `openOODA/audit/r2_peer2_part2.oot`)*
 
-| Case | rc / key line | Note |
-|------|---------------|------|
-| Struct def in lib; field use + call in importer | OK | multi type floor |
-| Wrong arg type to imported fn (`sum_pt(1)`) | ERR expects Point got Int | good |
-| Nested struct field `o.inner.n` cross-module | OK | good |
-| Annotated let init type mismatch cross-module | ERR Int vs String | good |
-| Call arity cross-module | ERR expects 2 got 1 | good |
-| Undefined imported name | ERR undefined variable | good |
-| Struct lit field mistype `Point { x: "no", y: 2 }` multi | **OK** | **silent accept** |
-| Same struct lit mistype **single-file** | **OK** | not multi-specific |
-| Duplicate `struct Dup` in two imports | **OK** | silent merge residual |
-| `pub enum Color { Red, Blue }` | ERR undefined `enum` | no product enum |
-| Type-alias `type Color = Int` cross-module | OK | alias only |
-
-**Honesty:** R2 multi-import TC floor covers **calls / arity / some ann types /
-undefined**. It does **not** cover struct-literal field typing or duplicate type
-definitions. Product **enum** is residual (keyword not wired).
-
-Prior `/tmp/r2_*` swarm fixtures: fail-arg and undef behave; `r2_test` fails on
-missing `return` for Point body form (syntax/return residual), not import load.
-
-========================================================================
-PURE MULTI (PURE_SKIP_CHECK=0) — brief
-========================================================================
-
-| Setting | Input | Wall | Result |
-|---------|-------|------|--------|
-| `PURE_SKIP_CHECK=0` | `import/pass/multi_ok.oo` | ~0.33s | **FAIL emit** `unknown free call needs annotation helper` |
-| `PURE_SKIP_CHECK=1` | same | ~0.32s | **same emit fail** |
-
-Check of `multi_ok` alone is green (`import_load_smoke`). Pure multi fails at
-**emit** of free call across modules — adjacent residual, not pure-check gate.
-Full `oodac/main.oo` pure multi with `PURE_SKIP_CHECK=0` was **not** attempted
-beyond the check budget (check alone >120s); claiming pure multi dual-green on
-self-host under check is false.
-
-`import_load_smoke.sh`: **ALL OK** (~0.62s) — multi_ok check + missing/cycle
-fail-closed for check/concat/pure_build missing paths.
-
-========================================================================
-PATH-A CRITERIA (adversarial reading)
-========================================================================
-
-| Claim language | Peer2 reading | Status |
-|----------------|---------------|--------|
-| "Multiple files can be imported without crashing" | Small N: yes | partial |
-| "Multi-import type check path-A" | Needs product-scale honesty + host==tip + real names | **no** |
-| PM residual "Many files in one build still fails" | Self-host check still fails/timeouts | **still true** at scale |
-| Digit-0 import names usable | host false-positive | **no** |
-| Struct/enum cross-module complete | field lit + enum missing | **no** |
-
-**ACCEPT would require at least:**
-
-1. Product host rebuilt from fixed `load_import` (no digit-0 FP) + green smokes.
-2. Documented bound for `check oodac/main.oo` **or** explicit residual that
-   self-host check is skip-only (`PURE_SKIP_CHECK=1`) with no path-A claim.
-3. Struct-lit field typing either fail-closed or named residual (not silent OK).
-4. No greenwash of N=20 toy chains as "scale proven."
-
-None of (1)–(3) hold on product host today → **REJECT**.
-
-========================================================================
-RESIDUALS (named — do not close as FIXED)
-========================================================================
-
-| ID | Residual | Severity |
-|----|----------|----------|
-| R2-P0 | `oodac check oodac/main.oo` >120s / no result | **HIGH** scale |
-| R2-P1 | Import names containing `0` rejected (NUL FP) on host | **HIGH** correctness |
-| R2-P2 | Host stale vs WT load_import WIP; WT mid-edit incomplete | **HIGH** ship |
-| R2-P3 | Struct lit field types not checked (single + multi) | MED TC |
-| R2-P4 | Duplicate type names silent merge across imports | MED TC |
-| R2-P5 | Expanded-stream LINE:COL (Issue #9) still residual | MED DX |
-| R2-P6 | Pure multi emit free-call annotation (`helper`) | MED emit |
-| R2-P7 | Product `enum` absent | LOW / residual |
-| R2-P8 | Super-linear check cost even on tiny N=20 | LOW observe |
-
-========================================================================
-COMMANDS (repro)
-========================================================================
-
-```bash
-cd /home/jeryd/Projects/openOODA
-OODAC=ooda/oodac/oodac
-
-# digit-0 residual
-printf 'pub fn z() -> Int { return 1; }\n' > /tmp/z0.oo
-printf 'import "mod0.oo";\npub fn main() { let x: Int = z(); }\n' > /tmp/z0main.oo
-# (place mod0.oo beside) → ERR import NUL in name rejected
-
-# letter chain N=20 (should OK on host)
-$OODAC check /tmp/r2_peer2_scale/c20/main.oo
-
-# product-scale (expect timeout)
-timeout 120 $OODAC check ooda/oodac/main.oo
-
-# rails
-(cd ooda && bash scripts/import_load_smoke.sh)
-```
-
-========================================================================
-PEER OWN / PUSH
-========================================================================
-
-- Audit only: `openOODA/audit/r2_peer2.oot`
-- No product code fix. No push.
-- Orthogonal to Peer 1 (correctness/unit edges): this peer owns **scale,
-  latency honesty, digit-0 trap, pure-check feasibility, struct/enum edges**.
-
-**FINAL: R2 path-A REJECT.**
-
-end of r2_peer2.oot
+end of r2_peer2.oot (part 1)

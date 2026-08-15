@@ -3,9 +3,7 @@
 # Worker: Grok Build (Compiler Integration Tester)
 # Cwd: /home/jeryd/Projects/openOODA/ooda
 # Scope: tip oodac secret return / control-flow taint (SPRINT T1: 2.1, 2.4, 5.1–5.3)
-
 ## TIP SHA / binary
-
 ```
 git rev-parse --short HEAD → 4b70f14
 git log -1 --oneline       → 4b70f14 fix: zero-trust audit CRITs — caps once/entropy, alloc, secrets, crypto wipe
@@ -21,7 +19,6 @@ git log -1 --oneline       → 4b70f14 fix: zero-trust audit CRITs — caps once
 | pure multi | unique_fns=**421** from_modules=**149** |
 
 ## 0) Stale tip diagnosis
-
 Initial command:
 
 ```
@@ -32,9 +29,8 @@ Initial command:
 Cause: product binary older than WIP T1 sources (`c_emit_secret*.oo`, `__fr_secret__`, sticky-clear + `__secref__`).
 
 ## 1) seed_pure_multi + atomic install — PASS
-
 ```
-bash scripts/seed_pure_multi_smoke.sh
+bash scripts/seed_pure_multi_smoke.oo
 # exit 0
 OK seed_pure_multi: cold seed pure multi rebuild green
 pure_build: unique_fns=421 from_modules=149
@@ -58,7 +54,6 @@ Integration fix applied so pure multi could green:
 Log: `/home/jeryd/.cache/ooda-tmp/seed_pure_multi_t1b.log`
 
 ## 2) Gate: secret_function_return_fail — PASS (post-install)
-
 ```
 ./oodac/oodac emit-c fixtures/secret_function_return_fail.oo
 # rc=1
@@ -71,11 +66,9 @@ ERR	secret	println sink refuses SECRET y
 ```
 
 ## 3) T1 prove matrix — ALL GREEN (23/23)
-
 Legend: **refuse** = non-zero rc + `ERR\tsecret`; **ok** = rc=0 and no secret ERR.
 
 ### Core T1 (return taint + alias rebind + control-flow)
-
 | Fixture | Expect | rc | secret ERR | Result |
 |---------|--------|----|------------|--------|
 | secret_function_return_fail | refuse | 1 | yes | **PASS** |
@@ -97,7 +90,6 @@ Legend: **refuse** = non-zero rc + `ERR\tsecret`; **ok** = rc=0 and no secret ER
 | secret_sink_pass | ok | 0 | no | **PASS** |
 
 ### Adjacent (method / field / closure)
-
 | Fixture | Expect | rc | secret ERR | Result |
 |---------|--------|----|------------|--------|
 | secret_method_return_fail | refuse | 1 | yes | **PASS** |
@@ -110,7 +102,6 @@ Legend: **refuse** = non-zero rc + `ERR\tsecret`; **ok** = rc=0 and no secret ER
 **T1 matrix: PASS=23 FAIL=0**
 
 ## 4) Path-A floor sample (smoke subset) — PASS
-
 | Fixture | Result |
 |---------|--------|
 | secret_write_file_{fail,pass} | PASS |
@@ -121,9 +112,8 @@ Legend: **refuse** = non-zero rc + `ERR\tsecret`; **ok** = rc=0 and no secret ER
 | secret_process_exit_{fail,pass} | PASS |
 
 ## 5) secret_sink_enforce_smoke — PARTIAL (non-T1 residual)
-
 ```
-OODAC_BIN=./oodac/oodac bash scripts/secret_sink_enforce_smoke.sh
+OODAC_BIN=./oodac/oodac bash scripts/secret_sink_enforce_smoke.oo
 # exit 1
 ```
 
@@ -139,7 +129,6 @@ ERR	c_emit	unknown free call needs annotation	oo_file_size
 **Not a T1 regression:** prior tip (`oodac/oodac.bak`) fails the same `file_size_pass` free-name annotation residual. Out of SPRINT T1 scope (return/control-flow taint).
 
 ## RESULT SUMMARY
-
 | Step | Result |
 |------|--------|
 | Stale tip detected on secret_function_return_fail | **YES** (rc=0, no refuse) |
@@ -152,7 +141,6 @@ ERR	c_emit	unknown free call needs annotation	oo_file_size
 **OVERALL T1 integration: PASS** (return/control-flow taint fixtures green on rebuilt tip)
 
 ## Mechanism notes (tip tree)
-
 - `__fr_secret__<fn>`: mark secret-returning fns (body touches SECRET / returns secret local)
 - Call-site prop: `let y = make_secret()` taints `y` via `__fr_secret__`
 - Sticky clear on clean rebind; **never** wipe `__secref__` directive roots (`// SECRET: name`)

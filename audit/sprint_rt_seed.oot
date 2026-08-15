@@ -1,28 +1,24 @@
 # sprint_rt_seed.oot — RT seed pin confirm. 2026-08-14T13:36:51Z
 # RULES 1.3 Honesty, 1.6 Proof. This file only. No product patch.
-# Did not start a build. Did not replace seed. Did not run ci_product.sh.
-
+# Did not start a build. Did not replace seed. Did not run ci_product.oo.
 OWN: confirm seed sha vs oodac.sha256; confirm /tmp/oodac_new_9a vs seed;
-     restore oodac/oodac from tmp only if missing and ci_product.sh is not running.
+     restore oodac/oodac from tmp only if missing and ci_product.oo is not running.
 PROOF: stat + sha256sum + cmp + /proc scan. No emit. No gcc.
 
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 Seed binary SHA **matches** `oodac.sha256`. `sha256sum -c` from the ooda
 root is **OK** (rc=0).
 
 `/tmp/oodac_new_9a` is still present. **Same size. Same hash. Same
 bytes. Not the same inode.** Copy, not a hard link (different devices).
 
-`oodac/oodac` is **present**. `pgrep -f scripts/ci_product.sh` has **no
+`oodac/oodac` is **present**. `pgrep -f scripts/ci_product.oo` has **no
 live hit**. Restore **not** run (tree ELF not missing). Seed not
 replaced.
 
-========================================================================
+---
 SEED vs PIN
-========================================================================
+---
 
 Pin file: `ooda/bootstrap/seed/oodac.sha256` (87 B, one line, LF).
 
@@ -54,9 +50,9 @@ ooda root. From `bootstrap/seed/` the same sidecar **fails open**
 write a basename path (`oodac`) so `sha256sum -c` works in the seed
 dir. Live sidecar is the root-relative form. Hash still matches.
 
-========================================================================
+---
 TMP vs SEED
-========================================================================
+---
 
 `/tmp/oodac_new_9a` exists. nlink=1.
 
@@ -72,10 +68,7 @@ TMP vs SEED
 
 Same bytes. Not the same inode. Do not claim a hard link.
 
-========================================================================
-TREE ELF + RESTORE GATE
-========================================================================
-
+## TREE ELF + RESTORE GATE
 `ooda/oodac/oodac` exists and is executable.
 
 | Field | tree | vs seed |
@@ -86,35 +79,32 @@ TREE ELF + RESTORE GATE
 | inode | 22914377 | **different** (same dev 54) |
 | mtime | 1786713780.779632328 | same |
 
-ci_product.sh:
+ci_product.oo:
 
-    /proc cmdline scan for `scripts/ci_product.sh` → 0 hits
+    /proc cmdline scan for `scripts/ci_product.oo` → 0 hits
     `pgrep -f` with that needle (argv built so this wrapper is not a
     hit) → rc=1, no match
 
 Gate: restore from `/tmp/oodac_new_9a` **only if** `oodac/oodac` is
-missing **and** ci_product.sh is not running. Tree ELF is present →
+missing **and** ci_product.oo is not running. Tree ELF is present →
 **no restore**. Seed left untouched.
 
 Honesty: at confirm time pid **1524290** was
 
-    bash …/scripts/oodac_pure_build.sh …/oodac/main.oo …/oodac/oodac
+    bash …/bootstrap/oodac_pure_build …/oodac/main.oo …/oodac/oodac
 
-That is **not** `ci_product.sh`. It is a live writer on the tree ELF.
+That is **not** `ci_product.oo`. It is a live writer on the tree ELF.
 Would also be a restore race. Did not copy over it. Did not start
 another build.
 
-bootstrap_no_cargo.sh (read only): `rm -f "$STAGE1"` with
-STAGE1=`oodac/oodac` before `oodac_pure_build.sh` rewrite. That is the
-"ci may delete tree oodac" path. ci_product.sh itself has no `rm` of
+bootstrap_no_cargo.oo (read only): `rm -f "$STAGE1"` with
+STAGE1=`oodac/oodac` before `bootstrap/oodac_pure_build` rewrite. That is the
+"ci may delete tree oodac" path. ci_product.oo itself has no `rm` of
 that ELF; it calls bootstrap. Mid-bootstrap the tree ELF can vanish
 even when a later writer is still live.
 
-========================================================================
-NOT DONE / RESIDUAL
-========================================================================
-
-- Did not start `ci_product.sh`, `oodac_pure_build.sh`, or a seed rebuild.
+## NOT DONE / RESIDUAL
+- Did not start `ci_product.oo`, `bootstrap/oodac_pure_build`, or a seed rebuild.
 - Did not replace `bootstrap/seed/oodac`.
 - Did not rewrite `oodac.sha256` or the minisig.
 - `oodac.sha256.minisig` mtime 2026-08-12 18:32; sidecar rewritten
@@ -126,10 +116,7 @@ NOT DONE / RESIDUAL
 - Old audits (sprint9a, grok_work_up) cited seed 878392 B /
   `37a99a97…`. That is **not** this pin.
 
-========================================================================
-WRITE SET
-========================================================================
-
+## WRITE SET
 | Path | Edited |
 |------|--------|
 | openOODA/audit/sprint_rt_seed.oot | YES (this file) |

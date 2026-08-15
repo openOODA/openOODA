@@ -6,11 +6,7 @@
 # Host: ooda/oodac/oodac (product)
 # OWN: prove or finish last leak in `c_sys_exec_last_arg`; no 7.1 reopen;
 #      monofile ≤600 (soft 256); no moonshots; no auto-push
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 **ALREADY_FIXED** (path-A). No source change this turn.
 
 `c_sys_exec_last_arg` walks C arg text with `char_at` for comma/string/depth
@@ -25,12 +21,11 @@ Source comment at `c_emit_args.oo` L121–125 already claimed this;
 
 Monofile `c_emit_args.oo` = **238** lines (≤600; under soft 256).
 
-========================================================================
+---
 DIAGNOSIS (prove)
-========================================================================
+---
 
 ### Last-arg body (product host source)
-
 File: `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_args.oo`
 
 - L69–130: `pub fn c_sys_exec_last_arg(args: String) -> String`
@@ -49,7 +44,6 @@ strip), **not** 7.2 last-arg. Adjacent L153 `c_args_drop_first` already
 slices remainder (M-SG4; not this OWN).
 
 ### Call sites (all)
-
 | Site | Role |
 |------|------|
 | `c_emit_secret_guard.oo:137` | **sole caller** — `sys_exec` sink: last C arg after a1/a2 refuse |
@@ -64,7 +58,6 @@ slices remainder (M-SG4; not this OWN).
 No second last-arg walker, no generated duplicate with concat.
 
 ### Stack / buffer honesty
-
 | Layer | What happens | Class |
 |-------|----------------|-------|
 | Last-arg accumulate | `str_slice` once for `[last_start, n)` | **path-A** — no O(arg²) concat |
@@ -76,15 +69,11 @@ Complexity: time O(|args|) char visits; aux = O(1) scalars (`i`, `in_str`,
 `depth`, `last_start`) + one final slice. No growing concat buffer.
 
 ### Out of OWN (do not claim closed here)
-
 - **7.1** closed ALREADY_FIXED (`c_guard_scan_idents` slice). **Not reopened.**
 - **7.10 HIGH** still OPEN: `c_parse_secret_env` (`name = name + c`).
 - **8.6** `c_args_strip_cr` still `out = out + c` (CR filter, not last-arg).
 
-========================================================================
-FILES TOUCHED
-========================================================================
-
+## FILES TOUCHED
 | File | Change |
 |------|--------|
 | `ooda/oodac/c_emit_args.oo` | **none** (already path-A) |
@@ -94,10 +83,7 @@ FILES TOUCHED
 **Not touched:** 7.1 walker, T1–T2 taint, sink lists, smokes, SPRINT table,
 `c_parse_secret_env` (7.10), remotes (no push).
 
-========================================================================
-PROVE COMMANDS
-========================================================================
-
+## PROVE COMMANDS
 ```bash
 cd /home/jeryd/Projects/openOODA/ooda
 export OODAC_BIN=./oodac/oodac
@@ -106,14 +92,12 @@ export OODAC_BIN=./oodac/oodac
 # (expect: L125 str_slice; L188 is c_args_strip_cr only)
 grep -n 'str_slice\|last = last\|out = out +' oodac/c_emit_args.oo
 wc -l oodac/c_emit_args.oo   # 238
-
 # Secret smokes that touch sys_exec (timeout ≤90s each)
-timeout 90 bash scripts/secret_t2_depth_smoke.sh
+timeout 90 bash scripts/secret_t2_depth_smoke.oo
 # observed: EXIT 0
 #   secret_sys_exec_argv_fail emit refuses
 #   secret_sys_exec_argv_pass emit OK
-
-timeout 90 bash scripts/secret_sink_enforce_smoke.sh
+timeout 90 bash scripts/secret_sink_enforce_smoke.oo
 # observed: EXIT 1  — ALL sys_exec rails OK:
 #   secret_sys_exec_fail emit refuses
 #   secret_sys_exec_pass emit OK
@@ -124,9 +108,9 @@ timeout 90 bash scripts/secret_sink_enforce_smoke.sh
 `sys_exec` last-arg + argv-ident refuse/allow **green**. Floor fail is
 **file_size emit annotation**, not last-arg heap.
 
-========================================================================
+---
 RESIDUAL HONESTY (do not claim closed)
-========================================================================
+---
 
 1. **7.10 `c_parse_secret_env` per-char concat** — still `name = name + c`
    in `ooda/oodac/c_emit_secret.oo`. Different function. Leave for 7.10 OWN.
@@ -149,10 +133,7 @@ RESIDUAL HONESTY (do not claim closed)
    `c_count_top_args` and 7.1 ident walker (`s71_ideas` I4). Hygiene only;
    not a leak. No shared-helper moonshot this turn.
 
-========================================================================
-STATUS FOR SPRINT/PM
-========================================================================
-
+## STATUS FOR SPRINT/PM
 | Item | Status |
 |------|--------|
 | 7.2 `c_sys_exec_last_arg` no per-char OoStr concat | **ALREADY_FIXED** |

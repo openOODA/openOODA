@@ -5,20 +5,17 @@
 # Tree: /home/jeryd/Projects/openOODA/ooda
 # Did not run oodac check oodac/main.oo (INT).
 # Did not trust SPRINT.oot. Grep + read only.
-
 ## Score
-
 | Item | SPRINT [x] claim | Disk | Verdict |
 |------|------------------|------|---------|
 | B2 | cap 1048576 in collect_tokens + tokenize_lines; ERR lex too many tokens + exit | yes in named files; tokenize_lines cap is dead | PASS |
-| B4 | peak RSS + ELF build-id printed; rc 134/137/139/143 FAIL; tiny + main kept | yes in .sh and .oo | PASS |
+| B4 | peak RSS + ELF build-id printed; rc 134/137/139/143 FAIL; tiny + main kept | yes in .oo and .oo | PASS |
 | B6 | cap_builtin_ret short-circuit in tc_call_ret.oo; env_get/oo_env_get mapped | helper In; paren walk + full ret_table still paid; check OK unproven | PARTIAL |
-| B7 | 8 GiB WARN / 32 GiB FAIL in harness_f26_residual_smoke.sh and .oo | .sh real; .oo prints WARN and drops FAIL | PARTIAL |
+| B7 | 8 GiB WARN / 32 GiB FAIL in harness_f26_residual_smoke.oo and .oo | .oo real; .oo prints WARN and drops FAIL | PARTIAL |
 
 Board lie: SPRINT.oot:33-39 marks B6 and B7 [x]. SPRINT.oot:95 still says "B6 + B7 remain open".
 
 ## B2 — PASS
-
 Claim: Cap 1048576 in collect_tokens and tokenize_lines. Overflow prints ERR lex too many tokens and process_exit(1).
 
 Proof
@@ -39,11 +36,10 @@ Holes (claim can [x] while product is still wrong)
 6. Double walk: tokenize_lines lex_all then collect_tokens. Cap does not cut that cost.
 
 ## B4 — PASS
-
 Claim: Peak RSS printed. ELF build-id printed. rc 134/137/139/143 FAIL. Tiny + main checks kept.
 
-Proof .sh
-- ooda/scripts/p7_check_main_smoke.sh:33 echo build-id
+Proof .oo
+- ooda/scripts/p7_check_main_smoke.oo:33 echo build-id
 - :79 peak RSS tiny; :109 peak RSS oodac/main.oo
 - :59-60 crash_rc 134|137|139|143
 - :82-83 tiny crash → bad; :112-113 main crash → bad
@@ -58,15 +54,14 @@ Proof .oo
 
 Holes
 1. RSS is printed, not gated. 12 GB still ALL OK. Claim can pass while F26 cost is still wrong.
-2. build-id may be "unavailable" (:33 .sh, :35 .oo). Not pinned to SPRINT tip. Wrong ELF still prints and passes.
-3. Big check: any non-crash non-124 rc is PASS (.sh:116-118, .oo:83-84). Missing /usr/bin/time, missing timeout, type ERR, rc=127 all look like "not hung".
-4. .oo has no /proc VmHWM fallback. .sh:43-57 does. .oo:40-41 hard-requires /usr/bin/time -v.
+2. build-id may be "unavailable" (:33 .oo, :35 .oo). Not pinned to SPRINT tip. Wrong ELF still prints and passes.
+3. Big check: any non-crash non-124 rc is PASS (.oo:116-118, .oo:83-84). Missing /usr/bin/time, missing timeout, type ERR, rc=127 all look like "not hung".
+4. .oo has no /proc VmHWM fallback. .oo:43-57 does. .oo:40-41 hard-requires /usr/bin/time -v.
 5. std/scenario.oo:14 residual: check `within` is message-only; no clock. p7_check_main_smoke.oo:42 and :53 discard check() with `let _ =`. Inner `timeout` is the only clock, and only if that binary exists.
-6. .sh:2 still says finish within 45s. Live timeout is 180s. Stale header.
+6. .oo:2 still says finish within 45s. Live timeout is 180s. Stale header.
 7. Crash set omits 132 SIGILL and 136 SIGFPE. Claim named four codes only; those two still PASS the big lane if they occur.
 
 ## B6 — PARTIAL
-
 Claim: cap_builtin_ret short-circuit in tc_call_ret.oo. env_get / oo_env_get mapped. main.oo check OK. Leftover ret_table concat seed: SPRINT does not claim gone.
 
 Proof In
@@ -95,11 +90,10 @@ Holes
 5. Line 250 is a dangling comment ("Fail-closed: g() + a") with no function. Truncation residue.
 
 ## B7 — PARTIAL
+Claim: Already 8 GiB WARN / 32 GiB FAIL in harness_f26_residual_smoke.oo and .oo.
 
-Claim: Already 8 GiB WARN / 32 GiB FAIL in harness_f26_residual_smoke.sh and .oo.
-
-Proof .sh In
-- ooda/scripts/harness_f26_residual_smoke.sh:11 WARN_RSS_KB = 8 * 1024 * 1024
+Proof .oo In
+- ooda/scripts/harness_f26_residual_smoke.oo:11 WARN_RSS_KB = 8 * 1024 * 1024
 - :12 FAIL_RSS_KB = 32 * 1024 * 1024
 - :50-51 rss > 32 GiB → bad (fail=1); else > 8 GiB → warn (no fail)
 - :56-58 fail → exit 1
@@ -114,14 +108,13 @@ Proof .oo constants + WARN only
 Holes
 1. .oo 32 GiB FAIL is theater. Claim can [x] both files while the .oo never fails closed on RSS.
 2. Live board peak is 12 GB (SPRINT pin). That is > 8 GiB WARN and < 32 GiB FAIL. Every honest run WARNs and still ALL OK. Product stays 300x over the 39 MB baseline while B7 is [x].
-3. .sh :50 uses -gt. rss == 32 GiB exactly is not FAIL. .oo expect_lt is >= (if it were honored). The two files disagree on the edge.
-4. Missing GNU time → awk empty → rss treated as 0 (.sh:42, .oo:38-39 parse_int of junk → 0 via tc_parse_int.oo:23-36 skipping non-digits). Memory FAIL never fires.
-5. .sh:2 still says "32s, 22.8 GB RSS". Stale vs B8 28s / 12 GB.
+3. .oo :50 uses -gt. rss == 32 GiB exactly is not FAIL. .oo expect_lt is >= (if it were honored). The two files disagree on the edge.
+4. Missing GNU time → awk empty → rss treated as 0 (.oo:42, .oo:38-39 parse_int of junk → 0 via tc_parse_int.oo:23-36 skipping non-digits). Memory FAIL never fires.
+5. .oo:2 still says "32s, 22.8 GB RSS". Stale vs B8 28s / 12 GB.
 6. .oo ignores OODAC_BIN. Hardcoded oodac/oodac (:15-16).
 7. parse_int on wall/rss has no overflow check. A garbage time file can wrap or stay 0.
 
 ## What this pass did not do
-
 - No oodac check oodac/main.oo.
 - No ELF strings.
 - No live RSS / wall clock.

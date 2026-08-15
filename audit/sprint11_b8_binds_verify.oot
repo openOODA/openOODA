@@ -1,5 +1,4 @@
 # SPRINT 11 MED — B8 list-binds verify
-
 **Marker:** `SPRINT11_B8_BINDS_VERIFY_2026-08-13`
 **Date:** 2026-08-13
 **Role:** grok, audit only. No product edit.
@@ -12,7 +11,6 @@
 **Axiom:** RULES 1.9 zero trust. Fail-closed on invented clocks.
 
 ## Verdict
-
 B8 list binds are on disk. The seven typecheck bind sites use `list_push`, not `binds = binds +`. `drop_depth` uses `str_ends_with`. `scope_has` compares `name@d`. The root-cause audit names `env.oo` a red herring and records 50 s / 30 GB → 28.5 s / 12 GB, not a 39 MB close.
 
 | Check | Status | Live evidence |
@@ -29,7 +27,6 @@ B8 list binds are on disk. The seven typecheck bind sites use `list_push`, not `
 Overall: **PASS**. No product flag.
 
 ## 1. `list_push` not string concat
-
 `typecheck_undefined_vars_ext` types `binds` as `List[String]` (`tc_names.oo:27`). Comment at 14–15 states the old String churn was 30 GB / 50 s.
 
 Ripgrep `binds = binds` in `tc_names.oo` and `tc_scope.oo`: **zero**.
@@ -53,7 +50,6 @@ Two more `list_push` sites (35, 44) split `extra_binds` on tab. API stays a Stri
 Out of B8 files: `ooda/oodac/check_scan.oo:178,187` still does `binds = binds + cur + "@0\t"` inside `names_to_depth0_binds` (String extra_binds builder). Not the typecheck accumulator. Not a B8 FAIL.
 
 ## 2. `drop_depth` uses `str_ends_with`
-
 Live `tc_scope.oo:36-51` (sprint said 28-43).
 
 - Input/output: `List[String]`.
@@ -66,7 +62,6 @@ Sprint text said `list_filter`. Live code is the same O(K) rebuild, written as a
 Old anti-pattern (full String rebuild of one `binds` blob) is gone.
 
 ## 3. `scope_has` `name@d`
-
 Live `tc_scope.oo:19-34` (sprint said 11-26).
 
 ```
@@ -79,7 +74,6 @@ if list_get(binds, i) == needle { return true; }
 `binds_has` (`tc_scope.oo:12-15`) still does `"\t" + name + "\t"` on a String. That is the type-env table, not the scoped bind list. Untouched by the B8 list conversion. Out of this check.
 
 ## 4. Audit does not say `env.oo` was the B8 fix
-
 `openOODA/audit/b8_root_cause.oot`:
 
 - Verdict table: root cause = **`tc_names.oo` + `tc_scope.oo`**. `env.oo` culprit = **RED HERRING**.
@@ -92,7 +86,6 @@ if list_get(binds, i) == needle { return true; }
 This turn did not re-run PV2.
 
 ## 5. Metrics: 50 s / 30 GB → 28.5 s / 12 GB, not 39 MB
-
 From `b8_root_cause.oot` (not re-timed here):
 
 | Claim | Present? | Where |
@@ -108,7 +101,6 @@ The audit does **not** report the list-binds patch as 39 MB. 39 MB is the old 02
 This verify did not clock `oodac check oodac/main.oo`. Numbers are inherited from the corrected root-cause doc + the board.
 
 ## 6. Residual (board Task 11 items 6–7)
-
 - 12 GB still > F26 WARN 8 GiB. FAIL gate 32 GiB holds.
 - 1–2 s / 39 MB baseline not restored.
 - B6 (cap-call short path) and B7 (F26 threshold) remain open on `SPRINT.oot`.
@@ -116,7 +108,6 @@ This verify did not clock `oodac check oodac/main.oo`. Numbers are inherited fro
 - Cosmetic `let _drop = 0;` cited in root-cause §7 is already gone from live `tc_scope.oo`.
 
 ## Cross-ref
-
 - `openOODA/SPRINT.oot` B8 CLOSED + Task 11 audit request.
 - `openOODA/audit/b8_root_cause.oot` — honest metrics; `env.oo` red herring.
 - `openOODA/audit/b8_list_binds_audit.oot` — prior grok pass; used the stale 47/76 line map.

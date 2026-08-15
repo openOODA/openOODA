@@ -3,27 +3,24 @@
 # Role: creative but **shippable** residual ideas — **no product code** this pass
 # Audience: Domain Experts (implement winner) · peers (smoke shapes) · Integration
 # Scope: ooda/oodac multi-import typecheck residual close — **not** M1–M20 moonshots
-
 ## Problem (tree truth)
-
 | Fact | Evidence |
 |------|----------|
 | Sprint pin | `SPRINT.oot` R2 ACTIVE: multi-import type check in `ooda/oodac/` |
 | PM plain words | `PM.oot`: one file checks ok; **many files in one build still fails** |
-| Tiny multi works | `bootstrap/corpus/import/pass/multi_ok.oo` + `import_load_smoke.sh` — in-tree load + check OK |
+| Tiny multi works | `bootstrap/corpus/import/pass/multi_ok.oo` + `import_load_smoke.oo` — in-tree load + check OK |
 | Scale residual | `AUDIT_RESIDUAL.oot` **R4/R5**: full expanded `check` on oodac-scale trees times out / hangs; `PURE_SKIP_CHECK=1` common |
 | Concat path | `load_import.oo` DFS expands imports into **one** source stream; `check_drive.oo` typechecks expanded string (1 MiB cap) |
-| Issue #9 | Expanded-stream LINE:COL, not per-file local — residual named in `load_import.oo`, `tc_diag.oo`, `DIAG_CODES.oot`, `typecheck_line_smoke.sh` |
+| Issue #9 | Expanded-stream LINE:COL, not per-file local — residual named in `load_import.oo`, `tc_diag.oo`, `DIAG_CODES.oot`, `typecheck_line_smoke.oo` |
 | Modular scaffold (half-landed) | `check_mod.oo` has `run_check_module_body` but **`run_check_path` still full-concat** + tree cache only |
 | Signature hook | `tc_names.oo` `typecheck_undefined_vars_ext(..., extra_binds)` — pre-seed external names; product path still calls plain `typecheck_undefined_vars` |
-| External script | `scripts/oodac_module_check.py` — per-module stubs + unit check (avoids OOM); **not** product `oodac check` path |
+| External script | `scripts/oodac_module_check.oo` — per-module stubs + unit check (avoids OOM); **not** product `oodac check` path |
 | Cache API | `check_cache.oo`: `m_` mod keys + `t_` tree keys; product uses **t_ only** on full expanded hash (`check_mod.oo`) |
 | Collect graph | `check_collect.oo` `collect_module_paths` + `strip_import_lines` exist — ready for modular driver |
 
 **Not this wave:** full multi-module IR, parallel typechecker rewrite, emit-c graph redesign, DESIGN moonshots.
 
 ## Constraints (hard)
-
 1. **Path A only** — fail-closed residual, not “perfect multi-module TC.”
 2. **Reuse scaffolds** — prefer wiring `check_mod` / `check_collect` / `extra_binds` over new architecture.
 3. **Honesty** — no cache greenwash; no claim per-file LINE fixed unless smoke proves it.
@@ -32,7 +29,6 @@
 6. **Fairy writes ideas only** — Domain Experts own implement + prove.
 
 ## Darwin scorecard (path-A residual)
-
 Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 
 | Axis | Meaning |
@@ -48,12 +44,11 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 ---
 
 ## Ideas evaluated
-
 ### I1 — Path markers / `#line`-style remap (Issue #9)
-**Shape:** In `load_expand`, emit non-code markers (e.g. comment `#line 1 "path"` or a dedicated marker line the lexer skips) at each module body start; track `line_base` + path table; `tc_err_at` / `tc_err_lc` remap expanded LINE → `path:local_line` (or `file:line` in message).  
-**Smoke:** multi-import type fail fixture: error in lib.oo reports **local** line + path (or path-tagged line); single-file `typecheck_line_smoke` unchanged.  
-**Darwin:** Close 7 · Honest 10 · Smoke 8 · Entropy 8 · Ship 6 → **avg 7.8**  
-**Why good:** Named residual with clear done-bar; agents need real file:line.  
+**Shape:** In `load_expand`, emit non-code markers (e.g. comment `#line 1 "path"` or a dedicated marker line the lexer skips) at each module body start; track `line_base` + path table; `tc_err_at` / `tc_err_lc` remap expanded LINE → `path:local_line` (or `file:line` in message).
+**Smoke:** multi-import type fail fixture: error in lib.oo reports **local** line + path (or path-tagged line); single-file `typecheck_line_smoke` unchanged.
+**Darwin:** Close 7 · Honest 10 · Smoke 8 · Entropy 8 · Ship 6 → **avg 7.8**
+**Why good:** Named residual with clear done-bar; agents need real file:line.
 **Why not #1 alone:** Does **not** fix R4/R5 timeout/OOM — still full-concat typecheck. Ship as companion if product stays on concat for check, or as residual for tokens/ast/emit-c streams.
 
 ### I2 — Modular check: per-module typecheck + signature table (`extra_binds`) ⭐
@@ -64,10 +59,10 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 4. Exit 0 only if **every** module unit-checks; fail-closed first error with **local** LINE (Issue #9 dissolves for check).
 5. Optional: per-module `m_<hash>` cache; tree `t_` = hash of ordered module hashes (see I3).
 
-**Minimal path-A:** names-only extra_binds (undefined-var cross-module OK); arity/type of cross-module calls remain residual OR use stub-fn preamble like `oodac_module_check.py` (still no whole-program concat).
+**Minimal path-A:** names-only extra_binds (undefined-var cross-module OK); arity/type of cross-module calls remain residual OR use stub-fn preamble like `oodac_module_check.oo` (still no whole-program concat).
 
-**Smoke:** see I5 matrix.  
-**Darwin:** Close 10 · Honest 9 · Smoke 9 · Entropy 9 · Ship 8 → **avg 9.0**  
+**Smoke:** see I5 matrix.
+**Darwin:** Close 10 · Honest 9 · Smoke 9 · Entropy 9 · Ship 8 → **avg 9.0**
 **Why winner:** Hits SPRINT/PM “many files fail”; reuses half-landed `check_mod` / `check_collect` / `extra_binds` / Python proof; fixes scale **and** local lines for check without new architecture.
 
 ### I3 — Cache tree key honesty
@@ -76,8 +71,8 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 - With I2: `m_h` = hash(module body); `t_` = hash(join sorted `path:h`); hit only if all `m_` green + tree key matches; never put `t_` on partial modular success.
 - Fail-closed: empty key never hits (`check_cache_hit` already).
 
-**Smoke:** touch one leaf module → tree miss; change only comment in unused file → miss if in graph; no hit after failed module check.  
-**Darwin:** Close 6 · Honest 10 · Smoke 8 · Entropy 9 · Ship 8 → **avg 8.2**  
+**Smoke:** touch one leaf module → tree miss; change only comment in unused file → miss if in graph; no hit after failed module check.
+**Darwin:** Close 6 · Honest 10 · Smoke 8 · Entropy 9 · Ship 8 → **avg 8.2**
 **Why:** Small honesty land; **must ship with I2** (not alone — does not fix multi-file TC cost). Alone = doc/comment residual only if modular deferred.
 
 ### I4 — Progressive depth / size limits with fail-closed message
@@ -86,12 +81,12 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 - Optional progressive: soft note only if policy forbids soft — **prefer hard fail-closed only** (no soft-OK).
 - Message names residual: “use modular check residual / split tree” when applicable.
 
-**Smoke:** synthetic deep import chain fail; multi_ok still pass.  
-**Darwin:** Close 5 · Honest 9 · Smoke 9 · Entropy 8 · Ship 9 → **avg 8.0**  
+**Smoke:** synthetic deep import chain fail; multi_ok still pass.
+**Darwin:** Close 5 · Honest 9 · Smoke 9 · Entropy 8 · Ship 9 → **avg 8.0**
 **Why:** Cheap belt for hang/OOM; does **not** close R2 by itself (small multi already OK; large trees still need modular). **Ship as belt with I2.**
 
 ### I5 — Smoke matrix design (immune rail for R2)
-**Shape:** Corpus + one script (extend `import_load_smoke` or new `multi_import_tc_smoke.sh`):
+**Shape:** Corpus + one script (extend `import_load_smoke` or new `multi_import_tc_smoke.oo`):
 
 | Case | Expect |
 |------|--------|
@@ -104,33 +99,32 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 | Cache honesty (I3) | miss after module edit |
 | Single-file line floor | `typecheck_line_smoke` still green |
 
-**Darwin:** Close 8 · Honest 10 · Smoke 10 · Entropy 10 · Ship 9 → **avg 9.4** (design+rails; not a solo product fix)  
+**Darwin:** Close 8 · Honest 10 · Smoke 10 · Entropy 10 · Ship 9 → **avg 9.4** (design+rails; not a solo product fix)
 **Why:** Winner **bundle with I2** — without matrix, modular can greenwash.
 
 ### I6 — Keep full concat forever; only raise 1 MiB + timeouts
-**Shape:** Bigger expanded limit + longer pure_build timeout.  
-**Darwin:** Close 2 · Honest 3 · Smoke 4 · Entropy 1 · Ship 7 → **avg 3.4 — PRUNE**  
+**Shape:** Bigger expanded limit + longer pure_build timeout.
+**Darwin:** Close 2 · Honest 3 · Smoke 4 · Entropy 1 · Ship 7 → **avg 3.4 — PRUNE**
 **Why dies:** Amplifies R4/R5; raises \(O\) and hang risk; fails reverse entropy.
 
 ### I7 — Full parallel multi-module typechecker / new IR
-**Shape:** Separate AST per file, inter-module solver, whole new pipeline.  
-**Darwin:** Close 8 · Honest 5 · Smoke 2 · Entropy 0 · Ship 0 → **avg 3.0 — REJECT**  
+**Shape:** Separate AST per file, inter-module solver, whole new pipeline.
+**Darwin:** Close 8 · Honest 5 · Smoke 2 · Entropy 0 · Ship 0 → **avg 3.0 — REJECT**
 **Why dies:** Moonshot-class; out of residual close; fairy forbids large architecture.
 
-### I8 — Productize Python `oodac_module_check.py` only (host rail forever)
-**Shape:** Document external script as the multi-module check; leave `oodac check` on concat.  
-**Darwin:** Close 4 · Honest 6 · Smoke 7 · Entropy 4 · Ship 6 → **avg 5.4**  
+### I8 — Productize Python `oodac_module_check.oo` only (host rail forever)
+**Shape:** Document external script as the multi-module check; leave `oodac check` on concat.
+**Darwin:** Close 4 · Honest 6 · Smoke 7 · Entropy 4 · Ship 6 → **avg 5.4**
 **Why weak:** Dual truth (product vs script); agents use `oodac check`; residual theater. Acceptable only as **temporary** rail while I2 lands — not the close.
 
 ### I9 — Path markers **only** in diagnostics without load change (post-hoc guess)
-**Shape:** Heuristic “if line > N assume import padding.”  
-**Darwin:** Close 1 · Honest 0 · Smoke 2 · Entropy 0 · Ship 5 → **avg 1.6 — DISQUALIFIED**  
+**Shape:** Heuristic “if line > N assume import padding.”
+**Darwin:** Close 1 · Honest 0 · Smoke 2 · Entropy 0 · Ship 5 → **avg 1.6 — DISQUALIFIED**
 **Why dies:** Lie-prone; fail-open diagnostic honesty.
 
 ---
 
 ## Rank (path-A survivors)
-
 | Rank | ID | Avg | Verdict |
 |-----:|----|----:|---------|
 | **1** | **I2 + I5** | 9.0 / 9.4 | **WINNER BUNDLE — ship now** modular unit check + smoke matrix |
@@ -143,9 +137,7 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 | — | I9 | 1.6 | Disqualified |
 
 ## Top recommendation (this turn — path-A residual close)
-
 ### **Ship: Modular per-module typecheck + signature table (`extra_binds`) + smoke matrix (I2+I5)**
-
 **Why this closes R2 residual:**
 - Product already loads multi-file trees; **pain is whole-program expanded typecheck** (R4/R5), not import parse.
 - Scaffolds exist: `collect_module_paths`, `strip_import_lines`, `run_check_module_body`, `extra_binds`, external Python proof.
@@ -153,10 +145,9 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 - Shippable path-A, not multi-module IR moonshot.
 
 ### DE winner advice (plain English)
-
 1. **Wire `run_check_path`** to modular loop (keep full-concat behind residual flag only if needed for debug; default modular for multi-file graphs with ≥1 import, or always modular for all paths).
-2. **Signature table path-A:** collect all `fn` IDENT names across modules → `extra_binds` for `typecheck_undefined_vars_ext`.  
-   - Stretch same wave: stub-fn preamble (mirror `oodac_module_check.py`) so arity/return lite checks see callees.  
+2. **Signature table path-A:** collect all `fn` IDENT names across modules → `extra_binds` for `typecheck_undefined_vars_ext`.
+   - Stretch same wave: stub-fn preamble (mirror `oodac_module_check.oo`) so arity/return lite checks see callees.
    - **Named residual:** full cross-module arg typeflow / struct export tables — later.
 3. **Cache honesty (I3):** put `m_` per module body hash after OK; `t_` only after all modules OK; key material = ordered path+body hashes (not stale expanded blob if modular).
 4. **Depth belt (I4):** hard cap module count and/or import depth with clear `ERR\t…`.
@@ -174,29 +165,25 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 7. **Out of scope:** parallel TC, new IR, raising 1 MiB as “fix,” marketing “full multi-module type system.”
 
 ### Explicit non-winners (do not build this turn)
-
-- Bigger concat limits / longer hangs (I6)  
-- Full multi-module typechecker architecture (I7)  
-- Heuristic line guessing (I9)  
-- Host-only Python forever as product claim (I8)  
-- M1–M20 moonshots  
+- Bigger concat limits / longer hangs (I6)
+- Full multi-module typechecker architecture (I7)
+- Heuristic line guessing (I9)
+- Host-only Python forever as product claim (I8)
+- M1–M20 moonshots
 
 ## Entropy report (expected after winner)
-
-`S: ↓` — R4/R5 untested large-tree check claims → either green modular or **named** residual; Issue #9 untested multi-import LINE → smoke-proven local lines on check path.  
+`S: ↓` — R4/R5 untested large-tree check claims → either green modular or **named** residual; Issue #9 untested multi-import LINE → smoke-proven local lines on check path.
 `U` holds only for: deep cross-module arg types, emit-c concat diags, design-level package system.
 
 ## Leave-off
-
-- Fairy: ideas only in this file.  
-- DE owns land + prove; peers: cache honesty + local LINE + no soft-OK.  
-- Security: modular check must not skip cap/residual sealed-name scans per module body (same rails as `run_check_core` slice).  
+- Fairy: ideas only in this file.
+- DE owns land + prove; peers: cache honesty + local LINE + no soft-OK.
+- Security: modular check must not skip cap/residual sealed-name scans per module body (same rails as `run_check_core` slice).
 - Optional one-file design note: only if DE requests; this audit file is the Decide input.
 
 ---
 
 ## One-page design note (I2) — DE pocket card
-
 ```
 run_check_path(fs, sys, root):
   paths = collect_module_paths(fs, root)   # deps-first
@@ -215,7 +202,7 @@ run_check_path(fs, sys, root):
   print OK
 ```
 
-Path-A residual callout in header of `check_mod.oo` after land:  
+Path-A residual callout in header of `check_mod.oo` after land:
 “Modular unit check = names (+ optional stubs). Not full export-type lattice.”
 
 end of r2_ideas.oot

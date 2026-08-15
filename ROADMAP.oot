@@ -1,0 +1,131 @@
+# ROADMAP — Project Status, Release Pin & Active Sprint Backlog
+
+File: openOODA/ROADMAP.oot
+NORTHSTAR is the vision. SHIPPED is what exists. ROADMAP is the active execution plan and release pin.
+
+## 1. Release Pin & Status
+
+  Release: v0.199.0-alpha (Heading to v0.200.0-beta)
+  Product tip (ooda): main
+  Boards tip: main
+  Std tip: main
+  Beta is not the current release.
+
+## 2. Compiler Health Metrics & Model
+
+  Live check (this host): `oodac check oodac/main.oo` passes OK in about 150 seconds (178 modules).
+  Memory model: `PURE_NO_ARC=0`. Memory is freed when the last reference drops.
+  Native path: You do not need wasmtime, clang, or a special env file for the native C path.
+  Std footprint: about 199 .oo files under `../ooda/std`. Org `std/` is not product.
+
+## 3. Pure Rebuild Commands & Verification
+
+  How to rebuild the compiler cleanly from `ooda/`:
+    cd ../ooda
+    export PURE_NO_ARC=0
+    OODAC_BIN=./bootstrap/seed/oodac bash bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
+    OODAC_BIN=./oodac/oodac bash bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
+    ./oodac/oodac check oodac/main.oo
+  PURE_SKIP_CHECK=1 is opt-in only. It is not the official product path.
+
+  CI honesty:
+    `oodac check scripts/ci_product.oo` only typechecks those rails.
+    It does not emit, gcc, or run them.
+    Official rebuild is `bash bootstrap/oodac_pure_build`.
+    Named emit+gcc+run proof is `scripts/ci_open_run.oo`.
+
+## 4. Status Words
+
+  done — works, proved on disk
+  smoke — small check passes
+  partial — part works
+  residual — wanted in NORTHSTAR, not yet built
+  open — active sprint task in current cycle
+
+## 5. Open (This Cycle)
+
+  From NORTHSTAR vs SHIPPED. Not a beta tag. Not ROADMAP section 6.
+  Gemini owns org `std/`. Do not take that lane unless the owner names a file.
+  This cycle's 13 rows are proved and marked done.
+
+  [x] OPEN-1: `ooda test` runs `verify` / `assert_eq!` / `assert!` and fails closed. Not the same as `ooda run`.
+  [x] OPEN-2: Check refuses unused `Result` (NORTHSTAR must-use). No discarded `expect_*` then PASSED.
+  [x] OPEN-3: `ooda fix` and `ooda patch` write through `&FsWriteCap` / `write_file`. No host `printf` write.
+  [x] OPEN-4: One more `ooda fix` class (missing import or parse/brace). Still ask unless `--yes`.
+  [x] OPEN-5: Type floor for `Option` / exhaustive `match` / `?`. Compiler, not more library files.
+  [x] OPEN-6: Official rebuild does not skip check (`PURE_SKIP_CHECK` is not the product path).
+  [x] OPEN-7: A named CI set emits, gcc, and runs. `oodac check scripts/ci_product.oo` is not that proof.
+  [x] OPEN-8: Product `oodac check --json-errors` is in-process. No capture `.sh`. Product CLI already converts.
+  [x] OPEN-9: Product std is `ooda/std`. Org `std/` is not product until proved the same way.
+  [x] OPEN-10: `cli/host_run.oo` under 256 lines (RULES 1.7).
+  [x] OPEN-11: Tree `oodac` can emit the product CLI (same-file user calls). No older binary required.
+  [x] OPEN-12: Check line/col is per source file after import. Not the expanded concat stream.
+  [x] OPEN-13: `ooda.ebnf` matches what check accepts, and names what is residual.
+
+## 6. Later / Residual Tracks (Not This Week's Sprint)
+
+  These rows are wanted in NORTHSTAR. They are not the active sprint.
+  Do not pick one unless the owner names the row.
+
+### Track 1: Compiler & Code Generation Floor
+  [ ] RTB-6: Pure .wasm binary bytecode emission (upgrade from .wat text to \0asm direct module).
+  [ ] RTB-7: Self-host compiler check performance (<10s check & memory optimization under 250MiB).
+  [ ] RTB-8: LLVM self-hosting expansion (struct matching & multi-module clang link parity).
+
+### Track 2: Security, Sandboxing & OS Containment
+  [ ] RTB-9: Linux Kernel Landlock sandboxing (filesystem path jails under &FsCap).
+  [ ] RTB-10: POSIX heap rlimits & memory quotas (hard address-space ceilings under &MemCap).
+  [ ] RTB-11: Fine-grained struct field secret taint tracking (allow clean fields, reject secret sinks).
+
+### Track 3: Developer Ecosystem & Tooling Floor
+  [ ] RTB-12: Pure self-hosted language server (ooda lsp native JSON-RPC binary replacing JS bridge).
+  [ ] RTB-13: Multi-error in-place code fixer (ooda fix auto-patching E_CAP, missing imports & types).
+  [ ] RTB-14: Package registry & cryptographic lockfile resolver (pm install/add with SHA-256 seals).
+
+### Track 4: Standard Library Expansion
+  [ ] RTB-15: Buffered filesystem stream API (std/fs/file.oo & std/fs/path.oo chunked I/O).
+  [ ] RTB-16: Cryptographic hashing & encoding (std/crypto/sha256.oo & std/encoding/base64.oo).
+  [ ] RTB-17: Text processing & regular expressions (std/text/regex.oo finite-state engine).
+
+### Track 5: Type System & Formal Verification Depth
+  [ ] RTB-18: SMT-backed contract verification (compile-time constraint solving on requires/ensures).
+  [ ] RTB-19: Affine & linear typestate lifecycles (compile-time state transitions, no double-free).
+  [ ] RTB-20: Zero-cost generics & trait monomorphization (parametric Result[T, E] & List[T] codegen).
+
+### Track 6: Memory Architecture & Hardware-Aware Runtime Depth
+  [ ] RTB-21: Scoped arena memory allocators (&ArenaCap high-throughput pointer-bump region reset).
+  [ ] RTB-22: Cache-optimized Struct-of-Arrays (SoA / DoD) layout transformation for SIMD vectorization.
+  [ ] RTB-23: Deterministic micro-transactional Undo-RAM (ring-buffer memory journal with instant rollback).
+
+### Track 7: Concurrency, Actors & Fault-Tolerant Supervision
+  [ ] RTB-24: Location-transparent actor mailboxes & micro-fibers (lockless green-fiber scheduler).
+  [ ] RTB-25: Erlang-style OTP supervision trees (hierarchical actor restart, backoff & state recovery).
+  [ ] RTB-26: Token-sealed capability RPC (cryptographically authenticated actor wire protocol under &NetCap).
+
+### Track 8: Zero-Trust Security & OS-Kernel Attenuation
+  [ ] RTB-27: Hierarchical capability attenuation (scoped sub-capability derivation without ambient leak).
+  [ ] RTB-28: Cryptographic object capabilities (C-Caps with HMAC-SHA256 tamper-proof seals).
+  [ ] RTB-29: Hardware enclave & confidential compute integration (AMD SEV / Intel SGX for SECRET fields).
+
+### Track 9: Native Code Generation, Binary Tooling & Optimizations
+  [ ] RTB-30: Standalone native x86_64 / AArch64 machine-code backend (sub-millisecond compilation).
+  [ ] RTB-31: Cross-language link-time optimization (LTO) & direct C-header FFI under &SysCap).
+  [ ] RTB-32: Bit-identical reproducible build normalizer (zero-timestamp deterministic binary output).
+
+## 7. Closed Deliverables (Delivered in v0.198.0-alpha / v0.199.0-alpha)
+
+  [x] Compiler self-hosting: check of all 177 modules passes OK (16.8s / 0.32 GiB).
+  [x] Native C & LLVM emit: ooda run, spawn, secret sinks, LLVM hello.
+  [x] RTB-1: Essential collections & formats (std/hash/map.oo & std/markup/json.oo).
+  [x] RTB-2: I/O & networking floor (std/time/chrono.oo & std/net/http.oo).
+  [x] RTB-3: CLI developer workflow (cli/cli_init.oo, cli/cli_doc.oo, init/test/doc).
+  [x] RTB-4: Rich compiler diagnostics (cli/diag_fmt.oo with caret pointers ^^^^).
+  [x] RTB-5: Concurrency & synchronization (std/sync/channel.oo bounded message queues).
+
+## 8. Cross References & Frontiers
+
+  - Architecture North Star: `openOODA/NORTHSTAR.oot`
+  - Proven on Disk: `openOODA/SHIPPED.oot`
+  - Long-Term Frontiers: `openOODA/MOONSHOTS.oot`
+  - Invariant Laws: `openOODA/RULES.oot`
+  - Verification & Smokes: `../ooda/scripts/*_smoke.oo`

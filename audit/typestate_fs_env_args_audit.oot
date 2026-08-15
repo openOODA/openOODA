@@ -1,12 +1,10 @@
 # SPRINT 12 — Native FS / Env / args / typestate audit
-
 **Marker:** `TYPESTATE_FS_AUDIT_REQUEST_2026-08-13`
 **Date:** 2026-08-13
 **Role:** grok, audit only. Product edits in this turn are B6/B2/SECRET, not this surface.
 **Axiom:** RULES 1.9 zero trust. 1.10 short words.
 
 ## Verdict
-
 Native FS, Env, and process args are wired through `oo_` C calls and caps. Typestate check is live on the product path. DE1.8 still filters env keys to `OODA_` / `OO_`. That is not a typestate bypass. It is the env seal.
 
 | Surface | Status | Evidence |
@@ -25,7 +23,6 @@ Native FS, Env, and process args are wired through `oo_` C calls and caps. Types
 | Real heap alias | RESIDUAL | `TYPE_STATE.oot` says so |
 
 ## 1. Native FS
-
 `std/os/fs.oo` is a thin wrap:
 
 - read / exists / size / read_dir / is_dir / walk → FsReadCap + `oo_read_file` and friends
@@ -43,7 +40,6 @@ Hole to name, not close here: `oo_read_file` and `oo_path_exists` pass `path.dat
 `fs_walk` is OODA, not C. It recurses with `fs_is_dir` + `fs_read_dir`. No depth cap. A deep tree can blow the stack. Residual.
 
 ## 2. Env and DE1.8
-
 `env_get` does not call itself. It calls `oo_env_get`.
 
 `oo_env_get` requires EnvCap, then `oo_process_policy_getenv`. That function returns NULL unless the key starts with `OODA_` or `OO_`.
@@ -55,7 +51,6 @@ Typestate does not read env. It does not need to "bypass" DE1.8. The `oo_` prefi
 `ok_env_get.oo` calls `env_get(env, "HOME")`. Check can pass (EnvCap granted). At run, `HOME` is not `OODA_` / `OO_`, so the Result is Err. That is the seal. Not a typestate bug.
 
 ## 3. Process args
-
 `process_args(p)` → `oo_sys_args(p)`.
 
 C: `oo_cap_require_process`, then `/proc/self/cmdline`, 4096-byte buffer. It skips the first field (argv0). Long argv is truncated. Residual, named.
@@ -63,7 +58,6 @@ C: `oo_cap_require_process`, then `/proc/self/cmdline`, 4096-byte buffer. It ski
 SHIPPED lists `process_args(ProcessCap)`.
 
 ## 4. Typestate integration
-
 Live hooks (read this turn):
 
 - `oodac/main.oo` imports `check_typestate*.oo` including `check_typestate_call.oo`
@@ -71,12 +65,11 @@ Live hooks (read this turn):
 - Modular check (`np > 12`) prepends extracted TYPESTATE lines to each module body
 - Cache prefix `t_ts3_` so old OK is not reused
 
-Board `bootstrap/TYPE_STATE.oot` matches the path-A rules (join, compose, Type#fn, paren call, ctor return). Rails live in `scripts/typestate_check_smoke.sh` and `fixtures/typestate_*.oo`.
+Board `bootstrap/TYPE_STATE.oot` matches the path-A rules (join, compose, Type#fn, paren call, ctor return). Rails live in `scripts/typestate_check_smoke.oo` and `fixtures/typestate_*.oo`.
 
 Not claimed: real heap alias, struct-lit field store (parse still rejects some `Box { s: 0 }` forms), full inter-file lattice beyond the prepend.
 
 ## 5. What this audit did not do
-
 - Did not rebuild the ELF (B6/B2/SECRET rebuild in the same turn covers the compiler)
 - Did not re-run the full typestate smoke in this audit file
 - Did not edit `chs_rt_fs.c`, `std/os/*`, or AGY `ooda/pm/`

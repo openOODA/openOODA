@@ -1,12 +1,10 @@
 # s29c_harness.oot — 2.9 wave-3 H-later + H-same println SECRET harness pointer
 # Date: 2026-08-12
 # Scope: SPRINT 2.9 wave-3 smoke rails only (no Domain Expert product land)
-
 ## Harness
-
 | Item | Path |
 |------|------|
-| Smoke | `ooda/scripts/s29_println_guard_smoke.sh` |
+| Smoke | `ooda/scripts/s29_println_guard_smoke.oo` |
 | Binary | `OODAC_BIN` or `ooda/oodac/oodac` |
 | Fixtures | ephemeral under `$TMPDIR/s29_println_guard_$$` (not repo root) |
 | Product | `ooda/oodac/c_emit_secret.oo` (`check_secret_println_sinks`) + `c_emit_print.oo` (`c_emit_println`) — do not rewrite |
@@ -16,7 +14,6 @@
 One smoke. No second 2.9 script.
 
 ## Rails (wave-3 keeps wave-1 + wave-2)
-
 | Kind | Case |
 |------|------|
 | FAIL-closed | `// SECRET: tok` then `println(tok)` (bare IDENT) |
@@ -31,16 +28,14 @@ Both H-later and H-same are dual-path: `check` **and** `emit-c` must print `ERR	
 Wave-3 **exact** H-same shape is `println(("x") + tok)`. Extra wrap `println((("x") + tok))` is **not** this rail (`ERR	type` is not a SECRET seal).
 
 ## Run
-
 ```
 cd /home/jeryd/Projects/openOODA/ooda
-OODAC_BIN=./oodac/oodac bash scripts/s29_println_guard_smoke.sh
+OODAC_BIN=./oodac/oodac bash scripts/s29_println_guard_smoke.oo
 ```
 
 Prefer a cwd without a stale `.ooda-cache` (check-cache can false-OK).
 
 ## Live prove (this host, 2026-08-12T19:43Z)
-
 Clean cwd `/tmp/s29c_harness_prove_*`, `OODAC_BIN=ooda/oodac/oodac` (ELF **07:49** / **04:49 -1000**; 962960 B; md5 `a44ee35eb344837009697e2c9d4e4662`; BuildID `a93cfd09506ba87497379f66b6c7047dee02573d`). Smoke **194** L; md5 `2ad0ee9592709771015e8fc55298a81e`. `bash -n` PASS.
 
 | Rail | emit-c | check |
@@ -55,7 +50,6 @@ Clean cwd `/tmp/s29c_harness_prove_*`, `OODAC_BIN=ooda/oodac/oodac` (ELF **07:49
 Smoke **exit 1** is the fail-closed signal. Wave-3 rails are **not** green on this ELF. WT source has paren `depth` (`c_emit_secret.oo` L191; `c_emit_print.oo` L19 `d`) but the shipping host was not rebuilt. Do not treat exit 1 as a harness bug.
 
 ## Residual (documented, not a fail)
-
 - **Full IFC / `#[Secret]` / interp `${}`:** path-A ident scan only; not DESIGN taint.
 - **2.9 unify:** stmt `println` may still refuse via token IDENT + `check_secret_println_sinks` rather than `c_secret_emit_guard`. This harness proves refuse/no-FP on the two named shapes, not the helper.
 - **Other grouping shapes:** nested `f(g(), tok)`, method `RPAREN` then `+`, extra wrap `((("x") + tok))`, eprintln H-same / H-later are not this rail.

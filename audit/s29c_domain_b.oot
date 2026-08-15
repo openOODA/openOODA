@@ -18,15 +18,11 @@
 # ID: SPRINT 2.9 wave-3 = ship WT depth into ELF; dual `ERR	secret`
 #     on H-later eprintln nest + H-same `f(g(), tok)`. Wave-1 bare
 #     dual refuse stays. B does not flip SPRINT.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 **PASS** on the two assigned shapes (check + emit-c + emit-llvm +
 emit-wasm). Product host is **new** (not the 04:49 ELF). B did **not**
 rebuild and did **not** `cp` onto `ooda/oodac/oodac`. A still had a
-parallel `oodac_pure_build_fixed.sh → /tmp/s29c_oodac` at prove time;
+parallel `bootstrap/oodac_pure_build → /tmp/s29c_oodac` at prove time;
 B waited and proved the already-new product bytes.
 
 No product source change this turn. Walker + stmt `d` are A's wave-2
@@ -47,16 +43,16 @@ run1 = run2.
 | `println(id(1), tok)` / `eprintln(f(g(), tok))` | BLOCK | BLOCK | BLOCK | — |
 | `println((1), tok)` / `("x") + tok` / `n, tok` | BLOCK | BLOCK | BLOCK | — |
 
-Official `s29_println_guard_smoke.sh` on this ELF: **ALL OK** exit 0.
+Official `s29_println_guard_smoke.oo` on this ELF: **ALL OK** exit 0.
 
 OLD 04:49 baseline (same fixtures, `/tmp/s29c_domain_b_prove_1257247`):
 `eprintln(id(1), tok)` check **FN** `OK` / emit-c BLOCK / llvm FN;
 `println(f(g(), tok))` check **FN** `OK` / emit-c **LEAK**
 `oo_print_str(f(g(), tok));` / llvm FN. Dual-OK on those stale bytes.
 
-========================================================================
+---
 SCOPE (orthogonal to Domain A)
-========================================================================
+---
 
 | In | Out |
 |----|-----|
@@ -65,10 +61,7 @@ SCOPE (orthogonal to Domain A)
 | Wait; do not steal `/tmp/s29c_oodac` copy | Fake C `args` / check→emit_guard |
 | Isolated tmp probes | 7.1 / 7.2 / 7.10; emit-bc; SPRINT flip |
 
-========================================================================
-COLLISION / NO-STEAL
-========================================================================
-
+## COLLISION / NO-STEAL
 | Action | B? |
 |--------|----|
 | Edit `check_secret_println_sinks` / `c_secret_scan_call` / `c_emit_println` | **none** |
@@ -84,9 +77,9 @@ A / Integration rebuilt with `OODAC_BIN=bootstrap/seed/oodac`
 
 `grep c_secret_emit_guard` / `args = args +` on print + secret → **0**.
 
-========================================================================
+---
 STATIC (A land — B did not edit)
-========================================================================
+---
 
 `eprintln` is **not** in `c_emit_ident.oo` L129–131. Free-call:
 `c_emit_lower.oo` L90 → `c_secret_emit_guard` (lists `eprintln`).
@@ -114,9 +107,9 @@ New ELF `nm -S`: `check_secret_println_sinks` `T` @ `0x48b72f` len
 `0x12c8`; `c_emit_println` `T` @ `0x476e26` len `0xc90`;
 `c_secret_scan_call` `T` @ `0x48b40d` len `0x322`.
 
-========================================================================
+---
 LIVE BYTES — NEW product host
-========================================================================
+---
 
 Helpers (type-ok; not unknown-name TYPE):
 
@@ -128,7 +121,6 @@ pub fn f(a: String, b: String) -> String { return a; }
 ```
 
 ### Assigned: `eprintln(id(1), tok)` (Peer1 MUST-3)
-
 | Path | rc | Bytes | V |
 |------|----|-------|---|
 | check | 1 | `ERR	secret	eprintln sink refuses SECRET tok` (44 B) | **PASS** |
@@ -141,7 +133,6 @@ Old ELF: check `OK` / emit-c 9336 B SECRET (guard after lower) / llvm
 lower (8142 B = bare-eprintln class).
 
 ### Assigned: `println(f(g(), tok))` (H-same nest)
-
 | Path | rc | Bytes | V |
 |------|----|-------|---|
 | check | 1 | `ERR	secret	println sink refuses SECRET tok` (43 B) | **PASS** |
@@ -155,7 +146,6 @@ Old ELF: check `OK` / emit-c 9605 B **LEAK** `oo_print_str(f(g(), tok));`
 Dual-repro (product + side, two runs): **identical** stdout + rc.
 
 ### Controls (wave-1 floor + siblings)
-
 | Probe | NEW check/emit-c/llvm | OLD (04:49) |
 |-------|----------------------|-------------|
 | `eprintln(tok)` / `println(tok)` | BLOCK triple | BLOCK triple |
@@ -166,36 +156,30 @@ Dual-repro (product + side, two runs): **identical** stdout + rc.
 | `println(id(1), tok)` | BLOCK triple | check FN / emit-c BLOCK |
 | `eprintln(f(g(), tok))` | BLOCK triple | check FN / emit-c BLOCK (guard) |
 
-========================================================================
+---
 SMOKE / SIBLINGS (RULES §1.9)
-========================================================================
+---
 
 | Rail | Result | This OWN |
 |------|--------|----------|
-| `s29_println_guard_smoke.sh` (194 L) | **ALL OK** exit 0 on NEW ELF | **agree** |
+| `s29_println_guard_smoke.oo` (194 L) | **ALL OK** exit 0 on NEW ELF | **agree** |
 | `s29c_harness.oot` H-later / H-same | those rails BLOCK here | **agree** (plus nest) |
 | `s29c_peer1.oot` MUST-3 | wrote REJECT on 04:49 ELF | **re-proved PASS** on NEW |
 | `s29c_runtime.oot` no-new-ELF | true at 19:44Z | **stale** — BuildID `89fa663e` |
 | `s29c_phalanx_rollup.oot` OPEN | true at rollup time | host now new; B does not flip |
 
-========================================================================
-FILES TOUCHED
-========================================================================
-
+## FILES TOUCHED
 | File | Change |
 |------|--------|
 | `ooda/oodac/c_emit_secret.oo` (A walker) | **none** |
 | `ooda/oodac/c_emit_print.oo` (A `d`) | **none** |
 | `ooda/oodac/oodac` (product ELF) | **none** (B did not copy) |
-| `ooda/scripts/s29_println_guard_smoke.sh` | **none** |
+| `ooda/scripts/s29_println_guard_smoke.oo` | **none** |
 | `openOODA/audit/s29c_domain_b.oot` | this evidence |
 
 **Not touched:** 2.8 / 7.1 / 7.2 / 7.10 / 2.10 / SPRINT table / remotes.
 
-========================================================================
-RESIDUAL HONESTY
-========================================================================
-
+## RESIDUAL HONESTY
 1. **Unify still OPEN.** No `c_secret_emit_guard` from check or stmt
    `println`. Wave-3 is **depth-in-ELF**, not DE2.9 helper.
 2. **SPRINT 2.9.** B does **not** mark FIXED. Peer1 ACCEPT + coordinator.
@@ -209,10 +193,7 @@ RESIDUAL HONESTY
 8. **Dirty 11-file tree** in the new ELF (6.1 / 2.10 riders). Not B's
    hole; named so 2.9 is not blamed for those IDs.
 
-========================================================================
-STATUS FOR SPRINT/PM
-========================================================================
-
+## STATUS FOR SPRINT/PM
 | Item | Status |
 |------|--------|
 | `eprintln(id(1), tok)` check+emit-c+llvm SECRET | **PASS** (NEW ELF) |

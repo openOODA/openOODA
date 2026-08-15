@@ -1,0 +1,156 @@
+# NORTHSTAR — Architecture North Star, Language Grammar, AST & Type System Specification
+
+File: openOODA/NORTHSTAR.oot
+North star specification. SHIPPED.oot is what exists. ROADMAP.oot is the active execution plan and release pin.
+
+openOODA is a systems programming language engineered for safe, high-performance, deterministic software.
+Humans and autonomous agent swarms write code that is verified ahead-of-time.
+All side effects and privileged resources require explicit, unforgeable capability tokens.
+Every function carries verifiable contracts (requires, ensures, spec).
+The compiler produces machine-readable diagnostics with automated one-turn repairs.
+The product path today is a native compiler that emits C (chs_rt runtime) and compiles through gcc/clang.
+This document defines the architectural target, formal grammar, AST design, and type system requirements.
+
+1. Architectural North Star
+
+1.1 Core Principles
+  - Early Static Verification: Contracts, bounds, types, and capability privileges are verified at compile time.
+  - Zero Ambient Authority: Code possesses no implicit access to filesystem, network, process execution, or hardware.
+  - Deterministic Execution: Bit-identical compilation, zero-timestamp artifact digests, and reproducible binary outputs.
+  - Agent-Native Tooling: Structured JSON diagnostics, AST reflection, and automated code repair (ooda fix / ooda patch).
+  - High Performance: Zero-overhead abstractions, cache-coherent data-oriented layouts, and native code generation.
+
+1.2 Memory & Concurrency Model
+  - Automatic Reference Counting (ARC) with deterministic reclamation when the last reference drops.
+  - Pause-free garbage collection horizon and zero-copy slicing across buffer boundaries.
+  - Actor-based concurrency with isolated heaps and typed, bounded message-passing channels.
+  - Ghost-state transactional memory: speculative execution buffers with rollback before commit.
+
+2. Language Grammar & Concrete Syntax
+
+2.1 File & Module Organization
+  - Source files use the `.oo` extension; documentation and process boards use `.oot`.
+  - Every `.oo` file represents an isolated module.
+  - Strict 256-line file limit (RULES §1.7) ensuring modularity and cognitive clarity.
+  - Standard 4-element Academy header (Title, Logline, Setup, Beats) on all product modules.
+
+2.2 Core Syntax Rules
+  - Immutability by Default: Variable bindings (`let x = val;`) are immutable unless explicitly marked mutable (`let mut x = val;`).
+  - Expression-Oriented: Blocks, `if/else`, and `match` statements return values.
+  - Null-Free: No `null` or `nil` values; optional values use `Option[T]` and error handling uses `Result[T, E]`.
+  - Must-Use Types: `Result` and `Option` return values must be explicitly handled via `match` or `?`.
+  - Contract Clauses: Functions declare preconditions (`requires`), postconditions (`ensures`), and specifications (`spec`).
+
+2.3 Formal EBNF Grammar (Reference: ../ooda/ooda.ebnf)
+  Program           ::= { Item } ;
+  Item              ::= FunctionDecl | TypeDecl | TraitDecl | ImportDecl ;
+
+  ImportDecl        ::= "import" Identifier [ "::" Identifier ] ";" ;
+  TypeDecl          ::= "type" Identifier "=" ( SumType | StructType | RefinementType | Newtype ) ";" ;
+  SumType           ::= Variant { "|" Variant } ;
+  Variant           ::= Identifier [ "(" Type ")" ] ;
+  StructType        ::= "struct" "{" { FieldDecl } "}" ;
+  FieldDecl         ::= Identifier ":" Type [ "," ] ;
+  RefinementType    ::= Type "where" Expression ;
+  Newtype           ::= "newtype" Type ;
+
+  FunctionDecl      ::= [ "pub" ] "fn" Identifier "(" [ ParameterList ] ")" [ "->" Type ]
+                        [ ContractSpec ] Block [ VerifyBlock ] ;
+  ParameterList     ::= Parameter { "," Parameter } ;
+  Parameter         ::= Identifier ":" [ "&" ] Type ;
+  ContractSpec      ::= { Precondition | Postcondition | SpecClause } ;
+  Precondition      ::= "requires" Expression ;
+  Postcondition     ::= "ensures" Expression ;
+  SpecClause        ::= "spec" StringLiteral ;
+  VerifyBlock       ::= "verify" Identifier "{" { Statement } "}" ;
+
+  Statement         ::= LetStmt | ReturnStmt | ExprStmt | WhileStmt | AssignStmt ;
+  LetStmt           ::= "let" [ "mut" ] Identifier [ ":" Type ] "=" Expression ";" ;
+  ReturnStmt        ::= "return" [ Expression ] ";" ;
+  ExprStmt          ::= Expression ";" ;
+  WhileStmt         ::= "while" Expression Block ;
+  AssignStmt        ::= Identifier "=" Expression ";" ;
+
+  Expression        ::= IfExpr | MatchExpr | BinaryExpr | CallExpr | PrimaryExpr ;
+  IfExpr            ::= "if" Expression Block [ "else" ( Block | IfExpr ) ] ;
+  MatchExpr         ::= "match" Expression "{" { MatchArm } "}" ;
+  MatchArm          ::= Pattern "=>" ( Expression "," | Block ) ;
+  Pattern           ::= Identifier [ "(" Identifier ")" ] | Literal | "_" ;
+  CallExpr          ::= PrimaryExpr "(" [ ArgList ] ")" [ "?" ] ;
+
+3. Abstract Syntax Tree (AST) Design
+
+3.1 Tree Hierarchy & Representation
+  - Node Hierarchy: Root `Program` node contains ordered sequence of `Item` nodes (Fn, Type, Trait, Import).
+  - Strongly Typed Nodes: Distinct AST structures for Statements, Expressions, Patterns, Types, and Contracts.
+  - Span Provenance: Every AST node preserves byte-range source coordinates (file, line, column, length) for accurate diagnostics.
+  - Capability Annotation Tags: AST function and call nodes maintain resolved effect signatures and capability dependencies.
+
+3.2 AST Macros & Metaprogramming
+  - Pure compile-time macro expansion: normal `.oo` macro functions evaluate during product compilation.
+  - Macro functions ingest AST subtrees and emit rewritten, type-checked AST nodes before code generation.
+  - Hygiene guarantee: AST macro expansions cannot introduce un-scoped identifiers or bypass capability boundaries.
+
+3.3 Merkle AST Digests & Zero-Copy Storage
+  - Merkle Hashing: Each AST subtree calculates a cryptographic hash over its normalized syntactic representation.
+  - Incremental Compilation: Unchanged subtrees skip re-parsing and re-typechecking via AST Merkle cache.
+  - Linear Serialization: Zero-copy AST memory layout for ultra-fast disk persistence and agent query tools (`ooda outline`, `ooda reflect`).
+
+4. Type System Targets
+
+4.1 Algebraic Data Types (ADTs) & Pattern Matching
+  - Sum Types: Tagged unions with optional payload parameters (`type Shape = Circle(Float) | Rect(Float, Float);`).
+  - Product Types: Fixed-layout record structures (`type User = struct { id: u64, name: String };`).
+  - Core ADTs: Standard library primitives `Option[T]` (`Some(T) | None`) and `Result[T, E]` (`Ok(T) | Err(E)`).
+  - Exhaustiveness: `match` expressions must exhaustively cover all sum-type variants; unhandled cases trigger compile-time errors.
+
+4.2 Static Capability Verification
+  - Unforgeable Permission Tokens: `FsReadCap`, `FsWriteCap`, `NetCap`, `TcpCap`, `UdpCap`, `SysCap`, `ProcessCap`, `EnvCap`, `TimeCap`, `RandCap`, `AllocCap`, `ThreadCap`, `GpuCap`, `FfiCap`.
+  - Borrowed Capabilities: Functions accept capability references (`&FsReadCap`) to exercise effects without taking ownership.
+  - Capability Attenuation: Token holders can derive strictly narrowed capability subsets (e.g. read-only file subtree token).
+  - Default-Deny: Calling privileged runtime functions without possessing the requisite capability token fails closed at compile time (`E_CAP`).
+
+4.3 Typestate Protocol Verification
+  - Compile-Time State Tracking: Types parameterized by abstract lifecycle states (e.g. `File[Unopened]`, `File[Opened]`, `File[Closed]`).
+  - Linear State Transitions: Methods consume the incoming typestate and return the successor typestate, preventing use-after-close and invalid protocol sequences.
+
+4.4 Refinement Types & Newtypes
+  - Refinement Types: Base types qualified by logical predicate expressions checked statically or via contract guards (`type Port = Int where val >= 1 && val <= 65535;`).
+  - Newtypes: Zero-cost type abstractions providing distinct semantic identities to primitive values (`type OrderId = newtype u64;`).
+
+4.5 Static Information Flow Control (IFC) & SECRET Taint
+  - `SECRET:` annotations tag sensitive data fields and variables at the type level.
+  - Taint propagation analysis tracks dataflow through assignments, struct packing, and function calls.
+  - Compiler statically blocks tainted values from reaching unsealed sinks (`process_exec`, unencrypted I/O, untrusted FFI).
+
+4.6 Traits & Static Polymorphism
+  - Trait Definitions: Declarative behavior interfaces (`trait Display { fn to_string(&self) -> String; }`).
+  - Monomorphization: Traits resolve via static dispatch without dynamic virtual method table overhead.
+
+5. Compiler Backends & Execution Targets
+
+5.1 Backend Hierarchy
+  - Floor (Native C Emit): Generates clean, portable C code linking `chs_rt` runtime; compiled via host `gcc` or `clang`.
+  - LLVM Emit: Direct LLVM IR generation for aggressive compiler optimization, SIMD auto-vectorization, and cross-module LTO.
+  - WASM Target: Compiles to sandboxed WebAssembly for browser environments with zero ambient host capabilities.
+  - GPU / NPU Kernels: Native compute shader and tensor graph dispatch gated behind explicit `GpuCap` tokens.
+  - Bare-Metal Freestanding: Minimal runtime profile for embedded microcontrollers and custom microkernels.
+
+5.2 Build Determinism & Data Layouts
+  - Bit-Identical Reproducibility: Zero-timestamp outputs, normalized path strings, and sorted symbol tables ensure identical binaries across environments.
+  - Data-Oriented Layouts: Compiler support for Struct-of-Arrays (SoA) and Data-Oriented Design (DoD) memory layouts for high-throughput batch vector processing.
+
+6. Architecture Tensions & Policies
+
+6.1 Policy Constraints
+  - Determinism Default: Builds are bit-identical by default; metamorphic binary transforms (path-a decoy padding) require explicit build flags.
+  - Memory Management: Deterministic ARC with RAII destructor cleanup today; pause-free GC and micro-transactional undo buffers later.
+  - FFI Confinement: Calls into external C libraries require `FfiCap` / `UnsafeFFICap` tokens and are wrapped in isolated capability boundaries.
+
+7. Related Documentation & Resources
+
+  - Formal Grammar: `../ooda/ooda.ebnf`
+  - Shipped Capabilities: `openOODA/SHIPPED.oot`
+  - Long-Term Moonshots: `openOODA/MOONSHOTS.oot`
+  - Capability Matrix: `openOODA/SECURITY.oot`
+  - Core Rules: `openOODA/RULES.oot`

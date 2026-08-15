@@ -4,11 +4,9 @@
 # Host: product `ooda/oodac/oodac` (md5 a83c19dd…, mtime 2026-08-12 03:05, tip commit `4b70f14`)
 # Fixtures: `ooda/fixtures/secret_t1_*.oo` (+ related controls)
 # Method: dual-path `oodac emit-c` + `oodac check` on each attack; residual honesty smoke
-
 ---
 
 ## Claim under pressure
-
 SPRINT **T1** (CRIT 2.1 / 2.4 / 5.1–5.3): propagate SECRET through function returns;
 alias rebind; if/match LBRACE walker so taint is not dropped.
 
@@ -21,14 +19,13 @@ Adversarial stance: treat interproc return + control-flow as **open until proved
 ---
 
 ## Surfaces reviewed
-
 | Surface | Path | Role |
 |---------|------|------|
 | Secret tags + sink walk | `ooda/oodac/c_emit_secret.oo` | `// SECRET:` parse; println/sink refuse; let/assign prop |
 | Prop / return mark (tip WIP) | `ooda/oodac/c_emit_secret_prop.oo` | `__fr_secret__` mark + brace-aware prop (source only) |
 | Emit wire | `ooda/oodac/c_emit.oo` | calls check before/with secret env; tip wires mark helper |
 | Guard / alias resolve | `ooda/oodac/c_emit_secret_guard.oo` | sink resolve + `__alias__` walk (partial) |
-| Residual honesty | `ooda/bootstrap/SECRET_TAINT.oot` + `scripts/secret_taint_residual_smoke.sh` | claim floor |
+| Residual honesty | `ooda/bootstrap/SECRET_TAINT.oot` + `scripts/secret_taint_residual_smoke.oo` | claim floor |
 | Product claims | `openOODA/DESIGN.oot` §Static Taint; `PM.oot` 3.5 | residual tags |
 
 **Host honesty:** product binary predates tip WIP sources (`c_emit_secret_prop.oo` not in
@@ -39,7 +36,6 @@ All attack rows below are **live product host**, not aspirational tip source.
 ---
 
 ## Attack fixtures created
-
 | ID | Fixture | Pattern |
 |----|---------|---------|
 | T1-1 | `fixtures/secret_t1_return_local.oo` | helper returns secret-tagged local; caller `println(y)` |
@@ -52,7 +48,6 @@ All attack rows below are **live product host**, not aspirational tip source.
 ---
 
 ## Attack results (product host)
-
 Verdict key: **BYPASS** = secret reaches sink without `ERR secret` (emit-c rc=0 and/or check OK).
 **BLOCK** = dual-path refuse (`ERR secret` + non-zero).
 
@@ -65,7 +60,6 @@ Verdict key: **BYPASS** = secret reaches sink without `ERR secret` (emit-c rc=0 
 | 5 | bypass: only `// SECRET: x` + `return x` | **ALLOW** rc=0 | **ALLOW** OK | **BYPASS** | no secret name at call-site sink; `__fr_secret__` not live on product host |
 
 ### Related control-flow (T1 LBRACE residual)
-
 | # | Case | emit-c | check | Verdict |
 |---|------|--------|-------|---------|
 | 3b | if-**expression** RHS `let y = if true { x } else { "public" }` | ALLOW | ALLOW | **BYPASS** |
@@ -75,7 +69,6 @@ scanning the arm — if-expr drops taint. Simple block `y = x` is a separate IDE
 and still refuses.
 
 ### Controls (sanity — path A floor still live)
-
 | Fixture | emit-c | check | Role |
 |---------|--------|-------|------|
 | `secret_sink_fail` | REFUSE | REFUSE | bare `println(x)` |
@@ -87,7 +80,6 @@ and still refuses.
 ---
 
 ## Root-cause summary (product host)
-
 1. **Interprocedural return taint not enforced on product binary**
    - `check_secret_println_sinks` prop only sees `__sec__` idents and (if wired)
      `__fr_secret__` callees.
@@ -117,18 +109,16 @@ and still refuses.
 ---
 
 ## Full IFC honesty (no false product claim)
-
 | Check | Result |
 |-------|--------|
 | `SECRET_TAINT.oot` claims **full IFC** shipped/enforced? | **No** — residual: “Full DESIGN / full IFC taint”, marker `SECRET_TAINT_RESIDUAL_ALPHA` |
-| `secret_taint_residual_smoke.sh` | **PASSED** (no “taint tracking shipped/enforced”; full static taint not claimed green) |
+| `secret_taint_residual_smoke.oo` | **PASSED** (no “taint tracking shipped/enforced”; full static taint not claimed green) |
 | `DESIGN.oot` Static Taint | residual — **not** full `#[Secret]` IFC / interproc taint; residual function returns / aliases / fields / methods |
 | `PM.oot` 3.5 | done **(alpha)** path A; residual full IFC + function returns / aliases |
 
 **Confirmed: no false product claim of full IFC.**
 
 ### Honesty tension (narrower than full IFC — flag for OWN)
-
 `SECRET_TAINT.oot` table currently lists:
 
 - Function return taint via `__fr_secret__` → **In** (path A)
@@ -142,7 +132,6 @@ tags until product binary dual-path refuses `secret_t1_return_local` / `_concat`
 ---
 
 ## Scorecard
-
 | Metric | Count |
 |--------|------:|
 | Core attacks (1–5) | 5 |
@@ -159,7 +148,6 @@ scanner quirk.
 ---
 
 ## Recommended prove (OWN / Track B — not done here)
-
 When tip secret sources rebuild cleanly into product host:
 
 ```bash
@@ -169,8 +157,8 @@ for f in secret_t1_return_local secret_t1_return_concat secret_t1_if_branch \
   "$OODAC_BIN" emit-c fixtures/$f.oo  # expect non-zero + ERR secret for fail cases
   "$OODAC_BIN" check fixtures/$f.oo
 done
-bash scripts/secret_sink_enforce_smoke.sh
-bash scripts/secret_taint_residual_smoke.sh
+bash scripts/secret_sink_enforce_smoke.oo
+bash scripts/secret_taint_residual_smoke.oo
 ```
 
 Close criteria for SPRINT T1:
@@ -184,7 +172,6 @@ Close criteria for SPRINT T1:
 ---
 
 ## Evidence commands (repro)
-
 ```text
 cd ooda
 ./oodac/oodac emit-c fixtures/secret_t1_return_local.oo   # ALLOW
@@ -194,7 +181,7 @@ cd ooda
 ./oodac/oodac emit-c fixtures/secret_t1_alias_println.oo  # ERR secret secret_tok
 ./oodac/oodac emit-c fixtures/secret_t1_bypass_return_x.oo # ALLOW
 ./oodac/oodac emit-c fixtures/secret_t1_if_expr.oo        # ALLOW
-bash scripts/secret_taint_residual_smoke.sh               # PASSED
+bash scripts/secret_taint_residual_smoke.oo               # PASSED
 ```
 
 end of t1_security.oot

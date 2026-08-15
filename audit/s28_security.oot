@@ -13,11 +13,9 @@
 #         (ephemeral `/tmp/s28_sec_vXJN1s`; no product source edit)
 # Policy: expansion must not hide SECRET from sinks. If no macros, confirm
 #         there is no expand hole. Do **not** reopen T1/T2/5.8/2.10 as 2.8 FAIL.
-
 ---
 
 ## Claim under pressure
-
 SPRINT **2.8** (MED): Macro-body SECRET second pass (or residual doc).
 Zero-trust gates for **this** close (not T1 return taint, not T2 field
 depth, not 5.8 `${}` lex, not 2.10 user sink wrappers):
@@ -38,7 +36,6 @@ pass is absent, that is only safe when expansion itself is absent.
 ---
 
 ## Surfaces reviewed
-
 | Surface | Path | Role |
 |---------|------|------|
 | Residual deny | `ooda/oodac/check_residual.oo` L28–29, L73–92 | `macro_expand`/`ast_macro` → `AST_MACROS`; IDENT+LPAREN walk |
@@ -58,7 +55,6 @@ pass is absent, that is only safe when expansion itself is absent.
 ---
 
 ## SUMMARY
-
 | # | Gate | Verdict |
 |---|------|---------|
 | Z1 | No AST macro expansion / no splice | **PASS** |
@@ -81,7 +77,6 @@ residual-deny completeness. Residuals below.
 ---
 
 ## How expansion could hide SECRET (threat model)
-
 `check_secret_println_sinks` + `c_parse_secret_env` walk **one** source
 string and **one** token list:
 
@@ -105,199 +100,7 @@ are “does any other expand-shaped rewrite hide?”
 
 ---
 
-## Attack results (product host)
 
-Verdict key:
+*(Continued in `openOODA/audit/s28_security_part2.oot`)*
 
-- **BLOCK** = `ERR\tsecret` or `ERR\tresidual` + rc≠0 (path named)
-- **ALLOW** = rc=0, no secret/residual (correct for pass / non-expand)
-- **SPLICE** = string/body became new sink **code** (2.8 FAIL)
-- **HIDE** = valid SECRET IDENT reached a sink without refuse (2.8 FAIL)
-- **FN** / **FP** as usual
-
-Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`  
-Probes: `/tmp/s28_sec_vXJN1s/` (ephemeral).  
-Harness: `scripts/residual_path_a_floor_smoke.sh` **exit 0** (includes
-`residual_macro_fail` → `AST_MACROS`).
-
-### Z1 — no expansion / no splice
-
-| # | Attack | Path | Result | Splice? |
-|---|--------|------|--------|---------|
-| M1 | `macro_expand("m")` | check | **BLOCK** residual `AST_MACROS` | no |
-| M1e | same | emit-c | **BLOCK** `unknown free call needs annotation macro_expand` (after preamble) | **no** |
-| M1l | same | emit-llvm | rc=0 `call i64 @macro_expand(%OoStr)` on lit `"m"` | **no** (symbol call, not splice) |
-| M1b | same | emit-bc | rc=0 `PUSH_STR m` / `CALL macro_expand 1` | **no** |
-| M2 | `ast_macro("m")` | check | **BLOCK** residual `AST_MACROS` | no |
-| M2e | same | emit-c | **BLOCK** unknown free call `ast_macro` | **no** |
-| A1e | `let f = macro_expand; f("println(token)")` | emit-c | rc=0 C: `long long f = macro_expand; f(oo_str_lit("println(token)"))` | **no** (payload stays STRING) |
-| A5 | same + `// SECRET: token` + live `token` | check + emit-c | ALLOW (string is not a sink IDENT) | **no** |
-| tok | `oodac tokens` residual_macro_fail | tokens | `IDENT macro_expand` `LPAREN` `STRING m` `RPAREN` | source == tokens |
-
-`c_lower_call_name` does not remap expand names. Default lower is
-`t + "(" + args + ")"`. Runtime has **zero** `oo_macro*` / `macro_expand`
-symbols. `vm_builtin` / `is_vm_builtin` do not list them. EBNF / GBNF /
-`keyword_kind` have **no** `macro` production.
-
-gcc `-fsyntax-only` of A1e C: `macro_expand` **undeclared**; `f` is
-`long long` **not** a function. Dead TU — cannot print SECRET.
-
-**SPLICE count: 0.**
-
-### Z2 — named primitive cannot run (check)
-
-| # | Attack | Result |
-|---|--------|--------|
-| fixture `residual_macro_fail.oo` | **BLOCK** residual AST_MACROS (oodac check) |
-| `residual_path_a_floor_smoke.sh` | **PASSED** (`OK refuse residual_macro_fail (AST_MACROS)`) |
-| `x.macro_expand()` method | **BLOCK** residual (IDENT+LPAREN still matches) |
-| `playground_eval("println(1)")` | **BLOCK** residual `PLAYGROUND` (eval-like sibling) |
-| `let f = macro_expand; f(...)` | check **ALLOW** (no IDENT+LPAREN on the residual name) |
-| `let x = macro_expand;` (no call) | check **ALLOW** (no LPAREN) |
-
-Check-path deny holds for the **free-call** shape the language would
-need to invoke an expander. Alias / bare-name gaps are **deny
-coverage**, not expansion (Z1). emit-c/llvm/bc do **not** call
-`check_residual_free_calls` (same honesty as R2 `import_c` emit). Direct
-emit-c still fail-closes as **unknown free call**. That is not a hide.
-
-### Z3 — import concat does not hide SECRET
-
-`load_expand` splices imported **file bodies** and **drops** only lines
-that parse as `import "…"`. A valid directive is line-start `// SECRET:`
-(`c_parse_secret_env`). A line cannot start with both `import "` and
-`// SECRET:`. So concat **cannot** drop a valid tag. Sinks are ordinary
-code lines — kept.
-
-Live (concat default `load_source_with_imports` → check + emit-c):
-
-| # | Shape | check | emit-c | Hide? |
-|---|-------|-------|--------|-------|
-| IMP1 | `// SECRET: token` + `println(token)` **in imported file** | BLOCK `SECRET token` | BLOCK | **no** |
-| IMP2 | tag in import, `println(tok)` in main (same ident after concat) | BLOCK `SECRET tok` | BLOCK | **no** |
-| IMP5 | own-line `// SECRET: token` **above** `import "lib.oo"` then println | BLOCK | (check) | **no** |
-| IMP4 | clean import + public println | ALLOW | ALLOW | n/a (control) |
-
-`run_check_core` / `c_emit_stream_mode` tokenize the **already
-concatenated** source, then scan. Expansion-before-scan, not
-scan-then-rewrite.
-
-### Z4 — other expand-shaped surfaces
-
-| # | Surface | Live | Hide? |
-|---|---------|------|-------|
-| I1 | `println("${token}")` + `// SECRET: token` | check+emit-c+llvm **ALLOW** | **no interp** — emit is `oo_print_str(oo_str_lit("${token}"))` (5.8 residual: no splice of IDENT) |
-| META | `// METAMORPHIC: path-a` + SECRET println | dual-path **BLOCK** `SECRET token` | decoys do not eat the sink |
-| HASH | `// #include <stdio.h>` comment | emit-c ALLOW public println | comment not emitted as CPP |
-| E1–E3 | `expand` / `eval` / `quote`("println(1)") | type undefined / unknown free call | **no** splice |
-| C `#define` | preamble `OODA_HITL_REQUIRED` / `OO_ENS_CHECK` / assert | compiler constants | **not** user sink wrappers |
-
-`token_scan_string` copies `${…}` as string **data** (no `$` splice).
-Path-A decoys emit `static void __oo_meta_decoy_N(void)` with volatile
-pads only (`c_emit_meta.oo`) **after** the secret walk; they never take
-a user IDENT.
-
-### Z5 — related residuals, not 2.8 FAIL
-
-| Residual | Live | Why not 2.8 |
-|----------|------|-------------|
-| 2.10 user wrapper `leak(token)` → `println(x)` (IMP3) | check+emit **ALLOW** | helper is a **fn**, not a macro body; `__sec_sink__` is 2.10 |
-| 5.8 `${token}` | ALLOW literal | **no** expansion; IDENT never reached the sink |
-| T1/T2 | not re-probed as close | named in `SECRET_TAINT.oot` |
-| Alias residual-deny | check ALLOW | Z1: payload not spliced |
-
----
-
-## Root-cause summary (why 2.8 is unneeded today)
-
-1. **No expander exists.** Grammar, lexer, lower, VM builtins, and
-   runtime symbols have no macro rewrite. `strings` residual names are
-   the **deny table**, not an implementation.
-2. **Check is fail-closed** on the only names DESIGN gives this
-   moonshot (`macro_expand`, `ast_macro`) via IDENT+LPAREN.
-3. **Secret walk runs on the post-import token stream.** Import concat
-   is source append, not AST rewrite, and cannot drop a line-start
-   `// SECRET:` or a sink IDENT.
-4. **Emit does not splice.** Direct expand names die as unknown calls
-   (C) or as an unresolved symbol call (LLVM/BC) with the argument
-   still a STRING. Alias emit is `f(oo_str_lit("…"))` — data, not code.
-5. **Therefore** a second pass over “expanded bodies” has no bodies to
-   walk. Absence of that pass is **not** a fail-open.
-
-When `AST_MACROS` is promoted off `check_residual` and actually
-rewrites tokens/AST, 2.8 **must** reopen: scan the **expanded** stream
-(or equivalent) before any sink lower. Expansion must not stringify a
-SECRET IDENT past the sink walker.
-
----
-
-## Scorecard
-
-| Metric | Count |
-|--------|------:|
-| Z1 splice / body inject | **0** |
-| Z2 check residual miss on `macro_expand(` / `ast_macro(` | **0** |
-| Z3 import-concat SECRET hide | **0** |
-| Z4 `${}` / decoy / CPP hide of unquoted IDENT | **0** |
-| Alias residual-deny gap (no LPAREN) | **yes** (not expand) |
-| emit-llvm/bc residual-deny | **not wired** (CALL symbol; no splice) |
-| 2.10 wrapper FN (IMP3) | **yes** (not 2.8) |
-| T1/T2/5.8/7.x reopened | **no** |
-| CRIT SECRET hidden by expansion | **0** |
-
-**2.8 security path-A: PASS** (no expand hole; second pass unneeded).
-
----
-
-## Residual risks (return)
-
-| ID | Sev | Residual | Why not 2.8 FAIL |
-|----|-----|----------|------------------|
-| R1 | MED | emit-c / emit-llvm / emit-bc skip `check_residual_free_calls` | Direct C unknown-call; LLVM/BC unresolved CALL; **no** splice |
-| R2 | LOW | `let f = macro_expand; f(...)` check ALLOW | Deny-shape gap; emit keeps STRING; gcc undeclared |
-| R3 | MED | 2.10 user sink wrappers (`leak(token)`) | Separate sprint; not macro expansion |
-| R4 | MED | 5.8 `${}` interp **not implemented** | Literal `"${token}"`; would become 2.8-adjacent **if** interp ships without a taint pass |
-| R5 | LOW | Honesty smokes still look for `bootstrap/*.md` (`ast_macros_residual_smoke.sh`, `secret_taint_residual_smoke.sh`) | Doc-path rot; live refuse is `check_residual` + `residual_path_a_floor_smoke.sh` (green) |
-
-Do **not** treat R1–R5 as “macros exist.” They do not.
-
----
-
-## What we do **not** claim
-
-- A macro-body SECRET second pass is **implemented** (it is not).
-- Full IFC / `#[Secret]` / interproc beyond path A.
-- `${}` interpolation (5.8) or `__sec_sink__` wrappers (2.10).
-- emit-without-check is as tight as `oodac check` on residual names.
-- `ooda` product CLI on out-of-tree `/tmp` paths (this host: in-tree
-  `residual_path_a_floor_smoke` product refuse is the rail).
-
----
-
-## Evidence commands (repro)
-
-```text
-cd ooda
-./oodac/oodac check fixtures/residual_macro_fail.oo
-  # ERR residual … AST_MACROS
-./oodac/oodac emit-c fixtures/residual_macro_fail.oo
-  # ERR c_emit unknown free call needs annotation macro_expand
-./oodac/oodac tokens fixtures/residual_macro_fail.oo
-  # IDENT macro_expand  … STRING  (no splice)
-bash scripts/residual_path_a_floor_smoke.sh
-  # PASSED (includes residual_macro_fail)
-# ephemeral matrix: /tmp/s28_sec_vXJN1s
-# IMP1/IMP2: import + SECRET → dual-path ERR secret
-# A1e C: f(oo_str_lit("println(token)")) ; gcc: undeclared macro_expand
-# I1 emit: oo_print_str(oo_str_lit("${token}"))
-```
-
-Close criteria if AST_MACROS ever ships (not this audit):
-
-1. Expand **before** secret walk, **or** walk again on expanded toks.
-2. Macro bodies that mention sealed sinks inherit call-site SECRET.
-3. Stringify / paste / `${}` of a SECRET IDENT still refuse at sinks.
-4. Residual-deny removed only after (1)–(3) have rails.
-5. Still **no** claim of full IFC.
-
-end of s28_security.oot
+end of s28_security.oot (part 1)

@@ -3,9 +3,7 @@
 # Worker: Grok Build (Integration Engineer 2 — Product Rebuild & Live Prove)
 # Cwd: /home/jeryd/Projects/openOODA/ooda
 # Scope: tip product rebuild after T3 runtime ZT C lands (SPRINT T3: 1.8, 1.10, 4.5, 6.4; 6.5 optional)
-
 ## TIP SHA / binary
-
 ```
 git rev-parse --short HEAD → ad53efe
 git log -1 --oneline       → ad53efe fix(t2): secret scan depth — full args, nested RHS, field/method, comment skip
@@ -25,7 +23,6 @@ git log -1 --oneline       → ad53efe fix(t2): secret scan depth — full args,
 | input_fp | `af7321a58680a8e14bfaa0516a85ced59d9c81cf9d682309fc774c605e6a8490` |
 
 ## 0) DE landing observed (polled ~5 min)
-
 Waited for nested dlopen + env filter markers; concurrent pure-build agents active — used **distinct side out** `oodac_from_seed_t3` (no tip clobber fight).
 
 | Path | Role / marker |
@@ -35,13 +32,12 @@ Waited for nested dlopen + env filter markers; concurrent pure-build agents acti
 | `runtime/chs_rt_ffi.c` | **4.5** `g_ffi_dlopen_depth` TLS + `g_ffi_dlopen_mu`; refuse nested/re-entrant `oo_dlopen` → `"ffi residual: nested dlopen refused"` |
 | `runtime/chs_rt_fs.c` | **6.4** `OODA_FS_WRITEDIR` fail-closed write allowlist + `path_under_writedir` + `openat`/`O_NOFOLLOW` leaf open |
 | `runtime/chs_rt_ffi.c` | **6.5 optional M166** minisig verify before `dlopen` (`ffi residual: missing or invalid minisig`) |
-| `scripts/runtime_zt_t3_smoke.sh` | T3 rollup smoke (1.8 / 1.10 / 4.5 / 6.4 + ci wire) |
-| `scripts/sys_exec_env_filter_smoke.sh` | DE1.8 dedicated harness |
-| `scripts/fs_writedir_smoke.sh` | 6.4 dedicated writedir matrix |
-| `scripts/ci_product.sh` | wires `runtime_zt_t3_smoke` |
+| `scripts/runtime_zt_t3_smoke.oo` | T3 rollup smoke (1.8 / 1.10 / 4.5 / 6.4 + ci wire) |
+| `scripts/sys_exec_env_filter_smoke.oo` | DE1.8 dedicated harness |
+| `scripts/fs_writedir_smoke.oo` | 6.4 dedicated writedir matrix |
+| `scripts/ci_product.oo` | wires `runtime_zt_t3_smoke` |
 
 ### Static settle (pre-rebuild)
-
 ```
 gcc -c -Werror -O0 -I runtime runtime/chs_rt_sys.c  → rc=0
 gcc -c -Werror -O0 -I runtime runtime/chs_rt_ffi.c  → rc=0
@@ -51,12 +47,11 @@ gcc -c -Werror -O0 -I runtime runtime/chs_rt_fs.c   → rc=0
 Markers grepped green: `DE1.8`, `g_ffi_handles_mu`, `nested dlopen refused` / `g_ffi_dlopen_depth`, `OODA_FS_WRITEDIR`.
 
 ## 1) seed_pure_multi + atomic install — PASS
-
-Prefer path used in T2: `scripts/oodac_pure_build.sh` via seed (same as `seed_pure_multi_smoke`), **distinct side out** to avoid concurrent `my_pure_build.sh` / tip rebuilds.
+Prefer path used in T2: `bootstrap/oodac_pure_build` via seed (same as `seed_pure_multi_smoke`), **distinct side out** to avoid concurrent `my_pure_build.oo` / tip rebuilds.
 
 ```
 env -u OODA OODAC_BIN=bootstrap/seed/oodac PURE_NO_ARC=0 PURE_SKIP_CHECK=1 \
-  bash scripts/oodac_pure_build.sh oodac/main.oo ~/.cache/ooda-tmp/oodac_from_seed_t3
+  bash bootstrap/oodac_pure_build oodac/main.oo ~/.cache/ooda-tmp/oodac_from_seed_t3
 # pure_rc=0  (~83s)
 pure_build: unique_fns=428 from_modules=149
 OK_PURE_MULTI
@@ -76,15 +71,14 @@ cp -a ~/.cache/ooda-tmp/oodac_from_seed_t3 oodac/oodac.new && mv -f oodac/oodac.
 Tip binary strings include: `nested dlopen refused`, `missing or invalid minisig`, `OODA_FS_WRITEDIR` / write deny residual.
 
 ## 2) Gate table
-
 Legend: **PASS** hard gate green; **SOFT** residual/host soft (not T3 hard fail); **N/A** not run as hard gate.
 
 | Gate | Command / fixture | Result | Notes |
 |------|-------------------|--------|-------|
 | gcc -c -Werror sys/ffi/fs | three TUs | **PASS** | pre- and post-rebuild |
-| seed pure multi (side t3) | `oodac_pure_build.sh` → `oodac_from_seed_t3` | **PASS** | unique_fns=428 |
+| seed pure multi (side t3) | `bootstrap/oodac_pure_build` → `oodac_from_seed_t3` | **PASS** | unique_fns=428 |
 | Atomic install side → `oodac/oodac` | cp+mv | **PASS** | 956688 B matches side |
-| **runtime_zt_t3_smoke** | `OODAC_BIN=./oodac/oodac bash scripts/runtime_zt_t3_smoke.sh` | **PASS** | exit 0 |
+| **runtime_zt_t3_smoke** | `OODAC_BIN=./oodac/oodac bash scripts/runtime_zt_t3_smoke.oo` | **PASS** | exit 0 |
 | sys_exec_env_filter_smoke | dedicated 1.8 | **PASS** | OODA_/OO_ kept; AWS/HOME/USER stripped; PATH minimal |
 | fs_writedir_smoke | dedicated 6.4 | **PASS** | unset/empty/root deny; create/overwrite OK; .. + symlink escape deny |
 | secret_t1_return_smoke | T1 regression | **PASS** | exit 0 |
@@ -93,14 +87,13 @@ Legend: **PASS** hard gate green; **SOFT** residual/host soft (not T3 hard fail)
 | cap_ffi_runtime_smoke | soft under T3 rollup | **PASS** | soft exit 0 |
 
 ### runtime_zt_t3_smoke detail (PASSED)
-
 ```
 OK 1.8 static: DE1.8 + OODA_/OO_ prefix filter markers
 OK 1.8 product: sys_exec child lacks dangerous env (ENV_CLEAN)   # via runtime C harness
 OK 1.10 static: FFI handle table mutex (g_ffi_handles_mu)
 OK 4.5 static: nested dlopen refuse residual
-OK soft cap_ffi_runtime_smoke.sh exit 0
-OK soft ffi_dlopen_path_a_smoke.sh exit=1 (residual/host; not T3 hard fail)
+OK soft cap_ffi_runtime_smoke.oo exit 0
+OK soft ffi_dlopen_path_a_smoke.oo exit=1 (residual/host; not T3 hard fail)
 OK 6.4 static: OODA_FS_WRITEDIR fail-closed markers
 OK 6.4 product: WRITEDIR unset fail-closed
 OK 6.4 product: inside WRITEDIR OK / outside refused
@@ -109,15 +102,14 @@ runtime_zt_t3_smoke: PASSED
 ```
 
 ### T1 / T2 secret regression (on rebuilt tip)
-
 ```
-OODAC_BIN=./oodac/oodac bash scripts/secret_t1_return_smoke.sh  # exit 0
+OODAC_BIN=./oodac/oodac bash scripts/secret_t1_return_smoke.oo  # exit 0
 OK secret_function_return_{fail,pass}
 OK secret_alias_rebind_pass refuse / secret_alias_rebind_fail OK
 OK secret_if_taint_{fail,pass}
 OK secret_t1_return_smoke
 
-OODAC_BIN=./oodac/oodac bash scripts/secret_t2_depth_smoke.sh    # exit 0
+OODAC_BIN=./oodac/oodac bash scripts/secret_t2_depth_smoke.oo    # exit 0
 OK secret_field_assign_{fail,pass}
 OK secret_method_return_{fail,pass}
 OK secret_call_arg_fail / multi_arg / multi_name / dlopen_arg / sys_exec_argv
@@ -126,7 +118,6 @@ OK secret_t2_depth_smoke
 ```
 
 ## 3) Claim map (SPRINT T3)
-
 | ID | Claim | Mechanism | Prove |
 |----|-------|-----------|-------|
 | **1.8** | filtered env on `sys_exec` | child: prefix-keep OODA_/OO_ only, clearenv, PATH=`/usr/bin:/bin` | sys_exec_env_filter_smoke + T3 1.8 product ENV_CLEAN |
@@ -136,7 +127,6 @@ OK secret_t2_depth_smoke
 | **6.5** (opt) | minisig on .so | `ffi_verify_signature` before `dlopen` | landed; breaks unsigned sys-lib Path-A load (soft residual) |
 
 ## 4) Residuals (honest — do not block T3 rollup)
-
 | Residual | Sev | Notes |
 |----------|-----|-------|
 | `ffi_dlopen_path_a_smoke` sys-dir / ALLOWDIR success | MED | **M166 (6.5)** requires adjacent `.minisig` for every load — unsigned `libc.so.6` → `dlopen-err`. T3 rollup treats soft. Prior Path-A "ALLOW=1 loads system libs" now fails closed without signatures. |
@@ -146,7 +136,6 @@ OK secret_t2_depth_smoke
 | Dirty tree `.oo` / bootstrap md | — | concurrent DE/hygiene WIP; pure multi still green (unique_fns=428). |
 
 ## RESULT SUMMARY
-
 | Step | Result |
 |------|--------|
 | DE markers (1.8 / 1.10 / 4.5 / 6.4) | **PRESENT** (settled; gcc -Werror OK) |
@@ -162,7 +151,6 @@ OK secret_t2_depth_smoke
 **OVERALL T3 integration: PASS** (runtime ZT path-A prove green on rebuilt tip; T1/T2 secret smokes still green)
 
 ## Evidence paths
-
 | Item | Path |
 |------|------|
 | This audit | `/home/jeryd/Projects/openOODA/openOODA/audit/t3_integration.oot` |
@@ -173,4 +161,4 @@ OK secret_t2_depth_smoke
 | 1.8 / 6.4 logs | `~/.cache/ooda-tmp/t3_sys_exec_env.log`, `t3_fs_writedir.log` |
 | T1/T2 logs | `~/.cache/ooda-tmp/t3_t1_smoke.log`, `t3_t2_smoke.log` |
 | Sources | `ooda/runtime/chs_rt_{sys,ffi,fs}.c` |
-| Smokes | `ooda/scripts/runtime_zt_t3_smoke.sh`, `sys_exec_env_filter_smoke.sh`, `fs_writedir_smoke.sh` |
+| Smokes | `ooda/scripts/runtime_zt_t3_smoke.oo`, `sys_exec_env_filter_smoke.oo`, `fs_writedir_smoke.oo` |

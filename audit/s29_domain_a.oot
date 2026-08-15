@@ -9,11 +9,7 @@
 # OWN: unify stmt println through `c_secret_emit_guard` **only if a hole**;
 #      else ALREADY_FIXED with prove that dual-path refuse still holds.
 #      Do not reopen 2.8 / 7.x. No moonshots. No push. Monofile ≤600.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 **ALREADY_FIXED** (path-A dual refuse). No product source change this turn.
 
 Stmt `println` is still special-cased (`c_emit_ident_stmt` → `c_emit_println`)
@@ -41,10 +37,7 @@ DE2.9 sentence.
 Monofiles: `c_emit_print.oo` **87**, `c_emit_ident.oo` **228**,
 `c_emit_secret_guard.oo` **228**, `c_emit_secret.oo` **264** (all ≤600).
 
-========================================================================
-CLAIM UNDER PRESSURE
-========================================================================
-
+## CLAIM UNDER PRESSURE
 SPRINT **2.9** MED: println walker → full `c_secret_emit_guard`.
 User fork this turn: **hole → surgical route; equivalent → ALREADY_FIXED**.
 
@@ -60,12 +53,11 @@ Adversarial hole class: a shape where **full** `c_secret_emit_guard`
 would refuse an unquoted SECRET IDENT that stmt `println` + the check
 walker both allow. If that class is empty, do **not** rewrite.
 
-========================================================================
+---
 STATIC (tip source — no edit)
-========================================================================
+---
 
 ### Three rails (do not collapse)
-
 | Rail | File | Refuse |
 |------|------|--------|
 | Check / LLVM / emit-c **front door** | `c_emit_secret.oo` L175–193 | `sid = resolve(id)`; `println`/`eprintln`; optional LPAREN; IDENT → `c_secret_refuse_sink_resolved` |
@@ -87,7 +79,6 @@ Host `nm -S`: `T c_emit_println` @ `0x4651b0`; `T check_secret_println_sinks`
 @ `0x45fb90`; `T c_secret_refuse_println_ident` @ `0x45de80`.
 
 ### Why the skip is not a hole
-
 1. **Front door always runs on emit-c / llvm / check.** SECRET IDENT at
    `println`/`eprintln` `process_exit`s in `check_secret_println_sinks`
    **before** `c_emit_println` or `c_secret_emit_guard` is reached.
@@ -111,7 +102,6 @@ Host `nm -S`: `T c_emit_println` @ `0x4651b0`; `T check_secret_println_sinks`
    refuse contract; does not reopen 7.1 walker memory.
 
 ### Why DE2.9 is not a land (honesty)
-
 SPRINT “What got fixed” DE2.9 (`c_emit_secret.oo:175-186` →
 `c_secret_emit_guard(env, id, ...)`) is **false on disk**. Those lines
 are the IDENT loop + `c_secret_refuse_sink_resolved`. The guard wants
@@ -120,7 +110,6 @@ lowered C `a0/a1/a2/args`. A check-path call is the wrong signature
 sentence.
 
 ### 6.1 / s71 sentences this OWN answers
-
 - **6.1** (`check_drive.oo`): SECRET walk moved **before** typecheck so
   unlowered sinks still dual-path. Host ELF is still type-then-secret
   (s61 smoke check type-first). Product `println` is a **known** name →
@@ -129,156 +118,9 @@ sentence.
   Token + check dual still BLOCK. Unify later = this ticket. Equivalent
   refuse ⇒ no surgical route.
 
-========================================================================
+---
 LIVE MATRIX (product host)
-========================================================================
 
-`OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`
-Probes: `/tmp/s29_domain_a_*` + `/tmp/s29_hole_*` (ephemeral).
-Virgin CWD for check (s71 R9 cache).
+*(Continued in `openOODA/audit/s29_domain_a_part2.oot`)*
 
-Expect BLOCK = rc≠0 + `ERR\tsecret` on emit-c **and** check **and** llvm.
-Expect ALLOW = rc=0, no `ERR\tsecret`.
-
-### Product fixtures
-
-| Fixture | Shape | emit-c | check | llvm | V |
-|---------|-------|--------|-------|------|---|
-| `secret_sink_fail` | `println(x)` | BLOCK `x` | BLOCK | BLOCK | **PASS** |
-| `secret_sink_pass` | public println | ALLOW | ALLOW | ALLOW | **PASS** |
-| `secret_eprintln_fail` | `eprintln(tok)` | BLOCK `tok` | BLOCK | BLOCK | **PASS** |
-| `secret_eprintln_pass` | public eprintln | ALLOW | ALLOW | ALLOW | **PASS** |
-| `secret_multi_arg_println_fail` | `println(n, s)` | BLOCK `s` | BLOCK | BLOCK | **PASS** |
-| `secret_concat_fail` | `y = x + "!"`; `println(y)` | BLOCK `y` | BLOCK | BLOCK | **PASS** |
-| `secret_assign_fail` | `y = x`; `println(y)` | BLOCK `y` | BLOCK | BLOCK | **PASS** |
-| `secret_t1_alias_println` | `let f = println; f(secret_tok)` | BLOCK | BLOCK | BLOCK | **PASS** |
-| `secret_t2_args_println_secret_fail` | `println(token)` | BLOCK | BLOCK | BLOCK | **PASS** |
-| `secret_t2_args_println_concat_fail` | `"literal " + token` | BLOCK | BLOCK | BLOCK | **PASS** |
-| `secret_t2_args_println_ok_pass` | public + unused SECRET | ALLOW | ALLOW | ALLOW | **PASS** |
-| `secret_t2_string_lit_arg_fp` | `println("api_key")` | ALLOW | ALLOW | ALLOW | **PASS** |
-| `secret_t2_string_fp` | `msg = "api_key"` | ALLOW | ALLOW | ALLOW | **PASS** |
-| `secret_t2_real_arg_fail` | `println(api_key)` | BLOCK | BLOCK | BLOCK | **PASS** |
-| `secret_t2_nested_call_fail` | `y = id(id(api_key))` | BLOCK `y` | BLOCK | BLOCK | **PASS** |
-
-### Isolated hole-hunt
-
-| # | Shape | emit-c | check | llvm | Hole? |
-|---|-------|--------|-------|------|-------|
-| P1 | `let x = tok; println(x)` | BLOCK `x` | BLOCK | BLOCK | **no** |
-| P2 | `let f = println; f(tok)` | BLOCK `tok` | BLOCK | BLOCK | **no** |
-| P3 | `if true { println(tok) }` | BLOCK | BLOCK | BLOCK | **no** |
-| P4 | `while` body `println(tok)` | BLOCK | BLOCK | BLOCK | **no** |
-| P5 | `println((tok))` | BLOCK | type arity (rc≠0) | BLOCK | **no** (fail-closed) |
-| P6 | `println("esc\"", tok)` | BLOCK | BLOCK | BLOCK | **no** |
-| P7 | `eprintln("k=" + tok)` | BLOCK | BLOCK | BLOCK | **no** |
-| P8 | `println("tok")` | ALLOW | ALLOW | ALLOW | **no FP** |
-| P9 | `eprintln("tok")` | ALLOW | ALLOW | ALLOW | **no FP** |
-| P10 | `// println(tok)` + public | ALLOW | ALLOW | ALLOW | **no FP** |
-| P12 | unused SECRET + `println("ok")` | ALLOW | ALLOW | ALLOW | **no FP** |
-| P13 | `println!(tok)` (unary `!`) | BLOCK | BLOCK | BLOCK | **no** |
-| H1 | `eprintln(n, tok)` | BLOCK | BLOCK | BLOCK | **no** |
-| H2 | `let r = eprintln(tok)` | BLOCK | BLOCK | BLOCK | **no** |
-| H6 | `println(wrap(tok))` | BLOCK `tok` | BLOCK | BLOCK | **no** |
-| H7 | `println(a, b)` two SECRET | BLOCK `a` | BLOCK | BLOCK | **no** |
-| H9 | `y = tok; println(y)` | BLOCK `y` | BLOCK | BLOCK | **no** |
-| H10 | block `{ println(tok) }` | BLOCK | BLOCK | BLOCK | **no** |
-| A1 | `// SECRET: println` + `let f = println; println(f)` | BLOCK | BLOCK | BLOCK | **no** |
-| A2 | same + `eprintln(f)` | BLOCK | BLOCK | BLOCK | **no** |
-| C1 | sticky clear `y = tok; y = "clean"; println(y)` | ALLOW | ALLOW | ALLOW | **no FP** |
-
-**Path-A println/eprintln FN = 0. FP = 0.**
-
-P5 honesty: host `check` type-first on grouped `(tok)` (arity); emit-c +
-llvm still `ERR\tsecret`. Fail-closed, not a leak. Same class as 6.1
-check type-first for **untyped** names — `println` IDENT refuse is
-otherwise dual-path secret.
-
-### Named leftovers (not 2.9 FN)
-
-| Shape | emit-c | check | llvm | Class |
-|-------|--------|-------|------|-------|
-| `print(tok)` | ALLOW (not `oo_print_*`) | type undefined | ALLOW builtin | s71 R2 / ideas I7 |
-| `log` / `print_err`(tok) | BLOCK (emit-guard) | type undefined | no secret | s71 R3 / ideas I6 |
-
-### Smoke
-
-```
-cd /home/jeryd/Projects/openOODA/ooda
-OODAC_BIN=./oodac/oodac bash scripts/s29_println_guard_smoke.sh
-# exit 0
-# OK fail-closed emit-c/check: secret_tok_println_ident
-# OK no-FP emit-c/check: secret_tok_println_string_lit
-# OK fail-closed emit-c/check: secret_tok_eprintln_ident
-```
-
-Harness itself says it proves refuse/no-FP, **not** the helper. Agreed.
-
-========================================================================
-WHY NOT ROUTE (surgical I5 declined)
-========================================================================
-
-Hole class empty. Ideas I1+I2 (prove dual refuse) outrank I5 (join C
-texts / drop the builtin):
-
-- Stmt `println` lowers to **several** `oo_print_*` + `oo_println()`,
-  not `println(args)`. A fake `args` string is a second re-lexer.
-- Deleting the ident special-case changes product lowering (moonshot).
-- LLVM has **no** emit-guard; dropping the check walker is an FN (I8).
-- Check → `c_secret_emit_guard` is the wrong signature (I9 / false DE2.9).
-
-Optional later hygiene (not this close): I3 check loop →
-`c_secret_scan_call(..., 0, false, sid)`; I4 stmt refuse helper →
-`c_secret_refuse_sink_resolved`. Neither is required for Z1–Z5.
-
-========================================================================
-FILES TOUCHED
-========================================================================
-
-| File | Change |
-|------|--------|
-| `ooda/oodac/c_emit_print.oo` | **none** |
-| `ooda/oodac/c_emit_ident.oo` | **none** |
-| `ooda/oodac/c_emit_secret.oo` | **none** (7.10/2.10 dirt is other OWN) |
-| `ooda/oodac/c_emit_secret_guard.oo` | **none** (2.10 dirt is other OWN) |
-| `openOODA/audit/s29_domain_a.oot` | this evidence |
-
-**Not touched:** 2.8 macro residual, 7.1/7.2/7.10 walkers, 6.1 sink list,
-2.10 `__sec_sink__`, SPRINT table, remotes (no push).
-
-========================================================================
-RESIDUAL HONESTY (do not claim closed)
-========================================================================
-
-1. **Helper identity.** Stmt `println` still does not *call*
-   `c_secret_emit_guard`. Named. Not a SECRET FN. SPRINT flip wording
-   must say **dual refuse + prove**, not “walker now calls emit_guard.”
-2. **DE2.9 table is stale.** Coordinator should drop that sentence.
-3. **LLVM `print` / check `print_err` family** — s71 R2/R3. Not 2.9.
-4. **Host ELF 07:49** vs WT `check_drive` secret-before-type (6.1).
-   Product `println` check still dual-path secret. s61 official smoke
-   stays RED on this host (not this OWN).
-5. **Check-cache false-OK** (s71 R9) — smoke must use virgin CWD.
-6. **`${}` / `#[Secret]` / full IFC / 2.10 wrappers** — SECRET_TAINT.
-7. **P04c-class** `let f = println` without a call: peer1 saw emit-c
-   heap abort. Check OK. Not a SECRET print. Not this OWN.
-
-========================================================================
-STATUS FOR SPRINT/PM
-========================================================================
-
-| Item | Status |
-|------|--------|
-| 2.9 dual-path `println(SECRET)` refuse | **ALREADY_FIXED** |
-| 2.9 stmt skip of `c_guard_scan_idents` fail-open | **no** (Z2 PASS) |
-| 2.9 `eprintln` / alias `f = println` | **PASS** (eprintln already emit-guard) |
-| 2.9 string/comment no-FP | **PASS** |
-| 2.9 helper unify (`c_emit_println` → guard) | **not required** (no hole; I5 declined) |
-| 2.8 / 7.x reopened | **no** |
-| monofile ≤600 | **87 / 228 / 228 / 264** |
-| `s29_println_guard_smoke` | **exit 0** |
-
-Recommend SPRINT 2.9 mark **FIXED path-A (dual refuse + prove)** with
-pointer to this file. Do **not** write “walker → `c_secret_emit_guard`
-landed.”
-
-end of s29_domain_a.oot
+end of s29_domain_a.oot (part 1)

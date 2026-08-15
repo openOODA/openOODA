@@ -6,9 +6,7 @@
 # Source (2.8 land): `MACRO_SECRET_PASS.oot` (1347 B, staged) / `MACRO_SECRET_RESIDUAL.oot` (1508 B, ??) / `MACRO_BODY_SECRET.oot` (2286 B, ??) / `audit/issue_2_8_macro_secret_residual.oot` (1859 B, ??)
 # Rail (pre-existing, not 2.8-new): `oodac/check_residual.oo` (4094 B, 93 L, HEAD-clean, mtime 04:55)
 # OWN: audit only (no product code changes this pass)
-
 ## Scope
-
 Prove or reject SPRINT **2.8** memory floor after the residual-doc land:
 
 > Hunt: **no new concat** from any 2.8 land
@@ -26,7 +24,6 @@ Out of scope (named residual only): 7.1/7.2/7.10 walkers (PASS `s71`/`s72`/`s710
 ID collision: DESIGN/PM **1.4** = first-class AST macros (moonshot). This file is SPRINT backlog **2.8** = "Macro-body SECRET second pass (or residual doc)". Do not mix.
 
 ## Verdict — path-A memory floor
-
 | Result | Meaning |
 |--------|---------|
 | **PASS** | 2.8 land is **residual documentation only**. No product `.oo` hunk. No second-pass ident walk. No `name = name + c`. Dirty-tree secret diffs are **7.10 concat removal** + **2.10 `__sec_sink__` prefix `str_slice`** + **6.1 `env_set` equality** — not 2.8 concat. Live `macro_expand` / `ast_macro` check-refuse RSS matches sibling `hive_fuzz`. |
@@ -46,9 +43,7 @@ ID collision: DESIGN/PM **1.4** = first-class AST macros (moonshot). This file i
 ---
 
 ## H1 — No new concat (the 2.8 close bar)
-
 ### What 2.8 actually landed
-
 | Site | Form | Alloc? |
 |------|------|--------|
 | `bootstrap/MACRO_SECRET_PASS.oot` | residual honesty, 20 L, staged `A` | none (doc) |
@@ -97,9 +92,7 @@ Existing (not new, not 2.8-owned) string `+`:
 ---
 
 ## H2 — Residual refuse heap vs sibling
-
 ### Mechanism
-
 2.8 does **not** expand macros and does **not** grow a buffer. After check lex:
 
 1. `check_drive.oo` L108–109 calls `check_residual_free_calls` (M153 path-A).
@@ -111,7 +104,6 @@ No body walk. No expanded token stream. No SECRET second pass. `strings oodac` c
 `oo_char_at` is still Θ(n²) **time** + 1-char temps (compiler-wide). Host `oodac` is the **07:49** ELF (same as s61/s71/s72/s710).
 
 ### Live rails (this binary)
-
 Ephemeral `/tmp/s28_mem_1119079/` (removed). `/usr/bin/time` `%e` / `%M`. `OODA_SRC_ROOT=ooda`.
 
 Direct check refuse (tiny fixtures):
@@ -135,7 +127,6 @@ Long string payload on residual call (same N on `macro_expand` / `hive_fuzz`):
 **Read:** `macro_expand` RSS **tracks `hive_fuzz`** (5.2 → 6.2 → 9.3 MB check; emit-c 7.7 → 17.2 MB). Linear-ish in payload/source, **not** a 2.8 concat bomb. Time 2k→8k ≈ 13–14× for 4× N — `char_at` / lex (same sibling). emit-c **output size is constant** (9118 B for every `macro_expand` payload) — the 8 KiB string is **not** copied into C; emit dies at `ERR c_emit unknown free call needs annotation macro_expand`. Same constant-size death for `hive_fuzz` (9115 B).
 
 ### Adjacent: emit-c does not run `check_residual` (not 2.8 concat)
-
 `check_residual_free_calls` is wired in `run_check_core` only. `oodac emit-c residual_macro_fail.oo` prints preamble then **`unknown free call needs annotation`** — not `ERR residual`. Same for `hive_fuzz` / `ast_macro`. Fail-closed (rc 1), no expansion, no extra RSS class. Do **not** fold into 2.8 FAIL. Dual-path residual is Security/Integration; Memory only cares that emit did not grow a concat buffer (it did not).
 
 **H2 heap (direct): PASS. H2 time: residual. H2 emit-c tag: adjacent residual.**
@@ -143,7 +134,6 @@ Long string payload on residual call (same N on `macro_expand` / `hive_fuzz`):
 ---
 
 ## H3 — Mechanism (residual doc, not a new extract)
-
 | Artifact | What it says / does |
 |----------|---------------------|
 | `SPRINT.oot` 2.8 | “Macro-body SECRET second pass **(or residual doc)** — **FIXED** path-A documented (`MACRO_SECRET_RESIDUAL.oot`)” |
@@ -157,7 +147,6 @@ Long string payload on residual call (same N on `macro_expand` / `hive_fuzz`):
 ---
 
 ## Complexity (memory class)
-
 | Function | Time | Aux heap (2.8 delta) |
 |----------|------|----------------------|
 | `residual_feature_of` + `macro_expand`/`ast_macro` | O(1) compares | **0** |
@@ -170,7 +159,6 @@ Progress: `i` always increases by 1. No spin. No new loop.
 ---
 
 ## Scorecard
-
 | ID | Sev | Site | Finding | Status |
 |----|-----|------|---------|--------|
 | S28-1 / 2.8 | MED | 2.8 land (4 docs + SPRINT row) | Residual-doc only; no walker | **PASS** |
@@ -185,7 +173,6 @@ Progress: `i` always increases by 1. No spin. No new loop.
 | S28-10 | — | `c_emit_call_args` | `args = args + ", " + a` | **OPEN adjacent** (not 2.8) |
 
 ## Close bar for 2.8 (memory)
-
 Path-A **may close 2.8 as memory-floor PASS** if process accepts:
 
 1. No new concat (proven).
@@ -198,7 +185,6 @@ Re-open 2.8 memory **only** if a macro-body SECRET walker lands with per-char `O
 When `AST_MACROS` is promoted off residual refuse, 2.8 **must** reopen as a real expanded-AST/token SECRET pass (docs already name this). That future walker is Memory Auditor OWN at land — slice floor, not concat.
 
 ## Evidence paths
-
 | Item | Path |
 |------|------|
 | Residual refuse | `/home/jeryd/Projects/openOODA/ooda/oodac/check_residual.oo` L28–29, L55–70, L73–93 |
@@ -208,11 +194,10 @@ When `AST_MACROS` is promoted off residual refuse, 2.8 **must** reopen as a real
 | Hygiene peer | `openOODA/audit/s28_hygiene.oot` |
 | Moonshot pack | `ooda/bootstrap/AST_MACROS.oot` + `RESIDUAL_PATH_A.oot` |
 | Fixtures | `ooda/fixtures/residual_macro_fail.oo`, `ast_macros_marker.oo` |
-| Rails | `ooda/scripts/residual_path_a_floor_smoke.sh` (`residual_macro_fail` → `AST_MACROS`) |
+| Rails | `ooda/scripts/residual_path_a_floor_smoke.oo` (`residual_macro_fail` → `AST_MACROS`) |
 | Prior floors | `s61_memory.oot` / `s71_memory.oot` / `s72_memory.oot` / `s710_memory.oot` / `t1_memory.oot` |
 
 ## Notes (return)
-
 1. Did **not** edit product `.oo`. Audit + ephemeral `/tmp/s28_mem_1119079` only (removed).
 2. Did **not** add `s28_*` fixtures or a dedicated smoke (Harness OWN; residual-doc N/A).
 3. Did **not** rebuild `oodac`. Host ELF already strings-matches `macro_expand` / `ast_macro` and refuses them at **check**.

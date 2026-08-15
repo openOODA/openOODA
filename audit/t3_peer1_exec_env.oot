@@ -6,10 +6,7 @@
 # OWN: this audit only; no push; no FFI/FS rewrites
 # Subject: `runtime/chs_rt_sys.c` — `oo_sys_exec` + `oo_process_policy_getenv`
 # Tip note: working tree dirty on `chs_rt_sys.c` (DE1.8 fix unstaged vs HEAD)
-
-========================================================================
-SUMMARY
-========================================================================
+## SUMMARY
 **ID 1.8 exec env filter: PASS (re-proved live against DE1-fixed source).**
 
 DE1 already landed a correct filter in the working tree (unstaged diff vs
@@ -24,9 +21,9 @@ pre-fix shape are closed; live matrix is green. No peer minimal fix required.
 | Live behavioral matrix | **19/19 PASS** |
 | Peer code change | **none** (already fixed) |
 
-========================================================================
+---
 SOURCE UNDER AUDIT (post-DE1, peer-read live)
-========================================================================
+---
 
 ### `oo_process_policy_getenv` — lines 86–94
 ```
@@ -59,9 +56,9 @@ shadowed.
 
 Empty argv guard (parent, pre-fork): `argc < 1 || !argv || !argv[0].data`.
 
-========================================================================
+---
 HUNT MATRIX (assigned bug classes)
-========================================================================
+---
 
 | # | Hunt item | Pre-DE1 (HEAD / first peer snapshot) | Post-DE1 live | Verdict |
 |---|-----------|--------------------------------------|---------------|---------|
@@ -79,9 +76,7 @@ Static code facts (child block only, comments stripped):
 - `for (src` index **<** `clearenv()` index
 - `system(`: **absent** (still `fork`+`execvp`)
 
-========================================================================
-LIVE BEHAVIORAL MATRIX
-========================================================================
+## LIVE BEHAVIORAL MATRIX
 Harness: gcc `-O0 -I runtime` + `runtime/chs_rt.c` (umbrella includes
 `chs_rt_sys.c`). Hostile parent env:
 `LD_PRELOAD`, `LD_LIBRARY_PATH`, `PATH=/evil/...`, `SECRET_LEAK`, `HOME`,
@@ -117,9 +112,9 @@ logic yields **only** `PATH=/usr/bin:/bin` and drops `OODA_KEEP` (fail-closed
 but wrong vs policy-keep contract). Fixed order restores policy keys without
 re-admitting LD_PRELOAD/SECRET.
 
-========================================================================
+---
 PRE-DE1 BROKEN SHAPE (evidence why DE1 was required)
-========================================================================
+---
 Committed/earlier snapshot (peer first read + `git diff` reverse):
 
 ```
@@ -139,9 +134,9 @@ Bugs:
 
 DE1 unstaged fix (stat: 21 insertions, 20 deletions on `chs_rt_sys.c`) closes all three.
 
-========================================================================
+---
 RESIDUALS (honest, non-blocking for 1.8)
-========================================================================
+---
 1. **ASAN** not linked on this host (`libasan.so.8` missing) — double-free class
    covered by static order proof + 50× smoke + parent-intact, not ASan.
 2. **`OO_` prefix is intentionally broad** — any `OO_*` / `OODA_*` parent key
@@ -155,16 +150,14 @@ RESIDUALS (honest, non-blocking for 1.8)
    command string (argv form, not `system(3)`). Separate from env filter; R2/R3
    residual if shell-less single-arg exec is required later.
 
-========================================================================
-PEER ACTION
-========================================================================
+## PEER ACTION
 - **Fix applied by peer:** none (DE1 already correct in working tree).
 - **FAIL residual:** none for ID 1.8.
 - **Verdict:** **PASS** — re-proved independently.
 
-========================================================================
+---
 REPRO (core)
-========================================================================
+---
 ```
 cd /home/jeryd/Projects/openOODA/ooda
 # hostile env + oo_sys_exec("/usr/bin/env") — expect only OODA_*/OO_* + PATH=/usr/bin:/bin
@@ -192,9 +185,7 @@ Expected child lines (order free):
 - `PATH=/usr/bin:/bin`
 - no `LD_PRELOAD`, `SECRET_LEAK`, or `/evil`
 
-========================================================================
-SIGN-OFF
-========================================================================
+## SIGN-OFF
 QA Peer Verifier 1 (Exec Env Filter) — ID **1.8** **PASS**.
 Audit path: `openOODA/audit/t3_peer1_exec_env.oot`
 No push. No FFI/FS edits.

@@ -7,13 +7,8 @@
 # Scope: prove `c_parse_secret_env` has ZERO `name = name + c` after
 #        Domain A; long SECRET ident (256–1024) emit-c no hang ≤10s.
 # Write: this audit only. No product/std/oodac edits. No push.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 ## **ACCEPT** 7.10 parse-env concat honesty (source path-A)
-
 SPRINT **7.10** (`c_parse_secret_env` — no per-char OoStr concat / same
 class as 7.1/7.2 `str_slice`) is **true on live WT source**:
 
@@ -48,10 +43,7 @@ by this peer.
 slice — Domain A did not rebuild (named residual 4); grep + 256–1024
 no-hang hold anyway.
 
-========================================================================
-SUMMARY TABLE
-========================================================================
-
+## SUMMARY TABLE
 | # | Probe | Expected for 7.10 honesty | Actual | VERDICT |
 |---|--------|---------------------------|--------|---------|
 | 1 | Source `c_parse_secret_env` has no `name = name + c` | none | **0** hits; `let name = str_slice(src, start, k)` L65 | **PASS** |
@@ -73,10 +65,7 @@ SUMMARY TABLE
 emit-c no hang). **Host binary still concat** — named, not a REJECT of
 the source close.
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Static read of live WT `ooda/oodac/c_emit_secret.oo` after Domain A
    land (`s710_domain_a.oot`). `git diff` vs `52cc4b5`: ident loop
    `start` + `str_slice`; also dirty 2.10 `__sec_sink__` hunk (not 7.10).
@@ -89,10 +78,7 @@ METHOD
    budget **10s**. Dual-repro on key rows; isolation comments vs SECRET.
 6. No product rebuild. No push.
 
-========================================================================
-HOST / TIP / WT
-========================================================================
-
+## HOST / TIP / WT
 | Item | Value |
 |------|--------|
 | When (UTC) | 2026-08-12T18:56Z |
@@ -109,9 +95,9 @@ HOST / TIP / WT
 `let name = str_slice(src, start, k);`) **plus** pre-existing 2.10
 `__sec_sink__` prefix scan (not this OWN).
 
-========================================================================
+---
 SOURCE (7.10 parse-env — live after Domain A)
-========================================================================
+---
 
 ```
 pub fn c_parse_secret_env(src: String) -> String
@@ -146,166 +132,9 @@ Remaining `+` on this path: needle `"// "+"SECRET:"` and one
 `__sec__`/`__secref__` prefix per directive — **O(1) per hit**, not
 per ident char.
 
-========================================================================
+---
 HOST DISASSEMBLY (product `oodac` — STALE vs WT)
-========================================================================
 
-```
-nm:  000000000045d140 T c_parse_secret_env   (size 0xd32 / 3378)
-     000000000045de80 T c_secret_refuse_println_ident
-     0000000000403f30 T oo_str_concat
-```
+*(Continued in `openOODA/audit/s710_peer2_part2.oot`)*
 
-Calls inside `c_parse_secret_env` only:
-
-| Callee | Count | Role |
-|--------|-------|------|
-| `oo_str_slice` | **0** | **not in this binary** |
-| `oo_str_concat` | **4** | needle + **ident accumulate** + `__sec__` + `__secref__` |
-| `oo_char_at` | 5 | classify / skip / needle |
-| `oo_str_eq` / `oo_str_lit` | many | letter-class giant `==` |
-
-Four `oo_str_concat` sites: `0x45d17a` (needle), `0x45d3b5` (ident
-loop — **the 7.10 leak still linked**), `0x45dd28` / `0x45dd97`
-(env prefix). Post-slice host would drop the loop concat and gain
-one `oo_str_slice`. **Not observed.**
-
-========================================================================
-SCALE PROBES (product host — `/tmp/s710_peer2_1095493`)
-========================================================================
-
-Hang budget = **10s** (`timeout`). Dual-repro where noted.
-Fixtures ephemeral; not committed.
-
-### Unused SECRET name (`// SECRET: A×L` + `println(1)`)
-
-Exercises `c_parse_secret_env` only (name is not an IDENT in the body;
-lexer treats the directive as a comment).
-
-| L | emit-c (10s) | rss | rc |
-|---|--------------|-----|----|
-| 8 | **0.06s** | — | 0 |
-| 256 | **0.13–0.20s** dual | ~7 MB | 0 |
-| 512 | **0.30–0.32s** dual | — | 0 |
-| 1024 | **0.97–1.15s** dual | ~15 MB | 0 |
-
-**No hang. No SIGTERM/124.**
-
-### Fail rail (directive parsed + sink refuse)
-
-| Probe | Result |
-|-------|--------|
-| L=256 `println(A×256)` | rc=1 `ERR	secret	println sink refuses SECRET A…` **0.11–0.19s** dual **PASS** |
-| L=1024 `println(A×1024)` | rc=1 same refuse class **1.09–1.45s** **PASS** |
-
-### Isolation
-
-| Probe | emit-c | Note |
-|-------|--------|------|
-| `// A×1024` (no SECRET) | **0.29s** | file walk / comment only |
-| `// NOTE: A×1024` | **0.32s** | same class |
-| `// SECRET: tok` + `// A×1024` | **0.13s** | short name parse |
-| `tokens` on SECRET L=1024 unused | **0.02s** | lexer skips comment |
-
-SECRET L=1024 unused (~1.0s) vs comment L=1024 (~0.3s) is the parse-env
-ident walk + **host-side per-char concat**. Still **≪10s**. After a
-rebuild, this delta should shrink; this peer did **not** rebuild to
-prove that.
-
-========================================================================
-HOST vs SOURCE (the REJECT rail)
-========================================================================
-
-Assigned 7.10 peer2 gates: *ZERO `name = name + c` after Domain A* and
-*L=256–1024 emit-c ≤10s*. 7.1 peer2 addendum: *if source fixed but host
-stale, REJECT until rebuilt or document.*
-
-| Layer | Fixed? | In host? |
-|-------|--------|----------|
-| 7.10 `str_slice` parse-env | **yes** (WT L65) | **no** (objdump concat×4, slice×0) |
-| WT 2.10 `__sec_sink__` | WT-only, not 7.10 concat | **no** — host predates; **not** a 7.10 leak |
-
-**Document, do not REJECT 7.10:** source grep is the Domain A close;
-hang holds on the **stale concat host**. A later pure-multi rebuild
-should drop the loop `oo_str_concat`. This peer did **not** rebuild.
-
-Do **not** use `oodac/oodac` (07:43, 962888 B) as product host.
-
-========================================================================
-RESIDUALS (honest, out of 7.10 source close)
-========================================================================
-
-1. **Product host still concat** — `c_parse_secret_env` `oo_str_concat`×4
-   until next seed/pure-multi. Named by Domain A residual 4.
-2. **`char_at` 1-char temps** — every visit. Language floor, not
-   quadratic ident leak.
-3. **`is_al` 70-line oracle** — shared helper not landed (Domain A
-   inlined slice only). Residual cost, not concat.
-4. **Lexer ident concat** — `token_scan_ident.oo` `id = id + c2`.
-   Dominates long *body* idents (7.1 peer2 L≥16k). Unused-SECRET
-   fixtures do not hit it (comment line).
-5. **Full IFC / `#[Secret]` / `${}`** — not this residual.
-6. **Stale banners** — `s71`/`s72` smokes and `s710_harness.oot` /
-   `s710_integration.oot` still say 7.10 concat (written before / not
-   this OWN). Integration snapshot at 18:54Z predates Domain A slice.
-7. **Leading-digit SECRET names** — still accepted. Pre-existing
-   semantic; not a concat issue.
-8. **SPRINT row 7.10** — still listed HIGH open. This peer does not
-   edit SPRINT.
-
-========================================================================
-WHAT THIS PEER WILL NOT RUBBER-STAMP
-========================================================================
-
-- “7.10 FIXED on product `oodac` binary / host objdump slice.”
-- Peer1 scan-contract ACCEPT — different OWN if present.
-- Rollup “path-A closed including host rebuild.”
-- Any claim that 10s no-hang holds for L≫1024 or for long *body*
-  idents (lexer).
-- Shared `c_ident_end` / `c_slice_ident_at` landed.
-
-========================================================================
-REPRO
-========================================================================
-
-```
-OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
-# static
-python3 -c '
-from pathlib import Path
-t=Path("ooda/oodac/c_emit_secret.oo").read_text()
-s=t.find("pub fn c_parse_secret_env"); e=t.find("\npub fn ", s+1)
-body=t[s:e]
-assert "name = name + c" not in body
-assert "let name = str_slice(src, start, k);" in body
-print("grep PASS")
-'
-nm --print-size $OODAC | grep c_parse_secret_env
-# host (expect STALE until rebuild): slice 0, concat 4
-objdump -d --start-address=0x45d140 --stop-address=0x45de80 $OODAC \
-  | grep -c oo_str_slice     # 0 on this host
-objdump -d --start-address=0x45d140 --stop-address=0x45de80 $OODAC \
-  | grep -c oo_str_concat    # 4 on this host
-
-# scale (fixtures in /tmp/s710_peer2_1095493)
-timeout 10 $OODAC emit-c /tmp/s710_peer2_1095493/sec_ok_256.oo    # rc=0 ~0.2s
-timeout 10 $OODAC emit-c /tmp/s710_peer2_1095493/sec_ok_1024.oo   # rc=0 ~1.0s
-timeout 10 $OODAC emit-c /tmp/s710_peer2_1095493/sec_refuse_256.oo
-# rc=1 ERR secret
-```
-
-========================================================================
-FILES
-========================================================================
-
-| Path | Role |
-|------|------|
-| `ooda/oodac/c_emit_secret.oo` | 7.10 parse-env (read-only; Domain A sliced) |
-| `ooda/oodac/oodac` | product host (read-only; stale concat) |
-| `openOODA/audit/s710_domain_a.oot` | Domain A source close + host residual |
-| `/tmp/s710_peer2_1095493/` | ephemeral scale fixtures + logs |
-| `openOODA/audit/s710_peer2.oot` | this file |
-
-**No peer code fix. No push.**
-
-end of s710_peer2.oot
+end of s710_peer2.oot (part 1)

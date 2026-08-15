@@ -1,13 +1,13 @@
 // # Filter failure lines
 //
-// Logline: Take the first line of a string and shell-escape it for a later probe.
+// Logline: Parse failure logs and extract concise error lines for failing modules.
 //
-// Setup: Failure log output string is provided for single-line shell extraction.
+// Setup: FsReadCap and SysCap granted to inspect audit failure logs and re-check modules.
 //
 // Beats:
-//   1. Slice through the first newline.
-//   2. Wrap the line in single quotes.
-//   3. Escape embedded quotes for the shell.
+//   1. Read failure list from log file or argument.
+//   2. Re-check each failing module with oodac check.
+//   3. Extract and display the first error diagnostic line.
 
 pub fn extract_first_line(s: String) -> String {
     let nl = str_index_of(s, "\n");
@@ -34,15 +34,12 @@ pub fn shell_escape(s: String) -> String {
     return out;
 }
 
-
-// filter_failures.oo — In plain English: Show subset failures for issue 61. Pass log file as arg, fallback to audit/current_failures.log. (was check_61.oo)
-// Personal hard path removed — use args or audit/ file.
 pub fn main(fs: &FsReadCap, sys: &SysCap, args: List[String]) {
     let mut log_path = "audit/current_failures.log";
-    if args.len() > 1 {
-        log_path = args[1];
+    if list_len(args) > 1 {
+        log_path = list_get(args, 1);
     }
-    let get_files_cmd = "grep '^Fail: ' " + log_path + " | cut -d' ' -f2";
+    let get_files_cmd = "grep '^Fail: ' " + log_path + " 2>/dev/null | cut -d' ' -f2 || true";
     let get_files_res = sys_exec(sys, "sh", "-c", get_files_cmd);
     
     let mut files_out = "";
@@ -66,7 +63,7 @@ pub fn main(fs: &FsReadCap, sys: &SysCap, args: List[String]) {
         if end > start {
             let f = str_slice(files_out, start, end);
             
-            let cmd = "./ooda/oodac/oodac check " + shell_escape(f) + " 2>&1 || true";
+            let cmd = "oodac check " + shell_escape(f) + " 2>&1 || true";
             let check_res = sys_exec(sys, "sh", "-c", cmd);
             
             let mut check_out = "";

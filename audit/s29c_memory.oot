@@ -14,9 +14,7 @@
 # Wave-1: `audit/s29_memory.oot` (no-unify concat bar)
 # Wave-2: `audit/s29b_memory.oot` (Int depth; H2 new-walk RSS **unproved**)
 # OWN: audit only. No product `.oo` edit. No product-ELF overwrite.
-
 ## Scope
-
 Prove or reject SPRINT **2.9 wave-3** memory floor:
 
 > Re-prove the depth-walk heap on a **new** host **if** the product
@@ -30,7 +28,7 @@ machine. This pass answers the s29b leftover:
 
 Live answer: **that binary does not exist.** Product host is the 04:49
 ELF. Sibling rebuilds (`/tmp/s29c_rebuild`, integration
-`oodac_pure_build_fixed.sh`) **ERR_EMIT** `check_cap_util.oo`. This
+`bootstrap/oodac_pure_build`) **ERR_EMIT** `check_cap_util.oo`. This
 auditor’s side `oodac build` → `/tmp/s29c_mem_host/oodac` died after
 preamble only (`oodac.tmp.c` 13616 B). Product host **untouched**.
 
@@ -51,7 +49,6 @@ ID collision: none. This file is **2.9 wave-3** = re-prove heap after
 rebuild. Wave-1 / wave-2 ledgers stay.
 
 ## Verdict — path-A memory floor
-
 | Result | Meaning |
 |--------|---------|
 | **PASS residual** | Depth walk is still **Int `depth` / Int `d`**. Zero new concat. Seed-lowered C of both check walkers is `long long depth` + `field_at`. Tree-lowered `c_emit_println` is `long long d`. **No new host**, so the s29b H2 “run the Int walk” RSS table is **still unproved**. Stale-ELF class re-measured this pass and **tracks** s29b. |
@@ -73,9 +70,7 @@ refuse. Helper unify. O(n) lex time.
 ---
 
 ## H1 — No new concat (re-proved)
-
 ### What wave-3 actually has
-
 | Site | Form | Alloc? |
 |------|------|--------|
 | `c_emit_secret.oo` L191–211 | `let mut depth = 1` then `depth ± 1` / `p + 1` | **none** (Int) |
@@ -99,7 +94,6 @@ Forbidden patterns **absent** from all three depth walks:
 Every **new** `+` is Int (`p + 1`, `sp + 1`, `depth + 1`, `d + 1`).
 
 ### Lowered C (mechanism, not shipping ELF)
-
 Tree host `emit-c` of `c_emit_print.oo`: rc=0, 11489 B, 3.77 s,
 67 MB RSS (`/tmp/s29c_mem_lower/print.c`). IDENT scan:
 
@@ -136,176 +130,7 @@ Seed is an **emit tool**, not the proof host.
 
 ---
 
-## H2 — Heap class (this ELF) vs new-walk (missing ELF)
 
-`nm -S` **unchanged** vs s29b (depth not linked):
+*(Continued in `openOODA/audit/s29c_memory_part2.oot`)*
 
-| Sym | Addr | Size |
-|-----|------|-----:|
-| `c_emit_println` | `0x4651b0` | 2583 |
-| `check_secret_println_sinks` | `0x475c50` | 5316 |
-| `c_secret_scan_call` | `0x45e020` | 783 |
-
-Live RSS is **this ELF**, not the WT walker. Isolated HOME
-`/tmp/s29c_mem_prove_1269521/` (removed). `/usr/bin/time` `%e` / `%M`.
-`OODA_SRC_ROOT=ooda`. 2026-08-12T19:52:17Z.
-
-### Tiny rails
-
-| Case | emit-c rc / s / RSS KB | check rc / s / RSS KB | Note |
-|------|-----------------------:|----------------------:|------|
-| `println(tok)` bare | 1 / 0.01 / 4408 | 1 / 0.02 / 5172 | dual refuse |
-| `println((1), tok)` | 1 / 0.02 / 4764 | **0** / 0.01 / 5224 | check **FN** |
-| `println(("x") + tok)` | **0** / 0.02 / 5048 | **0** / 0.01 / 5288 | emit **leak** |
-| `eprintln((1), tok)` | 1 / 0.02 / 4892 | **0** / 0.01 / 5364 | guard; check FN |
-| `eprintln(("x") + tok)` | 1 / 0.03 / 5084 | **0** / 0.01 / 5476 | guard; check FN |
-| public `println(1)` | 0 / 0.01 / 4572 | 0 / 0.01 / 4796 | no secret |
-
-Grouped emit-c **tracks** bare / eprintln (~4.4–5.1 MB). Check on the
-hole is the public-check class (~5.2 MB) because it **FNs**. No extra
-join on the stmt rail.
-
-### Nested `println( (^{d} 1 )^{d} , tok)`
-
-| d | src B | emit-c s / RSS | check s / RSS |
-|--:|------:|---------------:|--------------:|
-| 1 | 80 | 0.02 / 4792 | 0.01 / 5424 |
-| 8 | 94 | 0.02 / 5128 | 0.02 / 5960 |
-| 32 | 142 | 0.02 / 5944 | 0.04 / 7796 |
-| 64 | 206 | 0.04 / 6640 | 0.06 / 10228 |
-| 128 | 334 | 0.05 / 8896 | 0.12 / 15164 |
-
-64→128 check ≈ **1.48×** RSS for 2× depth. Same class as s29b
-(1.47×). A walk concat bomb would be tens–hundreds of MB at d=128.
-This ELF **does not run** the Int walk (check FN → typecheck nest).
-
-### Long SECRET after grouped first arg
-
-| N | src B | emit-c s / RSS (BLOCK) | check s / RSS (FN) |
-|--:|------:|-----------------------:|-------------------:|
-| 64 | 258 | 0.03 / 5860 | 0.02 / 5748 |
-| 256 | 834 | 0.14 / 8760 | 0.07 / 6832 |
-| 1024 | 3138 | 1.00 / 20040 | 0.37 / 11312 |
-
-Check cheaper **because it FNs**. emit-c RSS is ident token + first-arg
-emit, then refuse — not a depth-walk concat.
-
-### Many public idents + grouped dummy
-
-| N | src B | println emit s / RSS / C B | eprintln emit s / RSS / C B | println check | eprintln check |
-|--:|------:|---------------------------:|----------------------------:|--------------:|----------------:|
-| 16 | 452 | 0.05 / 7996 / 9906 | 0.05 / 7864 / 9630 | 0.08 / 11568 | 0.08 / 11736 |
-| 64 | 1700 | 0.64 / 26084 / 12210 | 0.68 / 26176 / 11166 | 0.70 / 46564 | 0.66 / 46668 |
-
-println **tracks** eprintln (~26 MB / ~46 MB). Same class as s29 H2 /
-s29b H2 N=64.
-
-**H2 heap class: PASS. H2 time: residual. H2 new-walk product-binary
-RSS: UNPROVED (no rebuilt host).**
-
----
-
-## H3 — Mechanism (Int depth, not a new extract)
-
-| Artifact | What it says / does |
-|----------|---------------------|
-| WT `check_secret_println_sinks` L191 | `let mut depth = 1` — **Int** |
-| WT `c_secret_scan_call` L109 | same Int — reuse, not a third walk |
-| WT `c_emit_println` L19 | `let mut d = 0` — **Int** |
-| Seed-lowered C | `long long depth` ×2; `long long d` in print.c |
-| `c_secret_emit_guard` | **still not** called from check or stmt println |
-| `s29c_runtime.oot` | **no new ELF**; LPAREN×1 skip |
-| `s29c_peer1.oot` | **REJECT** 3/4 — functional, not concat |
-| `s29_memory.oot` H3 | I5/I9 still **FORBIDDEN** |
-
-| Recipe | Heap | Memory |
-|--------|------|--------|
-| Int `depth` / `d` (already landed) | 0 delta | **PASS** |
-| I3 check loop → `c_secret_scan_call` | 0 concat | **OK** |
-| I5 `joined = joined + ", " + arg` | new prefix-chain | **FAIL** |
-| I9 fabricated `args` into emit_guard | new buffer or FN | **FAIL** |
-
-Progress: every branch does `p = p + 1` / `sp = sp + 1`. Scalars only.
-
-**H3: PASS.**
-
----
-
-## Complexity (memory class)
-
-| Function | Time | Aux heap (2.9c delta) |
-|----------|------|------------------------|
-| check println IDENT walk | O(#toks) past nested `)` **if linked** | **0** (`depth: Int` + `field_at`) |
-| `c_secret_scan_call` | O(#toks) **if linked** | **0** |
-| `c_emit_println` token refuse | O(#toks) **if linked** | `"__sec__"+sn` once/ident (existing) |
-| This ELF | first-`)` stop | **0** 2.9c delta (walk not present) |
-| New join in `c_emit_println` | — | **still forbidden** |
-
----
-
-## Scorecard
-
-| ID | Sev | Site | Finding | Status |
-|----|-----|------|---------|--------|
-| S29C-1 / 2.9c | HIGH | secret L191 / L109 / print L19 | New concat in the depth walk | **ABSENT** |
-| S29C-2 | MED | WT source | Int `depth` / `d` still landed | **PASS** (source + lowered C) |
-| S29C-3 | HIGH | host ELF 04:49 | Depth **not** in shipping walkers | **HONEST residual** |
-| S29C-4 | HIGH | emit-c grouped vs eprintln | RSS same class (re-measured) | **PASS** |
-| S29C-5 | HIGH | new-walk RSS | Needs ELF with L191 `depth` + L19 `d` | **UNPROVED** |
-| S29C-6 | MED | rebuild | `ERR_EMIT check_cap_util.oo`; side build died | **named** (not concat) |
-| S29C-7 | MED | I5 / I9 | new join / fake `args` | **FORBIDDEN** |
-| S29C-8 | LOW | smoke 194 L | exit 1 (check FN / groupplus leak) | **HONEST** |
-| S29C-9 | HIGH | `oo_char_at` / lex | Θ(n²) time | **RESIDUAL cost** |
-| S29C-10 | — | `c_emit_call_args` L40 | `args = args + ", " + a` | **OPEN adjacent** |
-
-## Close bar for 2.9 wave-3 (memory)
-
-Path-A **may** keep 2.9c as memory-floor **PASS residual** if process
-accepts:
-
-1. No new concat (re-proved; **must stay true**).
-2. Depth stays Int (or reuse `c_secret_scan_call`).
-3. stmt `println` RSS stays in the `eprintln` class (re-proved on
-   **this** ELF; **must** re-run after a depth-bearing link).
-4. Host lag / rebuild fail / `char_at` time stay **named**, not silent
-   FAILs.
-
-Re-open **only** if a depth walk grows a per-char `OoStr` rebuild, a
-**new** `args = args + …` join, or emit-c / check of a ≤64 KiB println
-args string **OOMs** / walker RSS grows as Θ(n²) **beyond** eprintln
-**after** a binary that contains secret L191 `depth` **and** print L19
-`d`.
-
-Wave-3 Int depth still needs **no** heap change. Memory will not block
-the land. Memory **will** still block I5/I9. Memory **cannot** stamp
-new-walk RSS until that ELF exists.
-
-## Evidence paths
-
-| Item | Path |
-|------|------|
-| Check / scan_call **depth** | `ooda/oodac/c_emit_secret.oo` L109–141, L191–211 |
-| Stmt **depth** | `ooda/oodac/c_emit_print.oo` L19–40 |
-| Adjacent join | `ooda/oodac/c_emit_call.oo` L40 |
-| `field_at` | `ooda/oodac/token_fmt.oo` L75–114 |
-| Smoke | `ooda/scripts/s29_println_guard_smoke.sh` (194 L, md5 `2ad0ee95…`) |
-| Wave-3 runtime / peer / harness | `audit/s29c_runtime.oot` · `s29c_peer1.oot` · `s29c_harness.oot` |
-| Wave-2 memory bar | `audit/s29b_memory.oot` |
-| Prior floors | `s29_memory.oot` / `s61` / `s71` / `s72` / `s710` / `s28` / `t1_memory.oot` |
-
-## Notes (return)
-
-1. Did **not** edit product `.oo`. Audit + ephemeral
-   `/tmp/s29c_mem_prove_1269521` + `/tmp/s29c_mem_lower` only (removed).
-2. Did **not** add fixtures (Harness OWN).
-3. Did **not** overwrite `ooda/oodac/oodac`. Side rebuild did **not**
-   produce a depth-bearing ELF. Product host = s29b host.
-4. Seed used **only** to lower `c_emit_secret.oo` for H1. Not a proof
-   host. Not a product ship.
-5. `s29c_phalanx_rollup.oot` “memory mid-land” is this file. Rollup
-   Peer1 gate is **not** overridden.
-
-**2.9 wave-3 path-A memory floor: PASS residual** (no new concat;
-new-walk heap **unproved** — host not rebuilt).
-
-end of s29c_memory.oot
+end of s29c_memory.oot (part 1)

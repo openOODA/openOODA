@@ -4,9 +4,7 @@
 # Tip: openOODA `eaa555d` / ooda `52cc4b5`
 # Binary: `/home/jeryd/Projects/openOODA/ooda/oodac/oodac` (962960 B, mtime 2026-08-12 07:49)
 # OWN: audit only (no product code changes this pass)
-
 ## Scope
-
 Prove or reject SPRINT **7.1** path-A memory floor:
 
 > `c_guard_scan_idents` stack buffer (no per-char OoStr leak)
@@ -22,7 +20,6 @@ Hunts (this pass):
 Out of scope (named residual only): 7.2 last-arg, 7.10 `c_parse_secret_env` char concat, T1/T2 taint, runtime HITL 7.4–7.8.
 
 ## Verdict — path-A memory floor
-
 | Result | Meaning |
 |--------|---------|
 | **PASS** | Per-char ident accumulate is **gone**. Walker uses **one `str_slice` per token** (heap slice, not a C stack `char[]`). Aux heap is O(1) scalars + O(\|ident\|) released after refuse. Measured RSS on long fake args is **linear in token count**, not a growing concat buffer. |
@@ -40,7 +37,6 @@ Out of scope (named residual only): 7.2 last-arg, 7.10 `c_parse_secret_env` char
 ---
 
 ## H1 — Per-char OoStr concat (should be gone)
-
 File: `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo`
 
 Walker body (`c_guard_scan_idents`, L18–112):
@@ -70,9 +66,7 @@ Contrast (still OPEN elsewhere, not 7.1):
 ---
 
 ## H2 — Quadratic walk on long args
-
 ### Mechanism (code, not slogan)
-
 `oo_char_at` (`ooda/runtime/chs_rt_str.c`):
 
 - `utf8_byte_index` rescans from byte 0 to `idx` every call.
@@ -87,7 +81,6 @@ Loop `i in 0..n` with `char_at(args, i)` ⇒ **Θ(n²) time** + n short-lived 1-
 Adjacent (not walker OWN): `c_emit_call_args` joins with `args = args + ", " + a` — classic concat of the **joined** text (O(n²) copies of the args string, still tiny vs lex).
 
 ### Measurements (cheap emit-c of generated fixtures)
-
 Harness: ephemeral `/tmp/s71_mem_*` (not landed). `oodac emit-c` of:
 
 - **idents_N** — `println(a0000, …)` N bare idents (hits full `c_guard_scan_idents`)
@@ -125,7 +118,6 @@ Product fixtures (same binary):
 ---
 
 ## H3 — Stack buffer claim vs list/slice
-
 | Artifact | What it says / does |
 |----------|---------------------|
 | `SPRINT.oot` 7.1 | “**stack buffer** (no per-char OoStr leak)” |
@@ -142,8 +134,7 @@ Honesty: the **CRIT** (no per-char leak) is met. The **mechanism name** “stack
 ---
 
 ## Functional rails (not memory, but prove the walker is live)
-
-`ooda/scripts/s71_guard_scan_smoke.sh` against this binary: **ALL OK**
+`ooda/scripts/s71_guard_scan_smoke.oo` against this binary: **ALL OK**
 
 - fail-closed: `// SECRET: tok` + `println(tok)` → `ERR	secret`
 - fail-closed: `write_file(fs, path, tok)` payload IDENT → `ERR	secret`
@@ -152,7 +143,6 @@ Honesty: the **CRIT** (no per-char leak) is met. The **mechanism name** “stack
 ---
 
 ## Complexity (memory class)
-
 | Function | Time | Aux heap |
 |----------|------|----------|
 | `c_guard_scan_idents` | Θ(\|args\|²) `char_at` + O(idents · \|env\|) refuse | O(1) scalars + O(\|ident\|) slice, released |
@@ -166,7 +156,6 @@ Minor generated-C residual: continuation loop `break`s **before** `oo_str_releas
 ---
 
 ## Scorecard
-
 | ID | Sev | Site | Finding | Status |
 |----|-----|------|---------|--------|
 | S71-1 / 7.1 | CRIT | `c_guard_scan_idents` | Per-char `name = name + c` | **GONE** |
@@ -178,7 +167,6 @@ Minor generated-C residual: continuation loop `break`s **before** `oo_str_releas
 | S71-7 | — | `c_emit_call_args` | `args = args + ", " + a` | **OPEN adjacent** |
 
 ## Close bar for 7.1 (memory)
-
 Path-A **may close 7.1 as memory-floor PASS** if process accepts:
 
 1. Concat gone (proven here).
@@ -188,18 +176,16 @@ Path-A **may close 7.1 as memory-floor PASS** if process accepts:
 Re-open 7.1 only if concat returns, or emit-c of ≤64 KiB args **OOMs** / RSS grows as Θ(n²) from the walker.
 
 ## Evidence paths
-
 | Item | Path |
 |------|------|
 | Walker | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo` |
 | Lowered C | `/home/jeryd/Projects/openOODA/ooda/oodac/stage1_noarc.tmp.c` (`c_guard_scan_idents`) |
 | `char_at` / `str_slice` | `/home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_str.c` |
 | Call-in | `c_emit_lower.oo`, `c_emit_call.oo` |
-| Smoke | `/home/jeryd/Projects/openOODA/ooda/scripts/s71_guard_scan_smoke.sh` |
+| Smoke | `/home/jeryd/Projects/openOODA/ooda/scripts/s71_guard_scan_smoke.oo` |
 | Prior | `openOODA/audit/t1_memory.oot` (FIXED-by-design); handoff said 7.1 “prove/close only” |
 
 ## Notes (return)
-
 1. Did **not** edit product `.oo`. Audit + ephemeral `/tmp` fixtures only.
 2. Did **not** retarget 7.2 / 7.10.
 3. Measurements include full emit-c (lex + token list + emit), not a unit bench of the walker alone. idents-vs-string isolates extra slice/refuse cost.

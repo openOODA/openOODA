@@ -12,11 +12,7 @@
 #
 # ID collision: DESIGN/PM **6.1** = metamorphic vs deterministic (other paper).
 # This file is SPRINT backlog **6.1** = confirm `env_set` in SECRETSINK.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 **PASS-with-residual** (honesty). No source change this turn. 7.x not rewritten.
 
 Path-A **does** claim sink alias (`SECRET_TAINT.oot` §2; `c_secret_is_sink_name`
@@ -40,9 +36,9 @@ includes `env_set`; emit/check resolve `__alias__`). Live product host:
 Domain A (when landed) owns “name is in SECRETSINK + direct IDENT refuse”.
 This file owns **alias / no-FP / dual-path honesty**.
 
-========================================================================
+---
 SCOPE (orthogonal to Domain A)
-========================================================================
+---
 
 | In | Out |
 |----|-----|
@@ -52,9 +48,9 @@ SCOPE (orthogonal to Domain A)
 | Isolated tmp probes (not committed fixtures) | 7.10 `c_parse_secret_env` rewrite |
 | | Product `oo_env_set` / lower; SPRINT flip; remotes |
 
-========================================================================
+---
 PATH-A ALIAS CLAIM (why B must probe)
-========================================================================
+---
 
 | Site | Claim |
 |------|-------|
@@ -68,9 +64,9 @@ PATH-A ALIAS CLAIM (why B must probe)
 `env_set` is in the **same** alias name-set as `env_get`. B therefore must
 live-prove `let f = env_set; f(..., secret)` — not assume the table.
 
-========================================================================
+---
 STATIC (tip source; B did not edit)
-========================================================================
+---
 
 Emit guard `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo`
 
@@ -102,14 +98,13 @@ it (cap table) but typecheck still dies “undefined variable”.
 
 7.1 walker / 7.2 last-arg / 7.10 parse-env **untouched**.
 
-========================================================================
+---
 LIVE MATRIX — dual-path (tmp `$TMPDIR/s61_b_probes`)
-========================================================================
+---
 
 Dir not committed. Host `oodac emit-c` + `oodac check` (+ llvm where noted).
 
 ### Direct (record only; A floor)
-
 | Probe | emit-c | check | Dual-path secret? |
 |-------|--------|-------|-------------------|
 | `env_set(envc, "KEY", tok)` SECRET value | **BLOCK** `env_set sink refuses SECRET tok` | **type** undefined `env_set` | **no** (emit secret / check type) |
@@ -124,7 +119,6 @@ emit refuse of direct `env_set` lands **after preamble, before `int main`**
 `oodac check` never reaches that walk: typecheck exits first.
 
 ### String literal / comment — no FP
-
 | Probe | emit-c | check | Result |
 |-------|--------|-------|--------|
 | `env_set(envc, "KEY", "tok")` | rc=1 `unknown free call … env_set`; **no** `ERR secret` | type undefined; **no** `ERR secret` | **PASS** no-FP |
@@ -134,11 +128,10 @@ emit refuse of direct `env_set` lands **after preamble, before `int main`**
 | product `secret_setenv_pass` | unknown-call `setenv`; no secret | type; no secret | **PASS** no-FP |
 | product `secret_t2_string_lit_arg_fp` | rc=0 | rc=0 `OK` | control (println) |
 
-Harness `s61_env_set_secretsink_smoke.sh` **PASS** exit 0 (no-FP rail accepts
+Harness `s61_env_set_secretsink_smoke.oo` **PASS** exit 0 (no-FP rail accepts
 unknown-call residual). Isolated **FP=0**.
 
 ### Alias — path-A claim vs live (this OWN)
-
 | Probe | emit-c | check | Result |
 |-------|--------|-------|--------|
 | `let f = env_set; f(envc, "KEY", tok)` | **ABORT 134** `unaligned tcache` | type undefined `env_set` | **FAIL live alias prove** |
@@ -155,23 +148,17 @@ Alias **FN=not-applicable** (no silent OK) but **not** a secret refuse.
 Fail-closed via **crash** (emit) / **type** (check). Do **not** claim
 `let f = env_set; f(secret)` is path-A In.
 
-========================================================================
-RAILS
-========================================================================
-
+## RAILS
 | Smoke | Result |
 |-------|--------|
-| `scripts/s61_env_set_secretsink_smoke.sh` | **PASS** exit 0 (emit refuse + no-FP; **emit-only**) |
+| `scripts/s61_env_set_secretsink_smoke.oo` | **PASS** exit 0 (emit refuse + no-FP; **emit-only**) |
 | product `secret_setenv_{fail,pass}` | emit secret / unknown-call; check type (honesty) |
 | product `secret_env_get_fail` | **PASS** dual-path secret (control) |
 | product `secret_t1_alias_println` | **PASS** dual-path secret (println alias control) |
 
 Harness does **not** cover alias or `oodac check`. B isolated probes do.
 
-========================================================================
-FILES TOUCHED
-========================================================================
-
+## FILES TOUCHED
 | File | Change |
 |------|--------|
 | `ooda/oodac/c_emit_secret_guard.oo` | **none** |
@@ -184,9 +171,9 @@ FILES TOUCHED
 **Not touched:** 7.1 walker, 7.2 last-arg, 7.10 parse-env, sink list, smokes,
 SPRINT, remotes (no push).
 
-========================================================================
+---
 RESIDUAL (honest; do not close)
-========================================================================
+---
 
 1. **`oodac check` is not dual-path secret for `env_set`.** Typecheck runs
    first (`check_drive.oo`) and `env_set` is not a known name →
@@ -210,10 +197,7 @@ RESIDUAL (honest; do not close)
 
 6. **Full IFC / `${}` / `#[Secret]` / macro-body SECRET** — `SECRET_TAINT.oot`.
 
-========================================================================
-STATUS FOR SPRINT/PM
-========================================================================
-
+## STATUS FOR SPRINT/PM
 | Item | Status |
 |------|--------|
 | `env_set` in SECRETSINK (direct IDENT emit refuse) | **PASS** (A floor; emit + llvm) |
