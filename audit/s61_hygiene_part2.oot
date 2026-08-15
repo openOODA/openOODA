@@ -1,0 +1,154 @@
+# s61_hygiene_part2.oot — (Part 2 of s61_hygiene.oot)
+# Continuation of `openOODA/audit/s61_hygiene.oot`.
+
+## SPLIT GATE
+Rule: force-split only if OWN unit >600 (path-A hard ban).
+
+| Unit | Over hard? | Action |
+|------|:----------:|--------|
+| `c_emit_secret_guard.oo` 228 | no | **none** |
+| `c_emit_secret.oo` 264 | no | residual — 2.10/7.10 OWN; not 6.1 peel |
+| adjacent prop 262 / main 307 / check_cap 357 | no hard | residual — not 6.1 OWN |
+
+Suggested DE (when authorized, not this hygiene pass):
+
+1. Optional peel of `check_cap_util.oo` 357 if a later CAP pass owns it.
+2. Keep 6.1 fixtures under `$TMPDIR` via smoke — never `oodac/a.oo`.
+3. Tracked `fixtures/secret_setenv_{fail,pass}.oo` cover **setenv**;
+   `env_set` rails live in smoke TMPDIR only (ok). Optional later:
+   tracked `secret_env_set_*` twins if Docs want in-tree rails.
+
+## BINARY + SCRATCH SCRUB
+Charter: **no ELF / scratch in `oodac/`**. Extra copies + lab toys deleted.
+Product host kept (gitignored; harness `OODAC_BIN` default).
+
+### Extra ELF (this pass — already clean)
+| Artifact | Size | Pre | Post |
+|----------|-----:|-----|------|
+| `oodac/oodac.x` / bak / fuzz | — | absent (s71/s72 scrub) | **absent** |
+| `oodac/oodac` | 962960 B ELF | product host | **kept** (gitignored) |
+| `bin/ooda` | product CLI | kept | **kept** |
+| `bootstrap/seed/oodac` | seed pin | kept | **kept** |
+| super `oodac/oodac` | 962888 B ELF | **tracked** in super-repo | **kept** (do not `git rm`; residual) |
+
+`git add -n oodac/` after scrub: **product `.oo` only**
+(`ast_emit_outline`, `c_emit_args`, `c_emit_secret`, `c_emit_secret_guard`)
+— no ELF, no scratch toys.
+
+### Scratch toys (scrubbed this pass)
+Super-repo emit dump (gitignored `/*.c`; reappeared mid-wave):
+
+- `oodac_new.tmp.c` — generated C preamble dump; **deleted**
+
+Product tree (`ooda/oodac/`): **no** `a.oo` / `b.oo` / `*.orig` / `*.rej` /
+`test_slice.oo` / `*.tmp.c` this pass (s72 seal held).
+
+Not deleted (out of 6.1 oodac charter): historical super-repo `tmp_*.oo`,
+`scratch/*.oo` sources, tracked corpus `oodac/test_*.oo`. Concurrent
+untracked `bootstrap/MACRO_SECRET_*.oot` is **2.8 residual** — leave.
+
+`.gitignore`: no new lines required. `/oodac/*.orig` `*.rej` `test_slice.oo`
+already sealed in 7.2. Product `/oodac/oodac` already ignored.
+Super `/*.c` already covers `oodac_new.tmp.c`.
+
+---
+bash -n + SECRETS + /tmp
+---
+
+```
+OK bash -n scripts/s61_env_set_secretsink_smoke.oo   (150 lines)
+```
+
+Smoke uses `$TMPDIR/s61_env_set_secretsink_$$` + `trap` cleanup — fixtures
+never land in-repo. **No** hard-coded `/tmp`.
+
+Credential-class scan (`password=`, `BEGIN *PRIVATE`, AWS/GitHub/Slack
+tokens, Bearer) on:
+
+  - `c_emit_secret_guard.oo`
+  - `c_emit_secret.oo`
+  - `c_emit_secret_alias.oo`
+  - `s61_env_set_secretsink_smoke.oo`
+  - all live `audit/s61_*.oot`
+
+  → **ZERO live credentials.**
+
+Dummy fixture string `"s3cret"` in smoke heredoc = theater payload, not
+a host secret.
+
+`/tmp` in 6.1 OWN `.oo` + s61 smoke: **none**.
+
+VERDICT credentials: **PASS**
+
+---
+audit/s61_*.oot NAME CONSISTENCY
+---
+
+Pattern: `s61_<role>.oot` under `openOODA/audit/` (same family as
+`s710_hygiene.oot` / `s72_hygiene.oot`).
+
+| File | Role | Status |
+|------|------|--------|
+| `s61_harness.oot` | Test Harness Writer | present (37L; residual banner **stale** vs 7.10 slice) |
+| `s61_runtime.oot` | Machine Code / Runtime Auditor | present (218L; landed mid-pass) |
+| `s61_integration.oot` | Compiler Integration Tester | present (293L; landed mid-pass) |
+| `s61_hygiene.oot` | this file | **written** |
+| domain / ideas / peer / memory / security / rollup | optional later: `s61_<role>.oot` | not required this pass |
+
+No rogue names (`s6.1_*.oot`, `61_*.oot`, `env_set_hygiene.oot`,
+`secret_61_*`) on disk.
+
+Line pressure on audits (informational; ban is on touched `.oo`):
+
+| File | Lines |
+|------|------:|
+| `s61_harness.oot` | 37 |
+| `s61_runtime.oot` | 218 |
+| `s61_integration.oot` | 293 |
+| `s61_hygiene.oot` | this |
+
+Honesty: harness residual still says “7.10 still char-by-char name concat”.
+Live tree at this measure: 7.10 slice **landed** (`str_slice` in
+`c_parse_secret_env`). Hygiene does **not** rewrite harness. SPRINT 6.1
+row remains **OPEN** until Docs/Coordinator flip after peers.
+
+SECRET_TAINT table still says env_set **In (partial; re-prove rails)** —
+matches this phalanx’s job. Not a hygiene edit.
+
+## ACTIONS / NON-ACTIONS THIS PASS
+| Action | Result |
+|--------|--------|
+| Measure OWN monofile locks | **done** — hard 0 over 600 |
+| Force-split DE >600 | **not needed** |
+| Flag adjacent soft residual | secret 264 / prop 262 / main 307 / check_cap 357 |
+| Scrub extra ELF | **none present** |
+| Scrub emit-dump scratch | **done** (`oodac_new.tmp.c`) |
+| Keep product `oodac/oodac` | **yes** (smoke host) |
+| `bash -n` s61 smoke | **PASS** |
+| Product SECRETSINK logic edits | **none** (env_set already HEAD) |
+| Flip SPRINT 6.1 | **no** (peers/coordinator) |
+| Push | **no** |
+| Audit write | **this file** |
+
+## RETURN — COMPACT
+```
+SCOPE   6.1 env_set SECRETSINK  ooda=52cc4b5+WIP  openOODA=81f56fc+WIP
+OWN     c_emit_secret_guard.oo=228  (env_set already HEAD; +28 is 2.10)
+        c_emit_secret.oo=264  alias=157  smoke=150 NEW
+>600    0 touched / 0 oodac product   PASS hard ban
+>300    0 OWN
+>256    0 OWN guard; adjacent secret 264 / prop 262 / main 307 / check_cap 357 WARN
+BINARY  no extra ELF; product oodac KEPT (gitignored); super tracked residual
+SCRUB   oodac_new.tmp.c DELETED
+CREDS   PASS  no live secrets; dummy "s3cret" is fixture only
+/tmp    PASS product + smoke (TMPDIR+trap)
+BASHN   s61_env_set_secretsink_smoke.oo OK (150)
+NAMES   s61_harness / runtime / integration / hygiene  consistent
+        (harness 7.10 residual banner stale vs live slice)
+PUSH    no
+OVERALL PASS
+```
+
+end of s61_hygiene.oot
+
+end of s61_hygiene_part2.oot

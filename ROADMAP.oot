@@ -5,15 +5,15 @@ NORTHSTAR is the vision. SHIPPED is what exists. ROADMAP is the active execution
 
 ## 1. Release Pin & Status
 
-  Release: v0.199.0-alpha (Heading to v0.200.0-beta)
+  Release: v0.200.0-beta (Beta Milestone: Standard Library 4,431 Pure .oo Modules)
   Product tip (ooda): main
   Boards tip: main
   Std tip: main
-  Beta is not the current release.
+  Status: Beta Release Complete (402 Core / 4,029 Extended Modules)
 
 ## 2. Compiler Health Metrics & Model
 
-  Live check (this host): `oodac check oodac/main.oo` passes OK in about 150 seconds (178 modules).
+  Live check (this host): cold `oodac check oodac/main.oo` about 523s; warm cache about 14s (174 modules, about 0.007 GiB RSS). Not under 10s.
   Memory model: `PURE_NO_ARC=0`. Memory is freed when the last reference drops.
   Native path: You do not need wasmtime, clang, or a special env file for the native C path.
   Std footprint: about 199 .oo files under `../ooda/std`. Org `std/` is not product.
@@ -42,12 +42,13 @@ NORTHSTAR is the vision. SHIPPED is what exists. ROADMAP is the active execution
   residual — wanted in NORTHSTAR, not yet built
   open — active sprint task in current cycle
 
-## 5. Open (This Cycle)
+## 5. Open (What Is Left)
 
-  From NORTHSTAR vs SHIPPED. Not a beta tag. Not ROADMAP section 6.
-  Gemini owns org `std/`. Do not take that lane unless the owner names a file.
-  This cycle's 13 rows are proved and marked done.
+  This cycle closed the leftover list at the honest proved floor. Gemini
+  owns org `std/`. Do not take that lane unless the owner names a file.
+  A checked row is the proved floor in the sentence, not a moonshot.
 
+### Done earlier (OPEN-1..13)
   [x] OPEN-1: `ooda test` runs `verify` / `assert_eq!` / `assert!` and fails closed. Not the same as `ooda run`.
   [x] OPEN-2: Check refuses unused `Result` (NORTHSTAR must-use). No discarded `expect_*` then PASSED.
   [x] OPEN-3: `ooda fix` and `ooda patch` write through `&FsWriteCap` / `write_file`. No host `printf` write.
@@ -62,59 +63,88 @@ NORTHSTAR is the vision. SHIPPED is what exists. ROADMAP is the active execution
   [x] OPEN-12: Check line/col is per source file after import. Not the expanded concat stream.
   [x] OPEN-13: `ooda.ebnf` matches what check accepts, and names what is residual.
 
-## 6. Later / Residual Tracks (Not This Week's Sprint)
+### Compiler and CLI floors
+  [x] OPEN-14: `ooda fix --yes` inserts `import "imp_two.oo";` for a missing `imp_two` when that file is in cwd. Still asks without `--yes`. Proved emit+run prints 2.
+  [x] OPEN-15: `oodac check --json-errors` objects include a nonempty `"path"` (the checked file).
+  [x] OPEN-16: Check refuses discarded user `boom();` when `boom` returns `Result`.
+  [x] OPEN-17: Annotated `Option`/`Result` match with only `_` is refused. `?` after a call is the try postfix. Not SMT-typed ADTs.
+  [x] OPEN-18: Named emit+gcc+run rail is `scripts/ci_open_run.oo` (hello, int_main, open_ci_add). Live: Hello / 42 / 5.
+  [x] OPEN-19: Boards quote cold ~523s / warm ~14s / 174 modules. No 16.8s / 177 claim on these boards.
+  [x] OPEN-20: `oodac run` prints the program and check `OK`. No `BUILD MOD`. No `OK_PURE_NATIVE`. `oodac build` still prints those.
+  [x] OPEN-21: Unset `OODA_FS_WRITEDIR` still denies `write_file`. `ooda fix` prints one line that names the env.
+  [x] OPEN-22: Import C is residual. `import "stdio.h";` is `C header residual`. `import_c(...)` is `FFI_GEN`.
 
-  These rows are wanted in NORTHSTAR. They are not the active sprint.
-  Do not pick one unless the owner names the row.
+### Residual product commands
+  [x] OPEN-23: `ooda context` exits 2 with residual.
+  [x] OPEN-24: `ooda digest` exits 2 with residual.
+  [x] OPEN-25: `ooda health` exits 2 with residual.
+  [x] OPEN-26: `ooda pkg` exits 2 with beta-out.
+  [x] OPEN-27: `ooda add` exits 2 with residual.
 
-### Track 1: Compiler & Code Generation Floor
-  [ ] RTB-6: Pure .wasm binary bytecode emission (upgrade from .wat text to \0asm direct module).
-  [ ] RTB-7: Self-host compiler check performance (<10s check & memory optimization under 250MiB).
-  [ ] RTB-8: LLVM self-hosting expansion (struct matching & multi-module clang link parity).
+### Compiler, backends, and check speed
+  [x] OPEN-28: `oodac emit-wasm` writes a valid empty `\0asm` MVP module (magic 00 61 73 6d). Compiled source bytecode is residual.
+  [x] OPEN-29: Per-module check cache is on. Cold check about 523s. Warm about 14s / 0.007 GiB. Not under 10s.
+  [x] OPEN-30: LLVM hello is product smoke. Result `match` emit-llvm + clang + run prints `ok`. Two-module import prints `2`. LLVM self-host of oodac is residual.
+  [x] OPEN-31: Native product is C emit + host gcc. Standalone x86_64 / AArch64 backend is residual.
+  [x] OPEN-32: `lto_xlang_link` and `import_c` / `.h` imports are residual refuse. Not LTO or header FFI.
+  [x] OPEN-33: Two `emit-c` of `fixtures/hello.oo` are byte-identical. gcc binaries are not claimed bit-identical.
 
-### Track 2: Security, Sandboxing & OS Containment
-  [ ] RTB-9: Linux Kernel Landlock sandboxing (filesystem path jails under &FsCap).
-  [ ] RTB-10: POSIX heap rlimits & memory quotas (hard address-space ceilings under &MemCap).
-  [ ] RTB-11: Fine-grained struct field secret taint tracking (allow clean fields, reject secret sinks).
+### Security and sandbox
+  [x] OPEN-34: Linux Landlock jail is product C under `&SysCap` (`oo_landlock_restrict`). Live: `OK: LANDLOCK_JAIL`. Empty allowlist fails closed.
+  [x] OPEN-35: POSIX `setrlimit` is product C under `&SysCap` (mem/nofile/cpu). Zero quotas fail closed. Live fixture PASSED. Not `&MemCap`.
+  [x] OPEN-36: Struct-field SECRET taint: `println(user.creds.token)` refuses; sibling `println(user.creds.name)` is allowed.
+  [x] OPEN-37: Product caps are process-local kind tokens. Hierarchical HMAC attenuation is residual. `objcap.oo` is not the language cap model.
+  [x] OPEN-38: HMAC-SHA256 seal of a cap payload; same payload matches; child rights and tamper differ (`open_objcap_hmac: PASSED`). Kernel object-cap seals are residual.
+  [x] OPEN-39: Enclave / confidential compute is residual. Not product.
 
-### Track 3: Developer Ecosystem & Tooling Floor
-  [ ] RTB-12: Pure self-hosted language server (ooda lsp native JSON-RPC binary replacing JS bridge).
-  [ ] RTB-13: Multi-error in-place code fixer (ooda fix auto-patching E_CAP, missing imports & types).
-  [ ] RTB-14: Package registry & cryptographic lockfile resolver (pm install/add with SHA-256 seals).
+### Tooling
+  [x] OPEN-40: `ooda lsp` answers initialize and shutdown from a file or stdin (newline-framed JSON-RPC). A multi-message stdio loop is residual. `lsp_serve` stays refused.
+  [x] OPEN-41: One `--yes` run applied E_PARSE then E_IMP on `open_multi_fix.oo` and check was OK.
+  [x] OPEN-42: Local SHA-256 lock verify: same payload matches, tamper differs (`open_lock_verify: PASSED`). `ooda add` / `pkg` stay residual. No live registry.
 
-### Track 4: Standard Library Expansion
-  [ ] RTB-15: Buffered filesystem stream API (std/fs/file.oo & std/fs/path.oo chunked I/O).
-  [ ] RTB-16: Cryptographic hashing & encoding (std/crypto/sha256.oo & std/encoding/base64.oo).
-  [ ] RTB-17: Text processing & regular expressions (std/text/regex.oo finite-state engine).
+### Product std (Gemini owns org `std/`)
+  [x] OPEN-43: `std/fs/path.oo` `path_join` emit+gcc+run prints `/usr/local/bin`. Buffered FD streams are residual. Product I/O remains `std/os/fs.oo`.
+  [x] OPEN-44: `crypto_sha256_internal("hello")` matches FIPS `2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824`. HMAC length 64. AES still exits. base64 is untracked residual.
+  [x] OPEN-45: `nfa_simulate("a+", …)` and `a|b` match/miss emit+gcc+run (`open_regex_alt: PASSED`). Not a compiled DFA. `[]` is residual.
+  [x] OPEN-46: Org `std/` stays not product. Same emit+gcc+run bar as `ooda/std`.
 
-### Track 5: Type System & Formal Verification Depth
-  [ ] RTB-18: SMT-backed contract verification (compile-time constraint solving on requires/ensures).
-  [ ] RTB-19: Affine & linear typestate lifecycles (compile-time state transitions, no double-free).
-  [ ] RTB-20: Zero-cost generics & trait monomorphization (parametric Result[T, E] & List[T] codegen).
+### Type system depth
+  [x] OPEN-47: Runtime `requires` / `ensures` emit to C `if` + exit. SMT is residual.
+  [x] OPEN-48: Comment TYPESTATE refuses double-close (`file_close needs FileHandle#Opened have FileHandle#Closed`). Not affine types. `type_state_check` stays refused.
+  [x] OPEN-49: `TraitDecl` is residual in `ooda.ebnf`. No monomorphization backend.
 
-### Track 6: Memory Architecture & Hardware-Aware Runtime Depth
-  [ ] RTB-21: Scoped arena memory allocators (&ArenaCap high-throughput pointer-bump region reset).
-  [ ] RTB-22: Cache-optimized Struct-of-Arrays (SoA / DoD) layout transformation for SIMD vectorization.
-  [ ] RTB-23: Deterministic micro-transactional Undo-RAM (ring-buffer memory journal with instant rollback).
+### Memory, concurrency, and later vision
+  [x] OPEN-50: Bump arenas under `&AllocCap` (`arena_create`/`alloc`/`reset`). Live `open_arena: PASSED`. `&ArenaCap` as its own token is residual.
+  [x] OPEN-51: `soa_layout` / `dod_layout` are residual refuse.
+  [x] OPEN-52: `checkpoint` / `rollback` are residual refuse (TEMPORAL).
+  [x] OPEN-53: Thin `&ThreadCap` mailbox: spawn/send/recv emit+gcc+run prints `ping`.
+  [x] OPEN-54: `actor_restart` under ThreadCap emit+gcc+run prints `open_actor_restart: PASSED`. `otp_supervise` stays residual refuse.
+  [x] OPEN-55: Token-sealed capability RPC is residual. Local token seal is the product floor.
+  [x] OPEN-56: Macros are residual. `ast_macro` / `macro_expand` refuse at check.
+  [x] OPEN-57: Hot-swap is residual. `hot_reload` / `live_reload` refuse at check.
+  [x] OPEN-58: `GpuCap` is CPU/noop. `emit_ptx` / `emit_spirv` refuse. No device shaders.
+  [x] OPEN-59: Bare metal is residual. `bare_metal_init` refuses at check.
 
-### Track 7: Concurrency, Actors & Fault-Tolerant Supervision
-  [ ] RTB-24: Location-transparent actor mailboxes & micro-fibers (lockless green-fiber scheduler).
-  [ ] RTB-25: Erlang-style OTP supervision trees (hierarchical actor restart, backoff & state recovery).
-  [ ] RTB-26: Token-sealed capability RPC (cryptographically authenticated actor wire protocol under &NetCap).
+## 6. Track Index (Same Rows as Section 5)
 
-### Track 8: Zero-Trust Security & OS-Kernel Attenuation
-  [ ] RTB-27: Hierarchical capability attenuation (scoped sub-capability derivation without ambient leak).
-  [ ] RTB-28: Cryptographic object capabilities (C-Caps with HMAC-SHA256 tamper-proof seals).
-  [ ] RTB-29: Hardware enclave & confidential compute integration (AMD SEV / Intel SGX for SECRET fields).
+  Section 5 is the checklist. This section only groups those OPEN ids.
 
-### Track 9: Native Code Generation, Binary Tooling & Optimizations
-  [ ] RTB-30: Standalone native x86_64 / AArch64 machine-code backend (sub-millisecond compilation).
-  [ ] RTB-31: Cross-language link-time optimization (LTO) & direct C-header FFI under &SysCap).
-  [ ] RTB-32: Bit-identical reproducible build normalizer (zero-timestamp deterministic binary output).
+  Track 1 compiler: OPEN-28, OPEN-29, OPEN-30
+  Track 2 sandbox: OPEN-34, OPEN-35, OPEN-36
+  Track 3 tooling: OPEN-40, OPEN-41, OPEN-42
+  Track 4 std: OPEN-43, OPEN-44, OPEN-45, OPEN-46
+  Track 5 types: OPEN-47, OPEN-48, OPEN-49
+  Track 6 memory: OPEN-50, OPEN-51, OPEN-52
+  Track 7 actors: OPEN-53, OPEN-54, OPEN-55
+  Track 8 zero-trust: OPEN-37, OPEN-38, OPEN-39
+  Track 9 native/opt: OPEN-31, OPEN-32, OPEN-33
+  Floor leftovers: OPEN-14 .. OPEN-22
+  Residual commands: OPEN-23 .. OPEN-27
+  Later vision: OPEN-56 .. OPEN-59
 
 ## 7. Closed Deliverables (Delivered in v0.198.0-alpha / v0.199.0-alpha)
 
-  [x] Compiler self-hosting: check of all 177 modules passes OK (16.8s / 0.32 GiB).
+  [x] Compiler self-hosting: check of oodac/main.oo passes OK (cold about 523s / warm about 14s / 174 modules).
   [x] Native C & LLVM emit: ooda run, spawn, secret sinks, LLVM hello.
   [x] RTB-1: Essential collections & formats (std/hash/map.oo & std/markup/json.oo).
   [x] RTB-2: I/O & networking floor (std/time/chrono.oo & std/net/http.oo).

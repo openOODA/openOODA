@@ -1,0 +1,196 @@
+# s29_hygiene_part2.oot — (Part 2 of s29_hygiene.oot)
+# Continuation of `openOODA/audit/s29_hygiene.oot`.
+
+## SPLIT GATE
+Rule: force-split only if OWN unit >600 (path-A hard ban).
+
+| Unit | Over hard? | Action |
+|------|:----------:|--------|
+| `c_emit_print.oo` 87 | no | **none** |
+| `c_emit_ident.oo` 228 | no | **none** |
+| `c_emit_lower.oo` 241 | no | **none** |
+| `c_emit_secret_guard.oo` 228 | no | **none** |
+| `c_emit_secret.oo` 264 | no | residual — 7.10/2.10 OWN; not 2.9 peel |
+| adjacent prop 262 / main 307 / check_cap 357 | no hard | residual — not 2.9 OWN |
+
+Suggested DE (when authorized, not this hygiene pass):
+
+1. Unify stmt `println` onto `c_secret_emit_guard` **in-place** in
+   `c_emit_print.oo` (87 → still <<256). Do **not** grow `c_emit_secret.oo`.
+2. Keep 2.9 fixtures under `$TMPDIR` via smoke — never `oodac/a.oo`.
+3. Optional later peel of `check_cap_util.oo` 357 / `main.oo` 307 if a
+   CAP / CLI pass owns them.
+4. When unify lands, re-measure print/ident only; do not reopen 2.10.
+
+## BINARY + SCRATCH SCRUB
+Charter: **no ELF / scratch in `oodac/`**. Extra copies + lab toys deleted.
+Product host kept (gitignored; harness `OODAC_BIN` default).
+
+### Extra ELF (this pass — already clean)
+| Artifact | Size | Pre | Post |
+|----------|-----:|-----|------|
+| `oodac/oodac.x` / bak / fuzz | — | absent (s71/s72/s61/s28 scrub) | **absent** |
+| `oodac/oodac` | 962960 B ELF | product host | **kept** (gitignored) |
+| `bin/ooda` | 111624 B ELF | product CLI | **kept** |
+| `bootstrap/seed/oodac` | 878392 B ELF | seed pin | **kept** |
+| super `oodac/oodac` | 962888 B ELF | **tracked** in super-repo | **kept** (do not `git rm`; residual) |
+
+Tree-wide ELF inventory (skip `.git`): **exactly these 4**. No extra
+ELF toys. `file(1)`: all x86-64 LSB dynamically linked.
+
+BuildIDs:
+
+| Binary | BuildID (sha1) |
+|--------|----------------|
+| `ooda/oodac/oodac` | `a93cfd09506ba87497379f66b6c7047dee02573d` |
+| super `oodac/oodac` | `81ce36d07631fd1f8706832d63cb970d76795b46` |
+| `ooda/bin/ooda` | `630f7a734cd5e9c36c61d7add50a4e221bffa4fb` |
+| `ooda/bootstrap/seed/oodac` | `7dcbc1551ff1c4fa61099a0fcd72469bf1efa63f` |
+
+Host ELF is **stale vs seed** (SPRINT named residual). Hygiene does
+**not** rebuild. Smoke uses product host.
+
+`git add -n oodac/` after scrub: **product `.oo` only**
+(`ast_emit_outline`, `c_emit_args`, `c_emit_secret`,
+`c_emit_secret_guard`, `check_drive`, `tc_names`) — no ELF, no scratch
+toys. Those `.oo` diffs are concurrent 2.10 / 7.10 / 7.2, **not** 2.9.
+
+### Scratch toys (scrubbed this pass)
+Super-repo emit dump (gitignored `/*.c` in ooda/; reappeared mid-wave):
+
+- `ooda/oodac_new.tmp.c` — generated C preamble dump; **deleted**
+
+Product tree (`ooda/oodac/`): **no** `a.oo` / `b.oo` / `*.orig` /
+`*.rej` / `test_slice.oo` / `*.tmp.c` this pass (s72 seal held).
+
+Not deleted (out of 2.9 oodac charter): historical super-repo
+`tmp_*.oo`, `scratch/*.oo` sources, tracked corpus `oodac/test_*.oo`,
+ignored super `test.c.tmp.c` / `abs_out.c` / `check_caps_out.c`.
+Concurrent untracked `bootstrap/MACRO_SECRET_*.oot` is **2.8 residual**
+— leave.
+
+`.gitignore`: no new lines required. `/oodac/*.orig` `*.rej`
+`test_slice.oo` already sealed in 7.2. Product `/oodac/oodac` already
+ignored. Super `/*.c` + ooda `*.c` already cover `oodac_new.tmp.c`.
+
+---
+bash -n + SECRETS + /tmp
+---
+
+```
+OK bash -n scripts/s29_println_guard_smoke.oo          (157 lines)
+OK bash -n scripts/secret_eprintln_smoke.oo            (47 lines)
+OK bash -n scripts/secret_sink_enforce_smoke.oo        (264 lines)
+OK bash -n scripts/secret_taint_residual_smoke.oo      (81 lines)
+OK bash -n scripts/secret_t1_return_smoke.oo           (81 lines)
+OK bash -n scripts/secret_t2_depth_smoke.oo            (96 lines)
+OK bash -n scripts/secret_product_floor_smoke.oo       (49 lines)
+```
+
+Smoke uses `$TMPDIR/s29_println_guard_$$` + `trap 'rm -rf "$FIX"' EXIT`
+— fixtures never land in-repo. **No** hard-coded `/tmp`.
+
+Credential-class scan (`password=`, `BEGIN *PRIVATE`, AWS/GitHub/Slack
+tokens, Bearer) on:
+
+  - `c_emit_print.oo`
+  - `c_emit_ident.oo`
+  - `c_emit_secret.oo`
+  - `c_emit_secret_guard.oo`
+  - `c_emit_lower.oo`
+  - `c_emit_call.oo`
+  - `s29_println_guard_smoke.oo`
+  - `s29_harness.oot`
+  - this file
+
+  → **ZERO live credentials.**
+
+Dummy fixture string `"s3cret"` in smoke heredoc = theater payload, not
+a host secret.
+
+`/tmp` in 2.9 OWN `.oo` + s29 smoke: **none**.
+
+VERDICT credentials: **PASS**
+
+---
+audit/s29_*.oot NAME CONSISTENCY
+---
+
+Pattern: `s29_<role>.oot` under `openOODA/audit/` (same family as
+`s28_hygiene.oot` / `s61_hygiene.oot` / `s72_hygiene.oot`).
+
+| File | Role | Status |
+|------|------|--------|
+| `s29_harness.oot` | Test Harness Writer | present (37L; 7.10 residual banner **stale**) |
+| `s29_hygiene.oot` | this file | **written** |
+| domain / ideas / integration / peer / memory / runtime / security / rollup | optional later: `s29_<role>.oot` | not present this pass |
+
+No rogue names (`s2.9_*.oot`, `29_*.oot`, `issue_2_9_*.oot`,
+`println_guard_hygiene.oot`) on disk.
+
+Line pressure on 2.9 artifacts (informational; ban is on touched `.oo`):
+
+| File | Lines |
+|------|------:|
+| `s29_harness.oot` | 37 |
+| `s29_println_guard_smoke.oo` | 157 |
+| `s29_hygiene.oot` | this |
+
+Honesty: harness residual still says “7.10 still char-by-char name concat”.
+Live tree at this measure: 7.10 slice **landed** (`str_slice` in
+`c_parse_secret_env`). Hygiene does **not** rewrite harness. SPRINT 2.9
+row remains **OPEN** until Docs/Coordinator flip after a real unify
+(or an honest residual-doc close). This smoke proves refuse/no-FP, **not**
+the helper — matches harness text.
+
+SECRET_TAINT table lists println/eprintln path-A **In**. It does **not**
+claim stmt-println == `c_secret_emit_guard`. Not a hygiene edit.
+
+## ACTIONS / NON-ACTIONS THIS PASS
+| Action | Result |
+|--------|--------|
+| Measure OWN monofile locks | **done** — hard 0 over 600 |
+| Force-split DE >600 | **not needed** |
+| Flag adjacent soft residual | secret 264 / prop 262 / main 307 / check_cap 357 |
+| Flag std/src catalog >600 | **12** files — out of OWN |
+| Scrub extra ELF | **none present** |
+| Scrub emit-dump scratch | **done** (`oodac_new.tmp.c`) |
+| Keep product `oodac/oodac` | **yes** (smoke host) |
+| `bash -n` s29 smoke | **PASS** |
+| Product println / guard logic edits | **none** (unify still OPEN) |
+| Flip SPRINT 2.9 | **no** (peers/coordinator; still OPEN) |
+| Push | **no** |
+| Audit write | **this file** |
+
+## RETURN — COMPACT
+```
+SCOPE   2.9 println walker → c_secret_emit_guard
+        ooda=52cc4b5+WIP  openOODA=81f56fc+WIP
+OWN     c_emit_print.oo=87 HEAD-clean (token + refuse_println_ident)
+        c_emit_ident.oo=228 HEAD-clean (id==println dispatch)
+        c_emit_lower.oo=241 HEAD-clean (already calls guard)
+        c_emit_secret_guard.oo=228 (println already in walker; +28 is 2.10)
+        c_emit_secret.oo=264 (7.10 slice + 2.10; check token walk)
+        smoke=157 NEW  harness=37 NEW
+>600    0 touched / 0 oodac product   PASS hard ban
+        12 std/src catalog stubs (not 2.9)
+>300    0 OWN
+>256    0 OWN print/ident/lower/guard
+        adjacent secret 264 / prop 262 / main 307 / check_cap 357 WARN
+BINARY  no extra ELF; product oodac KEPT (gitignored); super tracked residual
+        tree ELF count = 4 (oodac host + super copy + seed + bin/ooda)
+SCRUB   oodac_new.tmp.c DELETED
+CREDS   PASS  no live secrets; dummy "s3cret" is fixture only
+/tmp    PASS product + smoke (TMPDIR+trap)
+BASHN   s29_println_guard_smoke.oo OK (157)
+        secret_eprintln / sink_enforce / taint / t1 / t2 / product_floor OK
+NAMES   s29_harness / s29_hygiene  consistent
+        (harness 7.10 residual banner stale vs live slice)
+UNIFY   still OPEN — stmt println does not call c_secret_emit_guard
+PUSH    no
+OVERALL PASS
+```
+
+end of s29_hygiene.oot
+
+end of s29_hygiene_part2.oot

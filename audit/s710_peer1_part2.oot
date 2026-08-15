@@ -1,0 +1,138 @@
+# s710_peer1_part2.oot — (Part 2 of s710_peer1.oot)
+# Continuation of `openOODA/audit/s710_peer1.oot`.
+
+---
+
+Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`
+Probes: `/tmp/s710_peer1/probes/*.oo` (ephemeral; **not** landed)
+Re-prove cwd: `/tmp/s710_peer1/clean` (no `.ooda-cache`).
+
+Expect: **refuse** = rc≠0 + `ERR\tsecret` on **both** `emit-c` and `check`.
+Expect: **allow** = rc=0 on both and **no** `ERR\tsecret`.
+
+### Assigned red-team (gate)
+| # | Probe | Shape | Expect | emit-c | check | Verdict |
+|---|-------|-------|--------|--------|-------|---------|
+| P01 | `P01.oo` | `// SECRET: tok` + `println(tok)` | refuse | rc=1 `println sink refuses SECRET tok` | rc=1 same | **PASS** |
+| P02a | `P02a.oo` | `SECRET: a` + `SECRET: b` + `println(a)` | refuse a | rc=1 SECRET `a` | rc=1 same | **PASS** |
+| P02b | `P02b.oo` | same tags + `println(b)` | refuse b | rc=1 SECRET `b` | rc=1 same | **PASS** |
+| P03 | `P03.oo` | `// SECRET:` empty | fail-closed | rc=1 `invalid name` | rc=1 same | **PASS** |
+| P03b | `P03b.oo` | `// SECRET:   ` spaces-only | fail-closed | rc=1 `invalid name` | rc=1 same | **PASS** |
+| P04 | `P04.oo` | two SECRET + `println(c)` public | allow (no FP) | rc=0 none | rc=0 OK | **PASS** |
+| R1 | `scripts/secret_t1_return_smoke.oo` | T1 return / alias / if-taint | exit 0 | — | — | **PASS** |
+| R2 | `scripts/secret_t2_depth_smoke.oo` | T2 field / method / args / midline | exit 0 | — | — | **PASS** |
+| R3 | `scripts/s71_guard_scan_smoke.oo` | 7.1 regression | exit 0 | — | — | **PASS** |
+| R4 | `scripts/s72_sys_exec_last_arg_smoke.oo` | 7.2 regression | exit 0 | — | — | **PASS** |
+
+**Gate: assigned refuse + multi-name + empty fail-closed + T1/T2/s71/s72 = PASS.**
+
+### Product fixtures (control)
+| # | Fixture | Expect | emit-c | check | Verdict |
+|---|---------|--------|--------|-------|---------|
+| F1 | `secret_invalid_empty.oo` | fail-closed empty | rc=1 `invalid name` | rc=1 | **PASS** |
+| F2 | `secret_multi_name_fail.oo` | refuse `b` | rc=1 SECRET `b` | rc=1 | **PASS** |
+| F3 | `secret_multi_name_pass.oo` | allow `println(c)` | rc=0 | rc=0 | **PASS** |
+| F4 | `secret_sink_fail.oo` | refuse `x` | rc=1 SECRET `x` | rc=1 | **PASS** |
+| F5 | `secret_midline_safe.oo` | no FP (not line-start) | rc=0 | rc=0 | **PASS** (bonus; Domain B) |
+
+### Harness extra (emit-only; independently re-run)
+`scripts/s710_parse_secret_env_smoke.oo` **exit 0**:
+- fail-closed: `// SECRET: tok` then `println(tok)`
+- two names refuse `a` and `b`
+- empty / spaces-only invalid name
+
+Banner still says “concat hygiene is product” — **stale text** (script
+not rewritten by this peer).
+
+---
+COMMAND (repro)
+---
+
+```
+OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
+cd /tmp/s710_peer1/clean
+$OODAC emit-c /tmp/s710_peer1/probes/P01.oo    # rc=1 ERR secret tok
+$OODAC check   /tmp/s710_peer1/probes/P01.oo
+$OODAC emit-c /tmp/s710_peer1/probes/P02a.oo   # rc=1 SECRET a
+$OODAC emit-c /tmp/s710_peer1/probes/P02b.oo   # rc=1 SECRET b
+$OODAC emit-c /tmp/s710_peer1/probes/P03.oo    # rc=1 invalid name
+$OODAC emit-c /tmp/s710_peer1/probes/P03b.oo   # rc=1 invalid name
+$OODAC emit-c /tmp/s710_peer1/probes/P04.oo    # rc=0
+cd /home/jeryd/Projects/openOODA/ooda
+OODAC_BIN=./oodac/oodac bash scripts/secret_t1_return_smoke.oo          # exit 0
+OODAC_BIN=./oodac/oodac bash scripts/secret_t2_depth_smoke.oo           # exit 0
+OODAC_BIN=./oodac/oodac bash scripts/s71_guard_scan_smoke.oo            # exit 0
+OODAC_BIN=./oodac/oodac bash scripts/s72_sys_exec_last_arg_smoke.oo     # exit 0
+OODAC_BIN=./oodac/oodac bash scripts/s710_parse_secret_env_smoke.oo     # exit 0
+```
+
+## FP / FN NOTES
+### False positives (refuse when should allow)
+| Probe | Result |
+|-------|--------|
+| two SECRET + `println(c)` public | **no FP** dual-path |
+| `secret_multi_name_pass` | **no FP** dual-path |
+| midline `// SECRET: x` mention | **no FP** dual-path |
+
+**Assigned unused-name FP count: 0.**
+
+### False negatives (allow when should refuse)
+| Probe | Result |
+|-------|--------|
+| `println(tok)` after `// SECRET: tok` | **no FN** dual-path |
+| `println(a)` / `println(b)` with both tagged | **no FN** dual-path |
+| empty / spaces-only `// SECRET:` | **no FN** (fail-closed) dual-path |
+| product empty + multi-fail + sink-fail | **no FN** dual-path |
+
+**Assigned parse FN count: 0.**
+
+---
+RESIDUALS (honest, out of 7.10 gate)
+---
+
+1. **Host binary still concat** — 07:49 product predates 11:54 slice.
+   Next seed / pure-multi picks it up. Not a behavioral FN.
+2. **`char_at` 1-byte temps** — language floor on the walk; not the
+   quadratic ident leak 7.10 named.
+3. **No shared `c_ident_end` / `c_slice_ident_at`** — inlined slice
+   (Domain A). Moonshot / line growth; not this gate.
+4. **`is_al` allows leading digits** — pre-existing class, not 7.1
+   start-vs-cont. Honesty only.
+5. **s71/s72/s710 smoke residual banners** still say concat. Harness
+   text lag. `s710_harness.oot` same. `s710_integration.oot` predates
+   Domain A (do not cite as live source).
+6. **2.10 `__sec_sink__` hunk** in the same monofile — not 7.10 OWN.
+7. **Full IFC / `${}` / `#[Secret]`** — SECRET_TAINT residual.
+8. **`ci_product.oo`** wires T1/T2 only — not s71/s72/s710. Process.
+9. **Check cache poison** — same as 7.1: cwd-relative, compiler-blind.
+   Probes used `/tmp/s710_peer1/clean`.
+10. **SPRINT.oot row 7.10** still HIGH open. This peer does not flip it.
+
+## PEER OWN
+No product compiler edit. No fixture land. No smoke change.
+Write: `openOODA/audit/s710_peer1.oot` only.
+
+Did **not** trust Domain A / Integration / Harness summaries without
+independent source review + live probes. Their green rails re-proved.
+Integration’s “still concat” claim is **stale** vs current L65 slice.
+
+## CLOSE TABLE
+| Item | Status |
+|------|--------|
+| 7.10 parse-env defined + in product binary | **PASS** |
+| 7.10 no per-char OoStr concat (slice) | **PASS** source (host stale) |
+| Host rebuilt with slice | **NO** — documented; emit-c prove used |
+| `// SECRET: tok` + `println(tok)` fail-closed | **PASS** live dual-path |
+| Multiple SECRET names both refuse | **PASS** live dual-path |
+| Empty `// SECRET:` fail-closed | **PASS** live dual-path |
+| T1 smoke | **PASS** exit 0 |
+| T2 smoke | **PASS** exit 0 |
+| s71 regression | **PASS** exit 0 |
+| s72 regression | **PASS** exit 0 |
+| Harness `s710_parse_secret_env_smoke` | **PASS** exit 0 (bonus) |
+| Path-A close 7.10 | **ACCEPT** |
+| Host slice-in-binary / IFC / CI wire | **OPEN residual** (not gate) |
+
+end of s710_peer1.oot
+
+end of s710_peer1_part2.oot

@@ -1,0 +1,149 @@
+# s29b_domain_b_part2.oot — (Part 2 of s29b_domain_b.oot)
+# Continuation of `openOODA/audit/s29b_domain_b.oot`.
+
+---
+LIVE MATRIX — product host (clean cwd)
+---
+
+Dir: `/tmp/s29b_domain_b_prove_1209733` (ephemeral; not committed).
+Cwd **that dir** (s71 R9). Host `oodac` check / emit-c / emit-llvm.
+Helper: `pub fn id(x: Int) -> Int { return x; }` where needed.
+Expect BLOCK = rc≠0 + `ERR\tsecret`. ALLOW = rc=0, no `ERR\tsecret`.
+
+### Assigned: `eprintln(id(1), tok)` (Peer1 MUST-3)
+| Path | rc | Bytes | V |
+|------|----|-------|---|
+| check | 0 | `OK` | **FN** (ELF first-`)`) |
+| emit-c | 1 | `ERR\tsecret\teprintln sink refuses SECRET tok` (no `oo_print_*` of `tok`) | **PASS** |
+| emit-llvm | 0 | eprintln→println builtin, first arg; no `ERR secret` | **FN** (front-door) |
+
+Dual-repro: same bytes on a second run in the same virgin cwd.
+
+### Method `)` + later SECRET
+| Probe | check | emit-c | Hole? |
+|-------|-------|--------|-------|
+| `eprintln("x".len(), tok)` | OK | BLOCK `SECRET tok` | check host FN |
+| `eprintln("x".len() + n)` | OK | BLOCK `SECRET n` | check host FN |
+| `eprintln("x".len() + tok)` | **TYPE** `incompatible operand types` (no secret) | BLOCK `SECRET tok` | check type-first — **named** |
+| `println("x".len(), tok)` | OK | rc=0 **DROP** `oo_print_str("x")` only | **ELF FN** (A `d` unshipped) |
+| `println("x".len() + n)` | OK | rc=0 DROP same | **ELF FN** |
+| `obj.eprintln(id(1), tok)` | OK | BLOCK `SECRET tok` | check host FN |
+| `tok.eprintln("x")` | OK | rc=0 `tok.eprintln(oo_str_lit("x"));` | **R8** recv not in `margs` |
+
+### Controls (wave-1 floor — must stay)
+| Probe | check | emit-c | llvm | V |
+|-------|-------|--------|------|---|
+| `eprintln(tok)` | BLOCK | BLOCK | BLOCK | **PASS** |
+| `eprintln(n, tok)` (no inner `)`) | BLOCK | BLOCK | BLOCK | **PASS** |
+| `eprintln("tok")` | ALLOW | ALLOW | ALLOW | **PASS** no-FP |
+| `println(id(1), tok)` | FN OK | BLOCK `SECRET tok` after `oo_print_int(id(1LL));` | FN | emit belt (not B land) |
+| `println(("x") + tok)` | FN OK | **LEAK** `oo_print_str(oo_str_concat(..., tok))` | FN | A stmt `d` unshipped |
+
+### Product fixtures (not B's hole; floor)
+`secret_eprintln_fail` / `secret_eprintln_pass` / `secret_sink_fail` /
+`secret_t2_string_lit_arg_fp` — same as wave-1 (bare / no-FP). Not re-litigated.
+
+---
+SOURCE AFTER A LAND (not ELF)
+---
+
+Token walk of `eprintln(id(1), tok)` on WT L178–199:
+
+1. `sid == "eprintln"`. Optional skip sink `LPAREN`. `depth = 1`.
+2. `IDENT id` — not `__sec__` → continue.
+3. `LPAREN` → `depth = 2`.
+4. `INT` → skip.
+5. `RPAREN` → `depth = 1` (do **not** stop).
+6. `COMMA` → skip.
+7. `IDENT tok` → `c_secret_refuse_sink_resolved` → `ERR\tsecret`.
+
+Method `"x".len(), tok` after the same skip:
+
+`STRING DOT IDENT(len) LPAREN (+) RPAREN (-) COMMA IDENT(tok)` → refuse.
+
+Stmt `println("x".len(), tok)` on WT print L19–41: inner `d` does not
+break on method `RPAREN` (`d` was incremented at method `LPAREN`).
+Sees `tok` → `c_secret_refuse_println_ident`. **Source-closed.**
+Host 07:49 still has the flat `COMMA \|\| RPAREN \|\| SEMI` break.
+
+Rebuild is **A / coordinator**, not this OWN. B will not nm a post-rebuild
+ELF that does not exist.
+
+---
+SMOKE / SIBLINGS (independent; RULES §1.9)
+---
+
+| Rail | Result | This OWN |
+|------|--------|----------|
+| `s29_println_guard_smoke.oo` (206 L) | **FAILED** — grouped check accepted; groupplus emit-c accepted | **agree** (07:49 ELF) |
+| `s29b_harness.oot` | wave-2 rail is `println((1), tok)` only | **true**; method `)` / `eprintln(id(1), tok)` **not** that rail |
+| `s29b_peer1.oot` MUST-3 | `eprintln(id(1), tok)` check FN / emit BLOCK | **re-proved** |
+| `s29b_peer2.oot` #13 | `"x".len() + tok` eprintln BLOCK / println DROP | **re-proved** (plus Int form) |
+| `s29b_ideas.oot` I1+I2 | depth both rails; no fake args | **A landed I11**; B did not I5 |
+| `s29b_integration.oot` | smoke GREEN at 19:31Z (157 L, no grouped rail) | **stale vs this smoke** |
+| `s29b_runtime.oot` | ELF = HEAD first-`)` | **agree** |
+
+## FILES TOUCHED
+| File | Change |
+|------|--------|
+| `ooda/oodac/c_emit_secret.oo` (A walker) | **none** |
+| `ooda/oodac/c_emit_print.oo` (A I11 `d`) | **none** |
+| `ooda/oodac/c_emit_call.oo` | **none** |
+| `ooda/oodac/c_emit_lower.oo` | **none** |
+| `ooda/oodac/c_emit_ident.oo` | **none** |
+| `ooda/oodac/c_emit_secret_guard.oo` | **none** |
+| `ooda/scripts/s29_println_guard_smoke.oo` | **none** (harness) |
+| `openOODA/audit/s29b_domain_b.oot` | this evidence |
+
+**Not touched:** 2.8 macro residual, 7.1/7.2/7.10, 6.1 `check_drive`,
+2.10 `__sec_sink__`, SPRINT table, remotes (no push).
+
+---
+RESIDUAL HONESTY (do not claim wave-2 FIXED)
+---
+
+1. **Host ELF 07:49.** Check / llvm / wasm for `eprintln(id(1), tok)`
+   stay FN until rebuild links A's `depth`. emit-c already BLOCK.
+2. **Stmt method `)` DROP** on ELF (`println("x".len(), tok)` prints
+   `"x"` only). WT print `d` is the close; **unshipped**.
+3. **`"x".len() + tok` check TYPE** (Int+String) on this ELF (type
+   then secret). Not `ERR\tsecret`. Ideas I2: named residual, do not
+   soft-OK. emit-c eprintln still SECRET.
+4. **`tok.eprintln("x")` R8.** Receiver not in `margs`; empty-args
+   skip `c_guard_scan_idents`. Not a product print API.
+5. **STRING `.method` does not chain** in `c_emit_primary_c`. Causes
+   the DROP when refuse misses. Refuse-first (A `d`) is the 2.9 close;
+   chaining is a lower residual.
+6. **Helper unify still OPEN.** No `c_secret_emit_guard` from check or
+   stmt println. eprintln emit **already is** the guard — that is B's
+   belt, not DE2.9.
+7. **Check-cache false-OK** (s71 R9). Probes used a virgin cwd.
+8. **emit-bc** skips the walker (Security R2). Not this OWN.
+9. **`${}` / `#[Secret]` / 2.10 wrappers / full IFC** — other IDs.
+
+## STATUS FOR SPRINT/PM
+| Item | Status |
+|------|--------|
+| `eprintln(id(1), tok)` emit-c SECRET | **PASS** (guard; live ELF) |
+| `eprintln(id(1), tok)` check SECRET | **source PASS (A depth) / host FN** |
+| `eprintln(id(1), tok)` llvm SECRET | **host FN** (front-door = walker) |
+| method `)` eprintln emit-c | **PASS** (guard; live) |
+| method `)` eprintln check | **source PASS / host FN** (or TYPE on `Int+String`) |
+| method `)` stmt println emit-c | **host DROP**; WT `d` source-closed |
+| `obj.eprintln(id(1), tok)` emit-c | **PASS** |
+| `tok.eprintln` recv | **R8 residual** |
+| B edited A walker / `c_emit_println` | **no** |
+| walker → `c_secret_emit_guard` | **OPEN** (not this land) |
+| 7.x / 2.8 reopened | **no** |
+| monofile ≤600 | 97 / 219 / 141 / 228 / 228 |
+| `s29_println_guard_smoke` | **exit 1** on this ELF (honest) |
+| 2.9 wave-2 Domain B contract | **PASS-with-residual** — do not close 2.9 as FIXED |
+
+Recommend: rebuild host; re-run Peer1 MUST-3 + method `"x".len(), tok`
+on **that** ELF. SPRINT wording if ever flipped: **depth-aware IDENT
+walk**, not “walker → emit_guard.” B's prove is the eprintln / method
+`)` half, not the helper.
+
+end of s29b_domain_b.oot
+
+end of s29b_domain_b_part2.oot

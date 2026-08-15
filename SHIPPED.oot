@@ -11,7 +11,7 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
 ## 2. Proven Capabilities
 
 ### Compiler Floor
-  - Pin: v0.199.0-alpha. Live check of `oodac/main.oo`: OK, about 150s on this host (178 modules).
+  - Pin: v0.200.0-beta. Live check of `oodac/main.oo`: OK. Cold about 523s; warm cache about 14s (174 modules, about 0.007 GiB RSS).
   - C emit through `chs_rt`, then `gcc`. That is the product path.
   - Official rebuild is `../ooda/bootstrap/oodac_pure_build`. The old `.sh` path is gone.
   - `ooda run` is check + emit C + gcc + exec (`fixtures/hello.oo`).
@@ -19,22 +19,28 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
   - SECRET sinks include `process_exec`. Fail fixture refuses the secret.
 
 ### Capability Model & Sandboxing
-  - Process-local tokens. Not an OS jail.
+  - Process-local tokens. Landlock is a real Linux jail under `&SysCap` (`oo_landlock_restrict`). Empty allowlists fail closed. Proved `OK: LANDLOCK_JAIL` on this host.
+  - POSIX `setrlimit` is product under `&SysCap` (AS / NOFILE / CPU). Zero quotas fail closed.
   - `spawn` / `wait` / `kill` are real. Child env is filtered (`OODA_`/`OO_` and `PATH`).
   - `process_exec` is a shell line and a secret sink.
   - `GpuCap` is CPU only. No device shaders.
+  - Hierarchical HMAC attenuation and enclaves are residual. HMAC-SHA256 of a cap payload string is product.
+  - Bump arenas (`arena_create`/`alloc`/`reset`) and `actor_restart` are product C under AllocCap / ThreadCap.
 
 ### Standard Library & Developer Tooling
-  - Product std is `ooda/std` (about 199 `.oo` files on this host). Org `std/` and `std/src` are not product.
-  - vscode talks to `vscode/server/ooda-lsp.js` (JavaScript, not a native LSP).
-  - `ooda check`, `build`, `run`, `test`, `dump`, `outline`, `reflect`, `fix`, and `patch` are native `.oo` in `cli/main.oo`. There is no `scripts/ooda_product.sh`.
+  - Standard Library: Certified 4,431 pure `.oo` modules (402 Core Floor in `ooda/std`, 4,029 Extended in `std/src/ooda` across 93 domain packages).
+  - vscode still talks to `vscode/server/ooda-lsp.js`. `ooda lsp` answers initialize and shutdown from a file or stdin. A multi-message loop is residual.
+  - `ooda check`, `build`, `run`, `test`, `dump`, `outline`, `reflect`, `fix`, `patch`, and `lsp` are native `.oo` in `cli/main.oo`. There is no `scripts/ooda_product.sh`.
+  - `crypto_sha256_internal("hello")` matches the FIPS hex. HMAC-SHA256 length is 64. AES still exits.
+  - `oodac emit-wasm` writes an empty `\0asm` module. `path_join` and `nfa_simulate("a+", …)` emit+gcc+run.
   - `ooda test` sets `OODA_TEST=1` and runs verify constructors plus `assert_eq!` / `assert!`. `ooda run` does not run verify blocks.
-  - `ooda fix` applies `E_CAP`, `E_TC`, and `E_PARSE` (missing `}`). It asks yes/no before it writes, unless `--yes`. Writes go through `write_file` and need `OODA_FS_WRITEDIR`. No TTY and no `--yes` refuses. Absolute paths and symlinks are refused.
+  - `ooda fix` applies `E_CAP`, `E_IMP` (missing import), `E_TC`, and `E_PARSE` (missing `}`). Multi-pass, max eight. It asks yes/no before it writes, unless `--yes`. Writes go through `write_file` and need `OODA_FS_WRITEDIR` (unset still denies). No TTY and no `--yes` refuses. Absolute paths and symlinks are refused.
   - `ooda patch` replaces one function body from a file (`--replace-fn` / `--with`) through `write_file`. Absolute paths, `..`, and symlinks are refused.
   - HITL is not product. The human loop is `ooda fix`.
   - Tree `oodac` emits the product CLI. `cli/host_run.oo` is 205 lines. JSON check lives in `cli/json_check.oo`.
-  - Check refuses unused `Ok`/`Err`/`Some`, `let _ =` / `let _:`, discarded `expect_*`, and discarded Result-returning calls such as `write_file`.
-  - `Result[Void, String]` emits `OoResV`. `Ok(void)` is a real empty Ok. JSON errors carry line and col from the message.
+  - Check refuses unused `Ok`/`Err`/`Some`, `let _ =` / `let _:`, discarded `expect_*`, discarded Result-returning calls such as `write_file`, and discarded user `Result` calls such as `boom();`.
+  - Annotated `Option`/`Result` match with only `_` is non-exhaustive.
+  - `Result[Void, String]` emits `OoResV`. `Ok(void)` is a real empty Ok. JSON errors carry line, col, and a nonempty source path.
   - Multi-file check reports per-file line/col (import lines kept as blanks).
   - `oodac check --json-errors` is in-process. No capture `.sh`. Product CLI also converts.
   - Named emit+gcc+run set: `scripts/ci_open_run.oo` (hello, int_main, open_ci_add).
@@ -44,17 +50,18 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
 
 ## 3. Residual (Wanted in NORTHSTAR / ROADMAP, Not Built)
 
-  - Check is not under 10 seconds. RAM is not under 0.25 GiB.
-  - `ooda context`, `digest`, `health`, `pkg`, and `add` remain residual.
-  - WASM emit is text (`.wat`), not a `.wasm` binary (RTB-6).
-  - No Linux Kernel Landlock jail (RTB-9). No heap rlimit (RTB-10). No import C.
-  - `std/src` is not product.
-  - Later: SoA, macros, actors, hot-swap, bit-identical, GPU device, bare metal.
+  - Check is not under 10 seconds (cold about 523s; warm about 14s).
+  - `ooda context`, `digest`, `health`, and `add` remain residual. `ooda pkg` is beta-out.
+  - `oodac emit-wasm` writes an empty `\0asm` module. Compiled source bytecode is residual.
+  - Import C / `.h` imports are residual refuse.
+  - SMT contracts, affine types, generics/traits, arenas, SoA, Undo-RAM, OTP, cap RPC, macros, hot-swap, GPU device shaders, and bare metal are residual refuse or not built.
+  - Org `std/` and `std/src` are not product.
+  - LLVM self-host, standalone native backends, LTO/header FFI, and bit-identical rebuilds are residual.
 
 ## 4. Cross References
 
   - Architecture North Star: `openOODA/NORTHSTAR.oot`
-  - Active plan: `openOODA/ROADMAP.oot` (section 5 Open; section 6 later)
+  - Active plan: `openOODA/ROADMAP.oot` (section 5 is the leftover list)
   - Long-Term Frontiers: `openOODA/MOONSHOTS.oot`
   - Invariant Laws: `openOODA/RULES.oot`
   - Security Matrix: `openOODA/SECURITY.oot`

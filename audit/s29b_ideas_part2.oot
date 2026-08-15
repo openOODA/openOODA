@@ -1,0 +1,172 @@
+# s29b_ideas_part2.oot — (Part 2 of s29b_ideas.oot)
+# Continuation of `openOODA/audit/s29b_ideas.oot`.
+
+---
+
+## Rank (path-A survivors)
+| Rank | ID | Avg | Verdict |
+|-----:|----|----:|---------|
+| **1** | **I1 + I2** | 9.6 / 9.6 | **WINNER BUNDLE — ship now** depth-aware IDENT walk + RPAREN matrix |
+| **2** | I11 | 7.0 | Fallback — depth the existing optional-skip loops if DE will not call `scan_call` |
+| **3** | I3 | 6.0 | Check-only — **insufficient** (H-same emit-c leak) |
+| **4** | I4 | 5.4 | Stmt-only — **insufficient** (llvm/check FN) |
+| **5** | I10 | 4.4 | Later — bracket/brace if smoke invents a case |
+| — | I6 | 3.0 | Reject product-lower rewrite |
+| — | I5 | 2.2 | **REJECT** fake C args / check→guard |
+| — | I8 | 2.2 | Reject doc-only / wave-1 ALREADY_FIXED |
+| — | I9 | 2.2 | Reject IFC moonshot |
+| — | I7 | 1.4 | Reject drop token walk |
+
+## Depth-aware IDENT vs fake C args (Decide card)
+| | Depth-aware IDENT walk (I1) | Fake C `args` + `c_secret_emit_guard` (I5) |
+|--|------------------------------|--------------------------------------------|
+| Input | Lexer toks (`IDENT` field 3) | Joined lowered C text |
+| H-same `("x") + tok` | Walk continues at `depth>0`; refuse `tok` | Guard would see `tok` **if** someone built `args` |
+| H-later `id(1), tok` | Same | Same, **if** `args` is the **full** list |
+| check / llvm / wasm | **This is the rail** | Wrong signature / empty-args FN |
+| stmt emit-c | Pre-scan toks **before** `oo_print_*` | Requires concat join Memory forbids |
+| eprintln emit-c | Unchanged belt | Already this rail |
+| Heap | Token list already paid | **New** `args = args + ", " + a` |
+| DE2.9 words | Honest residual: still not a guard call | Theater that **looks** like the sentence |
+| Wave-1 | I3 optional DRY, now **required machine** | I5 / I9 **died** |
+| Ship this turn | **Yes** | **No** |
+
+**Ship-now decision:** **depth-aware IDENT walk.**
+Fake C args are not a 2.9 close. They are a second re-lexer of tokens I1
+already walks.
+
+## Dual-path map after I1 (do not collapse)
+| Surface | check / llvm / wasm | emit-c |
+|---------|---------------------|--------|
+| stmt `println(tok)` bare | depth IDENT (`scan_call` / inlined) | same front-door **then** stmt belt (now also depth) |
+| stmt `println(("x") + tok)` | **must BLOCK** (today FN) | **must BLOCK** (today leak) |
+| stmt `println(id(1), tok)` | **must BLOCK** (today FN) | already BLOCK (keep) |
+| `eprintln(("x") + tok)` | **must BLOCK** (today FN) | already BLOCK (guard) |
+| `let f = println; f(tok)` | resolve + `scan_call` (LPAREN) | free-call guard |
+| `print_err` / `log` | type undefined (I6 leftover) | guard SECRET |
+| `print(tok)` | type undefined | not `oo_print_*` (s71 R2) |
+
+Path-A job of wave-2 = **the three hole rows**. Not flatten the table.
+Not “walker → emit_guard landed.”
+
+---
+
+## Top recommendation (this turn — path-A residual close)
+### **Ship: Depth-aware IDENT walk on check + stmt (I1) + RPAREN smoke (I2). Do not join C args. Do not call `c_secret_emit_guard` from check or `c_emit_println`.**
+**Why this closes wave-2:**
+- The host FN is a **flat `RPAREN` stop**, not a missing C-text belt.
+- Check depth = llvm/wasm (no second rail).
+- Stmt depth / pre-scan = H-same emit-c stop-leak (Peer 2).
+- eprintln guard already catches H-same on emit-c — **parity**, not architecture change.
+- WT already started check + `scan_call` depth. Finish stmt; rebuild; prove I2.
+- Wave-1 I1 is **kept for bare IDENT** and **retracted as a close of H-later/H-same**.
+
+### DE winner advice (plain English)
+1. **Do not** build a fake `args` string. **Do not** call `c_secret_emit_guard`
+   from `check_secret_println_sinks` or `c_emit_println`. **Do not** delete
+   `c_emit_println`. **Do not** flip SPRINT to “walker → emit_guard.”
+2. **Land I1 (preferred):**
+   - `c_secret_scan_call`: keep WT paren depth (or land it if you reset the hunk).
+   - println/eprintln block → `c_secret_scan_call(env, toks, i + 1, n, 0, false, sid)`.
+   - `c_emit_println`: if next is `LPAREN`, same call (`sink = "println"`) **before**
+     any `oo_print_*`. Then existing lower.
+   - **Fallback I11:** copy the `depth` counter into both existing `while`s
+     (stop only at `depth==0`). Same refuse helpers as today.
+3. **Do not claim 7.10 / 2.10 in the 2.9 close.** Those hunks may share the
+   file. Wave-2 OWN is the RPAREN stop.
+4. **Rebuild the host.** 07:49 ELF will stay FN until `oodac` is new.
+   Prove on **that** binary, virgin TMPDIR cwd (s71 R9).
+5. **Wire I2** into `scripts/s29_println_guard_smoke.oo`:
+   - keep bare + string-lit + eprintln IDENT
+   - add H-same grouping+`+` (println **and** eprintln)
+   - add H-later `id(1), tok`
+   - add H-same `f(g(), tok)`
+   - llvm on hole cases
+   - alias fixture still refuses after LPAREN-required
+6. **SPRINT 2.9:** mark FIXED path-A **only after** I2 exit 0 on rebuilt host.
+   Wording: **depth-aware IDENT walk (RPAREN class) + prove**. Not
+   “walker → `c_secret_emit_guard`.” Not wave-1 “dual refuse” alone.
+7. **Done bar:**
+   - `println(("x") + tok)` refuses check + emit-c + llvm; C has **no**
+     `oo_print_*` operand `tok`
+   - `eprintln(("x") + tok)` refuses check + emit-c + llvm
+   - `println(id(1), tok)` refuses check + emit-c + llvm
+   - `println(f(g(), tok))` refuses check + emit-c + llvm
+   - bare + string-lit + alias **still** hold
+   - grep: **no** `c_secret_emit_guard` in `c_emit_secret.oo` / `c_emit_print.oo`
+   - grep: **no** `args = args +` in `c_emit_println`
+   - leftovers (emit-bc, `print`/`print_err`, `${}`, 2.10, IFC) **named**
+8. **Out of scope:** I5 fake args; I6 delete builtin; I7 drop walker; I8
+   doc flip; I9 IFC; I10 brace/bracket unless I2 invents a miss; I3/I4 solo.
+
+### Explicit non-winners (do not build this turn)
+- Joined C `args` / stmt→`c_secret_emit_guard` (I5)
+- Check-path `c_secret_emit_guard(...)` (wave-1 I9 — wrong sig)
+- Delete token walk / check front-door (I7)
+- Delete `c_emit_println` builtin (I6)
+- SPRINT / ALREADY_FIXED without I2 on a **rebuilt** host (I8)
+- Full IFC / `${}` / 2.10 `__sec_sink__` (I9)
+- Check-only or stmt-only depth (I3 / I4) as the close
+- M1–M20 moonshots
+
+## Entropy report (expected after winner)
+`S: ↓` — RPAREN FN class → **smoke-proved** depth IDENT; wave-1 ALREADY_FIXED
+lie scoped back to bare IDENT; DE2.9 / I5 theater not re-opened.
+`U` holds only for: emit-bc skip (Security R2), log-family check/llvm,
+LLVM `print`, I10 brace/bracket, `${}` / IFC / 2.10.
+`O` does not rise (one machine, two call sites — or two `depth` counters).
+`W` does not rise (no fake emit_guard call, no concat join).
+
+## Leave-off
+- Fairy: ideas only in this file.
+- DE owns land + prove; peers: H-same **0 FN** dual-path (check+emit-c+llvm),
+  H-later **0 FN** on check/llvm, string **0 FP**, no `oo_print_*(tok)` on
+  hole shapes, no “emit_guard call” lie, no dirty-CWD check.
+- Security: do not treat llvm first-arg **DROP** as refuse; do not treat
+  type-fail as `ERR\tsecret`.
+- Memory: depth walk is index math; **forbid** `args = args + ", " + a`.
+
+---
+
+## One-page DE pocket card (I1+I2)
+```
+2.9 wave-2 ship-now (RPAREN hole):
+  KEEP  token IDENT refuse (check + stmt). NOT c_secret_emit_guard.
+  KEEP  c_emit_println builtin (oo_print_* + oo_println)
+  KEEP  eprintln emit-c guard as belt
+  LAND  depth on c_secret_scan_call (LPAREN/RPAREN; COMMA at depth==1)
+  LAND  println/eprintln → c_secret_scan_call(..., 0, false, sid)
+        OR inline the same depth counter (I11)
+  LAND  c_emit_println pre-scan at LPAREN (same helper) BEFORE oo_print_*
+  PROVE println(("x") + tok)     → ERR secret  check+emit-c+llvm
+  PROVE eprintln(("x") + tok)    → ERR secret  check+emit-c+llvm
+  PROVE println(id(1), tok)      → ERR secret  check+emit-c+llvm
+  PROVE println(f(g(), tok))     → ERR secret  check+emit-c+llvm
+  PROVE println(tok) / "tok"     → still BLOCK / ALLOW
+  PROVE secret_t1_alias_println  → ERR secret  (LPAREN-required)
+  GREP  no c_secret_emit_guard in c_emit_secret.oo / c_emit_print.oo
+  GREP  no args = args +  in c_emit_println
+  WIRE  extend s29_println_guard_smoke.oo (not a second script)
+        cd virgin TMPDIR; REBUILD host (07:49 ELF is the FN)
+  FIX   SPRINT 2.9 after host prove:
+        depth-aware IDENT walk, NOT emit_guard, NOT wave-1 ALREADY_FIXED
+
+DO NOT this turn:
+  join C args / stmt → c_secret_emit_guard   (I5)
+  check → c_secret_emit_guard                (wrong sig)
+  delete check walker                        (llvm FN)
+  delete c_emit_println                      (I6)
+  check-only or stmt-only depth as the close (I3/I4)
+  SPRINT flip on 07:49 ELF / bare smoke      (I8)
+  full IFC / ${} / 2.10                      (I9)
+```
+
+Path-A residual callout after land:
+“2.9 wave-2 = depth-aware IDENT walk of println/eprintln args (check +
+stmt). Closes first-RPAREN FN. Not a C-text join. Not check→emit_guard.
+Not stmt-println-as-C-call. Not wave-1 bare-only prove. Not LLVM `print`.
+Not emit-bc. Not full IFC.”
+
+end of s29b_ideas.oot
+
+end of s29b_ideas_part2.oot

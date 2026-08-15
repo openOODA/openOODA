@@ -1,0 +1,159 @@
+# s29b_security_part2.oot — (Part 2 of s29b_security.oot)
+# Continuation of `openOODA/audit/s29b_security.oot`.
+
+## Attack results (product host)
+Verdict key:
+
+- **BLOCK** = `ERR\tsecret` + rc≠0
+- **ALLOW** = rc=0, no `ERR secret`
+- **FN** = ALLOW when a SECRET IDENT is in a println/eprintln arg list
+- **FP** = `ERR secret` when the name is only string/comment text
+- **LEAK** = emit accepted and SECRET IDENT is an `oo_print_*` operand
+- **DROP** = emit accepted, SECRET loaded then not passed to print
+  (not a refuse)
+- **TYPE** = rc≠0 `ERR\ttype` and **no** `ERR secret` (not a refuse)
+- **ABORT** = host heap crash (rc=134); no SECRET print observed
+
+Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`
+Probes: `/tmp/s29b_sec_1171526/` (ephemeral; virgin cwd).
+Dual-repro 06 check from a second virgin cwd: still `OK` rc=0.
+Official smoke: **exit 1** (wave-2 grouped-later `check` accepted).
+
+### Z1 — path-A bare / simple IDENT (must stay green)
+| # | Shape | emit-c | check | emit-llvm | Verdict |
+|---|-------|--------|-------|-----------|---------|
+| 01 | `println(tok)` | rc=1 `SECRET tok` | rc=1 | rc=1 | **BLOCK** |
+| 02 | `println(n, tok)` (no inner paren) | rc=1 | rc=1 | rc=1 | **BLOCK** |
+| 04 | `println("x=" + tok)` | rc=1 | rc=1 | rc=1 | **BLOCK** |
+| 05 | `let f = println; f(tok)` | rc=1 | rc=1 | rc=1 | **BLOCK** |
+| 09 | `println(id(tok))` secret in **first** nested call | rc=1 | rc=1 | rc=1 | **BLOCK** |
+| 11 | `let y = make_secret(); println(y)` | rc=1 `SECRET y` | rc=1 | rc=1 | **BLOCK** |
+| 17 | `let y = tok; println(y)` | rc=1 `SECRET y` | rc=1 | rc=1 | **BLOCK** |
+| 19 | `eprintln(tok)` | rc=1 | rc=1 | rc=1 | **BLOCK** |
+| 24 | `let x = println(tok)` expr-pos | rc=1 | rc=1 | rc=1 | **BLOCK** |
+| F | `fixtures/secret_sink_fail` | rc=1 `SECRET x` | rc=1 | — | **BLOCK** |
+| F | `fixtures/secret_multi_arg_println_fail` | rc=1 `SECRET s` | rc=1 | — | **BLOCK** |
+| F | `fixtures/secret_t1_alias_println` | rc=1 | rc=1 | — | **BLOCK** |
+| F | `fixtures/secret_eprintln_fail` | rc=1 | rc=1 | — | **BLOCK** |
+| — | emit-wasm `01_bare` / `02_multi` | — | — | wasm rc=1 `SECRET tok` | **BLOCK** |
+
+`s29_println_guard_smoke.oo` wave-1 rails (bare IDENT + string no-FP +
+eprintln IDENT) still **OK**. Wave-2 grouped rail is the RED line.
+
+**FN count on Z1 shapes: 0.**
+
+### Z2 — later-arg / same-arg after inner RPAREN (**FAIL**)
+ELF walker after optional one `LPAREN`:
+
+```
+while in_args:
+    if RPAREN → stop          # no depth
+    if IDENT  → refuse resolved
+    else      → p+1
+```
+
+`println((n), tok)` tokens after the skipped `LPAREN`:
+`LPAREN INT RPAREN COMMA IDENT tok RPAREN`. First `RPAREN` ends the
+walk. `tok` is never seen. Same for `println(id(1), tok)`.
+
+| # | Shape | emit-c | check | emit-llvm | emit-wasm | FN? |
+|---|-------|--------|-------|-----------|-----------|-----|
+| 06 | `println((n), tok)` | rc=1 `SECRET tok` after `oo_print_int((n));` | **OK** rc=0 | rc=0 `@oo_print_int` only; `@.str.0 = "s3cret"` | rc=0 `local.get $tok` **drop** | **yes** check/llvm/wasm |
+| 07 | `println(id(1), tok)` | rc=1 `SECRET tok` after `oo_print_int(id(1LL));` | **OK** | rc=0 first-arg int; `c"s3cret"` in module | rc=0 drop tok | **yes** |
+| 08 | `eprintln(id(1), tok)` | rc=1 `SECRET tok` (emit-guard) | **OK** | rc=0 first-arg int | — | **yes** |
+| 22 | `println((1), a, b)` two SECRETs | rc=1 `SECRET a` after `oo_print_int((1LL));` | **OK** | rc=0 print `1` only | — | **yes** |
+| dbl | `println(((n)), tok)` | rc=1 `SECRET tok` | **OK** | rc=0 first-arg + `c"s3cret"` | — | **yes** |
+| empty | `println(g(), tok)` | rc=1 `SECRET tok` after `oo_print_int(g());` | **OK** | rc=0 first-arg | rc=0 drop tok | **yes** |
+| e-empty | `eprintln(g(), tok)` | rc=1 (guard) | **OK** | rc=0 first-arg | — | **yes** |
+
+Exact bytes (06, dual-repro):
+
+- emit-c: `oo_print_int((n));` then `ERR\tsecret\tprintln sink refuses SECRET tok\n` (rc=1)
+- check: `OK\n` (rc=0)
+- llvm: `call void @oo_print_int(i64 %t1)` + `c"s3cret\00"` in the module
+- wasm: `call $println_str` then `local.get $tok` / `drop`
+- bc: `LOAD_LOCAL 0` / `LOAD_LOCAL 1` / `CALL println 2` (rc=0)
+
+Same-arg after inner `RPAREN` (wave-1 peer2 class; **re-proved**):
+
+| # | Shape | emit-c | check | emit-llvm | FN? |
+|---|-------|--------|-------|-----------|-----|
+| p+ | `println(("x") + tok)` | rc=0 **LEAK** `oo_print_str(oo_str_concat((oo_str_lit("x")), tok))` | **OK** | rc=0 `@oo_print_str` of concat; `c"s\00"` | **yes + leak** |
+| e+ | `eprintln(("x") + tok)` | rc=1 `SECRET tok` (guard) | **OK** | rc=0 `@oo_print_str` of concat | **yes** check/llvm |
+| pi | `println(((1) + tok))` | rc=0 **LEAK** `oo_print_int((((1LL) + tok)))` | **TYPE** arity (no `ERR secret`) | rc=0 `@oo_print_int` of sum | **yes** emit-c/llvm |
+| ei | `eprintln(((1) + tok))` | rc=1 (guard) | **OK** | rc=0 `@oo_print_int` | **yes** check/llvm |
+| pn | `println(f(g(), tok))` | rc=0 **LEAK** `oo_print_str(f(g(), tok))` | **OK** | rc=0 `@oo_print_str` of call | **yes + leak** |
+| en | `eprintln(f(g(), tok))` | rc=1 (guard) | **OK** | rc=0 `@oo_print_str` | **yes** check/llvm |
+| pm | `println("x".len() + tok)` | rc=0 **DROP** `oo_print_str(oo_str_lit("x"))` | **OK** | rc=0 print `"x"` only | **yes** (no refuse) |
+| em | `eprintln("x".len() + tok)` | rc=1 (guard) | **OK** | rc=0 print `"x"` | **yes** check/llvm |
+
+`ERR\ttype` is **not** a secret refuse. `p_call_in_first`
+(`println(id((1)), tok)`): check **TYPE** `id expects 1 got 0`;
+emit-c **BLOCK**; llvm **ALLOW** + `c"s3cret"`. Fail-closed on
+check by accident; llvm still FN.
+
+Alias + grouping (`let f = println; f((n), tok)` and
+`f(("x") + tok)`): check **OK** (front-door miss); emit-c / llvm
+**ABORT** `malloc(): unaligned tcache chunk` (rc=134). **No**
+SECRET print. Same host hole as wave-1 P04c. Not a refuse.
+
+**This is still the 2.9 hole.** Full `c_secret_emit_guard` **or**
+shipping the WT depth walk would refuse F1/F2 the way emit-c
+already does on later-arg. Grouping+concat also needs the
+front-door (stmt belt has no depth).
+
+### Z3 — no FP
+| # | Shape | emit-c | check | llvm | FP? |
+|---|-------|--------|-------|------|-----|
+| 03 | `println("tok")` + `// SECRET: tok` | rc=0 `oo_print_str(oo_str_lit("tok"))` | OK | ALLOW | **no** |
+| 21 | `println((n), 2)` public control | rc=0 both ints | OK | first arg only | n/a |
+| 25 | `println("/* tok */")` | rc=0 lit | OK | ALLOW | **no** |
+| F | `fixtures/secret_t2_string_lit_arg_fp` | OK | OK | — | **no** |
+| F | `fixtures/secret_sink_pass` | OK | OK | — | **no** |
+
+**FP count: 0.**
+
+### Z4 — 2.8 stays closed
+No expand / splice probes this pass. Wave-1 `s28_macro_secret_smoke`
+was green; this audit does **not** relitigate `macro_expand` /
+`ast_macro`. `${}` stays 5.8 (literal string).
+
+### Z5 — emit-c compile rail
+Later-arg class (06/07/22/dbl/empty): C stream prints the **public**
+first arg, then `ERR\tsecret` and rc=1. SECRET `tok` is never an
+`oo_print_*` operand.
+
+Same-arg-after-RPAREN class: **Z5 broken**.
+
+- `p_groupplus`: `oo_print_str(oo_str_concat((oo_str_lit("x")), tok));`
+- `p_igroup`: `oo_print_int((((1LL) + tok)));`
+- `p_nest`: `oo_print_str(f(g(), tok));`
+
+Runtime `oo_print_str` is unsealed `fwrite`. The **compiler** is the
+seal. emit-c no longer holds it on those shapes.
+
+---
+
+## WT depth (honesty — not a close)
+`git diff oodac/c_emit_secret.oo` vs HEAD adds `let mut depth = 1`
+and LPAREN/RPAREN inc/dec in **both** `c_secret_scan_call` and the
+println/eprintln walk. `grep -c depth`: HEAD **0**, WT **9**.
+
+That would, **if compiled**, keep the front-door walking past an
+inner `RPAREN` and refuse `tok` on check / emit-c / emit-llvm /
+emit-wasm (`run_check_core`). It would also make emit-c grouping
+leaks die at the front-door before `c_emit_println`.
+
+It is **not** in the 07:49 ELF (disasm: first `RPAREN` exits). It is
+**not** `c_secret_emit_guard`. Stmt belt is still undepth'd. emit-bc
+still has no front-door.
+
+Do **not** ACCEPT 2.9 from a dirty tree. Rebuild + live 06/07/08/22
++ grouping matrix, or Z2 stays FAIL.
+
+---
+
+
+*(Continued in `openOODA/audit/s29b_security_part3.oot`)*
+
+end of s29b_security_part2.oot (part 2)

@@ -1,0 +1,126 @@
+# s29_domain_b_part2.oot — (Part 2 of s29_domain_b.oot)
+# Continuation of `openOODA/audit/s29_domain_b.oot`.
+
+---
+LIVE MATRIX — isolated family (tmp `$TMPDIR/s29_b_probes`)
+---
+
+`// SECRET: tok` + `let tok = "secret-token";` unless noted.
+
+### SECRET IDENT — dual-path honesty
+| Probe | check | emit-c | emit-llvm | Dual-path secret? |
+|-------|-------|--------|-----------|-------------------|
+| `println(tok)` | **SECRET** | **SECRET** | **SECRET** | **yes** |
+| `eprintln(tok)` | **SECRET** | **SECRET** | **SECRET** | **yes** |
+| `print_err(tok)` | **TYPE** `undefined 'print_err'` | **SECRET** `print_err sink refuses` | **rc=0** `call @print_err` | **no** (emit secret / check type / llvm open) |
+| `log(tok)` | **TYPE** `undefined 'log'` | **SECRET** | **rc=0** `call @log` | **no** |
+| `fprintf(tok)` | **TYPE** | **SECRET** | **rc=0** `call @fprintf` | **no** |
+| `syslog(tok)` | **TYPE** | **SECRET** | **rc=0** `call @syslog` | **no** |
+| `print(tok)` | **TYPE** `undefined 'print'` | **rc=0** `print(tok);` no secret | **rc=0** `oo_print_str` + `oo_println` | **no** (llvm println-shape) |
+| `println("prefix", tok)` / concat | **SECRET** | **SECRET** | **SECRET** | **yes** |
+| `eprintln("prefix", tok)` / concat / escaped lit + ident | **SECRET** | **SECRET** | **SECRET** | **yes** |
+| `print_err("prefix", tok)` / concat | **TYPE** | **SECRET** | **rc=0** | **no** |
+| `log("prefix", tok)` | **TYPE** | **SECRET** | **rc=0** | **no** |
+| `let f = println; f(tok)` | **SECRET** | **SECRET** | **SECRET** | **yes** (front-door alias) |
+| `let f = eprintln; f(tok)` | **SECRET** | **SECRET** | **SECRET** | **yes** |
+| `let f = print_err; f(tok)` | **TYPE** | **ABORT 134** tcache | **ABORT 134** | fail-closed crash; **not** secret |
+| `let f = log; f(tok)` | **TYPE** | **ABORT 134** | **ABORT 134** | same host hole as 6.1 |
+| `let z = println(tok)` expr | **SECRET** | **SECRET** | **SECRET** | **yes** (front-door; never reaches guard) |
+| `eprintln(pubt)` public + unused SECRET | **OK** | **OK** | **OK** | control |
+| `env_set(..., tok)` order control | **CAP** (no `ERR secret`) | **SECRET** | **SECRET** | **no** — ELF type/cap **before** secret |
+
+println/eprintln SECRET **dies at the front-door token walker**
+(`process_exit`) before stmt-vs-free-call split. Live eprintln refuse
+is **not** proof stmt println was unified onto the guard.
+
+### String-lit / comment — no-FP (this OWN)
+| Probe | check | emit-c | emit-llvm | Result |
+|-------|-------|--------|-----------|--------|
+| `println("tok")` | rc=0 no secret | rc=0 | rc=0 | **PASS** no-FP |
+| `eprintln("tok")` | rc=0 no secret | rc=0 | rc=0 | **PASS** no-FP |
+| `print_err("tok")` / `log` / `fprintf` / `syslog` | **TYPE**; **no** `ERR secret` | rc=0; **no** `ERR secret` | rc=0 | **PASS** no-FP (emit) |
+| `print("tok")` | TYPE; no secret | rc=0; no secret | rc=0 | **PASS** no-FP |
+| `println("say \"tok\" aloud")` | rc=0 | rc=0 | rc=0 | **PASS** escape stay in-string |
+| `println("… tok_extra …")` contains spelling | rc=0 | rc=0 | rc=0 | **PASS** |
+| `// println(tok)` + `println(pubt)` | rc=0 | rc=0 | rc=0 | **PASS** comment skip |
+| `// eprintln(tok)` + public | rc=0 | rc=0 | rc=0 | **PASS** |
+| `// print_err(tok)` + public | TYPE; no secret | rc=0; no secret | rc=0 | **PASS** no-FP |
+
+Token walk never treats STRING as IDENT. Guard `in_str` skips C
+`"..."`. Isolated **FP=0**.
+
+## RAILS
+| Smoke | Result |
+|-------|--------|
+| `scripts/s29_println_guard_smoke.oo` | **PASS** exit 0 (println/eprintln IDENT dual + println lit no-FP; **does not** claim unify) |
+| `scripts/secret_eprintln_smoke.oo` | **PASS** exit 0 (eprintln + println refuse) |
+| `scripts/secret_t2_depth_smoke.oo` | **PASS** exit 0 (field/args + comment-skip) |
+
+Harness matches this OWN for println/eprintln + no-FP. It does **not**
+cover print_err/log/fprintf/syslog/print or llvm fail-open. B isolated
+probes do.
+
+## FILES TOUCHED
+| File | Change |
+|------|--------|
+| `ooda/oodac/c_emit_secret.oo` (7.10 / 2.10 / 2.9 walker) | **none** |
+| `ooda/oodac/c_emit_secret_guard.oo` (7.1) | **none** |
+| `ooda/oodac/c_emit_args.oo` (7.2) | **none** |
+| `ooda/oodac/c_emit_print.oo` | **none** |
+| `ooda/oodac/c_emit_ident.oo` | **none** |
+| `openOODA/audit/s29_domain_b.oot` | this evidence |
+
+**Not touched:** 7.1 walker, 7.2 last-arg, 7.10 parse-env, sink list,
+stmt println dispatch, smokes, SPRINT, remotes (no push).
+
+---
+RESIDUAL (honest; do not close 2.9)
+---
+
+1. **Walker is still the token IDENT loop.** L175–192 is not
+   `c_secret_emit_guard`. Stmt `println` still `c_emit_println` +
+   `__sec__` only. Front-door carries alias + dual-path refuse.
+
+2. **print_err / log / fprintf / syslog are not dual-path secret.**
+   emit-c scanner-strong; check type-weak; **llvm fail-open**
+   (`call @print_err` of the secret payload). Fail-closed compile on
+   check ≠ `ERR\tsecret`. Do **not** claim product log sinks In.
+   Growing L175 (or feeding lowered args to the guard) is A's land.
+
+3. **Drop-in empty-arg call is an FN.** `c_secret_emit_guard` scans
+   C `args` only when `args != ""`. Check/llvm have tokens, not C text.
+   Naive `c_secret_emit_guard(env, sid, "", "", "", "")` would skip the
+   scanner and **miss** `println(tok)` on check/llvm.
+
+4. **`print` LLVM println-shape** (s71 R2). Check type-fails; C emit is
+   not `oo_print_*`; llvm **will print** SECRET. Not a typed API.
+
+5. **`let f = print_err|log`** aborts the shipping host (tcache). Same
+   class as 6.1 `env_set` alias. println/eprintln alias still dual-path
+   green via the **front-door** (not stmt belt).
+
+6. **Check cache false-OK** (s71 R9). `.ooda-cache/check` is
+   cwd-relative; a stale OK for `secret_sink_fail` hid refuse until
+   probes used a clean cwd. emit-c/llvm are the honest refuse rails.
+
+7. **Host ELF not rebuilt.** WT secret-before-type is 6.1, not 2.9, and
+   would not add print_err to the walker anyway.
+
+8. **Full IFC / `#[Secret]` / `${}` / 2.10 wrappers** — `SECRET_TAINT.oot`.
+   `${}` today is STRING (no-FP is correct for 2.9).
+
+## STATUS FOR SPRINT/PM
+| Item | Status |
+|------|--------|
+| println SECRET refuse dual-path (+ llvm) | **PASS** |
+| eprintln SECRET refuse dual-path (+ llvm) | **PASS** |
+| print_err / log / fprintf / syslog dual-path **secret** | **RESIDUAL** — emit-c secret / check type / llvm open |
+| string lit `"tok"` no-FP | **PASS** (println/eprintln triple; siblings emit no-FP) |
+| walker → `c_secret_emit_guard` | **OPEN** (not this land; drop-in empty-arg would FN) |
+| 7.1 / 7.2 / 7.10 rewrite | **not done** (not required) |
+| monofile ≤600 | print 87 / ident 228 / guard 228 / secret 264 |
+| 2.9 Domain B contract | **PASS-with-residual** — do not close 2.9 as FIXED |
+
+end of s29_domain_b.oot
+
+end of s29_domain_b_part2.oot

@@ -1,0 +1,139 @@
+# s61_ideas_part2.oot — (Part 2 of s61_ideas.oot)
+# Continuation of `openOODA/audit/s61_ideas.oot`.
+
+---
+
+## Rank (path-A survivors)
+| Rank | ID | Avg | Verdict |
+|-----:|----|----:|---------|
+| **1** | **I1 + I2** | 9.8 / 9.6 | **WINNER BUNDLE — ship now** prove 2.3 `env_set` + smoke matrix |
+| **2** | I3 | 7.2 | **Optional same-wave leftover** — `getenv` one-liner **after** I2 |
+| **3** | I10 | 5.6 | Later — cap-seal ↔ sink table hygiene |
+| **4** | I5 | 5.4 | Later — check secret-before-type |
+| **5** | I4 | 3.8 | Later — product `oo_env_set` (not 6.1) |
+| **6** | I8 | 3.2 | Do **not** delete 2.3 names |
+| **6** | I6 | 3.2 | Do **not** grow OS list this turn |
+| — | I9 | 2.8 | Doc inside I1; not a solo close |
+| — | I7 | 1.4 | Reject moonshot / C TCB |
+
+## Prove 2.3 land vs add missing sinks (Decide card)
+| | Prove existing 2.3 (I1+I2) | Add missing OS sinks (I6) |
+|--|----------------------------|---------------------------|
+| 6.1 pin | **`env_set` already refuses on emit-c** | Does not mention munmap |
+| Host proof | Live 2026-08-12: env_set key+value, unsetenv, setenv, mmap, mprotect | None of those names are product `.oo` |
+| Check path | Type-first residual (honest) | Same residual, more names |
+| Smoke | TMPDIR + fix `expect_ok` lie | Needs a fixture per name or it is theater |
+| Entropy \(S\) | **Down** (untested → proved) | **Up** (longer untested list) |
+| Ship this turn | **Yes** | **No** |
+
+**Ship-now decision:** **prove the land**. Rank leftovers; do not grow the list.
+
+## Leftover OS sinks (explicit rank — later residual)
+Already **in** 2.3 (do not re-add; **prove** via I2, then stop):
+
+| Rank | Name | Live emit-c secret (this host) | Fixture | Next |
+|------|------|--------------------------------|---------|------|
+| **P0** | **`env_set`** | YES (key + value) | **none** | **6.1 I2** |
+| P1 | `setenv` | YES | fail+pass on disk; pass ≠ rc=0 | I2 `expect_no_secret` |
+| P2 | `unsetenv` | YES | none | I2 TMPDIR fail |
+| P3 | `mmap` | YES | fail+pass; pass ≠ rc=0 | I2 |
+| P4 | `mprotect` | YES (spot) | none | optional TMPDIR; not required to close 6.1 |
+| P5 | `shmat` / `pwrite` / `sendfile` / `splice` / `tee` | named; not all spot-checked | none | later copy I2 if anyone product-calls them |
+
+**Not** in 2.3 (add later **only** with a refuse+no-secret pair):
+
+| Later rank | Names | Why not 6.1 | When |
+|------------|-------|-------------|------|
+| **L1** | **`getenv`** | Sealed Env alias; live **FN** (no secret) | I3 after I2 |
+| L2 | `putenv` / `clearenv` | No language name; runtime C only (T3 child filter) | if `.oo` free-call appears |
+| L3 | `munmap` / `msync` / `mremap` | mmap-family completeness; **no product mmap** | if mmap lowers |
+| L4 | `shmdt` / `shmctl` / `shm_open` / `memfd_create` | shmat friends | if shm product |
+| L5 | `pread` / `writev` / `copy_file_range` | pwrite/sendfile friends; `write_file` / `tcp_write` already sealed | if raw fd IO product |
+| L6 | `memcpy` / `memmove` / `strcpy` / `sprintf` | C TCB / FFI | **reject** as 6.1 (I7) |
+| L7 | `ptrace` / `process_vm_writev` | kernel poke | **reject** moonshot |
+
+Do **not** claim 6.1 FIXED if I2 is missing. Do **not** claim “all OS sinks In” if L1–L5 stay unnamed — `SECRET_TAINT` already says mmap-family **named** + re-prove.
+
+---
+
+## Top recommendation (this turn — path-A residual close)
+### **Ship: Prove existing 2.3 SECRETSINK (`env_set` + siblings) (I1) + smoke matrix (I2). Do not add munmap-class names.**
+**Why this closes 6.1:**
+- The name is **already** in alias + check walk + emit guard. Live emit-c **already refuses** secret key and value.
+- Unclosed part is **untested claim** (\(U\)): no `env_set` fixture, broken `expect_ok` on unlowered pass, check-path type-first, SECRET_TAINT still “re-prove.”
+- Adding OS names (I6) does **not** move the pin and raises \(S\).
+
+### DE winner advice (plain English)
+1. **Do not** implement `oo_env_set` / real `mmap`. **Do not** grow the 2.3 list.
+2. **Do not** delete the 2.3 a1/a2 branch or the full-args scan. Value is **a2**.
+3. **Prove static:** `env_set` in `c_secret_is_sink_name`, `c_emit_secret.oo` 2.3 `sid` list, `c_emit_secret_guard.oo` 2.3 + args-scan lists.
+4. **Wire smoke (I2):** `scripts/s61_env_set_secretsink_smoke.oo` + `ci_product.oo`. Helpers:
+   - fail → emit-c `ERR\tsecret`
+   - clean unlowered → **no** `ERR\tsecret` (annotation fail allowed)
+   - `env_get` still dual-path
+   - `check` on `env_set` may type-fail — **named**, not a secret prove
+5. **SPRINT 6.1:** mark FIXED path-A **only after** smoke exit 0 on **this** host. Wording: **name-set + emit-c prove**, not “env_set product.” Refresh stale `:46-55`.
+6. **SECRET_TAINT:** keep mmap-family **In**; change “re-prove rails” → **rails: `s61_env_set_secretsink_smoke.oo`**. Keep `getenv` / unlowered check / product lower as **residual**.
+7. **Done bar:**
+   - `env_set` secret value **and** key refuse on emit-c
+   - clean `env_set` does **not** print `ERR\tsecret`
+   - existing setenv/mmap **fail** still refuse; **pass** has no secret ERR
+   - grep: `env_set` in all three lists
+   - leftover OS table **named** (L1 getenv, L3 munmap, …)
+8. **If same-wave budget after I2:** I3 `getenv` one-liner + TMPDIR refuse. Still not a munmap dump.
+9. **Out of scope:** I4 product setenv; I5 check reorder; I6 list grow; I7 C TCB; I8 delete 2.3; I9 doc-only.
+
+### Explicit non-winners (do not build this turn)
+- Product `oo_env_set` / runtime `setenv` as the 6.1 “fix” (I4)
+- Adding `munmap`/`msync`/`memcpy`/`ptrace` to SECRETSINK (I6/I7)
+- Deleting 2.3 OS names because they are unlowered (I8)
+- SPRINT flip without I2 (I9)
+- Full IFC / `#[Secret]` / FFI payload lattice
+- M1–M20 moonshots
+
+## Entropy report (expected after winner)
+`S: ↓` — 6.1 “partially landed” → **smoke-proved** emit-c name-set; broken `expect_ok` lie named/fixed in s61 script; leftover OS ranked not dumped into the list.
+`U` holds only for: check type-first on unlowered (I5), `getenv` (I3/L1), product env mutate (I4), L3–L5 if those calls ever exist, `${}` / IFC.
+`O` does not rise (no new runtime, no new sink architecture).
+
+## Leave-off
+- Fairy: ideas only in this file.
+- DE owns land + prove; peers: env_set **0 FN** on emit-c, clean **0 FP** secret, no check dual-path lie, no munmap theater.
+- Security: do not treat type-undefined as secret refuse; do not lower `setenv` in a way that bypasses T3 env filter.
+- Memory: no new walker; 7.1 scan already covers full args once listed.
+
+---
+
+## One-page DE pocket card (I1+I2)
+```
+6.1 ship-now:
+  KEEP  2.3 name-set (setenv env_set unsetenv mmap mprotect
+        shmat pwrite sendfile splice tee)
+  KEEP  emit a1/a2 + c_guard_scan_idents + check argi>=1
+  KEEP  first-branch env_set a1 belt (do not make it the only scan)
+  PROVE emit-c env_set(value) + env_set(key) → ERR secret
+  PROVE clean env_set / setenv_pass / mmap_pass → NO ERR secret
+        (annotation rc=1 is OK)
+  GREP  env_set in alias + check 2.3 + emit 2.3 + args-scan
+  WIRE  scripts/s61_env_set_secretsink_smoke.oo + ci_product.oo
+  FIX   SPRINT 6.1 wording after host prove (drop :46-55)
+  NAME  check type-first residual; getenv leftover (L1)
+
+DO NOT this turn:
+  oo_env_set / real mmap          (I4)
+  munmap msync memcpy ptrace      (I6/I7)
+  delete 2.3 names                (I8)
+  expect_ok rc=0 on unlowered pass
+
+LATER:
+  getenv → SECRETSINK             (I3 / L1)
+  secret-before-typecheck         (I5)
+  cap-seal ↔ sink unify           (I10)
+```
+
+Path-A residual callout after land:
+“6.1 = proved 2.3 named sinks (`env_set` emit-c refuse). Not product env_set. Not check dual-path on unlowered names. Not every OS syscall. Not full IFC.”
+
+end of s61_ideas.oot
+
+end of s61_ideas_part2.oot

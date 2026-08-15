@@ -1,0 +1,135 @@
+# s29b_peer2_part2.oot — (Part 2 of s29b_peer2.oot)
+# Continuation of `openOODA/audit/s29b_peer2.oot`.
+
+---
+LIVE (product host)
+---
+
+Probes: `/tmp/s29b_peer2_1169707/` (ephemeral; not committed).
+
+```
+# FN — stmt println prints SECRET (or drops the secret expr)
+oodac emit-c p_groupplus.oo   # rc=0  oo_print_str(oo_str_concat((oo_str_lit("x")), tok))
+oodac emit-c p_igroup.oo      # rc=0  oo_print_int((((1LL) + tok)))
+oodac emit-c p_nest.oo        # rc=0  oo_print_str(f(g(), tok))
+oodac emit-c p_fgroup.oo      # rc=0  oo_print_str(f((1LL), tok))
+oodac emit-c p_method.oo      # rc=0  oo_print_str(oo_str_lit("x"));  # DROP +tok
+oodac check  p_groupplus.oo   # rc=0  OK   (front-door miss)
+# TP — free-call eprintln guard
+oodac emit-c e_groupplus.oo   # rc=1  ERR	secret	eprintln sink refuses SECRET tok
+oodac emit-c e_igroup.oo      # rc=1  same
+oodac emit-c e_nest.oo        # rc=1  same
+oodac emit-c e_fgroup.oo      # rc=1  same
+oodac emit-c e_method.oo      # rc=1  same
+oodac check  e_groupplus.oo   # rc=0  OK   (same front-door miss; emit-only save)
+# dual-repro (second run, same host)
+p_groupplus emit-c rc=0
+e_groupplus emit-c rc=1 ERR	secret	eprintln sink refuses SECRET tok
+p_nest      emit-c rc=0
+e_nest      emit-c rc=1 ERR	secret	eprintln sink refuses SECRET tok
+p_method    emit-c rc=0
+e_method    emit-c rc=1 ERR	secret	eprintln sink refuses SECRET tok
+p_fgroup    emit-c rc=0
+e_fgroup    emit-c rc=1 ERR	secret	eprintln sink refuses SECRET tok
+
+# later-arg (harness wave-2 — NOT this miss)
+oodac emit-c p_later.oo / e_later.oo   # rc=1 SECRET both
+oodac check  p_later.oo / e_later.oo   # rc=0 OK both
+# LLVM: no c_guard_scan_idents — both FN on hole shapes
+oodac emit-llvm p_groupplus.oo / e_groupplus.oo
+# rc=0, @.str.0 = c"s3cret", call @oo_print_str of concat; no ERR secret
+# smoke / floor (not this OWN)
+scripts/s29_println_guard_smoke.oo                 # exit 1
+#   bare + string + eprintln OK; check FN on println((1), tok)
+fixtures/secret_sink_fail.oo                       # emit-c/check rc=1 SECRET x
+fixtures/secret_eprintln_fail.oo                   # emit-c/check rc=1 SECRET tok
+fixtures/secret_multi_arg_println_fail.oo          # emit-c/check rc=1 SECRET s
+fixtures/secret_t2_string_lit_arg_fp.oo            # emit-c/check rc=0
+```
+
+Minimal recreate (same-arg grouping hole):
+
+```
+// SECRET: tok
+pub fn main() {
+    let tok = "s";
+    println(("x") + tok);   # emit-c FN — prints tok
+    # eprintln(("x") + tok);  # emit-c BLOCK
+}
+```
+
+---
+WHAT STILL HAS PARITY (do not over-claim the REJECT)
+---
+
+Bare IDENT, top-level multi-arg, ungrouped concat, wrap where SECRET
+IDENT is **before** any `RPAREN`, `tok + ("x")`, string-lit no-FP, and
+official fixtures all **BLOCK or ALLOW together**.
+
+`println((1), tok)` / `eprintln((1), tok)` **emit-c BLOCK together**.
+That is harness wave-2, not a stmt miss vs eprintln. Check is FN on
+**both** (ELF first-`)`).
+
+`println((tok))` emit-c BLOCK both. Check TYPE on println (inner
+`RPAREN` stolen as closer) vs SECRET on eprintln — arity desync, not
+required for this REJECT.
+
+---
+NAMED RESIDUALS (not this REJECT)
+---
+
+R1. **Check front-door** is FN on the same `RPAREN` class for **both**
+    names on this ELF. Dual-path secret is **emit-only** for eprintln.
+    WT `depth` is unhosted. Fixing only stmt println does not close
+    live `oodac check` until the ELF matches.
+R2. **emit-llvm** has no `c_guard_scan_idents`. Hole shapes ALLOW on
+    both names and still embed `c"s3cret"`. LLVM `print` alias already
+    named in `s71_security.oot` R2.
+R3. **2.9 unify still OPEN.** This REJECT is the **parity FN**, not
+    only “call site missing.”
+R4. Wave-2 harness / smoke do **not** cover same-arg nested parens.
+    Smoke exit 1 is the later-arg **check** hole, not this OWN.
+R5. `${}` / `#[Secret]` / full IFC — 5.8 / SECRET_TAINT. Not this OWN.
+R6. `println((tok))` check TYPE vs eprintln check SECRET. Separate
+    arity-desync.
+R7. Method shape **DROP** (`"x".len() + tok` → print `"x"` only) is a
+    refuse FN and a wrong emit, not a byte leak of `tok`. Still a miss
+    vs eprintln.
+
+---
+VS SIBLINGS (independent; do not rubber-stamp)
+---
+
+| Sibling | Their claim | This OWN |
+|---------|-------------|----------|
+| `s29_peer2` (wave-1) | REJECT same four shapes | **re-proved** on the same ELF; plus `f((1), tok)` |
+| `s29b_harness` | later-arg rail; other grouping **not this rail**; smoke exit 1 honest | **agree** later-arg is not this miss; **this OWN is the named leftover** |
+| `s29b_integration` | smoke PASS / 157 L / “not fail-open” / walker body unchanged | **disagree**: live smoke is **170 L exit 1**; WT walker **did** add `depth`; same-arg nested **is** fail-open on stmt emit-c |
+| `s29_domain_a` | ALREADY_FIXED dual refuse; no hole class | **false** on this class — eprintln guard refuses what stmt println emits |
+| `s29_security` Z2 | later-arg check/llvm FN; emit-c BLOCK | **true** for `(1), tok`; **incomplete** for same-arg concat/nest |
+
+## FILES
+| Path | Role |
+|------|------|
+| `openOODA/audit/s29b_peer2.oot` | this report (OWN) |
+| `/tmp/s29b_peer2_1169707/` | ephemeral probes (not committed) |
+
+No product / std / oodac / SPRINT edits. No push. No host rebuild.
+
+## FINAL
+**REJECT** 2.9 wave-2 walker vs guard parity on nested-paren shapes.
+Stmt `println` **does** miss shapes that free-call `eprintln` catches:
+any SECRET IDENT that appears **after a nested `RPAREN` still inside
+the same sink argument**. Live emit-c prints `tok` (or drops the
+secret expr). The eprintln guard refuses the same source. Wave-2
+later-arg smoke is not a substitute for this rail. WT check `depth`
+is not in the 07:49 ELF and would not give stmt `println` the guard.
+
+Fix (not this worker): stop special-casing stmt `println`, **or** give
+`c_emit_println` a depth-aware scan / `c_secret_emit_guard` on joined
+arg text; **and** ship a host that actually runs the depth-aware
+check walker (or check stays FN).
+
+end of s29b_peer2.oot
+
+end of s29b_peer2_part2.oot

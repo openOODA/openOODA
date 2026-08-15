@@ -1,0 +1,161 @@
+# s72_hygiene_part2.oot — (Part 2 of s72_hygiene.oot)
+# Continuation of `openOODA/audit/s72_hygiene.oot`.
+
+## BINARY + SCRATCH SCRUB
+Charter: **no ELF / scratch in `oodac/`**. Extra copies + lab toys deleted.
+Product host kept (gitignored; harness `OODAC_BIN` default).
+
+### Extra ELF (pre-scrub FAIL → post-scrub PASS)
+| Artifact | Size | Pre | Post |
+|----------|-----:|-----|------|
+| `ooda/oodac_new` | 956688 B ELF | present (gitignored) | **deleted** |
+| super `oodac_bin` | 908632 B ELF | present (gitignored) | **deleted** |
+| super `oodac_bin_new` | 955032 B ELF | present (gitignored) | **deleted** |
+| super `test_pthread` | 12632 B ELF | present (gitignored) | **deleted** |
+| `scratch/test_proc.oo.bin` | 83384 B ELF | present (gitignored dir) | **deleted** |
+| `scratch/kill.o` `wait.o` | relocatable ELF | present | **deleted** |
+| `oodac/oodac` | 962960 B ELF | product host | **kept** (gitignored) |
+| `bin/ooda` | product CLI | kept | **kept** |
+| `bootstrap/seed/oodac` | seed pin | kept | **kept** |
+| super `oodac/oodac` | 962888 B ELF | **tracked** in super-repo | **kept** (do not `git rm`; residual) |
+
+`git add -n oodac/` after scrub: **product `.oo` only** (`c_emit_args`,
+`c_emit_secret`, `c_emit_secret_guard`) — no ELF, no scratch toys.
+
+### Scratch toys (scrubbed)
+Product tree (`ooda/oodac/`):
+
+- `c_emit_secret.oo.orig` / `.rej` / `.o9DRCOL` — patch/editor debris
+  (`git add -n` **would have added** them)
+- `test_slice.oo` — 4-line `str_slice` lab toy (not a fixture)
+
+ooda root (gitignored `/*.patch`):
+
+- `patch.diff`, `patch_2.10.diff`
+
+Super-repo emit dumps (deleted):
+
+- `oodac_new.tmp.c`, `oodac_test_build.tmp.c`, `tmp_main.bin.tmp.c`,
+  `test1.oo.bin.tmp.c`, `scratch/*.c` companion dumps
+
+Not deleted (out of 7.2 oodac charter): historical super-repo `tmp_*.oo`,
+`scratch/*.oo` sources, tracked corpus `oodac/test_*.oo`. Concurrent
+untracked `bootstrap/MACRO_SECRET_RESIDUAL.oot` is **2.8 residual** — leave.
+
+`.gitignore` additions (hygiene-only):
+
+```
+/oodac/*.orig
+/oodac/*.rej
+/oodac/test_slice.oo
+```
+
+`/oodac_new` already ignored. Product `/oodac/oodac` already ignored.
+
+---
+bash -n + SECRETS + /tmp
+---
+
+```
+OK bash -n scripts/s72_sys_exec_last_arg_smoke.oo   (111 lines)
+```
+
+Smoke uses `$TMPDIR/s72_sys_exec_last_arg_$$` + `trap` cleanup — fixtures
+never land in-repo. **No** hard-coded `/tmp`.
+
+Credential-class scan (`password=`, `BEGIN *PRIVATE`, AWS/GitHub/Slack
+tokens, Bearer) on:
+
+  - `c_emit_args.oo`
+  - `s72_sys_exec_last_arg_smoke.oo`
+  - all live `audit/s72_*.oot`
+
+  → **ZERO live credentials.**
+
+Dummy fixture string `"s3cret"` in smoke heredoc = theater payload, not
+a host secret.
+
+`/tmp` in 7.2 OWN `.oo` + s72 smoke: **none**.
+
+VERDICT credentials: **PASS**
+
+---
+audit/s72_*.oot NAME CONSISTENCY
+---
+
+Pattern: `s72_<role>.oot` under `openOODA/audit/` (same family as
+`s71_hygiene.oot` / `r2_hygiene.oot`).
+
+| File | Role | Status |
+|------|------|--------|
+| `s72_harness.oot` | Test Harness Writer | present |
+| `s72_domain_a.oot` | Domain Expert A | present |
+| `s72_ideas.oot` | Idea Fairy residuals | present |
+| `s72_integration.oot` | Compiler Integration Tester | present |
+| `s72_peer1.oot` | Peer Verifier 1 | present |
+| `s72_peer2.oot` | Peer Verifier 2 | present (landed mid-pass) |
+| `s72_memory.oot` | Memory Auditor | present (landed mid-pass) |
+| `s72_runtime.oot` | Machine Code / Runtime Auditor | present |
+| `s72_phalanx_rollup.oot` | Close rollup | present (Docs Writer) |
+| `s72_hygiene.oot` | this file | **written** |
+| domain_b / security | optional: `s72_domain_b.oot`, `s72_security.oot` | not required this pass |
+
+No rogue names (`s7.2_*.oot`, `72_*.oot`, `last_arg_hygiene.oot`,
+`sys_exec_72_*`) on disk.
+
+Line pressure on audits (informational; ban is on touched `.oo`):
+
+| File | Lines |
+|------|------:|
+| `s72_harness.oot` | 36 |
+| `s72_domain_a.oot` | 168 |
+| `s72_ideas.oot` | 274 |
+| `s72_integration.oot` | 222 |
+| `s72_peer1.oot` | 258 |
+| `s72_peer2.oot` | 269 |
+| `s72_memory.oot` | 228 |
+| `s72_runtime.oot` | 251 |
+| `s72_phalanx_rollup.oot` | 197 |
+| `s72_hygiene.oot` | this |
+
+SPRINT 7.2 row already flipped **FIXED path-A** by Docs/Coordinator
+(`s72_phalanx_rollup.oot`). Hygiene does **not** rewrite SPRINT.
+
+## ACTIONS / NON-ACTIONS THIS PASS
+| Action | Result |
+|--------|--------|
+| Measure OWN monofile locks | **done** — hard 0 over 600 |
+| Force-split DE >600 | **not needed** |
+| Flag adjacent soft residual | secret 264 / secret_prop 262 / main 307 |
+| Scrub extra ELF + oodac scratch | **done** |
+| Seal `.gitignore` patch toys | **done** |
+| Keep product `oodac/oodac` | **yes** (smoke host) |
+| `bash -n` s72 smoke | **PASS** |
+| Product last-arg logic edits | **none** |
+| Flip SPRINT 7.2 | **no** (already flipped by rollup; not DE/hygiene) |
+| Push | **no** |
+| Audit write | **this file** |
+
+## RETURN — COMPACT
+```
+SCOPE   7.2 c_sys_exec_last_arg  ooda=52cc4b5+WIP  openOODA=81f56fc+WIP
+OWN     c_emit_args.oo=240  (DE A no logic edit; +2 runtime comments)
+>600    0 touched / 0 oodac product   PASS hard ban
+>300    0 OWN
+>256    0 OWN; adjacent secret 264 / secret_prop 262 / main 307 WARN residual
+BINARY  extra ELF oodac_new + super oodac_bin* + test_pthread + scratch ELF DELETED
+        product oodac KEPT (gitignored); super tracked oodac/oodac residual
+SCRUB   oodac .orig/.rej/.o9DRCOL/test_slice.oo + patch diffs + emit dumps
+GITIGN  /oodac/*.orig /oodac/*.rej /oodac/test_slice.oo
+CREDS   PASS  no live secrets; dummy "s3cret" is fixture only
+/tmp    PASS product + smoke (TMPDIR+trap)
+BASHN   s72_sys_exec_last_arg_smoke.oo OK (111)
+NAMES   s72_harness / domain_a / ideas / integration / peer1 / peer2
+        / memory / runtime / phalanx_rollup / hygiene  consistent
+PUSH    no
+OVERALL PASS
+```
+
+end of s72_hygiene.oot
+
+end of s72_hygiene_part2.oot
