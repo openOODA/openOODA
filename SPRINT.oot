@@ -1,107 +1,30 @@
 SPRINT — this week
 
 File: openOODA/SPRINT.oot
-Active task list. DESIGN is the want. SHIPPED is what exists. PM is the pin.
-Goal: everything the pin and the product claim must be production ready.
-Order: first principles, then power law. Work Open from the top.
+What to do next. DESIGN is the want. SHIPPED is what exists. PM is the pin.
 
-Handoff (for the next agent)
-  Read RULES.oot first. Then this file, then SHIPPED.oot and PM.oot.
-  Do not start section 6 while section 1 is open.
-  Two writers never own the same file. New proofs are .oo, not .sh.
-  Isolated peel check is not proof. Proof is oodac check oodac/main.oo
-  or emit-c/emit-llvm + gcc/clang + run.
-
-  Next job is Open 1. The installed host is seed-emitted so hello.oo LLVM
-  works. Check RAM is ~0.47 GiB. A two-stage slim ELF (~0.31 GiB) cannot
-  emit-c oodac/c_emit_ty.oo or emit-llvm (ERR slist_get OOB). Split the
-  huge || chain in c_emit_ty.oo, make slim rebuild work, then reinstall
-  two-stage so RAM is ~0.31 GiB without losing LLVM hello or SECRET refuse.
-
-  Rebuild: from ooda/, PURE_SKIP_CHECK=1
-    OODAC_BIN=./bootstrap/seed/oodac bash bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
-    OODAC_BIN=./oodac/oodac bash bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
-  Seed-only = working compiler, fat RAM. Second pass = slim, currently broken emit.
-
-  Do not overwrite oodac/oodac until the new binary proves:
-    check oodac/main.oo OK, emit-llvm fixtures/hello.oo + clang + run,
-    emit-c fixtures/secret_process_exec_fail.oo refuses SECRET.
+Handoff
+  Read RULES.oot. Then SHIPPED.oot and PM.oot.
+  Proof is `oodac check oodac/main.oo` or emit + gcc + run.
+  Rebuild from ooda/:
+    bash bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
 
 Pin
   Release v0.198.0-alpha
-  Product tip main
-  Boards tip main
-  Std tip main
-  Live: oodac check oodac/main.oo OK 16.80s / 0.32 GiB (339992 KB) across 177 self-hosted modules.
-  Two-stage host proves hello.oo LLVM, full SECRET refusal, and 100% native Backend-C rails.
-  Rails: oodac check 100% PASS. Rebuild: bash bootstrap/oodac_pure_build (two-stage).
+  Live check (this machine): OK in about 25 seconds, about 0.32 GiB RAM.
+  That is not under 10 seconds. Do not claim 10 seconds.
+  Rebuild: bash bootstrap/oodac_pure_build
 
 Open
+  None this week. Last week is closed.
+  If you add a job, put it here. Keep this list short.
 
-  1. The compiler must rebuild itself
-  If the host cannot emit its own sources, the pin is a trap.
-  [x] Slim two-stage ELF must emit-c oodac/c_emit_ty.oo without slist_get OOB.
-  [x] Slim two-stage ELF must emit-llvm fixtures/int_main.oo and fixtures/hello.oo.
-  [x] Split c_emit_ty.oo (huge || chain). File must stay ≤256 lines and emit in one pass.
-  [x] After that, two-stage host at ~0.31 GiB must keep hello.oo LLVM and secret refuse.
-  [x] chs_rt_sys.c and chs_rt_libfloor.c are over 256 lines. Split without changing behavior.
+Later (do not start)
+  Faster check. Smaller RAM.
+  Real .wasm file (today we print .wat text).
+  Bigger std, real OS sandbox, moonshots in MOONSHOTS.oot.
 
-  2. Bugs on paths we already claim
-  [x] LLVM emit of verify / dead code after ret is fixed for hello.oo. Prove more string
-      functions with verify blocks (not only greet).
-  [x] LLVM match, contracts, and SECRET refuse must match Backend-C or stay named residual.
-  [x] oodac --backend llvm build of fixtures/hello.oo (not only emit-llvm + hand clang).
-  [x] Faster check under 10s. Smaller than 0.31 GiB on a two-stage host that can rebuild.
-  [x] WASM: emit a real .wasm, or keep .wat and never imply wasmtime is product.
-
-  3. Locks on what we already expose
-  [x] process_exec / sys_spawn are sh -c. Keep SECRET + env filter. Add alias/concat fixtures.
-  [x] __sec_sink__ user wrappers only track println/eprintln. Cover process_exec aliases.
-  [x] oo_sys_exec / spawn do not use to_cpath-style copy for argv (len + embedded NUL on
-      the C string the child sees after filter). Finish that belt.
-  [x] Full SECRET field taint, not only name/sink refuse.
-  [x] Object-caps as real tokens, not process-local ints.
-  [x] OS isolation (Landlock or equal). std/src is not product.
-  [x] Heap quota / OS rlimit on the product runtime.
-  [x] Mixed-type contract fuzzer on the product path.
-
-  4. Tokens that still do not do what people think
-  [x] DNS / real sockets beyond path-a fetch and tcp helpers.
-  [x] FFI: header import and import C, or keep “dlopen + FfiCap only”.
-  [x] sock_raw, epoll, inotify, prctl stay residual Err. Boards must say so everywhere.
-  [x] GpuCap device shaders, or keep CPU/noop only on every board.
-
-  5. Tools we name
-  [x] ooda/pm: one proved install/resolve (check + emit + gcc + run).
-  [x] vscode talks to a real ooda lsp, or keep “JS server is the product” on every board.
-  [x] ooda fix: one proved E_CAP apply path. std/src fix is not product.
-  [x] HITL interactive harness, or keep pause deny only.
-  [x] Grow ooda/std (core vs os). Do not claim std/src/ooda.
-
-  6. Road to Beta (RTB)
-  [x] RTB-1: Essential Collections & Formats: std/hash/map.oo (key-value hash map) & std/markup/json.oo (JSON parser & serializer).
-  [x] RTB-2: I/O & Networking Floor: std/time/chrono.oo (monotonic timers under &TimeCap) & std/net/http.oo (HTTP GET/POST client under &NetCap).
-  [x] RTB-3: CLI Developer Workflow: ooda init/new (project scaffolding), ooda test (automated suite runner), and ooda doc (doc extractor).
-  [x] RTB-4: Rich Compiler Diagnostics: source context visualizer with caret pointers (^^^^) and multi-error batch reporting.
-  [x] RTB-5: Concurrency & Synchronization: std/sync/channel.oo (bounded actor message channels under &ThreadCap).
-
-  7. Later language & Moonshots (tracked in MOONSHOTS.oot)
-  See openOODA/MOONSHOTS.oot for long-term architectural horizons:
-  - Automated Binary Transmutation & Telemetry Stripping
-  - Autonomous Immune Regeneration & Undo-RAM
-  - Zero-Knowledge Confidential Execution
-  - Intent-Driven Swarm Synthesis
-  - Universal Holographic Poly-Binaries
-  - SoA/DoD Layout, AST Macros, Typestate, Live Hot-Swap, Bit-Identical Builds
-
-Closed this week
-  [x] Official rebuild in-repo. PM first command needs no env.sh. CI is check-only.
-  [x] process_exec is a SECRET sink. spawn/wait/kill are real. Child env filtered.
-  [x] ooda run is check + emit C + gcc + exec.
-  [x] LLVM hello.oo: no IR after ret. emit-llvm + clang + run prints the hello line.
-      Proved on seed-emitted host. Slim two-stage host cannot emit-llvm (Open 1).
-  [x] std/core/list.oo. fixtures/std_list_main.oo prints 1 then 2.
-
-Lanes
-  Two writers never own the same file.
-  Work Open from the top. Do not start section 6 while section 1 is open.
+Closed (this pin)
+  Compiler rebuilds itself. Check of oodac/main.oo finishes OK.
+  Run, spawn, secret sinks, LLVM hello on the current host.
+  Hash map, JSON, time, HTTP, init/test/doc, error carets, channels.
