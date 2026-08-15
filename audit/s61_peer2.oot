@@ -10,13 +10,8 @@
 # Tip (ooda): 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
 # ID honesty: DESIGN/PM 6.1 = metamorphic-vs-deterministic (different ID).
 #             This file is SPRINT backlog 6.1 = env_set SECRETSINK re-prove.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 ## **ACCEPT** setenv / unsetenv SECRET-sink parity with env_set
-
 SPRINT **6.1** names `env_set` in SECRETSINK (landed with 2.3). Peer 2
 probed the four-way SECRET surface live on the shipping host:
 
@@ -43,10 +38,7 @@ Do **not** claim: product `oo_env_set` / `oo_setenv` / `oo_unsetenv`;
 lists `setenv`/`unsetenv` (it lists `env_set` + `getenv` only);
 `getenv` is a SECRETSINK (it is not — SECRET IDENT is **not** refused).
 
-========================================================================
-CLAIM UNDER PRESSURE
-========================================================================
-
+## CLAIM UNDER PRESSURE
 | Slice | Path-A claim | Peer 2 gate |
 |-------|--------------|-------------|
 | 6.1 `env_set` in SECRETSINK | emit refuse SECRET IDENT | `ERR\tsecret\tenv_set sink refuses SECRET token` rc=1 |
@@ -57,15 +49,14 @@ CLAIM UNDER PRESSURE
 | `setenv` ≡ `unsetenv` ≡ `env_set` | write-side parity | **PASS** (emit + llvm + check-type residual) |
 | `env_get` ≡ write-side | full product parity | **FAIL** (check + lower only) — residual, not 6.1 FN |
 
-========================================================================
+---
 SUMMARY TABLE (live host 07:49)
-========================================================================
+---
 
 Fixtures ephemeral under `/tmp/s61_peer2_1103362/` (not in-tree).
 `OODAC=ooda/oodac/oodac`. `sec=1` means `ERR\tsecret` present.
 
 ### A. emit-c SECRET IDENT (fail-closed)
-
 | # | Call | SECRET | rc | sec | Message | VERDICT |
 |---|------|--------|----|-----|---------|---------|
 | 1 | `env_get(envc, token)` | key | 1 | 1 | `env_get sink refuses SECRET token` | **PASS** |
@@ -79,7 +70,6 @@ Fixtures ephemeral under `/tmp/s61_peer2_1103362/` (not in-tree).
 | 9 | repo `secret_env_get_fail.oo` | key | 1 | 1 | `env_get sink refuses SECRET token` | **PASS** |
 
 ### B. emit-c clean / string-lit (no SECRET FP)
-
 | # | Call | rc | sec | Other ERR | VERDICT |
 |---|------|----|-----|-----------|---------|
 | 10 | `env_get(envc, public)` unused SECRET | 0 | 0 | — | **PASS** product OK |
@@ -94,7 +84,6 @@ Fixtures ephemeral under `/tmp/s61_peer2_1103362/` (not in-tree).
 | 19 | repo `secret_env_get_pass.oo` | 0 | 0 | — | **PASS** product OK |
 
 ### C. `oodac check` dual-path
-
 | # | Name | SECRET fail | Clean / lit | VERDICT |
 |---|------|-------------|-------------|---------|
 | 20 | `env_get` | `ERR\tsecret` rc=1 | `OK` rc=0 | **PASS** dual-path |
@@ -107,16 +96,14 @@ Fixtures ephemeral under `/tmp/s61_peer2_1103362/` (not in-tree).
 the CLI never reports `ERR\tsecret` for untyped names.
 
 ### D. emit-llvm (same `check_secret_println_sinks` pre-pass)
-
 | # | Case | rc | sec | VERDICT |
 |---|------|----|-----|---------|
 | 24 | env_get / env_set / setenv / unsetenv SECRET IDENT | 1 | 1 | **PASS** four-way |
 | 25 | env_set lit / setenv pass / unsetenv lit / env_get pass | 0 | 0 | **PASS** no-FP (llvm does **not** hit C `unknown free call`) |
 
 ### E. Official 6.1 smoke (not peer-owned)
-
 ```
-cd ooda && OODAC_BIN=./oodac/oodac bash scripts/s61_env_set_secretsink_smoke.sh
+cd ooda && OODAC_BIN=./oodac/oodac bash scripts/s61_env_set_secretsink_smoke.oo
 ```
 
 | Rail | Result |
@@ -128,7 +115,6 @@ cd ooda && OODAC_BIN=./oodac/oodac bash scripts/s61_env_set_secretsink_smoke.sh
 | exit | **0** `s61_env_set_secretsink_smoke: ALL OK` |
 
 ### F. Adjacent (not 6.1 SECRET, named so nobody greens them)
-
 | # | Probe | Actual | VERDICT |
 |---|--------|--------|---------|
 | 26 | `is_sealed_env` | `env_get` + `env_set` + `getenv` + `verify_human`. **No** `setenv` / `unsetenv` | cap-seal **not** write-side parity |
@@ -139,9 +125,9 @@ cd ooda && OODAC_BIN=./oodac/oodac bash scripts/s61_env_set_secretsink_smoke.sh
 | 31 | in-tree fixtures | `secret_env_get_*` + `secret_setenv_*` only; **no** `secret_env_set_*` / `secret_unsetenv_*` | rails residual |
 | 32 | `diag_json` E_SECRET help | lists `env_get`; omits `env_set` / `setenv` / `unsetenv` | hygiene residual |
 
-========================================================================
+---
 SOURCE PARITY (write-side names)
-========================================================================
+---
 
 | Site | env_get | env_set | setenv | unsetenv |
 |------|---------|---------|--------|----------|
@@ -162,14 +148,11 @@ Host ELF (`nm`): `c_secret_is_sink_name` `T` @ `0x45c1c0`,
 `T` @ `0x475c50`. Refuse format is assembled
 (` sink refuses SECRET ` in rodata), not a per-sink static string.
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Read SPRINT 6.1, `SECRET_TAINT.oot`, `CAPS_MATRIX.oot`,
    `c_emit_secret_guard.oo` / `c_emit_secret.oo` / `c_emit_secret_alias.oo`,
    `check_cap_util.oo` `is_sealed_env`, `tc_names.oo`, `c_emit_lower.oo`,
-   `check_drive.oo` order, `scripts/s61_env_set_secretsink_smoke.sh`,
+   `check_drive.oo` order, `scripts/s61_env_set_secretsink_smoke.oo`,
    `audit/s61_harness.oot`, `audit/s61_runtime.oot`.
 2. Independent tmp matrix (not repo fixtures except the two existing
    `secret_setenv_*` / `secret_env_get_*` controls).
@@ -177,9 +160,9 @@ METHOD
 4. Official smoke exit 0 (re-ran).
 5. Negative: `getenv` SECRET (not a sink). Alias abort noted, not owned.
 
-========================================================================
+---
 RESIDUAL (named; do not REJECT 6.1 SECRET parity on these)
-========================================================================
+---
 
 | ID | Kind | Note |
 |----|------|------|
@@ -193,10 +176,7 @@ RESIDUAL (named; do not REJECT 6.1 SECRET parity on these)
 | R-help | hygiene | `diag_json` E_SECRET omits write-side names |
 | R-ifc | design | full IFC / `#[Secret]` / `${}` — SECRET_TAINT residual |
 
-========================================================================
-OVERALL
-========================================================================
-
+## OVERALL
 **ACCEPT** SPRINT 6.1 setenv/unsetenv SECRET parity.
 
 - Write-side trio is **one SECRETSINK family** on the live host.

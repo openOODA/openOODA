@@ -19,13 +19,8 @@
 #   strings: `ERR	secret	println sink refuses SECRET `
 # Tip (ooda): 52cc4b5 + dirty print/secret/check_drive (depth unshipped)
 # Same ELF as s29b_peer1. WT depth is **not** this binary.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 ## **REJECT** 2.9 wave-3 (check + emit-c SECRET refuse)
-
 Assigned gate: ACCEPT only if **both** `check` and `emit-c` print
 `ERR	secret` (rc≠0) on all four MUST probes.
 
@@ -46,10 +41,7 @@ check `OK` + emit-c `oo_print_str(oo_str_concat((oo_str_lit("x")), tok))`
 Do **not** ACCEPT. Do **not** treat WT paren-depth as shipped. Do **not**
 treat wave-1 bare rails or `s29_println_guard_smoke` exit 1 as this OWN.
 
-========================================================================
-CLAIM UNDER PRESSURE
-========================================================================
-
+## CLAIM UNDER PRESSURE
 | Slice | Wave-3 claim | Peer gate |
 |-------|--------------|-----------|
 | `println((n), tok)` | later SECRET after grouped first arg | `ERR	secret` on **check and emit-c** |
@@ -58,10 +50,7 @@ CLAIM UNDER PRESSURE
 | `println(n, tok)` | no-paren multi-arg still refuse | same (regression control) |
 | Type / drop / first-arg-only | **not** a refuse | rc≠0 without `ERR	secret` = FAIL |
 
-========================================================================
-HOST / SOURCE PIN
-========================================================================
-
+## HOST / SOURCE PIN
 | Item | Value |
 |------|--------|
 | When (UTC) | 2026-08-12T19:44Z |
@@ -78,9 +67,9 @@ HEAD / this ELF: skip at most one `LPAREN`, stop at first `RPAREN`.
 WT added `depth` in `check_secret_println_sinks` / `c_secret_scan_call`
 and `d` in `c_emit_println`. **Unshipped.** Peer ACCEPT is the live ELF.
 
-========================================================================
+---
 MECHANISM (why 1–3 fail and 4 passes on this ELF)
-========================================================================
+---
 
 Three rails, still not equivalent:
 
@@ -108,9 +97,9 @@ free-call → guard sees `tok` → SECRET.
 `println(n, tok)`: no inner `RPAREN`. Front-door sees `tok` first
 (emit-c 8141 B, no `oo_print_*` of args).
 
-========================================================================
+---
 LIVE BYTES (product host)
-========================================================================
+---
 
 Probes: `/tmp/s29c_peer1_1251061/` (ephemeral; not committed).
 
@@ -141,7 +130,6 @@ check   rc=1  ERR<tab>type<tab>Type error at 5:5: function 'println'
               expects at least 1 argument
 emit-c  rc=0  oo_print_int((oo_str_concat((oo_str_lit("x")), tok)));
               oo_println();   # SECRET ident is a print operand
-
 # 2b println(("x")+tok)   [allowed alt of #2]
 check   rc=0  OK
 emit-c  rc=0  oo_print_str(oo_str_concat((oo_str_lit("x")), tok));
@@ -157,9 +145,9 @@ check   rc=1  ERR<tab>secret<tab>println sink refuses SECRET tok
 emit-c  rc=1  same (no oo_print of args)
 ```
 
-========================================================================
+---
 NOT THE ACCEPT BAR (named so they are not lost)
-========================================================================
+---
 
 | Path | 1 `(n), tok` | 2 `(("x")+tok)` | 3 `eprintln(id(1), tok)` | 4 `n, tok` |
 |------|--------------|-----------------|--------------------------|------------|
@@ -175,15 +163,15 @@ No-FP control: `println("tok")` check `OK` / emit-c
 `oo_print_str(oo_str_lit("tok"))` — **0 secret FP**. Bare `println(tok)`
 still dual SECRET. Wave-1 floor holds. Wave-3 grouping does not.
 
-`scripts/s29_println_guard_smoke.sh` (194 L, md5
+`scripts/s29_println_guard_smoke.oo` (194 L, md5
 `2ad0ee9592709771015e8fc55298a81e`): bare + string + eprintln IDENT
 OK; `println((1), tok)` emit-c SECRET / **check accepts**;
 `println(("x") + tok)` **emit-c accepts** (leak) →
 `s29_println_guard_smoke: FAILED`.
 
-========================================================================
+---
 VS SIBLINGS (independent; RULES §1.9)
-========================================================================
+---
 
 | Sibling | Their claim | This OWN |
 |---------|-------------|----------|
@@ -192,10 +180,7 @@ VS SIBLINGS (independent; RULES §1.9)
 | WT print `d` + secret `depth` | source land | **not** ACCEPT until host dual-path |
 | Official s29 smoke | wave-3 rails | **FAIL** (check #1, emit-c #2) |
 
-========================================================================
-RESIDUALS
-========================================================================
-
+## RESIDUALS
 1. **This REJECT** — check first-`)` FN (1, 3, 2b) + stmt IDENT-scan
    FN leak (2, 2b) + check TYPE-not-SECRET (2).
 2. **Host ≠ WT.** Depth + secret-before-type exist only in source.
@@ -205,10 +190,7 @@ RESIDUALS
 4. **LLVM / wasm / bc** — hole shapes ALLOW or leak.
 5. **`${}` / `#[Secret]` / 2.10 wrappers / 2.8 expand** — other IDs.
 
-========================================================================
-CLOSE TABLE
-========================================================================
-
+## CLOSE TABLE
 | Item | Status |
 |------|--------|
 | `println((n), tok)` check+emit-c SECRET | **FAIL** (check OK) |

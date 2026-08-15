@@ -7,11 +7,7 @@
 # Binary: oodac/oodac @ 2026-08-12 03:30 (937592 B) — contains __secref__ /
 #         c_secret_note_bare_alias / c_secret_resolve_name
 # Tip (ooda): 1f67f4d (working tree dirty; secret units uncommitted relative to tip)
-
-========================================================================
-SUMMARY
-========================================================================
-
+## SUMMARY
 | # | Claim under verify | Expected | Actual | VERDICT |
 |---|--------------------|----------|--------|---------|
 | 1 | `secret_alias_rebind_pass` | refuse println after secret assign | rc=1 + `ERR\tsecret\tprintln sink refuses SECRET y` | **PASS** |
@@ -32,9 +28,9 @@ assign-time `__alias__` from prior land):
 | require LPAREN in `c_secret_scan_call` | `c_emit_secret.oo` | bare `let w = write_file` must not open-scan rest of file |
 | bare IDENT alias note + resolve | `c_emit_secret_alias.oo` (+ call sites in `c_emit_secret.oo`) | `let w = write_file; w(...)` is a write_file sink at check |
 
-========================================================================
+---
 V1 — secret_alias_rebind_pass (must refuse)
-========================================================================
+---
 VERDICT: PASS
 
 Fixture `ooda/fixtures/secret_alias_rebind_pass.oo`:
@@ -58,12 +54,12 @@ ERR	secret	println sink refuses SECRET y
 Mechanism: assign `y = api_key` → `c_secret_prop_from_rhs` sets `__sec__y=1`
 (api_key is directive-rooted). println bare IDENT `y` refuses.
 
-Smoke wiring (`scripts/secret_sink_enforce_smoke.sh`):
+Smoke wiring (`scripts/secret_sink_enforce_smoke.oo`):
   expect_refuse "secret_alias_rebind_pass"
 
-========================================================================
+---
 V2 — secret_alias_rebind_fail (must allow after clean rebind)
-========================================================================
+---
 VERDICT: PASS
 
 Intended honesty (confirmed multi-source, not over-refuse residual):
@@ -100,9 +96,9 @@ Clear rules (`c_secret_prop_from_rhs`):
 `secret_sticky_residual.oo` now also allows (same shape as rebind_fail) —
 residual→path-A clear; doc §3 already claims this.
 
-========================================================================
+---
 V3 — invent let w = write_file (no silent bypass)
-========================================================================
+---
 VERDICT: PASS (check-time refuse); residual honesty on full emit of `w`
 
 Invent A — secret content via alias callee:
@@ -140,9 +136,9 @@ c_emit_ident already records assign-time `__alias__` for emit-path
 `c_secret_refuse_sink_resolved` (arg alias chain). Check-time bare let alias
 is the invent-critical path.
 
-========================================================================
+---
 V4 — floor non-regression (secref protect)
-========================================================================
+---
 VERDICT: PASS
 
 | Fixture | Expected | Live |
@@ -157,10 +153,7 @@ VERDICT: PASS
 Without `__secref__`, clean `let api_key = "x"` would clear the directive tag
 and greenwash sink_fail. secref blocks that.
 
-========================================================================
-LINE LOCK / FILES TOUCHED
-========================================================================
-
+## LINE LOCK / FILES TOUCHED
 | File | Lines (live) | ≤300 | Role |
 |------|-------------:|:----:|------|
 | oodac/c_emit_secret.oo | 263 | PASS | parse secref; LPAREN scan; check walk + resolve |
@@ -171,9 +164,7 @@ LINE LOCK / FILES TOUCHED
 
 main.oo imports (order): secret_alias → secret → secret_prop → secret_guard.
 
-========================================================================
-COMMANDS REPRO
-========================================================================
+## COMMANDS REPRO
 ```
 cd /home/jeryd/Projects/openOODA/ooda
 OODAC=./oodac/oodac
@@ -181,17 +172,15 @@ OODAC=./oodac/oodac
 # V1 refuse
 $OODAC emit-c fixtures/secret_alias_rebind_pass.oo 2>&1 | grep $'ERR\tsecret'
 # expect: ERR	secret	println sink refuses SECRET y ; rc!=0
-
 # V2 allow
 $OODAC emit-c fixtures/secret_alias_rebind_fail.oo 2>&1 | grep $'ERR\tsecret' || echo OK_no_secret_err
 # expect: rc=0, no secret ERR
-
 # V3 invent (write fixture as above) — secret must refuse; clean must not secret-refuse
 ```
 
-========================================================================
+---
 RESIDUALS (not FAIL of this matrix)
-========================================================================
+---
 - Full emit of `let w = write_file; w(...)` still hits free-call annotation
   residual (not rewritten to sealed write_file at lower). Secret check is
   honest; product green emit of alias-callee is out of peer2 OWN.

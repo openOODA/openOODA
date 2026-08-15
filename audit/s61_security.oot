@@ -12,11 +12,9 @@
 #         (ephemeral `/tmp/s61_sec.FKg4Ju`; no product source edit)
 # Policy: fail-closed SECRET must not reach process env via env_set/setenv.
 #         Do **not** reopen 7.x (7.1 walker / 7.2 last-arg / 7.10 parse).
-
 ---
 
 ## Claim under pressure
-
 SPRINT **6.1** (HIGH): Confirm `env_set` in SECRETSINK (partially landed
 with 2.3 — re-prove). Zero-trust gates for **this** close (not 7.x, not
 full IFC, not T2 field completeness):
@@ -37,7 +35,6 @@ missing name in the sink set as **fail-open residual**, not a soft pass.
 ---
 
 ## Surfaces reviewed
-
 | Surface | Path | Role |
 |---------|------|------|
 | Emit guard | `ooda/oodac/c_emit_secret_guard.oo` L117, L156–165, L214–225 | `env_set` a1 + OS a1/a2 + full `c_guard_scan_idents` |
@@ -53,7 +50,6 @@ missing name in the sink set as **fail-open residual**, not a soft pass.
 ---
 
 ## SUMMARY
-
 | # | Gate | Verdict |
 |---|------|---------|
 | Z1 | `env_set`/`setenv` in SECRETSINK | **PASS** |
@@ -72,7 +68,6 @@ named sink, or LLVM a0 secret-diagnostic parity. Residuals below.
 ---
 
 ## How SECRET could reach env (threat model)
-
 1. **Named product write** — `env_set(cap, key, value)` / `setenv(...)`
    lowered to a runtime that calls libc `setenv`/`putenv`.
 2. **Raw C ident** — emit leaves `setenv(oo_str_lit(...), …)` which
@@ -94,7 +89,6 @@ Z3 is the environ-write class. Z2 is the named-sink refuse class.
 ---
 
 ## Attack results (product host)
-
 Verdict key:
 
 - **BLOCK** = `ERR secret` + rc≠0 on that path
@@ -103,11 +97,10 @@ Verdict key:
 - **FN** = ALLOW when unquoted SECRET reached a named env-write sink
 - **LIVE** = compiled+linked program actually mutated `environ`
 
-Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`  
+Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`
 Probes: `/tmp/s61_sec.FKg4Ju/e*.oo` (ephemeral).
 
 ### Z1 — name is in SECRETSINK
-
 | Site | `env_set` | `setenv` | `unsetenv` | `putenv` |
 |------|-----------|----------|------------|----------|
 | `c_secret_is_sink_name` | **yes** | **yes** | **yes** | **no** |
@@ -123,7 +116,6 @@ the OS a1+a2 list (L157). Full args scan covers remaining idents on
 emit-c. Confirmed In.
 
 ### Z2 — SECRET key / value (cap-first product shape)
-
 | # | Shape | emit-c | check | emit-llvm | Verdict |
 |---|-------|--------|-------|-----------|---------|
 | F | fixture `secret_setenv_fail` (`setenv(envc,"KEY",token)`) | BLOCK `setenv` token | DENY type `undefined setenv` | BLOCK `setenv` token | **BLOCK** emit/llvm |
@@ -148,7 +140,6 @@ it is fail-closed on rc but **not** dual-path `ERR secret`. Same class
 as T2 `ffi_call`. Product `env_get` **is** dual-path secret (lowered).
 
 ### Z2b — a0 SECRET (libc name slot / forged cap)
-
 Check/LLVM scan uses `want=1` (skip argi 0). Emit-c still has
 `c_guard_scan_idents` on full `args`.
 
@@ -166,7 +157,6 @@ gap** on the LLVM front door, **not** a live environ write (Z3).
 Named residual **R2**. Not a 6.1 Z3 FAIL.
 
 ### Z3 — does SECRET reach `environ`?
-
 | Path | What emit produced | Live write? |
 |------|--------------------|-------------|
 | Product `oo_env_set` | **absent** (`oo_env_get` only) | **no** |
@@ -190,18 +180,16 @@ error: incompatible type for argument 1 of 'setenv'
 ```
 
 ### FP / allow controls (not FN)
-
 | # | Shape | emit-c | Note |
 |---|-------|--------|------|
 | e16 | `env_set(envc,"KEY","token")` string spelling | ALLOW (no `ERR secret`) | **no FP**; C `env_set` leftover is public |
 | e17 | `// env_set(..., token);` + public call | ALLOW | **no FP** (line-start `// SECRET:` only) |
 | fixture `secret_setenv_pass` | `let r = setenv(envc,"KEY","public")` | DENY `unknown free call needs annotation setenv` | let-bind annotation rail; **not** a secret FP |
 
-`secret_sink_enforce_smoke.sh` `expect_ok secret_setenv_pass` is **stale**
+`secret_sink_enforce_smoke.oo` `expect_ok secret_setenv_pass` is **stale**
 vs this host (let-bound unknown free call). Honesty, not a 6.1 FN.
 
 ### Sibling: `putenv` / `getenv` (not 6.1 named sinks)
-
 | # | Shape | emit-c secret | check | llvm |
 |---|-------|---------------|-------|------|
 | e10 | `putenv(token)` SECRET | **ALLOW** (not in sink set) | DENY type | ALLOW `@putenv(%OoStr)` |
@@ -212,113 +200,7 @@ vs this host (let-bound unknown free call). Honesty, not a 6.1 FN.
 fail-closed. Do **not** promote to “`putenv` sink In.” Not a 6.1 Z2 FAIL
 (claim is `env_set`/`setenv`).
 
----
 
-## Root-cause (why Z1–Z3 hold)
+*(Continued in `openOODA/audit/s61_security_part2.oot`)*
 
-1. **Names are on the list (2.3 / 6.1 landed)**
-   - `c_secret_is_sink_name` includes `env_set` / `setenv` / `unsetenv`.
-   - emit-c: OS a1/a2 + **full args ident scan** (7.1 walker used as a
-     rail, not re-opened).
-   - check/LLVM: token IDENT walk `argi >= 1`.
-
-2. **There is no product env-write lower**
-   - `env_get` → `oo_env_get` + EnvCap.
-   - `env_set` / `setenv` stay the source ident (`c_lower_call_name`
-     returns `""`; default `call = t + "(" + args + ")"`).
-   - `CAPS_MATRIX.oot`: `env_set`/`getenv` sealed but not product-lowered
-     → link fail if used (fail-closed residual).
-
-3. **OoStr ≠ `char *`**
-   - Even a raw C `setenv`/`putenv` statement cannot bind glibc without
-     a type error. Second fail-closed layer for Z3.
-
-4. **Check is fail-closed, emit-strong on secret**
-   - Typecheck / cap-arg-flow run **before** secret on `oodac check`
-     (`check_drive.oo`). Undefined `setenv`/`env_set` exits type-first.
-   - `env_set` a0 that is not the granted EnvCap → cap default-deny.
-   - `setenv` is **not** `is_sealed_env` → type-only on check.
-
-5. **LLVM front door is check-scan only**
-   - No `c_secret_emit_guard` / full args scan on `emit-llvm`.
-   - a0 SECRET therefore ALLOW in IR. Types still not libc.
-
----
-
-## Scorecard
-
-| Metric | Count |
-|--------|------:|
-| Z1 name-set confirmed | **yes** (`env_set`+`setenv`+`unsetenv`) |
-| Z2 SECRET key/value emit-c FN | **0** |
-| Z2 SECRET key/value emit-llvm FN | **0** |
-| Z2 check dual-path `ERR secret` | **no** (type/cap) |
-| Z3 LIVE environ writes | **0** |
-| llvm a0 secret-diagnostic miss | **4** probes (e4/e6/e12/e22/e23 class) |
-| `putenv` secret-rail miss | **yes** (sibling) |
-| String/comment FP | **0** |
-| 7.x reopened | **no** |
-| CRIT 6.1 SECRET→environ | **0** |
-
-**6.1 security path-A: PASS**
-
----
-
-## Residual risks (return)
-
-| ID | Sev | Residual | Why not 6.1 FAIL |
-|----|-----|----------|------------------|
-| R1 | MED | `oodac check` type/cap-first: no dual-path `ERR secret` for `env_set`/`setenv` | rc≠0 still fail-closed; emit-c/llvm carry the secret contract for key/value |
-| R2 | MED | LLVM (+ check scan) `want=1` skips a0; `emit-llvm` ALLOW `@env_set/@setenv(%OoStr secret, …)` | emit-c full scan BLOCK; IR ABI ≠ libc; no `oo_env_set`; `env_set` a0 also cap-denied |
-| R3 | MED | `putenv` / `clearenv` / `environ` **not** SECRETSINK; emit ALLOW `putenv(SECRET)` | not the 6.1 named pair; gcc type-fail; add to sink list later |
-| R4 | LOW | stmt public `setenv`/`env_set` emit raw C (let-bind hits unknown-call) | public values only; C type / link fail-closed |
-| R5 | MED | User wrapper `wrap` → `env_set(c,k,v)` emit ALLOW (e26) | SPRINT **2.10** `__sec_sink__`; interproc beyond `__fr_secret__` is SECRET_TAINT residual |
-| R6 | LOW | `getenv(SECRET)` emit ALLOW; `getenv` sealed but not a secret write sink | read path; `env_get` is the product read sink and **does** refuse |
-| R7 | — | No product `oo_env_set` | `CAPS_MATRIX` fail-closed residual; do not claim env write In |
-| R8 | LOW | `setenv` not in `is_sealed_env` (only `env_set`/`getenv`/`env_get`) | check cannot cap-deny libc-style `setenv`; type residual |
-| R9 | — | Fixture `secret_setenv_pass` / smoke `expect_ok` stale vs unknown-call | harness honesty |
-| R10 | — | Full IFC / `#[Secret]` / `${}` / field lattice | SECRET_TAINT; **not** 6.1 |
-| R11 | — | 7.1 / 7.2 / 7.10 | **do not reopen**; walker is a 6.1 rail only |
-
-**Explicitly not residuals of this close:** T1 return/alias (e13/e14/e20
-BLOCK); T2 string/comment FP (e16/e17 ALLOW); T3 child `PATH` setenv
-after `clearenv`.
-
----
-
-## Reproduce
-
-```bash
-OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
-# named sink value (Z2)
-$OODAC emit-c   ooda/fixtures/secret_setenv_fail.oo   # ERR secret setenv token
-$OODAC emit-llvm ooda/fixtures/secret_setenv_fail.oo  # ERR secret setenv token
-$OODAC check    ooda/fixtures/secret_setenv_fail.oo   # ERR type undefined setenv
-
-# env_set value (ephemeral shape)
-# // SECRET: token
-# pub fn main(envc: &EnvCap) { let token = "s3cret"; env_set(envc, "KEY", token); }
-# emit-c / emit-llvm → ERR secret env_set sink refuses SECRET token
-
-# Z3: public stmt setenv emits libc-shaped call; gcc type-fails
-# emit-c of `setenv("KEY","public",1)` contains:
-#   setenv(oo_str_lit("KEY"), oo_str_lit("public"), 1LL);
-
-# a0 residual (R2): emit-llvm of setenv(token, "1", 1) → rc=0 + call @setenv(%OoStr)
-```
-
----
-
-## Close table
-
-| Item | Status |
-|------|--------|
-| Z1 `env_set`/`setenv` in SECRETSINK | **PASS** |
-| Z2 SECRET key/value refuse emit-c + llvm | **PASS** |
-| Z3 SECRET ↛ process `environ` | **PASS** |
-| Z4 check fail-closed | **PASS** (type/cap honesty) |
-| Z5 7.x not reopened | **PASS** |
-| **6.1 security** | **PASS** |
-| Residuals R1–R11 | **OPEN** (named; not this FAIL) |
-
-end of s61_security.oot
+end of s61_security.oot (part 1)

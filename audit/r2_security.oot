@@ -4,14 +4,12 @@
 # Host: product `ooda/oodac/oodac` (md5 7e1ce7df…, mtime 2026-08-12 06:41, 962680 B)
 # Surfaces: `ooda/oodac/load_import.oo`, check/emit wire (`check_drive.oo`,
 #            `check_mod.oo`, `main.oo`, `cli_emit.oo`), residual free-name
-#            refuse (`check_residual.oo`), smoke `scripts/r2_multi_import_tc_smoke.sh`
+#            refuse (`check_residual.oo`), smoke `scripts/r2_multi_import_tc_smoke.oo`
 # Method: source read + live product-host attack matrix + R2 smoke
 # Write locus: this audit file only (no product source modified).
-
 ---
 
 ## Claim under pressure
-
 R2 (SPRINT active / PM residual): multi-file import load + typecheck so
 multiple modules can be checked without crashing, without reopening
 zero-trust import path.
@@ -32,7 +30,6 @@ surface** until proved relative-only + fail-closed.
 ---
 
 ## Surfaces reviewed
-
 | Surface | Path | Role |
 |---------|------|------|
 | Import expand | `ooda/oodac/load_import.oo` | parse + reject + DFS load |
@@ -43,13 +40,12 @@ surface** until proved relative-only + fail-closed.
 | Residual free names | `ooda/oodac/check_residual.oo` | `import_c` / `ffi_gen` → FFI_GEN |
 | Caps walk | `ooda/oodac/check_caps.oo` | sealed ops per fn on expanded toks |
 | Diag residual | `ooda/oodac/tc_diag.oo` | Issue #9 expanded LINE honesty |
-| Residual concat | `ooda/scripts/oodac_concat.sh` | non-product EMIT_CONCAT residual |
-| R2 smoke | `ooda/scripts/r2_multi_import_tc_smoke.sh` | pass/fail rails |
+| Residual concat | `ooda/scripts/oodac_concat.oo` | non-product EMIT_CONCAT residual |
+| R2 smoke | `ooda/scripts/r2_multi_import_tc_smoke.oo` | pass/fail rails |
 
 ---
 
 ## SUMMARY
-
 | # | Claim | Verdict |
 |---|--------|---------|
 | S1 | `reject_bad_import_name` rejects `..` / abs / `~` / `\` (live + source) | **PASS** |
@@ -64,9 +60,7 @@ surface** until proved relative-only + fail-closed.
 ---
 
 ## S1 — Import name zero-trust (`reject_bad_import_name`)
-
 ### Source
-
 `ooda/oodac/load_import.oo` L93–124:
 
 - empty → `ERR\timport\tempty name` + `process_exit(1)`
@@ -80,7 +74,6 @@ Call site L167–169: after `parse_import_line`, non-empty names always hit
 `reject_bad_import_name` before `path_join` / `load_expand`.
 
 ### Live product-host matrix (`oodac check`, RC=1 unless noted)
-
 | Attack | Import name | Result | RC |
 |--------|-------------|--------|-----|
 | absolute | `/etc/passwd` | `ERR import absolute path rejected` | 1 |
@@ -108,9 +101,7 @@ explicit NUL branch (still fail-closed).
 ---
 
 ## S2 — No absolute `/home` leaks on load path
-
 ### Source honesty
-
 `load_import.oo` header L8–10 + L170–187:
 
 - Explicit: no `OODA_STD_PATH`, no abs `/home` probes.
@@ -118,11 +109,10 @@ explicit NUL branch (still fail-closed).
   `../../../std/` (host-relative, not home-rooted).
 
 ### Grep
-
 - `load_import.oo`: no `/home/jeryd` or `/home/` path literals (comments only
   mention “no abs /home”).
 - oodac product sources still have an unrelated absolute path residual in
-  `diag_json.oo` (`/home/jeryd/Projects/.../oodac_check_capture.sh`) — **out of
+  `diag_json.oo` (`/home/jeryd/Projects/.../oodac_check_capture.oo`) — **out of
   load_import scope**; not used by import resolve.
 
 **Verdict S2: PASS** for import load path.
@@ -133,15 +123,12 @@ escape).
 ---
 
 ## S3 — CT import reject residual still holds
-
 ### Source
-
 `check_residual.oo`: `import_c` / `ffi_gen` → feature tag `FFI_GEN`;
 `check_residual_free_calls` refuse + `process_exit(1)`.
 Wired from `run_check_core` → always after typechecks on expanded source.
 
 ### Live
-
 | Case | Command | Result | RC |
 |------|---------|--------|-----|
 | single-file `import_c` | `check ffi_single.oo` | `ERR residual … FFI_GEN` | 1 |
@@ -154,161 +141,7 @@ and lowered a call site — emit does not run `check_residual_free_calls`.
 Path-A CT refuse is check-primary; pure emit without prior check is residual
 honesty (prefer `check` / pure_build check gate).
 
----
 
-## S4 — Typecheck multi must not fail-open security
+*(Continued in `openOODA/audit/r2_security_part2.oot`)*
 
-Expanded source is a single token stream; `run_check_core` walks **all**
-functions for caps, then typechecks, secret sinks, residual free calls.
-
-### Live multi matrix
-
-| Case | Result | RC | Security note |
-|------|--------|-----|---------------|
-| clean multi (`tmp_multi_import/main_import.oo`) | OK | 0 | baseline |
-| type error in import (`return "nope"` as Int) | ERR type | 1 | no fail-open |
-| type error in main only | ERR type | 1 | no fail-open |
-| sealed `read_file` no cap in import | ERR capability | 1 | no fail-open |
-| wrong granular cap on sealed in import | ERR capability | 1 | no fail-open |
-| sealed with matching cap param | OK | 0 | correct allow |
-| R2 smoke `r2_multi_import_tc_smoke.sh` | ALL OK | 0 | pass/fail rails hold |
-
-### R2 smoke rails (product host)
-
-```
-OK pass: 2file_import_call
-OK pass: struct_type_across_import
-OK fail-closed: arg_type_mismatch_across_import
-OK fail-closed: missing_import_fail_closed
-r2_multi_import_tc_smoke: ALL OK
-```
-
-**Verdict S4: PASS** — multi-import typecheck and cap/residual gates refuse
-with non-zero exit; no observed OK on known-bad type/cap/residual cases.
-
----
-
-## S5 — Secret / cap notes (not primary)
-
-| Case | Result | Class |
-|------|--------|-------|
-| `// SECRET: k` + `println(k)` **same fn** in import | ERR secret RC=1 | path-A floor holds under expand |
-| SECRET tag in import, sink via return in main | OK RC=0 | **interproc SECRET residual** (T1 class; not multi-import gate failure) |
-| Cap refuse in imported fn | RC=1 | multi does not strip cap walk |
-
-Do **not** claim multi-import closed interprocedural SECRET. Note only.
-
----
-
-## Threats considered (import expand)
-
-### T1 — Path traversal via import name
-
-**Mitigated** for `..`, abs `/`, `~`, `\`. Nested `..` and `//` covered.
-
-### T2 — Symlink / relative outside project (no `..` in name)
-
-**Residual MED:** `import "out_link.oo"` where `out_link.oo` → absolute
-outside file **loads and checks OK**. Relative names without `..` follow FS
-symlinks / any readable path under `path_join(dir, imp)`. No realpath /
-O_NOFOLLOW on import load (contrast FFI open policy). Not classic `..`
-escape; still arbitrary-read-as-source if attacker plants a symlink in the
-project tree.
-
-### T3 — Std probe CWD coupling
-
-**Residual LOW:** host-relative `../std` … `../../../std` can resolve std
-from unexpected CWD. Not home-absolute; fail-closed if not found.
-
-### T4 — Residual shell concat (`oodac_concat.sh`)
-
-**Residual MED (non-product default):** script `abspath` accepts leading `/`
-import names; **no** `reject_bad_import_name` parity. Product check/emit
-default uses in-tree `load_import`. Documented residual for
-`EMIT_CONCAT=1` / pure_build script path — do not treat as sealed product
-import ZT.
-
-### T5 — Empty import line
-
-`import "";` → `parse_import_line` returns empty (not-import); body tokens
-kept; check may OK. **Residual LOW** (no file load). Empty branch in
-`reject_bad_import_name` is effectively dead for this parse surface.
-
-### T6 — NUL import name
-
-Source + binary have explicit NUL reject; live C string path may truncate
-at NUL → "not found" fail-closed without NUL-specific message. **Residual LOW**.
-
-### T7 — Partial emit after load fail
-
-`emit-c` prints preamble then load reject (rc=1). **Residual LOW** honesty
-(partial stdout); exit remains non-zero.
-
-### T8 — Issue #9 line/path attribution
-
-Type errors in imports report **expanded-stream** LINE:COL. Usability /
-agent triage residual — **not** fail-open of the type gate itself.
-
-### T9 — H6 size gates
-
-Per-file 64KiB at CLI load (`main.oo`); expanded 1MiB in `run_check_core`.
-DoS/cost residual; fail-closed when exceeded.
-
----
-
-## Residual risks (register)
-
-| ID | Sev | Residual | Close when |
-|----|-----|----------|------------|
-| R2-S1 | MED | Symlink / relative path loads arbitrary readable files without `..` | realpath + stay-under-root or O_NOFOLLOW on import open |
-| R2-S2 | MED | `oodac_concat.sh` lacks import-name ZT (abs allowed) | port reject_bad_import_name or delete concat path |
-| R2-S3 | MED | `emit-c` alone does not refuse residual free names (`import_c`) | run residual check before emit, or require check gate |
-| R2-S4 | LOW | `import ""` not rejected as bad import name | parse empty quoted name → reject_bad |
-| R2-S5 | LOW | NUL may truncate before explicit NUL refuse message | preserve NULs in parse or reject at lexer |
-| R2-S6 | LOW | Issue #9 expanded LINE (not per-file) | line_base / path markers in expand |
-| R2-S7 | LOW | `../std` CWD-coupled std probes | EnvCap + OODA_STD_PATH or pin std root |
-| R2-S8 | note | Cross-file SECRET interproc still residual (T1) | full return/taint lattice (out of R2 OWN) |
-| R2-S9 | LOW | Partial preamble on emit before import ERR | emit preamble after successful load |
-
----
-
-## Prove commands (repro)
-
-```bash
-cd /home/jeryd/Projects/openOODA
-OODAC=ooda/oodac/oodac
-
-# ZT import rejects (expect RC=1 + ERR import)
-$OODAC check /tmp/r2_sec_import/abs.oo
-$OODAC check /tmp/r2_sec_import/dotdot.oo
-$OODAC check /tmp/r2_sec_import/home.oo
-$OODAC check /tmp/r2_sec_import/bslash.oo
-
-# CT residual multi (expect RC=1 residual FFI_GEN)
-$OODAC check /tmp/r2_sec_multi/ffi_main.oo
-
-# Type / cap multi fail-closed
-$OODAC check /tmp/r2_sec_multi/main.oo          # type in import
-$OODAC check /tmp/r2_sec_multi/cap2_main.oo      # capability
-
-# R2 smoke
-cd ooda && bash scripts/r2_multi_import_tc_smoke.sh
-```
-
----
-
-## Honesty
-
-- Path-A security audit only. Does **not** claim R2 "multi-import type check
-  feature complete" for all DESIGN module systems — only that security gates
-  do not fail-open under current expand+check.
-- Secret/cap full lattice not OWN this pass; same-fn secret + sealed-cap
-  walks still refuse on expanded multi.
-- No product code modified this session.
-
-**Overall: PASS** — zero-trust import rejects hold; no `/home` load probes;
-CT `import_c` residual holds on check multi; typecheck multi does not
-fail-open type/cap/residual security gates. Residuals registered, not
-silent.
-
-end of r2_security.oot
+end of r2_security.oot (part 1)

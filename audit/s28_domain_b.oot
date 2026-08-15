@@ -13,11 +13,7 @@
 #
 # ID collision: DESIGN/PM **1.4** = first-class AST macros (moonshot refuse).
 # This file is SPRINT backlog **2.8** = macro-body SECRET (or residual doc).
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 **N/A** (no product macros). No source change this turn. 7.x not rewritten.
 
 Nothing in Path A **expands** user code before the SECRET sink scan.
@@ -43,9 +39,9 @@ FN-hide. Live product host:
 Domain A (when landed) owns refuse-until-later + `s28_macro_secret_smoke`.
 This file owns **expansion-hide**: `#[]` / `##` / invented paste.
 
-========================================================================
+---
 SCOPE (orthogonal to Domain A)
-========================================================================
+---
 
 | In | Out |
 |----|-----|
@@ -56,9 +52,9 @@ SCOPE (orthogonal to Domain A)
 | Isolated tmp probes (not committed fixtures) | 2.10 `__sec_sink__` wrappers (not macros) |
 | | 5.8 `${}` product interp; SPRINT flip; remotes |
 
-========================================================================
+---
 WHY EXPAND WOULD MATTER (attack class)
-========================================================================
+---
 
 `check_secret_println_sinks` walks **source** `toks` after `tokenize_lines`
 (`c_emit.oo:86`, `check_drive.oo:62`, `llvm_emit.oo:79`). If a macro
@@ -66,9 +62,9 @@ rewrote `HIDE!(tok)` → `println(tok)` **after** that walk, the sink IDENT
 would be invisible. Path A has **no** such rewrite, so the attack class
 is **vacuous**.
 
-========================================================================
+---
 STATIC (tip source; B did not edit)
-========================================================================
+---
 
 | Site | Fact |
 |------|------|
@@ -96,14 +92,13 @@ Helpers `expand_macro` / `token_paste` / `concat_idents` / `HASHHASH` →
 7.1 walker / 7.2 last-arg / 7.10 parse-env **untouched by B**.
 (Dirty-tree hunks on those files are 7.x / 2.10 / 6.1 — other OWN.)
 
-========================================================================
+---
 LIVE MATRIX — dual-path (tmp `$TMPDIR/s28_b_probes`)
-========================================================================
+---
 
 Dir not committed. Host `oodac` check / tokens / emit-c / emit-llvm.
 
 ### Product residual names (no expand)
-
 | Probe | check | emit-c | emit-llvm | Expand? |
 |-------|-------|--------|-----------|---------|
 | product `residual_macro_fail` | **REFUSE** `ERR residual` AST_MACROS | **REFUSE** `unknown free call` `macro_expand` | **rc=0** `call i64 @macro_expand` | **no** |
@@ -116,7 +111,6 @@ emit-llvm / stmt-form emit-c fail-open on residual **names** is ideas **I5**
 (not a SECRET FN). Still **no rewrite**.
 
 ### `#[]` / C-preproc / token-paste (this OWN)
-
 | Probe | check / tokens | emit-c / llvm | Result |
 |-------|----------------|---------------|--------|
 | `#[Secret]` + `println(tok)` | `ERR lex` `#` at 1:1 | same lex after preamble | **no attr** |
@@ -129,7 +123,6 @@ emit-llvm / stmt-form emit-c fail-open on residual **names** is ideas **I5**
 | `println($tok)` | lex `$` | — | **no `$` paste** |
 
 ### Invented “macro” forms (not product)
-
 | Probe | tokens | check | SECRET + same form |
 |-------|--------|-------|--------------------|
 | `macro leak(x) { println(x); }` | IDENT `macro` (not KW) | `ERR parse unexpected IDENT` | parse-fail; **no expand** |
@@ -142,29 +135,22 @@ emit-llvm / stmt-form emit-c fail-open on residual **names** is ideas **I5**
 a Rust bang-macro. Sink scan still sees `println` + IDENT `tok`.
 
 ### Control (first-pass still live)
-
 | Probe | check | emit-c | llvm |
 |-------|-------|--------|------|
 | `// SECRET: tok` `println(tok)` | **BLOCK** `println sink refuses SECRET tok` | **BLOCK** same | **BLOCK** same |
 
-========================================================================
-RAILS
-========================================================================
-
+## RAILS
 | Smoke | Result |
 |-------|--------|
-| `scripts/s28_macro_secret_smoke.sh` | present (A / harness I2); B did **not** rewrite |
+| `scripts/s28_macro_secret_smoke.oo` | present (A / harness I2); B did **not** rewrite |
 | product `fixtures/residual_macro_fail.oo` | check AST_MACROS (B live) |
-| `scripts/residual_path_a_floor_smoke.sh` | names `residual_macro_fail` → AST_MACROS |
+| `scripts/residual_path_a_floor_smoke.oo` | names `residual_macro_fail` → AST_MACROS |
 | Isolated `#[]` / `##` / `$` | B tmp only — lex unexpected |
 
 Harness N/A rail (“SECRET-in-expanded-body not claimed”) matches this
 verdict: **there is no expanded body**.
 
-========================================================================
-FILES TOUCHED
-========================================================================
-
+## FILES TOUCHED
 | File | Change |
 |------|--------|
 | `ooda/oodac/c_emit_secret.oo` (7.10 / 2.10) | **none** |
@@ -177,9 +163,9 @@ FILES TOUCHED
 **Not touched:** 7.1 / 7.2 / 7.10, sink list, residual names, SPRINT,
 remotes (no push).
 
-========================================================================
+---
 RESIDUAL (honest; do not close as a second pass)
-========================================================================
+---
 
 1. **N/A ≠ “SECRET cannot be hidden.”** User **fn wrappers**
    (`fn leak(x) { println(x); } leak(tok)`) still miss the scan — that
@@ -203,10 +189,7 @@ RESIDUAL (honest; do not close as a second pass)
    Adding `#` to the lexer for `#[Secret]` is the same class: walk
    attrs only after they exist.
 
-========================================================================
-STATUS FOR SPRINT/PM
-========================================================================
-
+## STATUS FOR SPRINT/PM
 | Item | Status |
 |------|--------|
 | Product macro expand that hides SECRET | **N/A** — no expander |

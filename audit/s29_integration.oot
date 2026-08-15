@@ -5,37 +5,34 @@
 # Scope: live tip oodac secret rails; SPRINT 2.9 println walker → full
 #        `c_secret_emit_guard` re-prove (or residual)
 # Policy: no push; no seed_pure_multi; run listed smokes (90s each); run any s29_*
-
 ## Verdict (honest)
-
 | Layer | Result | Exit | Notes |
 |-------|--------|------|-------|
-| **`secret_t1_return_smoke.sh`** | **PASS** | **0** | return / alias / if-taint refuse+allow + CI wire |
-| **`secret_t2_depth_smoke.sh`** | **PASS** | **0** | field/method/args/dlopen/sys_exec argv/comment-skip + CI wire |
-| **`s28_macro_secret_smoke.sh`** (2.8 regression) | **PASS** | **0** | residual-refuse + invented-syntax fail-closed + first-pass SECRET + N/A residual doc |
-| **`s61_env_set_secretsink_smoke.sh`** (6.1 regression) | **FAIL** | **1** | emit-c refuse+no-FP **GREEN**; `check` type-first (`undefined variable 'env_set'`) — no `ERR secret` |
-| **`s71_guard_scan_smoke.sh`** (7.1 regression) | **PASS** | **0** | println IDENT refuse + write_file payload refuse + string-lit no-FP |
-| **`s72_sys_exec_last_arg_smoke.sh`** (7.2 regression) | **PASS** | **0** | last-arg IDENT refuse + quoted commas/SECRET-spelling no-FP |
-| **`s710_parse_secret_env_smoke.sh`** (7.10 regression) | **PASS** | **0** | println IDENT + two-name + empty-name fail-closed |
-| **`s29_println_guard_smoke.sh`** (Harness extra; landed mid-pass) | **PASS** | **0** | dual-path println IDENT refuse + string-lit no-FP + eprintln IDENT refuse |
+| **`secret_t1_return_smoke.oo`** | **PASS** | **0** | return / alias / if-taint refuse+allow + CI wire |
+| **`secret_t2_depth_smoke.oo`** | **PASS** | **0** | field/method/args/dlopen/sys_exec argv/comment-skip + CI wire |
+| **`s28_macro_secret_smoke.oo`** (2.8 regression) | **PASS** | **0** | residual-refuse + invented-syntax fail-closed + first-pass SECRET + N/A residual doc |
+| **`s61_env_set_secretsink_smoke.oo`** (6.1 regression) | **FAIL** | **1** | emit-c refuse+no-FP **GREEN**; `check` type-first (`undefined variable 'env_set'`) — no `ERR secret` |
+| **`s71_guard_scan_smoke.oo`** (7.1 regression) | **PASS** | **0** | println IDENT refuse + write_file payload refuse + string-lit no-FP |
+| **`s72_sys_exec_last_arg_smoke.oo`** (7.2 regression) | **PASS** | **0** | last-arg IDENT refuse + quoted commas/SECRET-spelling no-FP |
+| **`s710_parse_secret_env_smoke.oo`** (7.10 regression) | **PASS** | **0** | println IDENT + two-name + empty-name fail-closed |
+| **`s29_println_guard_smoke.oo`** (Harness extra; landed mid-pass) | **PASS** | **0** | dual-path println IDENT refuse + string-lit no-FP + eprintln IDENT refuse |
 | **2.9 extra: stmt `println(SECRET)` / multi-arg / alias** | **PASS** | **1** | `ERR secret` `println sink refuses SECRET tok` (check + emit-c) |
 | **2.9 extra: stmt `eprintln(SECRET)` / multi-arg / alias** | **PASS** | **1** | `ERR secret` `eprintln sink refuses SECRET tok` (check + emit-c) |
 | **2.9 extra: `log` / `print_err` SECRET IDENT** | **SPLIT** | **1** | emit-c **`ERR secret`** (emit-guard path); check type-first (`undefined variable`) |
 | **2.9 walker → `c_secret_emit_guard`** | **OPEN** | — | stmt `println` still `c_emit_println` + token walker; **not** `c_secret_emit_guard` |
 | **Push** | **NOT DONE** | — | human-gated |
 
-**2.9 path-A claim:** **NOT CLOSED.** SPRINT 2.9 / DE2.9 wants the println walker at `c_emit_secret.oo` L175–192 to become `c_secret_emit_guard(env, id, ...)`. Live source is still the **token IDENT loop** calling `c_secret_refuse_sink_resolved`. Stmt `println` is special-cased in `c_emit_ident_stmt` → `c_emit_println` → `c_secret_refuse_println_ident` (no `c_secret_emit_guard`). `c_secret_emit_guard` **does** list `println`/`eprintln`/`print_err`/`log` for `c_guard_scan_idents`, but that path is only reached from free-call / method lower (`c_emit_lower.oo` L90, `c_emit_call.oo` L82). Dedicated harness `s29_println_guard_smoke.sh` **GREEN** (exit 0) — it **honestly claims refuse/no-FP only**, not the helper unify.
+**2.9 path-A claim:** **NOT CLOSED.** SPRINT 2.9 / DE2.9 wants the println walker at `c_emit_secret.oo` L175–192 to become `c_secret_emit_guard(env, id, ...)`. Live source is still the **token IDENT loop** calling `c_secret_refuse_sink_resolved`. Stmt `println` is special-cased in `c_emit_ident_stmt` → `c_emit_println` → `c_secret_refuse_println_ident` (no `c_secret_emit_guard`). `c_secret_emit_guard` **does** list `println`/`eprintln`/`print_err`/`log` for `c_guard_scan_idents`, but that path is only reached from free-call / method lower (`c_emit_lower.oo` L90, `c_emit_call.oo` L82). Dedicated harness `s29_println_guard_smoke.oo` **GREEN** (exit 0) — it **honestly claims refuse/no-FP only**, not the helper unify.
 
 **Assigned script battery:** **RED** (1 of 8 listed+landed). RED is **6.1 dual-path `check`**, not a 2.9 walker miss. T1/T2 + 2.8 + 7.1/7.2/7.10 + s29 remain **GREEN**. First `find` this pass had **no** `s29_*`; harness landed mid-pass and was re-run.
 
 **Overall 2.9 integration status: GREEN** (refuse/no-FP rails + `s29_println_guard_smoke`) / **OPEN** (walker→guard unify) / **RED** (`s61_*` `check` vs this host ELF)
 
-Do **not** greenwash: stmt `println` does **not** call `c_secret_emit_guard`. Dual-path IDENT refuse is the **token walker** (`check_secret_println_sinks`) plus emit belt (`c_emit_println`) — **not fail-open**, but **not the requested unify**. Dirty hunks this wave are **7.10** `str_slice` + **2.10** `__sec_sink__` + **6.1** secret-before-type (source only). Host ELF **07:49 was not rebuilt**. Full IFC / `#[Secret]` / `${}` not claimed. `ci_product.sh` wires T1/T2 only — **not** s28/s61/s71/s72/s710/s29.
+Do **not** greenwash: stmt `println` does **not** call `c_secret_emit_guard`. Dual-path IDENT refuse is the **token walker** (`check_secret_println_sinks`) plus emit belt (`c_emit_println`) — **not fail-open**, but **not the requested unify**. Dirty hunks this wave are **7.10** `str_slice` + **2.10** `__sec_sink__` + **6.1** secret-before-type (source only). Host ELF **07:49 was not rebuilt**. Full IFC / `#[Secret]` / `${}` not claimed. `ci_product.oo` wires T1/T2 only — **not** s28/s61/s71/s72/s710/s29.
 
 ---
 
 ## TIP SHA / binary
-
 ```
 ooda     git rev-parse --short HEAD → 52cc4b5
 ooda     git log -1 --oneline       → 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
@@ -60,7 +57,6 @@ Host ELF is the **same** 07:49 binary used by s28/s61/s71/s72/s710 integration. 
 ---
 
 ## 0) DE / Harness landing observed
-
 | Path | Role |
 |------|------|
 | `ooda/oodac/c_emit_secret.oo` (264) | `check_secret_println_sinks` L175–192 — **still token IDENT walker**, not `c_secret_emit_guard` |
@@ -74,15 +70,15 @@ Host ELF is the **same** 07:49 binary used by s28/s61/s71/s72/s710 integration. 
 | `ooda/oodac/llvm_emit.oo` L79 | LLVM front-door also calls `check_secret_println_sinks` |
 | `openOODA/audit/s29_harness.oot` | harness pointer (landed mid-pass) |
 | `openOODA/audit/s29_hygiene.oot` | Hygiene Enforcer (landed after smokes; agrees 2.9 OPEN / no product land) |
-| `ooda/scripts/s29_println_guard_smoke.sh` (157) | Harness extra (untracked; landed mid-pass); ephemeral TMPDIR fixtures |
-| `ooda/scripts/secret_{t1,t2}_*.sh` | listed T1/T2 integration rails |
-| `ooda/scripts/s28_macro_secret_smoke.sh` | 2.8 regression |
-| `ooda/scripts/s61_env_set_secretsink_smoke.sh` | 6.1 regression (dual-path emit-c **and** check) |
-| `ooda/scripts/s71_guard_scan_smoke.sh` | 7.1 regression |
-| `ooda/scripts/s72_sys_exec_last_arg_smoke.sh` | 7.2 regression |
-| `ooda/scripts/s710_parse_secret_env_smoke.sh` | 7.10 regression |
+| `ooda/scripts/s29_println_guard_smoke.oo` (157) | Harness extra (untracked; landed mid-pass); ephemeral TMPDIR fixtures |
+| `ooda/scripts/secret_{t1,t2}_*.oo` | listed T1/T2 integration rails |
+| `ooda/scripts/s28_macro_secret_smoke.oo` | 2.8 regression |
+| `ooda/scripts/s61_env_set_secretsink_smoke.oo` | 6.1 regression (dual-path emit-c **and** check) |
+| `ooda/scripts/s71_guard_scan_smoke.oo` | 7.1 regression |
+| `ooda/scripts/s72_sys_exec_last_arg_smoke.oo` | 7.2 regression |
+| `ooda/scripts/s710_parse_secret_env_smoke.oo` | 7.10 regression |
 
-**Only** `scripts/s29_*` is `s29_println_guard_smoke.sh`. Mid-pass landed `audit/s29_harness.oot`; `audit/s29_hygiene.oot` landed after the smoke run (hygiene-only; no product change). **No** `s29_domain_*` / peer / security / rollup at prove time. Integration did **not** invent the smoke.
+**Only** `scripts/s29_*` is `s29_println_guard_smoke.oo`. Mid-pass landed `audit/s29_harness.oot`; `audit/s29_hygiene.oot` landed after the smoke run (hygiene-only; no product change). **No** `s29_domain_*` / peer / security / rollup at prove time. Integration did **not** invent the smoke.
 
 Source (tip, live) — DE2.9 site still token walk:
 
@@ -108,270 +104,7 @@ Dirty `check_drive.oo` vs `52cc4b5`: SECRET walk **moved before** typecheck (6.1
 
 ---
 
-## 1) Primary smokes — exit codes
 
-All runs: `cd ooda && OODAC_BIN=./oodac/oodac` ; `timeout 90s`. Logs under `/tmp/s29_integration/`.
+*(Continued in `openOODA/audit/s29_integration_part2.oot`)*
 
-`bash -n` **OK** on all eight scripts (seven assigned + landed `s29_*`).
-
-### 1a) secret_t1_return_smoke — exit 0
-
-`bash -n` **OK** (81 lines).
-
-```
-OK secret_function_return_fail emit refuses (rc=1)
-OK secret_function_return_pass emit OK
-OK secret_alias_rebind_pass emit refuses (rc=1)
-OK secret_alias_rebind_fail emit OK (sticky cleared)
-OK secret_if_taint_fail emit refuses (rc=1)
-OK secret_if_taint_pass emit OK
-OK ci_product wires secret_t1_return_smoke
-OK secret_t1_return_smoke
-```
-
-Log: `/tmp/s29_integration/secret_t1_return_smoke.out`
-
-### 1b) secret_t2_depth_smoke — exit 0 (includes sys_exec argv)
-
-`bash -n` **OK** (96 lines).
-
-```
-OK secret_field_assign_fail emit refuses (rc=1)
-OK secret_field_assign_pass emit OK
-OK secret_method_return_fail emit refuses (rc=1)
-OK secret_method_return_pass emit OK
-OK secret_call_arg_fail emit refuses (rc=1)
-OK secret_multi_arg_println_fail emit refuses (rc=1)
-OK secret_multi_name_fail emit refuses (rc=1)
-OK secret_multi_name_pass emit OK
-OK secret_dlopen_arg_fail emit refuses (rc=1)
-OK secret_dlopen_arg_pass emit OK
-OK secret_sys_exec_argv_fail emit refuses (rc=1)
-OK secret_sys_exec_argv_pass emit OK
-OK secret_midline_safe emit OK
-OK comment-skip fixture shape (no line-start SECRET directive)
-OK ci_product wires secret_t2_depth_smoke
-OK secret_t2_depth_smoke
-```
-
-Log: `/tmp/s29_integration/secret_t2_depth_smoke.out`
-
-### 1c) s28_macro_secret_smoke (2.8 regression) — exit 0
-
-`bash -n` **OK** (224 lines).
-
-```
-OK probe: check refused macro_expand (rc=1)
-OK probe: check refused ast_macro (rc=1)
-OK probe: check refused macro_kw (rc=1)
-OK SECRET floor refuse: secret_tok_println
-OK residual-refuse check macro_expand: residual_macro_expand
-OK residual-refuse check ast_macro: residual_ast_macro
-OK fail-closed check: macro_kw_syntax
-OK fail-closed emit-c: emit_macro_expand
-OK fail-closed emit-c: emit_ast_macro
-OK fail-closed emit-c: emit_macro_kw
-OK N/A rail documented: MACRO_SECRET_RESIDUAL.oot
-OK macros unsupported: residual N/A rail honest
-OK static: residual names only in check_residual.oo
-OK string-body not secret (residual only; no expand)
-OK emit-llvm no-expand (named residual: rc=0 call @macro_expand)
-s28_macro_secret_smoke: ALL OK
-```
-
-Log: `/tmp/s29_integration/s28_macro_secret_smoke.out`
-
-Not a 2.9 walker change. First-pass SECRET floor still refuses visible `println(tok)`.
-
-### 1d) s61_env_set_secretsink_smoke (6.1 regression) — exit 1
-
-`bash -n` **OK** (176 lines). Harness requires **emit-c AND check** (`ERR secret`).
-
-```
-OK fail-closed emit-c: secret_tok_env_set_ident
-FAIL fail-closed check missing ERR secret: secret_tok_env_set_ident
-     (got: ERR	type	Type error at 5:13: undefined variable 'env_set')
-OK fail-closed emit-c: secret_tok_setenv_ident
-FAIL fail-closed check missing ERR secret: secret_tok_setenv_ident
-     (got: ERR	type	undefined variable 'setenv')
-OK fail-closed emit-c: secret_tok_unsetenv_ident
-FAIL fail-closed check missing ERR secret: secret_tok_unsetenv_ident
-     (got: ERR	type	undefined variable 'unsetenv')
-OK no-FP emit-c: secret_tok_env_set_string_lit (no ERR secret; env_set product-lower residual)
-OK no-FP check: secret_tok_env_set_string_lit (no ERR secret; env_set product-lower residual)
-s61_env_set_secretsink_smoke: FAILED
-```
-
-Log: `/tmp/s29_integration/s61_env_set_secretsink_smoke.out`
-
-Honesty: dirty-tree `check_drive.oo` would run `check_secret_println_sinks` **before** typecheck; **this host ELF still typechecks first**. Emit-c refuse rails for 6.1 are still **GREEN**. This is **not** a 2.9 walker regression.
-
-### 1e) s71_guard_scan_smoke (7.1 regression) — exit 0
-
-`bash -n` **OK** (123 lines).
-
-```
-OK fail-closed: secret_tok_println_ident
-OK fail-closed: secret_tok_write_file_payload
-OK no-FP: secret_tok_println_string_lit
-s71_guard_scan_smoke: ALL OK
-RESIDUAL full IFC / #[Secret] attr / string-interp ${} deep taint — not claimed closed
-RESIDUAL 7.10: c_parse_secret_env still char-by-char name concat (not this OWN)
-RESIDUAL interproc SECRET beyond path-A __fr_secret__ (cross-file return taint)
-```
-
-Log: `/tmp/s29_integration/s71_guard_scan_smoke.out`
-
-Honesty: working-tree `c_parse_secret_env` is already `str_slice(src, start, k)` (no `name = name + c`). Host ELF was **not** rebuilt after that slice. Smoke residual banner is **stale** vs working-tree source; parse/refuse rails still hold either way.
-
-### 1f) s72_sys_exec_last_arg_smoke (7.2 regression) — exit 0
-
-`bash -n` **OK** (111 lines).
-
-```
-OK fail-closed: secret_tok_sys_exec_last_ident
-OK no-FP: secret_tok_sys_exec_last_quoted_commas
-s72_sys_exec_last_arg_smoke: ALL OK
-```
-
-Log: `/tmp/s29_integration/s72_sys_exec_last_arg_smoke.out`
-
-### 1g) s710_parse_secret_env_smoke (7.10 regression) — exit 0
-
-`bash -n` **OK** (119 lines).
-
-```
-OK fail-closed: secret_tok_println_ident
-OK fail-closed: secret_two_names_refuse_a
-OK fail-closed: secret_two_names_refuse_b
-OK fail-closed: secret_empty_invalid_name
-s710_parse_secret_env_smoke: ALL OK
-RESIDUAL 7.10 concat hygiene is product (c_parse_secret_env name = name + c); this smoke proves parse/refuse rails only
-```
-
-Log: `/tmp/s29_integration/s710_parse_secret_env_smoke.out`
-
-Same stale-banner note as 1e: working-tree source is `str_slice`; host is 07:49.
-
-### 1h) s29_println_guard_smoke (Harness extra) — exit 0
-
-`bash -n` **OK** (157 lines). Absent at first `find` this pass; landed mid-pass; re-run `timeout 90s`.
-
-```
-OK fail-closed emit-c: secret_tok_println_ident
-OK fail-closed check: secret_tok_println_ident
-OK no-FP emit-c: secret_tok_println_string_lit
-OK no-FP check: secret_tok_println_string_lit
-OK fail-closed emit-c: secret_tok_eprintln_ident
-OK fail-closed check: secret_tok_eprintln_ident
-s29_println_guard_smoke: ALL OK
-RESIDUAL full IFC / #[Secret] attr / string-interp ${} deep taint — not claimed closed
-RESIDUAL 2.9 walker→c_secret_emit_guard unify is Domain Expert product; this smoke proves refuse/no-FP
-```
-
-Log: `/tmp/s29_integration/s29_println_guard_smoke.out`
-
-Classification: dual-path IDENT refuse + string-lit no-FP **GREEN**. Smoke header and `s29_harness.oot` **explicitly do not claim** the helper unify. `s29_harness.oot` 7.10 residual line (“still char-by-char name concat”) is **stale vs WT source** (same as s71/s72/s710 banners).
-
----
-
-## 2) Extra 2.9 probes (independent of harness; same host)
-
-Ephemeral fixtures: `/tmp/s29_integration/probes/` (not repo root). Same host ELF. `timeout 15s`.
-
-| Probe | check | emit-c | Read |
-|-------|-------|--------|------|
-| stmt `println(tok)` SECRET | rc=1 `ERR secret` `println sink refuses SECRET tok` | rc=1 same | front-door token walker **TP** |
-| stmt `eprintln(tok)` SECRET | rc=1 `ERR secret` `eprintln sink refuses SECRET tok` | rc=1 same | same front-door (`sid == eprintln`) |
-| stmt `println(1, tok)` | rc=1 `ERR secret` println | rc=1 same | multi-arg IDENT still walked |
-| stmt `eprintln(1, tok)` | rc=1 `ERR secret` eprintln | rc=1 same | same |
-| `let f = println; f(tok)` | rc=1 `ERR secret` println | rc=1 same | alias resolve in token walker (2.4) |
-| `let f = eprintln; f(tok)` | rc=1 `ERR secret` eprintln | rc=1 same | same |
-| `let r = eprintln(tok)` | rc=1 `ERR secret` eprintln | rc=1 same | expr form still front-door |
-| `println("tok")` / `eprintln("tok")` | rc=0 `OK` | rc=0 | no-FP (STRING ≠ IDENT) |
-| `log(tok)` SECRET | rc=1 `ERR type` `undefined variable 'log'` | rc=1 `ERR secret` `log sink refuses SECRET tok` | **emit-guard path** (log **not** in L175–192 walker); check type-first |
-| `print_err(tok)` SECRET | rc=1 `ERR type` `undefined variable 'print_err'` | rc=1 `ERR secret` `print_err sink refuses SECRET tok` | same split |
-
-`check_secret_println_sinks` is invoked from `c_emit.oo` L86 **before** lower. SECRET IDENT on `println`/`eprintln` therefore **never reaches** `c_secret_emit_guard` on emit-c — the token walker `process_exit`s first. Live eprintln refuse is **not** proof that stmt println was unified.
-
-`log` / `print_err` are **not** in the L175–192 println/eprintln token branch. emit-c continues to `c_emit_expr_c` → `c_secret_emit_guard` → `c_guard_scan_idents` and refuses. That is the **existing** emit-guard rail for sibling sinks. `oodac check` on this host typechecks first and never prints `ERR secret` for those names.
-
-Stmt `println` after a clean front-door still lowers via `c_emit_println` (`c_secret_refuse_println_ident`, `__sec__` only — **no** alias resolve at that belt). Alias refuse is the front-door `c_secret_resolve_alias` + `c_secret_refuse_sink_resolved`. Unifying to `c_secret_emit_guard` would put alias + C-text scan on one helper; that land has **not** happened.
-
----
-
-## 3) Exit-code scoreboard
-
-| Script | Timeout | Exit | Color |
-|--------|---------|------|-------|
-| `ooda/scripts/secret_t1_return_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/secret_t2_depth_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s28_macro_secret_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s61_env_set_secretsink_smoke.sh` | 90s | **1** | RED |
-| `ooda/scripts/s71_guard_scan_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s72_sys_exec_last_arg_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s710_parse_secret_env_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s29_println_guard_smoke.sh` | 90s | **0** | GREEN |
-
-Listed 7 + landed s29: **7 GREEN / 1 RED / 0 SKIP**.
-
----
-
-## 4) What GREEN is (and is not)
-
-| Claim | Status |
-|-------|--------|
-| T1 return / alias / if taint | **YES** (exit 0) |
-| T2 field/method/args/dlopen/sys_exec/comment-skip | **YES** (exit 0) |
-| 2.8 residual-doc + AST_MACROS refuse | **YES** (s28 exit 0) |
-| 7.1 ident-scan regression | **YES** (s71 exit 0) |
-| 7.2 last-arg regression | **YES** (s72 exit 0) |
-| 7.10 parse-env rails (println / multi-name / empty) | **YES** (s710 exit 0) |
-| 6.1 emit-c `env_set`/`setenv` SECRET IDENT refuse | **YES** (s61 emit-c lines OK) |
-| 6.1 `oodac check` prints `ERR secret` for `env_set` on **this host** | **NO** — type-undefined first (s61 exit 1) |
-| Dedicated `s29_*` smoke | **YES** — `s29_println_guard_smoke.sh` exit 0 (landed mid-pass) |
-| Dual-path `println(SECRET)` refuse | **YES** (s29 + extra probes) |
-| Dual-path `println("tok")` no-FP | **YES** |
-| Dual-path `eprintln(SECRET)` refuse | **YES** (product names eprintln) |
-| Stmt `println` calls `c_secret_emit_guard` | **NO** — `c_emit_println` + token walker |
-| `check_secret_println_sinks` L175–192 is `c_secret_emit_guard(...)` | **NO** — still IDENT token loop |
-| `c_secret_emit_guard` lists println and is reachable from free-call lower | **YES** (source + `log`/`print_err` emit-c refuse) |
-| Front-door println/eprintln SECRET IDENT reaches emit-guard | **NO** — token walker exits first |
-| `ci_product.sh` wires s28/s61/s71/s72/s710/s29 | **NO** — T1/T2 only (`ci_product.sh` L157–158) |
-| Full IFC / `#[Secret]` / `${}` | **residual** |
-| 2.10 `__sec_sink__` wrapper scan | **dirty-tree only** (not 2.9 OWN; not proved here) |
-| 7.10 source `str_slice` | **dirty-tree yes** / **host ELF not rebuilt** |
-
----
-
-## 5) Follow-ups (not this worker)
-
-1. Domain Expert: replace `c_emit_secret.oo` L175–192 token walker with a real `c_secret_emit_guard` call **or** stop special-casing stmt `println` so it lowers like `eprintln` (`c_emit_expr_c` → emit-guard). Do **not** claim 2.9 closed until that land is in **source and host ELF**.
-2. Optional belt: `c_emit_println` should call `c_secret_refuse_sink_resolved` (or emit-guard on joined arg text) so the emit belt matches alias resolve. Front-door currently carries alias.
-3. 6.1 dual-path: rebuild host from dirty `check_drive.oo` (secret-before-type) **or** relax `s61_env_set_secretsink_smoke.sh` `check` to accept type-undefined as residual. Do **not** mix that rebuild into 2.9.
-4. Refresh s71/s72/s710/`s29_harness` residual banners: working-tree `c_parse_secret_env` is `str_slice`; host ELF still 07:49.
-5. Wire s29 (and s28/s61/s71/s72/s710) into `ci_product.sh` if product wants those rails in CI. Harness scripts are **untracked** until human commit.
-6. If `log`/`print_err` stay product sinks, either teach the check-path walker those names or keep the type-first split as a **named residual** (same class as 6.1).
-
----
-
-## Evidence paths
-
-| Item | Path |
-|------|------|
-| This audit | `/home/jeryd/Projects/openOODA/openOODA/audit/s29_integration.oot` |
-| Harness pointer | `/home/jeryd/Projects/openOODA/openOODA/audit/s29_harness.oot` |
-| Harness smoke | `/home/jeryd/Projects/openOODA/ooda/scripts/s29_println_guard_smoke.sh` |
-| DE2.9 walker | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret.oo` L175–192 |
-| Stmt println belt | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_print.oo` |
-| Ident stmt dispatch | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_ident.oo` L129–131 |
-| Emit guard | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo` |
-| Free-call site | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_lower.oo` L90 |
-| Check drive | `/home/jeryd/Projects/openOODA/ooda/oodac/check_drive.oo` |
-| Smoke logs | `/tmp/s29_integration/*.out` + `*.rc` |
-| Extra probes | `/tmp/s29_integration/probes/` |
-| Sprint row | `openOODA/SPRINT.oot` ID **2.9** MED |
-| Prior 2.8 integration | `openOODA/audit/s28_integration.oot` |
-| Prior 7.1 security residual | `openOODA/audit/s71_security.oot` R1 / Z2 |
-
-end of s29_integration.oot
+end of s29_integration.oot (part 1)

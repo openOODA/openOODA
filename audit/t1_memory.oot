@@ -3,9 +3,7 @@
 # Role: Memory Auditor — emit secret-guard + arg-scan heap hygiene
 # OWN: oodac/c_emit_secret_guard.oo; c_guard_scan_idents; c_emit_args.oo last-arg (easy)
 # Tip (ooda HEAD): 4b70f14 (+ working-tree secret-guard / args fixes this pass)
-
 ## Scope
-
 T1-adjacent memory lane for emit-time secret sink guards:
 
 | Path | Role |
@@ -18,7 +16,6 @@ full args scan T2, `c_parse_secret_env` 7.10, runtime 7.4–7.8, tcp_write/dlope
 ident scan residual (prior bottom-up claim stale vs tip; not re-landed here).
 
 ## Findings
-
 | ID | Sev | Site | Finding | Status |
 |----|-----|------|---------|--------|
 | M-SG1 / 7.1 | CRIT | `c_guard_scan_idents` | **Undefined** while called from `c_secret_emit_guard` (println/eprintln/log/… and write_file/fetch). Working tree had call sites without a body → link/compile break on those sinks. | **FIXED** — implemented with `str_slice` per ident span |
@@ -31,9 +28,7 @@ ident scan residual (prior bottom-up claim stale vs tip; not re-landed here).
 | M-SG8 | OPEN | T1 taint | Secret return / control-flow (2.1, 2.4, 5.1–5.3) not memory-heap; not closed here | **OPEN** (SPRINT T1) |
 
 ## Fixes landed (this pass)
-
 ### 1. `c_guard_scan_idents` — CRIT 7.1
-
 File: `ooda/oodac/c_emit_secret_guard.oo`
 
 - String-aware linear walk of C arg text (`args`).
@@ -48,18 +43,15 @@ Call sites (unchanged intent):
 - write_file / fetch → full `args` scan (complements a1/a2 resolved refuse)
 
 ### 2. `c_sys_exec_last_arg` — CRIT 7.2
-
 File: `ooda/oodac/c_emit_args.oo`
 
 - Replaced per-char rebuild with `str_slice(args, last_start, n)`.
 - Scanner still string-/depth-aware for top-level commas (unchanged).
 
 ### 3. `c_args_drop_first` — adjacent
-
 - Remainder after first top-level comma via `str_slice(args, j, n)`.
 
 ## Complexity claims (memory class)
-
 | Function | Time | Aux heap growth |
 |----------|------|-----------------|
 | `c_guard_scan_idents` | O(\|args\|) | O(1) temps + O(\|ident\|) per token (slice), no O(n²) concat |
@@ -70,7 +62,6 @@ File: `ooda/oodac/c_emit_args.oo`
 Claim: **no per-char OoStr thrash on the OWN paths above.** Residual 7.10 (`c_parse_secret_env` name accumulate via `name = name + c`) remains OPEN elsewhere.
 
 ## Evidence paths
-
 | Item | Path |
 |------|------|
 | Guard + scan | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo` |
@@ -81,7 +72,6 @@ Claim: **no per-char OoStr thrash on the OWN paths above.** Residual 7.10 (`c_pa
 | SPRINT backlog IDs | `SPRINT.oot` 7.1, 7.2, T1 |
 
 ## Verdict
-
 | Bucket | Result |
 |--------|--------|
 | CRIT 7.1 (`c_guard_scan_idents` defined + no per-char thrash) | **FIXED** |
@@ -92,7 +82,6 @@ Claim: **no per-char OoStr thrash on the OWN paths above.** Residual 7.10 (`c_pa
 | 7.10 parse-secret-env char concat | **OPEN** |
 
 ## Notes (return)
-
 1. **Missing body was the real CRIT:** call sites for `c_guard_scan_idents` landed in the dirty tree without a definition; memory fix is inseparable from defining the walker.
 2. **7.1 style = slice, not stack C buffer:** language has no char stack array in `.oo`; correct alpha fix is `str_slice` once per span (avoids OoStr quadratic thrash). Same pattern applied to last-arg (7.2).
 3. **Alias resolve stays:** scan → `c_secret_refuse_sink_resolved` so `let f = secret` style rebinds via `__alias__` still refuse (path-A partial; full 2.4 rebind remains T1).

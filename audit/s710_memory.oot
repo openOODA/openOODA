@@ -5,9 +5,7 @@
 # Binary: `/home/jeryd/Projects/openOODA/ooda/oodac/oodac` (962960 B, mtime 2026-08-12 07:49, md5 `a44ee35eb344837009697e2c9d4e4662`)
 # Source: `ooda/oodac/c_emit_secret.oo` (10864 B, mtime 2026-08-12 11:54) — **post-fix working tree**
 # OWN: audit only (no product code changes this pass)
-
 ## Scope
-
 Prove or reject SPRINT **7.10** path-A memory floor after the ident-walk rewrite:
 
 > Hunt: after fix, **no per-char concat** in `c_parse_secret_env` ident walk
@@ -23,7 +21,6 @@ Hunts (this pass):
 Out of scope (named residual only): 7.1 walker (PASS `s71_memory.oot`), 7.2 last-arg (PASS `s72_memory.oot`), `c_args_strip_cr` per-char CR strip, T1/T2 taint, `#[Secret]` / `${}` / full IFC, runtime HITL 7.4–7.8.
 
 ## Verdict — path-A memory floor
-
 | Result | Meaning |
 |--------|---------|
 | **PASS** | Ident walk no longer does `name = name + c`. Extract is **one `str_slice(src, start, k)`** per directive (heap slice of the ident span, not a C stack `char[]`). Remaining `+` in this function are integer cursor math or **once-per-directive** `"__sec__" + name` / `"__secref__" + name` / constant needle build — not per ident char. |
@@ -42,7 +39,6 @@ Out of scope (named residual only): 7.1 walker (PASS `s71_memory.oot`), 7.2 last
 ---
 
 ## H1 — Per-char OoStr concat (should be gone)
-
 File: `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret.oo`
 
 Function: `c_parse_secret_env` L7–82 (77 lines).
@@ -101,9 +97,7 @@ Contrast (still OPEN elsewhere, not 7.10):
 ---
 
 ## H2 — Long SECRET ident (heap vs time)
-
 ### Mechanism (code, not slogan)
-
 `oo_char_at` (`ooda/runtime/chs_rt_str.c`):
 
 - `utf8_byte_index` rescans from byte 0 to `idx` every call
@@ -116,7 +110,6 @@ Needle match + ident scan: `char_at(src, ·)` over the file ⇒ **Θ(n²) time**
 Once-per-hit `"__sec__" + name` is O(|name|) and O(#directives), not O(|name|²) rebuild of the ident itself.
 
 ### Pre-fix binary (honesty: leak was live)
-
 Host `oodac` is **07:49 / `a44ee35e…`**, built **before** the 11:54 source rewrite. Ephemeral `/tmp/s710_mem_*` (not landed) `emit-c` of `// SECRET: A`+`a`*(N-1) + `fn main() { println(1) }` against that **old** binary:
 
 | Ident N | src B | sec | maxrss KB | rc |
@@ -135,7 +128,6 @@ Post-fix RSS on a rebuilt product binary is **not** measured this pass (no rebui
 ---
 
 ## H3 — Stack buffer vs list/slice
-
 | Artifact | What it says / does |
 |----------|---------------------|
 | `SPRINT.oot` 7.10 | “`c_parse_secret_env` **char-by-char leak**” |
@@ -151,8 +143,7 @@ Honesty: the **HIGH** (no per-char leak) is met in source. A C VLA was never the
 ---
 
 ## Functional rails (not memory, but prove the parser is live)
-
-`ooda/scripts/s710_parse_secret_env_smoke.sh` against this **pre-fix** binary: **ALL OK**
+`ooda/scripts/s710_parse_secret_env_smoke.oo` against this **pre-fix** binary: **ALL OK**
 
 - fail-closed: `// SECRET: tok` + `println(tok)` → `ERR	secret` + `tok`
 - fail-closed: two names, sink on `a` and on `b` both refuse
@@ -163,7 +154,6 @@ Semantics of slice vs concat are the same for these rails. Smoke **does not** pr
 ---
 
 ## Complexity (memory class)
-
 | Function | Time | Aux heap |
 |----------|------|----------|
 | `c_parse_secret_env` ident walk | Θ(\|src\|²) `char_at` | O(1) scalars + O(\|ident\|) **one** slice |
@@ -174,7 +164,6 @@ Progress: outer `i` and inner `k` always increase (by 1 or jump to `k`). No spin
 ---
 
 ## Scorecard
-
 | ID | Sev | Site | Finding | Status |
 |----|-----|------|---------|--------|
 | S710-1 / 7.10 | HIGH | `c_parse_secret_env` ident walk | Per-char `name = name + c` | **GONE** (source) |
@@ -182,11 +171,10 @@ Progress: outer `i` and inner `k` always increase (by 1 or jump to `k`). No spin
 | S710-3 | HIGH | `oo_char_at` walk | Θ(n²) time on long src / long ident | **RESIDUAL cost** (not leak) |
 | S710-4 | MED | product `oodac` | Host binary 07:49 predates 11:54 rewrite | **RESIDUAL** (rebuild / remeasure) |
 | S710-5 | LOW | I3 helper | no `c_ident_end` / `c_slice_ident_at`; `is_al` still copied | **HYGIENE residual** |
-| S710-6 | LOW | `s710_parse_secret_env_smoke.sh` L118 | still claims `name = name + c` | **DOC stale** |
+| S710-6 | LOW | `s710_parse_secret_env_smoke.oo` L118 | still claims `name = name + c` | **DOC stale** |
 | S710-7 | — | `c_args_strip_cr` | `out = out + c` | **OPEN adjacent** (not 7.10) |
 
 ## Close bar for 7.10 (memory)
-
 Path-A **may close 7.10 as memory-floor PASS** if process accepts:
 
 1. Concat gone in the ident walk (proven here on post-fix source).
@@ -197,18 +185,16 @@ Path-A **may close 7.10 as memory-floor PASS** if process accepts:
 Re-open 7.10 only if `name = name + c` (or equivalent per-char `OoStr` rebuild) returns in this walk, or a **rebuilt** emit-c of ≤64 KiB SECRET ident OOMs / RSS grows as Θ(n²) from the name accumulate.
 
 ## Evidence paths
-
 | Item | Path |
 |------|------|
 | Parser | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret.oo` L7–82 / L65 |
 | Lower map | `ooda/oodac/c_emit_ty.oo` (`str_slice` → `oo_str_slice`) |
 | `char_at` / `str_slice` | `/home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_str.c` |
 | Call-in | `c_emit.oo` L78; `check_secret_println_sinks` L135 |
-| Smoke | `/home/jeryd/Projects/openOODA/ooda/scripts/s710_parse_secret_env_smoke.sh` |
+| Smoke | `/home/jeryd/Projects/openOODA/ooda/scripts/s710_parse_secret_env_smoke.oo` |
 | Prior | `s71_memory.oot` / `s72_memory.oot` (sibling floor); `s72_ideas.oot` I3 (predicted this rewrite) |
 
 ## Notes (return)
-
 1. Did **not** edit product `.oo`. Audit + ephemeral `/tmp` fixtures only (removed).
 2. First read this pass still had `name = name + c` (L60); file mutated to slice at 11:54 during the wave. Verdict is on the **post-fix** tree.
 3. Did **not** retarget 7.1 / 7.2 / `c_args_strip_cr`.

@@ -3,9 +3,7 @@
 # Worker: Grok Build (Compiler Integration Tester)
 # Cwd: /home/jeryd/Projects/openOODA/ooda
 # Scope: tip oodac secret scan depth (SPRINT T2: 2.5, 2.6, 2.7, 5.4–5.6, 6.2)
-
 ## TIP SHA / binary
-
 ```
 git rev-parse --short HEAD → 1f67f4d
 git log -1 --oneline       → 1f67f4d fix(t1): secret return taint, alias rebind, if/match LBRACE prop
@@ -23,7 +21,6 @@ git log -1 --oneline       → 1f67f4d fix(t1): secret return taint, alias rebin
 | Seed | `bootstrap/seed/oodac` 878392 |
 
 ## 0) DE landing observed
-
 T2 DE work present in dirty tree before/during integration:
 
 | Path | Role |
@@ -33,15 +30,13 @@ T2 DE work present in dirty tree before/during integration:
 | `oodac/c_emit_secret.oo` (259) | `c_secret_note_lhs_assign` hook for bare/field/index assign prop |
 | `oodac/c_emit_ident.oo` (228) | field-assign emit coordination |
 | `fixtures/secret_t2_*.oo` (17) | peer/DE prove fixtures (string/comment FP, args, dlopen, nested) |
-| `scripts/secret_t2_depth_smoke.sh` | hard-req field/method/args/comment-skip + CI wire |
-| `scripts/ci_product.sh` | wires `secret_t2_depth_smoke.sh` |
+| `scripts/secret_t2_depth_smoke.oo` | hard-req field/method/args/comment-skip + CI wire |
+| `scripts/ci_product.oo` | wires `secret_t2_depth_smoke.oo` |
 
 ## 1) seed_pure_multi + atomic install — PASS
-
 ### Attempt A (pre-settle) — FAIL (non-T2 type poison)
-
 ```
-bash scripts/seed_pure_multi_smoke.sh
+bash scripts/seed_pure_multi_smoke.oo
 # pure multi FAILED (rc=1 executable=no)
 # all.c: long long argv = c_args_strip_cr(rest);  # OoStr typed as Int
 # unique_fns=425 from_modules=149
@@ -59,7 +54,6 @@ call = "oo_sys_exec(" + a0 + ", (int)(sizeof((OoStr[]){" + c_args_strip_cr(rest)
 Log: `/home/jeryd/.cache/ooda-tmp/seed_pure_multi_t2.log`
 
 ### Attempt B (post-inline) — PASS (intermediate)
-
 ```
 OK seed_pure_multi: cold seed pure multi rebuild green
 pure_build: unique_fns=425 from_modules=149
@@ -71,7 +65,6 @@ seed_pure_multi_smoke: PASSED (green)
 Log: `/home/jeryd/.cache/ooda-tmp/seed_pure_multi_t2b.log`
 
 ### Attempt C (post field/nested prop land) — PASS (final tip)
-
 DE continued editing `c_emit_secret_prop.oo` / `c_emit_ident.oo` after B. Integration waited for settle, rebuilt again:
 
 ```
@@ -92,9 +85,8 @@ cp -a ~/.cache/ooda-tmp/oodac_from_seed oodac/oodac.new && mv -f oodac/oodac.new
 Log: `/home/jeryd/.cache/ooda-tmp/seed_pure_multi_t2c.log`
 
 ## 2) Gate: secret_t2_depth_smoke — PASS
-
 ```
-OODAC_BIN=./oodac/oodac bash scripts/secret_t2_depth_smoke.sh
+OODAC_BIN=./oodac/oodac bash scripts/secret_t2_depth_smoke.oo
 # exit 0
 OK secret_field_assign_{fail,pass}
 OK secret_method_return_{fail,pass}
@@ -108,11 +100,9 @@ OK secret_t2_depth_smoke
 ```
 
 ## 3) T2 prove matrix — GREEN (29/29 primary; 1 residual)
-
 Legend: **refuse** = non-zero rc + `ERR\tsecret`; **ok** = rc=0 and no secret ERR.
 
 ### Official smoke surface (field / method / args / comment-skip)
-
 | Fixture | Expect | rc | secret ERR | Result |
 |---------|--------|----|------------|--------|
 | secret_field_assign_fail | refuse | 1 | yes | **PASS** |
@@ -130,7 +120,6 @@ Legend: **refuse** = non-zero rc + `ERR\tsecret`; **ok** = rc=0 and no secret ER
 | secret_midline_safe | ok | 0 | no | **PASS** |
 
 ### DE peer fixtures (string/comment FP + full args + FFI path)
-
 | Fixture | Expect | rc | secret ERR | Result |
 |---------|--------|----|------------|--------|
 | secret_t2_real_arg_fail | refuse | 1 | yes | **PASS** |
@@ -154,9 +143,8 @@ Legend: **refuse** = non-zero rc + `ERR\tsecret`; **ok** = rc=0 and no secret ER
 **Primary T2 matrix (excl. ffi residual): PASS=29 FAIL=0**
 
 ## 4) T1 regression smoke — PASS
-
 ```
-OODAC_BIN=./oodac/oodac bash scripts/secret_t1_return_smoke.sh
+OODAC_BIN=./oodac/oodac bash scripts/secret_t1_return_smoke.oo
 # exit 0
 OK secret_function_return_{fail,pass}
 OK secret_alias_rebind_pass refuse / secret_alias_rebind_fail OK (sticky cleared)
@@ -165,16 +153,14 @@ OK secret_t1_return_smoke
 ```
 
 ## 5) Residuals (honest — do not block T2 smoke)
-
 | Residual | Sev | Notes |
 |----------|-----|-------|
-| `secret_t2_ffi_call_fail` | MED | `ffi_call` is **not** a product free (runtime residual: no typed ffi_call). Emit aborts `malloc(): unaligned tcache chunk detected` (rc=134) instead of clean refuse. **Not** in `secret_t2_depth_smoke.sh`. dlopen path/flag fixtures green. |
+| `secret_t2_ffi_call_fail` | MED | `ffi_call` is **not** a product free (runtime residual: no typed ffi_call). Emit aborts `malloc(): unaligned tcache chunk detected` (rc=134) instead of clean refuse. **Not** in `secret_t2_depth_smoke.oo`. dlopen path/flag fixtures green. |
 | `secret_file_size_pass` free-name | HIGH | pre-existing non-T2: `ERR c_emit unknown free call needs annotation oo_file_size` (same as T1 integration PARTIAL). |
 | Full IFC / `#[Secret]` | — | still residual; SECRET_TAINT honesty unchanged. |
 | Nested RHS depth lattice | LOW | path-A depth ≤64 LPAREN scan; not full points-to. |
 
 ## RESULT SUMMARY
-
 | Step | Result |
 |------|--------|
 | seed_pure_multi_smoke (final) | **PASS** (unique_fns=428) |
@@ -187,14 +173,12 @@ OK secret_t1_return_smoke
 **OVERALL T2 integration: PASS** (scan-depth smoke + primary matrix green on rebuilt tip)
 
 ## Mechanism notes (tip tree)
-
 - **2.5 / 6.2 full args scan:** after a0/a1/a2 resolved refuse, `c_guard_scan_idents(env, sink, args)` on all sealed sinks (println, write_file, fetch, sys_exec, net, FFI, OS/env).
 - **2.7 string/comment FP:** scanner skips `"..."` escapes, `//` line comments, `/* */` block comments before ident spans.
 - **2.6 / 5.4–5.6 nested + field/method:** `c_secret_prop_from_rhs` LPAREN recursion; `c_secret_tok_is_sec` field path `__sec__root.f`; method `__fr_secret__` on chain; `c_secret_note_lhs_assign` for bare/field/index LHS.
 - **FFI payload path-A:** dlopen path + non-path flag refuse proved; typed `ffi_call` remains residual product hole.
 
 ## Evidence paths
-
 | Item | Path |
 |------|------|
 | This audit | `/home/jeryd/Projects/openOODA/openOODA/audit/t2_integration.oot` |
@@ -202,5 +186,5 @@ OK secret_t1_return_smoke
 | Smoke log | `~/.cache/ooda-tmp/t2_depth_smoke2.log` |
 | Sources | `ooda/oodac/c_emit_secret{,_prop,_guard,_alias}.oo`, `c_emit_ident.oo` |
 | Fixtures | `ooda/fixtures/secret_t2_*.oo`, `secret_field_assign_*.oo`, `secret_method_return_*.oo`, … |
-| Smoke | `ooda/scripts/secret_t2_depth_smoke.sh` |
+| Smoke | `ooda/scripts/secret_t2_depth_smoke.oo` |
 | Product host | `ooda/oodac/oodac` 950936 B @ BuildID 6f73d2dd… |

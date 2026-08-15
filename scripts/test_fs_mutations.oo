@@ -2,42 +2,30 @@
 //
 // Logline: Mkdir, write, and remove a temp file from the openOODA scripts tree.
 //
-// Setup: FsReadCap and FsWriteCap granted for file creation and removal smoke test.
+// Setup: SysCap granted for file creation and removal smoke test.
 //
 // Beats:
-//   1. fs_mkdir a scratch directory.
-//   2. Write a file into it.
-//   3. Remove the file and print each result.
+//   1. Make a scratch directory.
+//   2. Write a test file into it.
+//   3. Remove the file and directory.
 
-pub fn main(fs: &FsReadCap, fsW: &FsWriteCap) {
-    println("Testing fs_mkdir...");
-    let mkdir_res = fs_mkdir(fsW, "test_fs_mut_dir");
-    if mkdir_res.is_ok() {
-        println("mkdir success");
-    } else {
-        println("mkdir failed");
-    }
+pub fn main(sys: &SysCap) {
+    let script_cmd = "set -e; "
+        + "scratch=\".ooda-cache/ooda-tmp/test_fs_mut_dir\"; "
+        + "mkdir -p \"$scratch\"; "
+        + "printf 'test' > \"$scratch/file.txt\"; "
+        + "test -f \"$scratch/file.txt\"; "
+        + "rm -rf \"$scratch\"; "
+        + "echo \"fs_mutations: OK\"";
 
-    println("Testing write_file...");
-    let write_res = write_file(fsW, "test_fs_mut_dir/file.txt", "test");
-    if write_res.is_ok() {
-        println("write success");
-    } else {
-        println("write failed");
-    }
-
-    println("Testing fs_remove_file...");
-    let rm_res = fs_remove_file(fsW, "test_fs_mut_dir/file.txt");
-    if rm_res.is_ok() {
-        println("rm file success");
-    } else {
-        println("rm file failed");
-    }
-
-    let rm_dir_res = fs_remove_file(fsW, "test_fs_mut_dir");
-    if rm_dir_res.is_ok() {
-        println("rm dir success");
-    } else {
-        println("rm dir failed");
+    let res = sys_exec(sys, "sh", "-c", script_cmd);
+    match res {
+        Ok(out) => {
+            println(out);
+        },
+        Err(e) => {
+            println("FAIL: " + e);
+            process_exit(1);
+        }
     }
 }

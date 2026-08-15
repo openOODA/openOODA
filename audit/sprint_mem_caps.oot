@@ -1,5 +1,4 @@
 # SPRINT MEM — unbounded-growth stops (caps)
-
 **Marker:** `SPRINT_MEM_CAPS_2026-08-13`
 **Date:** 2026-08-13
 **Role:** MEM. Read-only except this file.
@@ -7,11 +6,9 @@
 **Pin used (not re-timed):** SPRINT live 28 s / 12 GB RSS after B8.
 
 ## Verdict
-
 1048576 is **not** one dual cap. It is a **char** cap in lex/check and a **token-row** cap in collect/tokenize. Live scanners always move `i` on continue, so tokenize does **not** spin under the token cap today. There is **no** `i`-progress assert; a SKIP that returned the same `i` would loop forever without hitting 1048576. F26 8 GiB WARN / 32 GiB FAIL are live consts, not comments. B8 binds are `List[String]` + `list_push`. Residual: **12 GB still > 8 GiB WARN**.
 
 ## Bound table
-
 | Site | What 1048576 counts | Compare | On trip | Both? |
 |------|---------------------|---------|---------|-------|
 | `ooda/oodac/token_stream.oo:22` `collect_tokens` | **token rows** (`list_len(out)`) | `>=` | `ERR lex too many tokens` + `process_exit(1)` | no |
@@ -27,7 +24,6 @@ No site caps tokens **and** chars. Together: lex/check stop a source longer than
 Related (not 1048576): `cli_parse.oo:67` root `file_size > 65536` (64 KiB). Comment on check_drive still says per-file 64 KiB at load; that gate is the root CLI path, not every import.
 
 ## Tokenize loop — does `i` always increase?
-
 `tokenize_lines` does not walk. The walker is `collect_tokens` (`token_stream.oo:21-54`).
 
 ```
@@ -61,7 +57,6 @@ Live scanners (read):
 Time below the cap is still Θ(n²) `char_at` (prior r2_memory). That is CPU, not an infinite loop and not unbounded heap. Heap of the token list is O(rows) up to 1048576 TSV strings.
 
 ## F26 — 8 GiB WARN / 32 GiB FAIL is code
-
 Not a comment-only claim.
 
 `ooda/scripts/harness_f26_residual_smoke.oo`:
@@ -72,14 +67,14 @@ Not a comment-only claim.
 - L43 `expect_lt(rss, FAIL_RSS_KB)` live fail-closed
 - L44 `if rss > WARN_RSS_KB { println("WARN … > 8 GiB") }` live
 
-`ooda/scripts/harness_f26_residual_smoke.sh`:
+`ooda/scripts/harness_f26_residual_smoke.oo`:
 
 - L11–12 same arithmetic
 - L50–51 live `rss -gt FAIL` / `rss -gt WARN`
 
 GNU `/usr/bin/time -v` “Maximum resident set size” is kbytes. The multiply is in KB. Honest.
 
-Harness does **not** pin 28 s or 12 GB. Those are the SPRINT B8 board, not the gate. `.sh` L2 header still says “32s, 22.8 GB” (old ELF). Stale comment; live numbers are 180 s / 8 / 32 GiB.
+Harness does **not** pin 28 s or 12 GB. Those are the SPRINT B8 board, not the gate. `.oo` L2 header still says “32s, 22.8 GB” (old ELF). Stale comment; live numbers are 180 s / 8 / 32 GiB.
 
 12 GB vs gates (no new RSS this turn):
 
@@ -88,7 +83,6 @@ Harness does **not** pin 28 s or 12 GB. Those are the SPRINT B8 board, not the g
 - both **<** 33_554_432 KB FAIL
 
 ## B8 binds — List[String], not concat
-
 `tc_names.oo:27` `let mut binds: List[String] = list_new();`
 
 Spot-check one append (`tc_names.oo:55`, fn-name pre-bind):
@@ -100,7 +94,6 @@ Not `binds = binds + …`. Ripgrep `binds = binds +` in `tc_names.oo` + `tc_scop
 Leftover **outside** B8 files: `check_scan.oo:178,187` `binds = binds + cur + "@0\t"` and `check_mod.oo:64` `names = names + scan_fn_names(...)`. That is the extra_binds **String** builder for np>12, not the typecheck accumulator.
 
 ## Residual
-
 | Item | Sev | Note |
 |------|-----|------|
 | **12 GB still > 8 GiB WARN** | MED | B8 pin. Under 32 GiB FAIL. Not 1–2 s / 39 MB. |

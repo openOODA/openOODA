@@ -17,7 +17,7 @@ SUMMARY
 | 1 | **spawn_task prefers ProcessCap** | facade + sealed map + live allow ProcessCap; deny missing/wrong | `spawn_task(proc: &ProcessCap)` both trees; `sealed_sys_kind_of("async_spawn_internal")→ProcessCap`; check ALLOW ProcessCap (+ SysCap supersede); DENY no-cap/SyncCap prefer **ProcessCap** | **PASS** |
 | 2 | **join_task hard SysCap** | facade + sealed map + live SysCap allow | `join_task(sys: &SysCap)`; `sealed_sys_kind_of("async_join*" )→SysCap`; runtime `oo_cap_require_sys`; check ALLOW SysCap only | **PASS** |
 | 3 | **ProcessCap alone cannot join** | ProcessCap↛`async_join_internal` | check DENY ProcessCap + join (sealed + facade shapes); dual-repro rc=1 prefer **SysCap**; multi ProcessCap-only spawn+join fails on join | **PASS** |
-| 4 | CAP-G4 floor still green | smoke exit 0 | `cap_g4_process_smoke.sh` **PASSED** | **PASS** |
+| 4 | CAP-G4 floor still green | smoke exit 0 | `cap_g4_process_smoke.oo` **PASSED** | **PASS** |
 | 5 | Product multi-cap honesty probe | ProcessCap spawn + SysCap join | `main(proc: &ProcessCap, sys: &SysCap)` check **OK**; mirrored dual-repro allow | **PASS** |
 
 **OVERALL: PASS** — Async Process/Sys split is path-A honest: spawn least-privilege ProcessCap, join residual hard SysCap, no ProcessCap join unlock.
@@ -37,7 +37,7 @@ METHOD
 3. Static runtime: `chs_rt_crypto.c` async_spawn/join requires; `chs_rt_sys.c` require bodies.
 4. Live `oodac check` matrix under `/tmp/cap_process_peer2_async/` (product host).
 5. Dual-repro deny/allow fixtures (two runs each).
-6. Regression: `OODAC_BIN=./oodac/oodac bash scripts/cap_g4_process_smoke.sh`.
+6. Regression: `OODAC_BIN=./oodac/oodac bash scripts/cap_g4_process_smoke.oo`.
 7. Direct `oodac check std/os/async.oo` on product facade file.
 
 No ooda/std/openOODA product edits by this peer. No push.
@@ -55,7 +55,7 @@ HOST / TIP / WT CONTEXT
 | Product host | `ooda/oodac/oodac` **962680** B @ 2026-08-12 06:41:59 -0700 |
 | Host md5 | `7e1ce7df9bd366b607f35724e0efe80b` |
 | Prove fixtures | `/tmp/cap_process_peer2_async/*.oo` (ephemeral) |
-| CAP-G4 map baseline | `audit/cap_g4_phalanx_rollup.oot` + `scripts/cap_g4_process_smoke.sh` |
+| CAP-G4 map baseline | `audit/cap_g4_phalanx_rollup.oot` + `scripts/cap_g4_process_smoke.oo` |
 | Peer OWN | audit only |
 
 ### WT facade delta (observed — DE/other, not this peer)
@@ -180,7 +180,7 @@ Capability Violation: Function 'main' calls sealed effectful builtin
 ========================================================================
 
 ```
-OODAC_BIN=./oodac/oodac bash scripts/cap_g4_process_smoke.sh
+OODAC_BIN=./oodac/oodac bash scripts/cap_g4_process_smoke.oo
 → cap_g4_process_smoke: PASSED
 ```
 
@@ -223,7 +223,7 @@ Evidence roots:
 - Sealed map: `ooda/oodac/check_cap_util.oo` `sealed_sys_kind_of`
 - Runtime: `ooda/runtime/chs_rt_crypto.c`, `chs_rt_sys.c`
 - Live matrix: `/tmp/cap_process_peer2_async/`
-- Smoke: `ooda/scripts/cap_g4_process_smoke.sh`
+- Smoke: `ooda/scripts/cap_g4_process_smoke.oo`
 - Catalog: `openOODA/CAPS.oot` Path-A sealed sys row; `audit/cap_g4_phalanx_rollup.oot`
 
 **No peer code fix required. No push.**

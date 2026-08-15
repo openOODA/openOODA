@@ -11,16 +11,14 @@
 ## Claim under pressure
 
 SPRINT **CAP-G6** (std migration to granular caps):
+- Net: Prefer Http/Tcp/Udp/Bind over legacy NetCap where ops match.
+- Fs: Prefer FsReadCap / FsWriteCap over legacy FsCap.
+- Sys/Process: Prefer ProcessCap for exec/spawn/wait/kill (CAP-G4); SysCap only for hard residual.
+- Honesty: Cap rename ≠ product crypto / TLS / VPN; evaluate-success ≠ seal.
+- No greenwash: Do not treat `Ok(true)` / `is_successful: true` / engine verify as audited crypto.
 
-| Slice | Path-A expectation |
-|-------|--------------------|
-| Net | Prefer Http/Tcp/Udp/Bind over legacy NetCap where ops match |
-| Fs | Prefer FsReadCap / FsWriteCap over legacy FsCap |
-| Sys/Process | Prefer ProcessCap for exec/spawn/wait/kill (CAP-G4); SysCap only for hard residual |
-| Honesty | Cap rename ≠ product crypto / TLS / VPN; evaluate-success ≠ seal |
-| No greenwash | Do **not** treat `Ok(true)` / `is_successful: true` / engine verify as audited crypto |
-
-Adversarial stance: treat **any** API that (1) accepts a renamed granular cap, (2) returns soft `Ok`/`true`, and (3) lacks real sealed effect or audited math as **greenwash residual**. Treat mass `&SysCap` on non-process domain APIs as **privilege-overbreadth theater**.
+Adversarial stance: treat any API that accepts a renamed granular cap but lacks real
+sealed effect or audited math as greenwash residual.
 
 ---
 
@@ -37,218 +35,34 @@ Adversarial stance: treat **any** API that (1) accepts a renamed granular cap, (
 
 ---
 
-## Live inventory (2026-08-12T13:47Z, dirty tree)
+## Live inventory (2026-08-12T13:47Z)
 
-### A. Domain monorepo `std/` (561 `.oo`)
-
-| Token | Files | Matches | Notes |
-|-------|------:|--------:|-------|
-| **SysCap** | **362** | **616** | dominant; ProcessCap **0** |
-| ProcessCap | **0** | **0** | CAP-G4 preferred token unused in domain std |
-| FsCap | 7 | 12 | residual legacy + comments |
-| FsReadCap | 3 | 8 | CAP-G6 dirty (fs + cps) |
-| FsWriteCap | 3 | 10 | CAP-G6 dirty |
-| NetCap | 17 | 38 | residual + comments |
-| HttpCap | 2 | 4 | dirty `src/net.oo` |
-| TcpCap | 6 | 16 | dirty mtls cluster |
-| UdpCap | 1 | 7 | dirty wireguard |
-| BindCap | 1 | 1 | **comment only** (wireguard honesty note) |
-| Thread/Env/Gpu/HW/UI granular | 0 | 0 | not migrated in domain std |
-| `process_exit` | 157 files | — | fail-closed stubs present |
-| `*_stubs.oo` | 65 | — | named stub modules |
-| SysCap ∩ process_exit | 112 | — | broad cap + exit |
-| SysCap without process_exit | **254** | — | **looks production** risk class |
-
-### B. Product `ooda/std/os/`
-
-| File | Caps | Honesty |
-|------|------|---------|
-| `fs.oo` | **FsReadCap / FsWriteCap** | CAP-G6 path-A facade — good |
-| `net.oo` | **Http/Tcp/Udp/Bind + NetCap sock_raw** | CAP-G6 path-A facade — good |
-| `process.oo` | **SysCap only** | CAP-G4 residual: spawn/exec/wait/kill still legacy SysCap |
-| `async.oo` | **SysCap** | spawn+join both SysCap; CAP-G4 prefers ProcessCap for spawn |
-| `python.oo` | **SysCap** | correct hard residual class (`python_embed`) |
+- **Domain monorepo `std/` (561 `.oo`):** SysCap dominant (362 files, 616 matches); ProcessCap **0**; FsCap 7; FsReadCap 3; FsWriteCap 3; NetCap 17; HttpCap 2; TcpCap 6; UdpCap 1; BindCap 1 (comment only); `process_exit` in 157 files; `*_stubs.oo` in 65 files.
+- **Product `ooda/std/os/`:** `fs.oo` (FsReadCap/FsWriteCap path-A); `net.oo` (Http/Tcp/Udp/Bind + NetCap sock_raw); `process.oo` (SysCap only — CAP-G4 residual); `async.oo` (SysCap); `python.oo` (SysCap hard residual).
 
 ---
 
 ## Hunt results
 
-### H1 — Stubs that look production after cap rename → **HIGH (greenwash class)**
+### H1 — Stubs that look production after cap rename → **HIGH**
+- **Net renames:** `std/src/net/wireguard.oo` takes `&UdpCap` but all effectful ops are `process_exit(1)`. `mtls_stubs.oo` takes `&TcpCap` but exits with dead dummy returns.
+- **Fs renames:** `std/src/fs.oo` has real sealed ops, but `sec/cps/misra.oo` returns Err unimplemented.
+- **M172 engines:** `*_engine.oo` and `*_ops.oo` carry SysCap markers but perform toy/string math (e.g. string-concat FHE `c0_str = "c0_" + pub_pk0 + "_" + val_str`).
+- **`_with_capability(sys: &SysCap)` theater:** ≥22 entry points take `&SysCap` and ignore it, calling soft cores without using any sealed op.
 
-**Pattern:** CAP-G6 WIP renames param types / comments to granular tokens while bodies remain residual stubs, dead `Ok` after `process_exit`, or policy-only evaluators. File/module names (`*_engine`, `*_ops`, `mtls_*`, `wireguard`) read as product.
+### H2 — Soft-success evaluate / verify → **HIGH (anti-greenwash)**
+- `mtls_engine_evaluate_handshake` returns `is_successful: true` without TLS I/O (labeled policy-only).
+- `dilithium_calculate_hash` uses djb2 labeled as SHA3; `dilithium_verify_signature` checks string equality → `is_valid: true`.
+- Plonk, STARK, bulletproof, and ZKP verifiers perform toy integer evaluation and return `Ok(true)`.
+- `STDLIB_CRYPTO_MATH.oot` gate ledger is stale: 5 of 8 claimed gated files are missing from disk.
+- `std_caps_batch_2.oot` claims 5 phantom net modules that do not exist under `std/src/net/`.
 
-#### H1a — Net rename facades (dirty WIP)
-
-| Path | Cap after rename | Body truth |
-|------|------------------|------------|
-| `std/src/net.oo` | `http_get(http: &HttpCap)` → `fetch` | thin product-shaped facade (OK if check/runtime seal holds) |
-| `std/src/net/wireguard.oo` | `&UdpCap` on interface + entries | **all effectful ops `process_exit(1)`** — not VPN |
-| `std/src/ooda/sec/net/mtls_stubs.oo` | `mtls_perform_socket_handshake_raw(tcp: &TcpCap, …)` | `process_exit(1)` then dead `return Ok(dummy_session)` with `negotiated_cipher: "TLS_AES_256_GCM_SHA384"` |
-| `mtls_verify_ocsp_stapling_response(tcp: &TcpCap, …)` | TcpCap | `process_exit(1)` |
-| `mtls_parse_x509_der_asn1(sys: &SysCap, …)` | SysCap | `process_exit(1)` + dead dummy cert |
-
-**Risk:** caller holding only the new preferred cap appears least-privilege-migrated; runtime path is still stub/exit. Cap migration **does not** create TLS/VPN.
-
-#### H1b — Fs rename + unimplemented (dirty WIP)
-
-| Path | Cap | Body |
-|------|-----|------|
-| `std/src/fs.oo` | FsRead/FsWrite | real sealed `fs_read`/`fs_write` (OK product-shaped) |
-| `sec/cps/misra.oo` | `misra_run_linter(fs: &FsReadCap, …)` | residual read path |
-| `misra_deviation_register(fs: &FsWriteCap, …)` | FsWriteCap | **`return Err("Unimplemented: … FsWriteCap file FFI…")`** |
-| `secoc_persisted_freshness_{load,save}` | FsRead/FsWrite | **Err unimplemented** |
-
-Rename is honest only when paired with Err/exit. Residual: type surface still looks API-complete.
-
-#### H1c — M172 engine/ops “complete module” look
-
-Across `src/ooda/{sec,crypto,aero,auto,bio,…}`: `*_engine.oo` / `*_ops.oo` / `*_types.oo` / shims present (M172). **55/61** `*_engine.oo` carry SysCap markers; many have no sealed process op. Example synthetic crypto (looks like production encrypt):
-
-```text
-// std/src/ooda/crypto/fhe_ops.oo — fhe_encrypt
-c0_str = "c0_" + pub_pk0 + "_" + val_str
-… is_valid: true; return Ok(cipher_res)
-// fhe_decrypt recovers value ≈ checksum % plain_modulus — not FHE
-```
-
-BFV/CKKS rotate stubs rewrite polynomials as strings `"rot_" + step + "(" + c0 + ")"` and **`return Ok(res)`** without `process_exit` — production-shaped soft math.
-
-#### H1d — `_with_capability(sys: &SysCap)` theater
-
-≥22 `*_with_capability` entry points take `&SysCap` then **ignore** it and call soft core:
-
-| Example | Behavior |
-|---------|----------|
-| `auth_engine_authenticate_with_capability` | `return auth_engine_authenticate(…)` — sys unused |
-| `rbac_authorize_with_capability` | soft authorize → `Ok(true)` / Err |
-| `fhe_{en,de}crypt_with_capability` | forwards to synthetic FHE |
-| `zkp_verifier_verify_with_capability` | soft verify → `Ok(true)` |
-| `plonk_verifier_verify_with_capability` | soft gate eval → `Ok(true)` |
-| `*_engine_verify_with_capability` (dilithium, stark, bulletproof, …) | same wrap pattern |
-
-**Severity:** HIGH honesty. Cap param invents a sealed-looking API without process seal or crypto seal.
-
----
-
-### H2 — Soft-success evaluate / verify → **HIGH (anti-crypto-greenwash)**
-
-SPRINT CAP-G6 explicitly: *no greenwash evaluate-success as crypto*.
-
-#### H2a — mTLS evaluate (dirty; partial honesty present)
-
-`mtls_engine_evaluate_handshake(tcp: &TcpCap, …) -> Result[MtlsHandshakeResult, …]`:
-
-- Comments correctly state: policy/chain/revocation only; crypto/TLS gates not wired; soft-success is **not** TLS seal.
-- Success path still returns:
-
-```text
-is_successful: true
-negotiated_cipher: "TLS_AES_256_GCM_SHA384"
-handshake_duration_ms: 12
-error_code: "POLICY_OK_NO_TLS_IO"
-```
-
-**Verdict:** honesty comments **reduce** greenwash if readers look; API still **soft-success evaluate**. Do not ship as mTLS product. Cap rename to TcpCap does not add I/O.
-
-#### H2b — Dilithium “verify” = djb2 digest match
-
-`dilithium_calculate_hash` is djb2-style (`hash = hash*33 + ch`) labeled `"dilithium_sha3_" + h_str`.  
-`dilithium_verify_signature` checks structure + digest string equality → **`is_valid: true`**.  
-No lattice crypto. Engine verify increments `verified_count` and returns `Ok(true)`.
-
-#### H2c — Plonk / STARK / bulletproof / ZKP verifiers
-
-| Function | Soft mechanism | Soft success |
-|----------|----------------|--------------|
-| `plonk_verifier_verify_proof` | int modular gate eval + transcript squeeze | returns **true** |
-| `stark_verifier_verify_with_capability` | soft AIR/FRI eval wrapper | `Ok(true)` |
-| `bulletproof_verifier_verify_with_capability` | soft range wrapper | `Ok(true)` |
-| `zkp_verifier_verify_proof` | int `schnorr_verify` (modpow toy) | true → `Ok(true)` via with_capability |
-| FHE encrypt/decrypt/add | string-concat polynomials | `Ok(cipher)` |
-
-These are **not** audited pairing/FRI/lattice. Treat as residual synthetic.
-
-#### H2d — `STDLIB_CRYPTO_MATH.oot` gate ledger **stale**
-
-Honesty pack claims 8 gated files with load-bearing `process_exit(1)` on `_ops` bodies. Live tree:
-
-| Claimed path | Live |
-|--------------|------|
-| `ed25519_ops.oo` | **MISSING** |
-| `dilithium_ops.oo` | **MISSING** |
-| `groth16_ops.oo` | **MISSING** |
-| `double_ratchet_ops.oo` | **MISSING** |
-| `kyber.oo` | **MISSING** |
-| `falcon_ops.oo` | present, **process_exit=0**, partial math |
-| `secp256k1_ops.oo` | present, **process_exit=0**, constructors/`Ok` |
-| `plonk_ops.oo` | present, **process_exit=0**, field toy ops |
-
-**Residual:** gate-only claim is **no longer the full truth**. Partial synthetic math + soft verify **widens** greenwash surface vs “always exit”. Prefer fail-closed on unauthenticated crypto entries; do not mark crypto green.
-
-#### H2e — Phantom prior batch (docs greenwash)
-
-`audit/std_caps_batch_2.oot` claimed 5 net files migrated (`http_server`, `dns_server`, `mqtt`, `websocket`, `quic`) to Http/Tcp/Udp/Bind. Live:
-
-- Those paths **do not exist** under `std/src/net/` (only `wireguard.oo`).
-- `git log -S'HttpCap'` historically empty at audit time; current HttpCap is **dirty uncommitted** on `src/net.oo` only.
-
-**Verdict:** batch-2 claim is **not tree-backed**. Do not cite as CAP-G6 land evidence.
-
----
-
-### H3 — SysCap mass still overbroad → **HIGH residual (document, not fixed)**
-
-#### H3a — Domain std mass
-
-| Metric | Value |
-|--------|------:|
-| SysCap files | **362** / 561 (~65%) |
-| SysCap matches | **616** |
-| ProcessCap files | **0** |
-| Domains with heavy SysCap | sec (180 files), aero (38), auto (26), crypto (20), grid (16), 3d (15), bio (13), … |
-
-Many modules only need pure math / in-memory policy but:
-
-1. Header: `// RULES.oot 1.4: Explicit &SysCap required`
-2. Optional `*_with_capability(sys: &SysCap, …)` that never calls `sys_exec` / spawn / prctl
-3. Callers must hold broad OS token to touch FHE/ZK/auth theater
-
-**Least-privilege claim fails:** SysCap means “broad OS execution” (CAPS.oot). Using it as ambient “security spice” on non-OS APIs is **overbroad mass**.
-
-#### H3b — Product process facades still legacy (CAP-G4 residual → CAP-G6)
-
-`ooda/std/os/process.oo` (and domain `std/async.oo` / `python.oo`):
-
-| API | Cap today | CAP-G4 preferred |
-|-----|-----------|------------------|
-| `process_spawn` / `sys_spawn` | **SysCap** | **ProcessCap** (Sys supersede) |
-| `process_wait` / `process_kill` | **SysCap** | **ProcessCap** |
-| `process_exec` / `sys_exec` | **SysCap** | **ProcessCap** |
-| `process_epoll_create` / `inotify` / `prctl` | **SysCap** | SysCap hard residual (OK) |
-| `spawn_task` / `async_spawn_internal` | **SysCap** | ProcessCap preferred |
-| `join_task` / `async_join_internal` | **SysCap** | SysCap hard residual (OK) |
-| `load_model` / `python_embed` | **SysCap** | SysCap hard residual (OK) |
-
-Runtime/check may accept ProcessCap on sealed process ops (CAP-G4 FIXED), but **std call sites still demand SysCap** — callers cannot use least privilege via ProcessCap-only main. **This is the core CAP-G6 Process residual.**
-
-#### H3c — What is *not* overbroad (positive control)
-
-- Hard Sys residual ops remaining SysCap-only: correct by CAP-G4 design.
-- Product `ooda/std/os/net.oo` / `fs.oo` granular facades: correct CAP-G6 direction.
-- Fail-closed `process_exit` on true stubs (wireguard effectors, many `*_stubs.oo`): honest residual when labeled.
-
----
+### H3 — SysCap mass still overbroad → **HIGH residual**
+- 362 files in domain std demand `&SysCap` for pure math or policy, violating least privilege.
+- Product `process.oo` still uses SysCap for `process_spawn`/`exec`/`wait`/`kill` instead of preferred ProcessCap.
 
 ### H4 — Migration completeness honesty → **MED residual**
-
-| Layer | Status |
-|-------|--------|
-| Product `ooda/std/os/fs.oo` + `net.oo` | **partial FIXED** granular facades (uncommitted sync may lag domain std) |
-| Domain std dirty CAP-G6 wave | **WIP** — 19 files, not landed; do not claim ship |
-| Domain net majority | **not** the phantom batch-2 five; wireguard + net.oo + mtls only |
-| Domain ProcessCap | **0** — not started |
-| HW/UI granular in domain std | **0** — still SysCap stubs / cap-free (CAP-G3 residual-only) |
-| Legacy NetCap / FsCap call sites | residual; supersede still load-bearing for one-wave |
+- Product `fs.oo`/`net.oo` are partially fixed; domain std migration is uncommitted WIP.
 
 ---
 
@@ -269,25 +83,15 @@ Runtime/check may accept ProcessCap on sealed process ops (CAP-G4 FIXED), but **
 | C11 | Product ooda net/fs granular facades | **present** | — (positive) |
 | C12 | BindCap as live param in domain std | **comment only** | MED incomplete |
 
-No new product fail-open on CAP-G1/G2 check maps was dual-proved this pass (out of CAP-G6 scope). Residual is **std surface honesty + privilege mass**, not reopening sealed_kind_of CRIT class.
-
 ---
 
-## Root-cause notes (for meta / std owners)
+## Root-cause & Remediation notes
 
-1. **Cap rename ≠ implementation.** Require every CAP-G6 land to state body class: sealed-real / process_exit / Err residual / synthetic-math. Reject “migrated” claims on comment+type only.
-
-2. **Kill soft-success crypto.** Prefer `process_exit(1)` or `Err("UNAUDITED_…")` on verify/encrypt public entries that lack real math. Do not return `Ok(true)` / `is_valid: true` from djb2 or string-concat FHE. SPRINT line is load-bearing.
-
-3. **ProcessCap std migration (small, high value).** Change product `ooda/std/os/process.oo` spawn/exec/wait/kill (+ domain `async` spawn) to `&ProcessCap`; keep prctl/python/async_join on SysCap. Dual-prove with `cap_g4_process_smoke` + ProcessCap-only main.
-
-4. **Stop SysCap spice on pure modules.** Domain FHE/ZK/auth policy that never touches OS should be cap-free or use real sealed effects only. `_with_capability(sys)` that ignores `sys` is anti-pattern — remove or wire a real sealed op.
-
-5. **Refresh STDLIB_CRYPTO_MATH.oot** to match tree (missing ops files; ungated synthetic). Honesty pack lag is itself greenwash fuel.
-
-6. **Retire or rewrite std_caps_batch_2 claims** that cite non-existent net files. Live CAP-G6 evidence = product `ooda/std/os/{fs,net}.oo` + dirty WIP only.
-
-7. **Do not greenwash WIP dirty tree as landed.** Commit with honesty notes when ready; no push this auditor pass.
+1. **Cap rename ≠ implementation:** Require every CAP-G6 change to state body class (sealed-real / process_exit / Err residual / synthetic-math). Reject claims based solely on signature changes.
+2. **Kill soft-success crypto:** Prefer `process_exit(1)` or `Err("UNAUDITED")` over soft `Ok(true)` from toy math.
+3. **ProcessCap std migration:** Migrate `process.oo` and `async.oo` spawn to `&ProcessCap`.
+4. **Remove SysCap spice:** Pure policy functions should be cap-free.
+5. **Update docs:** Refresh `STDLIB_CRYPTO_MATH.oot` and retire unbacked batch-2 claims.
 
 ---
 
@@ -305,11 +109,13 @@ No new product fail-open on CAP-G1/G2 check maps was dual-proved this pass (out 
 | Push | **none** |
 | Greenwash | **refused** |
 
-**OVERALL:** CAP-G6 is **migration residual + honesty pressure**, not FIXED. Product thin facades for fs/net are the only clean path-A slice. Domain monorepo remains SysCap-dominated with production-shaped engines that soft-succeed. Treat CAP-G6 as **continue with honesty**, not close.
+**OVERALL:** CAP-G6 is **migration residual + honesty pressure**, not FIXED. Product thin
+facades for fs/net are the only clean path-A slice. Domain monorepo remains SysCap-dominated.
+Treat CAP-G6 as **continue with honesty**, not close.
 
 ---
 
-## Residual handoff (next owners)
+## Residual handoff
 
 | Owner | Todo |
 |-------|------|
@@ -317,6 +123,5 @@ No new product fail-open on CAP-G1/G2 check maps was dual-proved this pass (out 
 | **std** | CAP-G6 commits only with body-class honesty; no phantom file claims |
 | **crypto** | Fail-close or mark synthetic; refresh STDLIB pack |
 | **docs** | Align CAPS/SPRINT residual; fix batch-2 evidence pointers |
-| **DE** | Unrelated: DE1 emit inject remains orthogonal (CAPS) |
 
-*No push. No host rebuild this pass. No SPRINT close.*
+end of cap_g6_security.oot

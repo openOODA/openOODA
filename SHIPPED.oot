@@ -1,35 +1,60 @@
-SHIPPED — what exists on the product path
+# SHIPPED — Verified Product Capabilities & Proven Path
 
 File: openOODA/SHIPPED.oot
-This is what we have proved. DESIGN is the want. Residual is wanted, not built.
+This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the active execution plan. Residual is wanted, not built.
 
-Proof: files under ooda/, plus `oodac check oodac/main.oo`,
-or emit-c / emit-llvm + gcc/clang + run. std/src is not that proof.
+## 1. Ground Truth & Proof
 
-Proven
+  Proof: files under `ooda/`, plus `oodac check oodac/main.oo`,
+  or emit-c / emit-llvm + gcc/clang + run. `std/src` is not that proof.
 
-  Compiler
-    Pin v0.199.0-alpha. Live check of oodac/main.oo: OK, about 25s, about 0.32 GiB.
-    C emit through chs_rt, then gcc. That is the product path.
-    Official rebuild is bootstrap/oodac_pure_build. The old .sh path is gone.
-    ooda run is check + emit C + gcc + exec (fixtures/hello.oo).
-    LLVM hello works on the current host (emit-llvm + clang + run).
-    SECRET sinks include process_exec. Fail fixture refuses the secret.
+## 2. Proven Capabilities
 
-  Caps
-    Process-local tokens. Not an OS jail.
-    spawn / wait / kill are real. Child env is filtered (OODA_/OO_ and PATH).
-    process_exec is a shell line and a secret sink.
-    GpuCap is CPU only. No device shaders.
+### Compiler Floor
+  - Pin: v0.199.0-alpha. Live check of `oodac/main.oo`: OK, about 150s on this host (178 modules).
+  - C emit through `chs_rt`, then `gcc`. That is the product path.
+  - Official rebuild is `../ooda/bootstrap/oodac_pure_build`. The old `.sh` path is gone.
+  - `ooda run` is check + emit C + gcc + exec (`fixtures/hello.oo`).
+  - LLVM hello works on the current host (emit-llvm + clang + run).
+  - SECRET sinks include `process_exec`. Fail fixture refuses the secret.
 
-  Library and tools
-    About 50 .oo files under ooda/std. list, map, json, time, http, channel.
-    vscode talks to vscode/server/ooda-lsp.js (JavaScript, not a native LSP).
+### Capability Model & Sandboxing
+  - Process-local tokens. Not an OS jail.
+  - `spawn` / `wait` / `kill` are real. Child env is filtered (`OODA_`/`OO_` and `PATH`).
+  - `process_exec` is a shell line and a secret sink.
+  - `GpuCap` is CPU only. No device shaders.
 
-Residual (wanted, not built)
+### Standard Library & Developer Tooling
+  - Product std is `ooda/std` (about 199 `.oo` files on this host). Org `std/` and `std/src` are not product.
+  - vscode talks to `vscode/server/ooda-lsp.js` (JavaScript, not a native LSP).
+  - `ooda check`, `build`, `run`, `test`, `dump`, `outline`, `reflect`, `fix`, and `patch` are native `.oo` in `cli/main.oo`. There is no `scripts/ooda_product.sh`.
+  - `ooda test` sets `OODA_TEST=1` and runs verify constructors plus `assert_eq!` / `assert!`. `ooda run` does not run verify blocks.
+  - `ooda fix` applies `E_CAP`, `E_TC`, and `E_PARSE` (missing `}`). It asks yes/no before it writes, unless `--yes`. Writes go through `write_file` and need `OODA_FS_WRITEDIR`. No TTY and no `--yes` refuses. Absolute paths and symlinks are refused.
+  - `ooda patch` replaces one function body from a file (`--replace-fn` / `--with`) through `write_file`. Absolute paths, `..`, and symlinks are refused.
+  - HITL is not product. The human loop is `ooda fix`.
+  - Tree `oodac` emits the product CLI. `cli/host_run.oo` is 205 lines. JSON check lives in `cli/json_check.oo`.
+  - Check refuses unused `Ok`/`Err`/`Some`, `let _ =` / `let _:`, discarded `expect_*`, and discarded Result-returning calls such as `write_file`.
+  - `Result[Void, String]` emits `OoResV`. `Ok(void)` is a real empty Ok. JSON errors carry line and col from the message.
+  - Multi-file check reports per-file line/col (import lines kept as blanks).
+  - `oodac check --json-errors` is in-process. No capture `.sh`. Product CLI also converts.
+  - Named emit+gcc+run set: `scripts/ci_open_run.oo` (hello, int_main, open_ci_add).
+  - `ooda.ebnf` names TraitDecl and `::` import as residual.
+  - Official rebuild does not export `PURE_SKIP_CHECK`. That flag is opt-in only.
+  - Proved 2026-08-15 on `./bin/ooda` and `./oodac/oodac` rebuilt from tree sources.
 
-  Check is not under 10 seconds. RAM is not under 0.31 GiB.
-  WASM emit is text (.wat), not a .wasm binary.
-  No OS Landlock jail. No heap rlimit. No import C.
-  std/src is not product.
-  Later: SoA, macros, actors, hot-swap, bit-identical, GPU device, bare metal.
+## 3. Residual (Wanted in NORTHSTAR / ROADMAP, Not Built)
+
+  - Check is not under 10 seconds. RAM is not under 0.25 GiB.
+  - `ooda context`, `digest`, `health`, `pkg`, and `add` remain residual.
+  - WASM emit is text (`.wat`), not a `.wasm` binary (RTB-6).
+  - No Linux Kernel Landlock jail (RTB-9). No heap rlimit (RTB-10). No import C.
+  - `std/src` is not product.
+  - Later: SoA, macros, actors, hot-swap, bit-identical, GPU device, bare metal.
+
+## 4. Cross References
+
+  - Architecture North Star: `openOODA/NORTHSTAR.oot`
+  - Active plan: `openOODA/ROADMAP.oot` (section 5 Open; section 6 later)
+  - Long-Term Frontiers: `openOODA/MOONSHOTS.oot`
+  - Invariant Laws: `openOODA/RULES.oot`
+  - Security Matrix: `openOODA/SECURITY.oot`

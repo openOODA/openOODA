@@ -5,9 +5,7 @@
 # Binary: `/home/jeryd/Projects/openOODA/ooda/oodac/oodac` (962960 B, mtime 2026-08-12 07:49, md5 `a44ee35eb344837009697e2c9d4e4662`)
 # Source: `c_emit_secret_guard.oo` (9779 B, 11:46) / `c_emit_secret.oo` (10864 B, 11:54) / `c_emit_secret_alias.oo` (5958 B, 03:23)
 # OWN: audit only (no product code changes this pass)
-
 ## Scope
-
 Prove or reject SPRINT **6.1** memory floor after the SECRETSINK re-prove:
 
 > Hunt: `env_set` in SECRETSINK (partially landed with 2.3) introduced **no new concat** / no new leak
@@ -23,7 +21,6 @@ Hunts (this pass):
 Out of scope (named residual only): 7.1/7.2/7.10 walkers (already PASS `s71`/`s72`/`s710_memory.oot`), `c_args_strip_cr` (8.6), T1/T2 taint completeness, `#[Secret]` / `${}`, runtime HITL 7.4–7.8, product-lower of `env_set` (no `oo_env_set`).
 
 ## Verdict — path-A memory floor
-
 | Result | Meaning |
 |--------|---------|
 | **PASS** | 6.1 is **four string-equality additions** (`env_set` in sink-name / a1 / a1-a2 / full-args lists). No new ident walk. No `name = name + c`. Dirty-tree secret diffs are **7.10 concat removal** + **2.10 `__sec_sink__` prefix `str_slice`** — not 6.1 concat. Live `env_set` refuse RSS matches `setenv`/`env_get`. |
@@ -43,9 +40,7 @@ Out of scope (named residual only): 7.1/7.2/7.10 walkers (already PASS `s71`/`s7
 ---
 
 ## H1 — No new concat (the 6.1 close bar)
-
 ### Where `env_set` actually is
-
 | Site | Form | Alloc? |
 |------|------|--------|
 | `c_emit_secret_alias.oo` L16 | `name == "env_set"` inside `c_secret_is_sink_name` | none |
@@ -86,9 +81,7 @@ Existing (not new, not 6.1-owned) string `+`:
 ---
 
 ## H2 — `env_set` path heap vs siblings
-
 ### Mechanism
-
 `env_set` does **not** grow a buffer. After name match:
 
 1. `c_secret_refuse_sink_resolved` → alias ≤16 → `__sec__` get. Dual-list (L117 **and** L157) may refuse **a1 twice** — O(1) extra, not a prefix chain.
@@ -98,7 +91,6 @@ Existing (not new, not 6.1-owned) string `+`:
 `oo_char_at` is still Θ(n²) **time** + 1-char temps (compiler-wide). Host `oodac` is the **07:49** ELF (same as s71/s72/s710). `strings oodac` contains `env_set`.
 
 ### Live rails (this binary)
-
 Ephemeral `/tmp/s61_mem_*` (removed). `/usr/bin/time` `%e` / `%M`.
 
 Direct refuse (tiny fixtures):
@@ -126,7 +118,6 @@ Long SECRET ident (same N on `env_set` / `setenv` / `env_get` / `println`):
 Clean `env_set(...)` / `setenv(...)` then die with `ERR c_emit unknown free call needs annotation` — **no runtime primitive**. Not a leak; emit residual.
 
 ### Adjacent: alias-to-env host abort (not 6.1 concat)
-
 `let f = env_set; f(...)` / `setenv` / `env_get` against this **07:49** ELF: `malloc(): unaligned tcache chunk detected` + SIGABRT (~0.7–0.9 s, RSS still ~4.6 MB). `let f = println` **refuses cleanly**. Same abort for **setenv and env_get** ⇒ not an `env_set`-only walker. No growing RSS. Do **not** fold into 6.1 FAIL. Re-open only if a rebuilt ELF still aborts **and** a new concat appears on the env_set list.
 
 **H2 heap (direct): PASS. H2 time: residual. H2 alias abort: adjacent residual.**
@@ -134,7 +125,6 @@ Clean `env_set(...)` / `setenv(...)` then die with `ERR c_emit unknown free call
 ---
 
 ## H3 — Mechanism (list, not a new extract)
-
 | Artifact | What it says / does |
 |----------|---------------------|
 | `SPRINT.oot` 6.1 | “Confirm `env_set` in SECRETSINK (re-prove)” |
@@ -148,7 +138,6 @@ Clean `env_set(...)` / `setenv(...)` then die with `ERR c_emit unknown free call
 ---
 
 ## Complexity (memory class)
-
 | Function | Time | Aux heap (6.1 delta) |
 |----------|------|----------------------|
 | `c_secret_is_sink_name` + `env_set` | O(1) compares | **0** |
@@ -161,7 +150,6 @@ Progress: no new loop. Existing walkers already progress (`i` / `p` increase).
 ---
 
 ## Scorecard
-
 | ID | Sev | Site | Finding | Status |
 |----|-----|------|---------|--------|
 | S61-1 / 6.1 | HIGH | SECRETSINK lists | `env_set` is equality-only | **PASS** |
@@ -176,7 +164,6 @@ Progress: no new loop. Existing walkers already progress (`i` / `p` increase).
 | S61-10 | — | dirty 7.10 / 2.10 | slice + `__sec_sink__` | **not 6.1; no new concat** |
 
 ## Close bar for 6.1 (memory)
-
 Path-A **may close 6.1 as memory-floor PASS** if process accepts:
 
 1. No new concat (proven).
@@ -187,7 +174,6 @@ Path-A **may close 6.1 as memory-floor PASS** if process accepts:
 Re-open 6.1 memory **only** if `env_set` grows a per-char `OoStr` rebuild, or emit-c of a ≤64 KiB `env_set` args string **OOMs** / RSS grows as Θ(n²) **beyond** the `setenv` sibling.
 
 ## Evidence paths
-
 | Item | Path |
 |------|------|
 | Guard lists + 7.1 scan | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo` L117, L157–166, L215–226 |
@@ -195,11 +181,10 @@ Re-open 6.1 memory **only** if `env_set` grows a per-char `OoStr` rebuild, or em
 | Sink-name set | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_alias.oo` L16 |
 | Cap (not taint) | `/home/jeryd/Projects/openOODA/ooda/oodac/check_cap_util.oo` L243–245 |
 | Sibling fixtures | `ooda/fixtures/secret_setenv_{fail,pass}.oo`, `secret_env_get_{fail,pass}.oo` |
-| Smoke (setenv only) | `ooda/scripts/secret_sink_enforce_smoke.sh` L241–246 |
+| Smoke (setenv only) | `ooda/scripts/secret_sink_enforce_smoke.oo` L241–246 |
 | Prior floors | `s71_memory.oot` / `s72_memory.oot` / `s710_memory.oot` / `t1_memory.oot` |
 
 ## Notes (return)
-
 1. Did **not** edit product `.oo`. Audit + ephemeral `/tmp/s61_mem_*` only (removed).
 2. Did **not** add `secret_env_set_*` fixtures (Harness OWN).
 3. Did **not** rebuild `oodac`. Host ELF already strings-matches `env_set` and refuses it.

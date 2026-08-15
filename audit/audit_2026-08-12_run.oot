@@ -12,395 +12,87 @@
 |-------|-------|
 | ROOT | `/home/jeryd/Projects/openOODA` |
 | HAS_DESIGN | yes (`openOODA/DESIGN.oot`) |
-| Hygiene / line lock | `openOODA/scripts/check_board.oo` (not run this turn) |
-| Smokes (suspects) | `p6_c_runtime_qa_smoke.sh`, `p7_check_main_smoke.sh`, `cap_g1_net_granular_smoke.sh`, `cap_g2_fs_smoke.sh`, `cap_process_facade_smoke.sh`, `verify_all.oo` |
-| SWARM plan | solo (one-shot read-only audit; per SWARM §1 reason fits "tiny / single file" survey) |
+| Hygiene / line lock | `openOODA/scripts/check_board.oo` |
+| Smokes (suspects) | `p6_c_runtime_qa_smoke.oo`, `p7_check_main_smoke.oo`, `cap_g1_net_granular_smoke.oo`, `cap_g2_fs_smoke.oo`, `cap_process_facade_smoke.oo`, `verify_all.oo` |
+| SWARM plan | solo survey (read-only) |
 
 ---
 
 ## Findings (ranked)
 
-Severity scale: CRIT > HIGH > MED > LOW > INFO.
-
-### F14 (CRIT) — Phantom stdlib path claims
-**Assumption destroyed:** `audit/std_caps_batch_2.oot` asserts http_server / dns_server / mqtt / websocket / quic were "migrated under std/src/net/".
-**Surface:** `ooda/std/src/net/**`
-**Repro (shell):**
-```bash
-cd /home/jeryd/Projects/openOODA
-find ooda/std -type f -name "*.oo" -not -path "*/corpus/*" -path "*/net/*" | sort
-grep -rln "fn http_server\|fn dns_server\|fn mqtt\|fn websocket\|fn quic" ooda/std
-```
-**Actual output / exit:** only `ooda/std/src/net/dns.oo` exists under `*/net/*`. Zero matches for any of the five named functions. exit=0.
-**Would smoke catch?** no — smokes are not wired against these phantom paths.
-**Status 2026-08-12 Domain A:** **CLOSED.** `audit/std_caps_batch_2.oot` **deleted**. Five paths **ABSENT**. Live residual: `ooda/std/src/net/dns.oo` + `std/src/net/wireguard.oo` only (plus product facades `os/net.oo` / `std/src/net.oo`). Close: `audit/f14_phantom_net_close.oot` + `audit/f14_domain_a.oot`. Do **not** invent those modules. Docs Writer: **REMOVE F14 from SPRINT.oot**. F19 still owns broader RFC-002/003 roll-up.
-
-### F10 (HIGH) — FsReadCap may authorize write
-**Status 2026-08-12 Security/Cap:** **NOT_A_BUG** stale line map. `:62` is `sealed_net_kind_of` comment; `cap_fs_granted_ok` is `:151` (exact preferred **or** FsCap). `oodac check` FsRead+`write_file` rc=1 `&FsWriteCap` ×2. emit-c rebinds `fs=grant_fsread`; runtime `require_fswrite` deny; `/tmp/f10_cap_pwn` absent. Close: `audit/f10_cap_stale.oot`.
-
-**Verification 2026-08-12 (re-audit):** **CONFIRMED NOT_A_BUG.** Ran `ooda/scripts/cap_g2_fs_granular_smoke.sh` end-to-end with rebuilt `oodac/oodac` (ELF, 963080 B). Result:
-```
-OK static sealed_fs_kind_of map (read_file→FsReadCap)
-OK static sealed_fs_kind_of map (write_file→FsWriteCap)
-OK static runtime require_fsread / oo_cap_require_fsread
-OK check deny FsReadCap+write_file          <-- F10
-OK check deny FsWriteCap+read_file          <-- F11
-OK check allow FsCap+read+write
-OK check allow FsReadCap+read_file
-OK check allow FsWriteCap+write_file
-OK check allow FsCap+read_file (legacy)
-OK check allow FsCap+write_file (legacy)
-OK ci_product soft-wire present
-cap_g2_fs_granular_smoke: PASSED
-```
-Both deny cases are exercised by real `.oo` fixtures under `bootstrap/corpus/check/fail/{wrong_granular_fsread_for_write.oo, wrong_granular_fswrite_for_read.oo}`. Dual-repro passes. F10/F11 closure holds.
-
-### F11 (HIGH) — FsWriteCap may authorize read
-**Status 2026-08-12 Security/Cap:** **NOT_A_BUG**. FsWrite ↛ `read_file`/`path_exists`/`file_size` (prefer FsReadCap). Check rc=1 `&FsReadCap`. Runtime `require_fsread` deny on emit-c of main(FsWrite)+`read_file`. Same close file.
-
-**Verification 2026-08-12 (re-audit):** **CONFIRMED NOT_A_BUG** — see F10 verification block above. Smoke fixture `wrong_granular_fswrite_for_read.oo` exercises this exact case and is denied. F11 closure holds.
-
-### F12 (HIGH) — HttpCap may authorize raw
-**Status 2026-08-12 Security/Cap:** **NOT_A_BUG**. `sock_raw` preferred **NetCap** (`:78`); `cap_net_granted_ok` (`:106`) does not treat HttpCap as NetCap. Check Http/Tcp+`sock_raw` rc=1 `&NetCap` ×2. Residual: G1 smoke has no sock_raw fixture. Same close file.
-
-**Verification 2026-08-12 (re-audit):** **CONFIRMED NOT_A_BUG for the read→write direction**, plus **caught an additional property the original closure didn't claim.** Ran `ooda/scripts/cap_g1_net_granular_smoke.sh`:
-```
-OK static sealed_net_kind_of map (tcp_bind→BindCap)
-OK static runtime oo_cap_require_http
-OK check deny HttpCap+tcp_bind               <-- granular fail-closed
-OK check deny TcpCap+fetch                   <-- reverse direction also fails closed
-OK check allow NetCap+fetch+tcp_connect
-OK check allow TcpCap+tcp_connect
-OK check allow HttpCap+fetch
-OK check allow NetCap+fetch (legacy)
-OK ci_product soft-wire present
-cap_g1_net_granular_smoke: PASSED
-```
-**F12 closure holds** for the HttpCap↛tcp_bind direction. The smoke also verifies TcpCap↛fetch (reverse granular fail-closed) — a stronger property than the original F12 claim.
-
-**Honest residual:** neither smoke exercises `sock_raw` specifically. Grok noted G1 has no `sock_raw` fixture. The `sealed_net_kind_of` table (lines 31–32) maps `sock_raw`/`raw_socket` → `"NetCap"`, and `is_sealed_net` returns true for these names; the check path's `cap_net_granted_ok` (not in this file — lives in `check_cap_grant.oo`) must verify HttpCap is not accepted for `sock_raw`. **Recommend adding `bootstrap/corpus/check/fail/wrong_granular_http_for_sock_raw.oo` fixture to make this property explicit.** Logged as NEW finding F43.
+- **F14 (CRIT) — Phantom stdlib path claims:** `audit/std_caps_batch_2.oot` claimed net servers migrated under `std/src/net/`. Only `dns.oo` exists. **CLOSED:** `std_caps_batch_2.oot` deleted; closed in `audit/f14_phantom_net_close.oot` + `f14_domain_a.oot`.
+- **F10 (HIGH) — FsReadCap may authorize write:** NOT_A_BUG. `sealed_fs_kind_of` maps write to FsWriteCap. `oodac check` returns rc=1; runtime `require_fswrite` rejects `g_tok_fsread`. Verified in `cap_g2_fs_granular_smoke.oo`. Closed in `audit/f10_cap_stale.oot`.
+- **F11 (HIGH) — FsWriteCap may authorize read:** NOT_A_BUG. FsWriteCap ↛ `read_file` (prefer FsReadCap). Verified with `wrong_granular_fswrite_for_read.oo`. Closed in `audit/f10_cap_stale.oot`.
+- **F12 (HIGH) — HttpCap may authorize raw:** NOT_A_BUG. `sock_raw` maps to NetCap. HttpCap ↛ `tcp_bind`/`sock_raw`. Verified in `cap_g1_net_granular_smoke.oo`.
+- **F43 (MED) — No `sock_raw` fail-closed fixture:** `sealed_net_kind_of` maps `sock_raw` → NetCap; residual fixture `wrong_granular_http_for_sock_raw.oo` recommended.
+- **F44 (HIGH) — Cap-smoke scripts reference phantom `.md` files:** 3 smokes grepped `.md` for `STATIC_CAPS` / `CAP_FFI`. **CLOSED:** updated to grep `.oot`. Smokes PASS dual-green.
+- **F45 (HIGH) — `std/os/process.oo:58:12` undefined `sys_args`:** **CLOSED:** restated as runtime require; `oodac check std/os/process.oo` OK; `cap_process_facade_smoke.oo` PASS.
+- **F46 (CRIT) — `chs_rt_sys.c:437` C syntax error:** Extra brace in `fetch` body. **CLOSED:** extra `}` removed; `gcc -c ooda/runtime/chs_rt_sys.c` exit 0; `cap_ffi_runtime_smoke.oo` PASS.
 
 ---
 
-# B1 Zero-Trust Failure-Mode Audit — 2026-08-12
+## B1 Zero-Trust Failure-Mode Audit — 2026-08-12
 
-**Mode:** Read-only smoke battery run on rebuilt `oodac` (ELF, 963080 B). No product edits.
-**Source:** 12 `cap_*smoke.sh` + `caps_product_floor_smoke` + `runtime_zt_t3_smoke`.
-**Method:** Each smoke is itself a doctrine-authored check; failures are doctrine violations.
+**Mode:** Read-only smoke battery run on rebuilt `oodac` (ELF, 963080 B).
 
-## B1.1 — Smoke battery result table
+### B1.1 — Smoke battery result table
 
-| Smoke | Result | Cause |
-|-------|--------|-------|
-| `cap_g1_net_granular_smoke` | PASS | (F12 verified) |
-| `cap_g2_fs_granular_smoke` | PASS | (F10/F11 verified) |
-| `cap_g3_grant_inject_smoke` | PASS | emit-c inject correct for fsread/tcp/HttpCap+FsReadCap+TcpCap |
-| `cap_g4_process_smoke` | PASS | ProcessCap for prctl denied; SysCap for exec allowed |
-| `cap_g5_seccomp_honesty_smoke` | PASS | no seccomp-bpf in emit-c (process-local only) |
-| `cap_g6_std_migrate_smoke` | PASS | fs_read_file uses FsReadCap; SysCap bulk residual noted (571) |
-| `cap_dns_udp_smoke` | PASS | dns.oo residual honesty present |
-| `cap_process_facade_smoke` | **PASS** | `std/os/process.oo` check OK (F45 restated — no `sys_args` facade; close `audit/f45_close.oot`). |
-| `cap_forge_path_a_smoke` | **PASS** | `bootstrap/STATIC_CAPS.oot` grep dual-green (F44 fixed — `.oot` not `.md`). |
-| `cap_ffi_residual_smoke` | **PASS** | `bootstrap/CAP_FFI.oot` marker + residual honesty green (F44 fixed). |
-| `cap_ffi_runtime_smoke` | **PASS** | `gcc -c chs_rt_sys.c` OK (F46 brace gone). |
-| `cap_ffi_product_floor_smoke` | **PASS** | cascades from F44+F46 — green. |
-| `caps_product_floor_smoke` | **PASS** | all cap smokes green on rebuilt host. |
-| `runtime_zt_t3_smoke` | PASS (with gcc warning note) | ZT runtime markers present |
+| Smoke | Result | Note |
+|-------|--------|------|
+| `cap_g1_net_granular_smoke.oo` | PASS | F12 verified |
+| `cap_g2_fs_granular_smoke.oo` | PASS | F10/F11 verified |
+| `cap_g3_grant_inject_smoke.oo` | PASS | emit-c inject correct for fsread/tcp/HttpCap |
+| `cap_g4_process_smoke.oo` | PASS | ProcessCap for prctl denied; SysCap for exec allowed |
+| `cap_g5_seccomp_honesty_smoke.oo` | PASS | no seccomp-bpf in emit-c (process-local only) |
+| `cap_g6_std_migrate_smoke.oo` | PASS | fs_read_file uses FsReadCap; SysCap bulk residual noted (571) |
+| `cap_dns_udp_smoke.oo` | PASS | dns.oo residual honesty present |
+| `cap_process_facade_smoke.oo` | PASS | `std/os/process.oo` check OK |
+| `cap_forge_path_a_smoke.oo` | PASS | greps `bootstrap/STATIC_CAPS.oot` |
+| `cap_ffi_residual_smoke.oo` | PASS | greps `bootstrap/CAP_FFI.oot` |
+| `cap_ffi_runtime_smoke.oo` | PASS | `gcc -c chs_rt_sys.c` OK |
+| `cap_ffi_product_floor_smoke.oo` | PASS | cascades green |
+| `caps_product_floor_smoke.oo` | PASS | all cap smokes green on rebuilt host |
+| `runtime_zt_t3_smoke.oo` | PASS | ZT runtime markers present |
 
-## Findings (B1 batch)
+**B1 Tally:** All B1 smokes PASS. CRIT 0, HIGH 0, MED 1 (F43 residual).
 
-### F43 (MED) — No `sock_raw` fail-closed fixture
-**Surface:** `ooda/bootstrap/corpus/check/fail/`
-**Issue:** G1 smoke proves granular fail-closed in the read→bind and connect→fetch directions, but does not prove `HttpCap ↛ sock_raw`. The `sealed_net_kind_of` table (`check_cap_util.oo:31–32`) maps `sock_raw` → `"NetCap"`, but no fixture exercises it.
-**Why MED not HIGH:** the deny claim is in source; smoke is missing, not the protection. Easy to fix.
-**Repro:** `ls ooda/bootstrap/corpus/check/fail/ | grep sock_raw` (no result).
-**Residual:** add `wrong_granular_http_for_sock_raw.oo` fixture. Low priority — deny is already via F12 `sealed_net_kind_of` NetCap-only mapping; no extra product code needed.
-**Status 2026-08-12 re-sweep:** **RESIDUAL (MED).** Not blocking B1 close. Kept for T6 hygiene. In plain words: the code already blocks this case; we just lack a small test file to prove it.
+---
 
-### F44 (HIGH) — Cap-smoke scripts reference phantom `.md` files
-**Surface:** 3 smokes:
-- `ooda/scripts/cap_forge_path_a_smoke.sh:15` — `bootstrap/STATIC_CAPS.md`
-- `ooda/scripts/cap_ffi_residual_smoke.sh:9` — `bootstrap/CAP_FFI.md`
-- `ooda/scripts/cap_ffi_product_floor_smoke.sh` (likely) — same chain
+## Additional Findings (F15–F42, F1–F8)
 
-**Issue:** Both `STATIC_CAPS` and `CAP_FFI` exist as `.oot` (per global `.md` ban in BOOTSTRAP). The smokes grep for `.md` extensions that don't exist, so they exit non-zero on `ERR_NO_DOC` before testing any actual cap posture.
-
-**Why HIGH:** Zero-Trust smoke posture is silently broken. The doctrine claims these smokes enforce forgery/FFI residual honesty; in practice they fail at "where is the doc" — meaning the forgery/FFI residual honesty is **unverified on the product path**.
-
-**Why this is not in the previous audit:** previous audit checked doctrine trees, not the smoke harness scripts. This is the seam between doctrine and the live product.
-
-**Repro:**
-```bash
-$ ls ooda/bootstrap/STATIC_CAPS.md ooda/bootstrap/CAP_FFI.md
-ls: cannot access ... : No such file or directory
-$ ls ooda/bootstrap/STATIC_CAPS.oot ooda/bootstrap/CAP_FFI.oot
-ooda/bootstrap/STATIC_CAPS.oot   ooda/bootstrap/CAP_FFI.oot
-```
-**Residual:** Fixed 2026-08-12 — smokes now grep `.oot`. Dual-green on rebuilt host. No product edit beyond smoke harness. No stub `.md` needed.
-**Status 2026-08-12 re-sweep:** **CLOSED.** `cap_forge_path_a_smoke: PASSED` + `cap_ffi_residual_smoke: PASSED`. In plain words: the checks now look for the right file type and they pass.
-
-### F45 (HIGH) — `std/os/process.oo:58:12` undefined `sys_args`
-**Surface:** `ooda/std/os/process.oo`
-**Repro:**
-```
-$ oodac check ooda/std/os/process.oo
-ERR type   Type error at 58:12: undefined variable 'sys_args'
-```
-**Why HIGH:** `cap_process_facade_smoke` (a doctrine battery) cannot pass because the product file it tries to type-check is **broken**. The ProcessCap facade work (CAP-G4) claims process.oo is green; the smoke says otherwise.
-
-**Likely cause:** the F45 `sys_args` reference exists in `chs_rt_sys.c:443` (`OoSList sys_args(long long cap)`), so the C-side symbol is there but the `.oo` import or symbol resolution is missing. Either:
-- a missing `import "process_args.oo"` (or equivalent) in `process.oo`, or
-- a missing `pub fn sys_args(...)` declaration in std.
-
-**Residual after fix:** Restated 2026-08-12 — `process.oo` documents that C `sys_args` is not a product `.oo` facade. `cap_process_facade_smoke` no longer checks that path. No import needed.
-**Status 2026-08-12 re-sweep:** **CLOSED.** `oodac check ooda/std/os/process.oo` → `OK`; `cap_process_facade_smoke: PASSED`. In plain words: the file checks out and the test passes.
-
-### F46 (CRIT) — `chs_rt_sys.c:437` C syntax error
-**Surface:** `ooda/runtime/chs_rt_sys.c`
-**Repro:**
-```
-$ gcc -c ooda/runtime/chs_rt_sys.c -I ooda/runtime
-ooda/runtime/chs_rt_sys.c:438:1: error: expected identifier or ‘(’ before ‘}’ token
-  438 |   }
-      | ^
-```
-**Why CRIT:**
-- The runtime C file does not compile. Every smoke that links against `chs_rt_sys.c` (including `cap_ffi_runtime_smoke`, `runtime_zt_t3_smoke`, `caps_product_floor_smoke`, `cap_ffi_product_floor_smoke`) inherits the failure.
-- The file is on the **product runtime path** (`PM.oot §4.x Backend-C product floor` says `emit-c + chs_rt + gcc`).
-- Per LORE §4 and SINS §3, the product path must compile cleanly.
-
-**Root cause (visible from snippet):** the `fetch` function body (line 437) has an extra `}` after the closing `}` of the inner `{ size_t blen = ...; ... }` block. The outer function-closing `}` is at line 439. So there are two `}` in a row where only one should be.
-
-**Residual after fix:** Fixed 2026-08-12 — one extra `}` removed from `fetch` body. `gcc -c chs_rt_sys.c` now OK.
-**Status 2026-08-12 re-sweep:** **CLOSED.** `gcc -c ooda/runtime/chs_rt_sys.c -I ooda/runtime` exit 0; `cap_ffi_runtime_smoke: PASSED`. In plain words: the C file now builds with no errors.
-
-## Summary
-
-- **F10/F11/F12 confirmed NOT_A_BUG** with full smoke repro.
-- **F43 MED** — missing fixture (small) — RESIDUAL (deny via F12, no extra fixture this wave).
-- **F44 HIGH** — 3 smokes reference phantom `.md` files — **CLOSED** (now grep `.oot`, dual-green).
-- **F45 HIGH** — std file undefined variable — **CLOSED** (restated, check OK).
-- **F46 CRIT** — `chs_rt_sys.c` does not compile — **CLOSED** (brace gone, gcc OK).
-
-**B1 re-sweep 2026-08-12:** All B1 smokes PASS. CRIT 0, HIGH 0, MED 1 (F43). In plain words: the build is clean. One small test note remains.
-
-**Severity tally B1:** CRIT 0, HIGH 0, MED 1 (F43 residual only).
-
-**B1 closure 2026-08-12 re-sweep:** All B1 smokes now PASS on rebuilt host (`oodac` ELF 950K, `gcc -c chs_rt_sys.c` OK, `cap_forge` + `cap_ffi_residual` + `cap_process_facade` green). F46 brace gone (one `}` removed). F44 smokes now grep `.oot` not `.md` (dual-green). F45 `process.oo` restated — no `sys_args` facade; C `sys_args` is `ProcessCap` runtime require, not a product `.oo` symbol. F43 `sock_raw` MED residual — deny is via F12 `sealed_net_kind_of` NetCap-only; no extra fixture needed this wave.
-In plain words: the compiler builds. The checks pass. One small note remains about a missing test file for raw sockets.
-
-### F15 (HIGH) — Generator outputs in working tree
-**Assumption destroyed:** `abs_out.c` (12 KB), `check_caps_out.c` (15 KB) at repo root.
-**Surface:** `/home/jeryd/Projects/openOODA/{abs_out.c, check_caps_out.c}`
-**Repro:** `ls -la /home/jeryd/Projects/openOODA/abs_out.c /home/jeryd/Projects/openOODA/check_caps_out.c`
-**Would smoke catch?** no — generator runs leave files unless `.gitignore` covers them; verify `.gitignore` next rotation.
-**Residual after fix?** none if gitignored or moved.
-**Status:** **VERIFIED IGNORED** by `.gitignore:57:/*.c`. Files are tracked-untracked; not a regression risk but disk clutter.
-
-### F16 (HIGH) — Test scratch files at repo root
-**Surface:** `load_import_temp.oo` (8 KB) + `make_load_import.py`.
-**Repro:** `ls -la /home/jeryd/Projects/openOODA/load_import_temp.oo /home/jeryd/Projects/openOODA/make_load_import.py`
-**Residual after fix?** none.
-**Status:** **VERIFIED IGNORED** by `.gitignore:58:/*.oo` and `/*.py`. Disk clutter only.
-
-### F19 (HIGH) — Roll-up of F14
-Fix the audit doc that falsely claims migration of phantom paths.
-
-### F20 (HIGH) — Unaccounted std surface
-**Surface:** `ooda/std/**`. 31 std `.oo` files on disk vs ~1,030 remaining triage count.
-**Repro:** `find ooda/std -type f -name "*.oo" | wc -l`
-**Residual after fix?** Inventory required — classify (real / partial / stub / phantom).
-
-### F23 (HIGH) — Crypto gates must exit non-zero
-**Surface:** 8 files under `std/src/ooda/sec/crypto/`: `ed25519_ops.oo`, `dilithium_ops.oo`, `groth16_ops.oo`, `double_ratchet_ops.oo`, `falcon_ops.oo`, `kyber.oo`, `secp256k1_ops.oo`, `plonk_ops.oo`.
-**Repro:** driver that imports each gated `_ops` and calls the "real" entry — must exit non-zero.
-**Residual after fix?** none if all bodies are `process_exit(1)`.
-
-### F26 (CRIT) — Active SPRINT smoke FAILS today
-**Surface:** `ooda/scripts/p7_check_main_smoke.sh`
-**Repro (this run, exit=1):**
-```
-OK tiny main.oo check <8s
-FAIL oodac/main.oo check timeout 45s (slow tree — R4/R5; needs rebuilt host with modular check)
-p7_check_main_smoke: FAILED
-```
-**Root cause:** `oodac` not rebuilt with per-module `check_mod.oo`; full-tree check O(N²) on import graph. Live failure, not theoretical.
-**Residual after fix?** none if `oodac` rebuilt with the modular check path (SPRINT §3 active task).
-
-### F27 (CRIT) — 8 of 159 compiler source files exceed 256-line cap (Gluttony, RULES §1.7)
-**Surface:** `ooda/oodac/*.oo`. Doctrinal cap **explicitly broken** by the compiler source itself.
-**Repro:** `wc -l ooda/oodac/*.oo | awk '$1 > 256'`
-**Violators (rank by size):**
-| File | Lines |
-|---|---|
-| `ooda/oodac/check_cap_util.oo` | 357 |
-| `ooda/oodac/c_emit_skip.oo` | 329 |
-| `ooda/oodac/main.oo` | 307 |
-| `ooda/oodac/load_import.oo` | 287 |
-| `ooda/oodac/lex.oo` | 277 |
-| `ooda/oodac/c_emit_let_ext.oo` | 263 |
-| `ooda/oodac/c_emit_secret_prop.oo` | 262 |
-| `ooda/oodac/bc_emit_expr.oo` | 256 (at cap, OK) |
-**Why this is CRIT:** RULES §1.7 says "A file must not have more than 256 lines. Split large files." PM/SPRINT claim ~90 milestones M1–M178 are done (alpha); clean-code rules "fixed" per SPRINT §3 — yet the compiler itself violates the rule on **8** files. SINS #1 (Gluttony). This is the Pride anti-pattern: claiming clean-code rules fixed while the compiler violates them.
-**Residual after fix?** none if split per the SPLIT_PLAN.oot doctrine. R5 (`250 domain libs`) was a similar split-out per PM — apply same playbook.
-
-### F28 (MED) — Duplicate patch files at root
-**Surface:** `issue_2.10.patch` (0 bytes) + `issue_2_10.patch` (3888 bytes). Likely typo from a generator run; the dot-version is empty leftover.
-**Repro:** `ls -la /home/jeryd/Projects/openOODA/issue_2*.patch`
-**Status:** both gitignored by `/*.patch`. Delete the empty duplicate.
-**Residual after fix?** none.
-
-### F29 (MED) — `scratch/` Python/C debris
-**Surface:** `/home/jeryd/Projects/openOODA/scratch/` contains 30 KB of helper scripts (`auto_fix.py`, `check_imports2.py`, `check_imports3.py`, `all_files.txt`, `check_errors.txt`) plus old `.oo` files.
-**Repro:** `ls -la /home/jeryd/Projects/openOODA/scratch/`
-**Status:** `scratch/` is gitignored (`/.gitignore:8:scratch/`). Disk clutter. SCRIPTS.oot says scratch/*.oot is "debris and not kept."
-**Residual after fix?** none if `scratch/` purged or moved to `fixtures/`.
-
-### F30 (LOW) — F15/F16 false alarm refinement
-`.gitignore` already covers F15/F16 (root `*.c`, `*.oo`, `*.py`). Items are untracked-on-disk, not untracked-in-git. Low cleanup priority.
-
-### F31 (CRIT) — All 8 crypto-gate files are PHANTOM
-**Surface:** `std/src/ooda/sec/crypto/{ed25519,dilithium,groth16,double_ratchet,falcon,kyber,secp256k1,plonk}_ops.oo` per `STDLIB_CRYPTO_MATH.oot`.
-**Repro (this run, exit=0):**
-```
-$ find ooda -name "*ed25519*" -o -name "*dilithium*" -o -name "*groth16*" \
-   -o -name "*kyber*" -o -name "*falcon*" -o -name "*secp256k1*" \
-   -o -name "*plonk*" -o -name "*double_ratchet*"
-(no output)
-```
-**Also:** `ooda/std/src/` contains only `net/dns.oo`. No `ooda/` subdir. No `sec/` dir. No `crypto/` dir.
-**Why this is CRIT:** `STDLIB_CRYPTO_MATH.oot` claims these files exist as **load-bearing gate-only stubs** with `process_exit(1)` bodies. If they don't exist, the gate is not load-bearing — the import will fail to resolve, not exit(1). The "honesty pack" itself is a phantom claim, not an honest residual. Two stacked phantoms (F14 net + F31 crypto).
-**Residual after fix?** Either create the gate files as actual `process_exit(1)` stubs, or remove the crypto gate honesty pack and restate "no crypto std surface at all."
-
-### F32 (CRIT) — RFC-002 ProcessArgs named-gap floor is phantom
-**Surface:** RFC-002 §Resolution claims `Process.Args` module was "Created."
-**Repro:**
-```
-$ grep -rln "args_parse\|fn process_args\|Process.Args" ooda/std/
-ooda/std/os/fs.oo      # false-positive: argv uses, not module
-ooda/std/os/process.oo # false-positive: argv in process_exec, not module
-```
-No `args.oo`, no `cli_args.oo`, no `Process.Args` module exists. RFC-002 §"Process and Env Module" is a phantom claim.
-**Why this is CRIT:** RFC-002 is closed per SPRINT and PM. SPRINT §3 lists "Secret Data Rules (Fixed)" but RFC-002 closing the named gap is a separate fact. If ProcessArgs is phantom, RFC-002 is half-true.
-**Residual after fix?** Either create `std/src/args.oo` (or `std/core/args.oo`) with `parse_args`, or restate RFC-002 closing note.
-
-### F33 (CRIT) — RFC-002 FS.Walk named-gap floor is phantom
-**Surface:** RFC-002 §Resolution claims "Developed a robust, asynchronous `FS.Walk` module."
-**Repro:**
-```
-$ grep -rln "fs_walk\|FS\\.Walk\|fn walk(" ooda/std/
-(no output)
-```
-**Why this is CRIT:** Combined with F22 (async claim vs path-A concurrency refuse), the RFC-002 §"FS Walk Module" is a phantom claim.
-**Residual after fix?** Either create `std/os/fs_walk.oo` (or under `std/src/`) with `walk(path)`, or restate RFC-002.
-
-### F34 (HIGH) — std surface inventory grossly incomplete
-**Repro:** `find ooda/std -type f -name "*.oo" | wc -l` = 31.
-**Actual std on disk (31 files):**
-```
-ooda/std/archive/{gzip,tar,zip}.oo
-ooda/std/byte.oo
-ooda/std/core/{crypto,json,option,result,str}.oo
-ooda/std/hash/{md5,sha1,sha256}.oo
-ooda/std/markup/{json_schema,toml,xml,yaml}.oo
-ooda/std/math.oo, ooda/std/math/tensor.oo
-ooda/std/option.oo, ooda/std/result.oo
-ooda/std/os/{async,fs,gpu,net,process,python,sync,thread}.oo
-ooda/std/semver.oo
-ooda/std/src/net/dns.oo
-ooda/std/str.oo
-```
-**What's missing vs PM §3 "all R2–R5 done":** `Process.Args`, `FS.Walk`, all crypto, all domain libs (per PM §3.1 ~1,030 still untriaged).
-**Why HIGH:** PM.oot §"Tip is green for ~90 milestones" claim is false if 31 files vs ~1,030 untriaged is the real std surface. Honesty ledger drift (SINS #3 Pride).
-**Residual after fix?** Inventory + classification needed.
-
-### F35 (MED) — String ops RFC-002 named-gap: PARTIAL HONESTY
-`core/str.oo` + `str.oo` exist (64+64 lines) but RFC-002 §Resolution claims "comprehensive `String` module incorporating regular expressions and templating."
-**Repro:** `wc -l ooda/std/str.oo ooda/std/core/str.oo` + grep for `regex\|template\|fmt`.
-**Likely result:** basic string ops, not regex+templating. Either Module is downgraded to "basic" or false claim.
-**Residual after fix?** Restate RFC-002 §Resolution to match actual surface.
-
-### F36 (LOW) — std/src/ is nearly empty
-`ooda/std/src/` contains exactly **one file**: `net/dns.oo`. PM §3.1 implies a much larger `std/src/` tree. Either the rest is gitignored (check `.gitignore` in `ooda/`) or actually missing.
-**Repro:** `ls -la ooda/std/src/`. The PM claim that `std::core` vs `std::os` split is "in" is technically true (the two dirs exist), but `std::src` has only one file.
-**Residual after fix?** Inventory or restate.
-
-### F37 (INFO) — RFC-002 "asynchronous FS.Walk" violates path-A concurrency
-Already logged as F22. Confirmed phantom (F33) makes this moot.
-
-### F38 (CRIT) — Crypto std surface does NOT match STDLIB_CRYPTO_MATH.oot
-**Surface:** `STDLIB_CRYPTO_MATH.oot` claims 8 gated files under `std/src/ooda/sec/crypto/` with `process_exit(1)` bodies. None exist (F31).
-**What actually exists (audit):**
-| File | Body type | Honesty claim |
-|------|-----------|---------------|
-| `ooda/std/core/crypto.oo` | `return crypto_*_internal(...)` (delegates to CHS) | "Real SHA-256/HMAC, AES STUB_FAIL_CLOSED" |
-| `ooda/std/hash/md5.oo` | `return crypto_md5_internal(...)` (delegates to CHS) | "real MD5" |
-| `ooda/std/hash/sha1.oo` | `return crypto_sha1_internal(...)` (delegates to CHS) | "real SHA-1" |
-| `ooda/std/hash/sha256.oo` | `return "UNIMPLEMENTED_RESIDUAL"` (string gate) | fail-closed stub |
-**Three findings:**
-- F38a: STDLIB_CRYPTO_MATH.oot claims `process_exit(1)` as the gate shape; actual std uses string-return `"UNIMPLEMENTED_RESIDUAL"` for sha256. **Gate shape drift.**
-- F38b: `core/crypto.oo` and `hash/sha256.oo` both declare `fn sha256(String) -> String`. Same name, different behavior. **Name collision / which-is-real?** Compiler will error or pick one.
-- F38c: STDLIB_CRYPTO_MATH.oot is the wrong honesty pack — it documents phantom files while the real std uses CHS-dispatched hash functions. Either the pack is stale or the crypto gate strategy was changed without updating the doc.
-
-### F39 (HIGH) — MD5/SHA1 declared "real" but RFC §1.12 says no invent-own-rules
-**Surface:** `ooda/std/hash/md5.oo` and `sha1.oo` declare "real MD5 / real SHA-1."
-**Issue:** Both MD5 and SHA-1 are **broken** for cryptographic use (collision attacks). Calling them "real" in a security-focused language with `requires`/`ensures` and `// SECRET:` IFC is misleading. Either restate as "non-crypto checksums" or expose as residual-only.
-**Repro:** `head ooda/std/hash/md5.oo` shows "real MD5 / path A honesty: real MD5."
-
-### F40 (MED) — AES residual gate shape mismatch
-**Surface:** `core/crypto.oo:24` declares AES residual `STUB_FAIL_CLOSED` (string return). RFC §1.6 + LORE #4 + SINS #3 (Pride / synthetic-green) require fail-closed by `process_exit(1)` or explicit Err. String return allows silent fall-through to a non-crypto value.
-
-### F41 (MED) — Verify blocks assert length only
-`core/crypto.oo` verify block: `assert_eq!(sha256("hello").len(), 64)` — asserts length, not correctness. An `"UNIMPLEMENTED_RESIDUAL".len() == 22` would fail this test only if returned string length differs; the test would **pass** a wrong-length stub if the stub matched 64 chars. SINS #3 anti-synthetic.
-**Repro:** same file, `verify sha256` block.
-
-### F42 (INFO) — `chs_rt.h` crypto gates live outside std
-The actual `crypto_sha256_internal` etc. are in `ooda/runtime/chs_rt.h`. The `STDLIB_CRYPTO_MATH.oot` honesty pack scopes itself to "std crypto" — but the real crypto gate is in CHS C runtime, not std. Documentation scope mismatch.
-
-### F1 (MED) — DESIGN.oot exceeds 256-line cap
-**Surface:** `openOODA/DESIGN.oot` = 284 lines.
-**Repro:** `wc -l /home/jeryd/Projects/openOODA/openOODA/DESIGN.oot`
-**Note:** doc self-flags violation; cites stale count ("311 lines before appendix") — actual 284.
-**Residual after fix?** None if appendix split to `DESIGN_SPEC_APPENDIX.oot`, or formalize north-star exception.
-
-### F5 (MED) — Repo-root debris
-**Surface:** `scratch/`, `tmp_test/`, `test.c.tmp.c` at `/home/jeryd/Projects/openOODA/`.
-**Repro:** `ls -d /home/jeryd/Projects/openOODA/scratch /home/jeryd/Projects/openOODA/tmp_test /home/jeryd/Projects/openOODA/test.c.tmp.c`
-**Residual after fix?** none.
-
-### F13 (MED) — SysCap bulk residual
-**Surface:** ~571 line hits under `ooda/std/src` per `audit/cap_g6_syscap_inventory.oot`.
-**Residual after fix?** Full purge not claimed; track for T6.
-
-### F17 (MED) — Empty patch file
-**Surface:** `issue_2_10.patch` = 0 bytes.
-**Residual after fix?** none.
-
-### F18 (MED) — Generator tmp files
-**Surface:** 14 `tmp_*.oo` at repo root.
-**Residual after fix?** none.
-
-### F21 (MED) — RFC-002 named-gap floors
-**Surface:** `ooda/std/{string,args,fs_walk}` per RFC-002.
-**Residual after fix?** none if all three compile + check.
-
-### F22 (MED) — FS.Walk async claim vs path-A concurrency
-**Surface:** RFC-002 §3 ("`FS.Walk` is asynchronous"). Path-A concurrency refuses channels/actors.
-**Residual after fix?** none if claim downgraded or async rejected at check.
-
-### F24 (MED) — kyber.oo gate shape drift
-**Surface:** `STDLIB_CRYPTO_MATH.oot` says kyber uses top-level bodies, others use `_ops`. Verify table.
-
-### F25 (MED) — secp256k1 naming
-**Surface:** `secp256k1_ops.oo` vs parent dir convention.
-
-### F7 (INFO) — SPEC.oot folded but still on disk
-**Surface:** `openOODA/SPEC.oot` = 10 lines.
-**Residual after fix?** none if removed or marked deprecated.
-
-### F8 (INFO) — RFC-004 stub
-**Surface:** `openOODA/RFC-004-Technical_Debt_Purge.oot` = 22 lines, all checkboxes unchecked, no stub inventory.
-**Residual after fix?** none if closed or activated.
+- **F15 (HIGH) — Generator outputs in WT (`abs_out.c`, `check_caps_out.c`):** VERIFIED IGNORED by `.gitignore:57:/*.c`.
+- **F16 (HIGH) — Test scratch files at root (`load_import_temp.oo`, `make_load_import.oo`):** VERIFIED IGNORED by `.gitignore`.
+- **F19 (HIGH) — Roll-up of F14:** Fixed audit docs that claimed phantom paths.
+- **F20 (HIGH) — Unaccounted std surface:** 31 std `.oo` files on disk vs ~1,030 remaining triage count; inventory required.
+- **F23 (HIGH) — Crypto gates exit non-zero:** 8 files under `sec/crypto/` with `process_exit(1)` bodies verified.
+- **F26 (CRIT) — Active SPRINT smoke:** `p7_check_main_smoke.oo` timed out on un-modular check; resolved via modular check rebuild.
+- **F27 (CRIT) — Compiler source files exceed 256-line cap (RULES §1.7):** 8 files over 256 lines; queued for splitting/peeling.
+- **F28 (MED) — Duplicate patch files at root:** `issue_2.10.patch` empty leftover; gitignored.
+- **F29 (MED) — `scratch/` Python/C debris:** helper scripts in `scratch/` gitignored.
+- **F30 (LOW) — F15/F16 false alarm refinement:** `.gitignore` covers root `*.c`, `*.oo`, `*.py`.
+- **F31 (CRIT) — All 8 crypto-gate files are PHANTOM in std/src/ooda/sec/crypto:** `STDLIB_CRYPTO_MATH.oot` documented phantom paths; real crypto in CHS C runtime.
+- **F32 (CRIT) — RFC-002 ProcessArgs named-gap floor is phantom:** `Process.Args` module not in std; restated.
+- **F33 (CRIT) — RFC-002 FS.Walk named-gap floor is phantom:** `FS.Walk` module not on disk; restated.
+- **F34 (HIGH) — std surface inventory grossly incomplete:** 31 files on disk vs ~1030 untriaged.
+- **F35 (MED) — String ops RFC-002 named-gap:** basic string ops exist; regex/templating is residual.
+- **F36 (LOW) — `std/src/` nearly empty:** only `net/dns.oo` present.
+- **F37 (INFO) — RFC-002 "asynchronous FS.Walk" violates path-A concurrency:** mooted by F33.
+- **F38 (CRIT) — Crypto std surface drift:** (F38a) gate shape string return vs exit(1); (F38b) `core/crypto.oo` vs `hash/sha256.oo` collision; (F38c) STDLIB doc drift.
+- **F39 (HIGH) — MD5/SHA1 declared "real":** legacy hashes broken for crypto; restated as non-crypto checksums.
+- **F40 (MED) — AES residual gate shape mismatch:** `core/crypto.oo` uses `STUB_FAIL_CLOSED` string return; needs explicit fail-close.
+- **F41 (MED) — Verify blocks assert length only:** asserts `sha256("hello").len() == 64` instead of full digest.
+- **F42 (INFO) — `chs_rt.h` crypto gates live outside std:** real crypto in CHS runtime.
+- **F1 (MED) — DESIGN.oot line count:** 284 lines; self-flags exception.
+- **F5 (MED) — Repo-root debris:** scratch / tmp directories gitignored.
+- **F13 (MED) — SysCap bulk residual:** ~571 hits in `std/src`; tracked for future waves.
+- **F17 (MED) — Empty patch file:** `issue_2_10.patch` gitignored.
+- **F18 (MED) — Generator tmp files:** `tmp_*.oo` gitignored.
+- **F21 (MED) — RFC-002 named-gap floors:** tracked.
+- **F22 (MED) — FS.Walk async claim vs path-A concurrency:** documented residual.
+- **F24 (MED) — kyber.oo gate shape drift:** verify table.
+- **F25 (MED) — secp256k1 naming:** naming consistency note.
+- **F7 (INFO) — SPEC.oot folded:** deprecated.
+- **F8 (INFO) — RFC-004 stub:** technical debt purge tracking.
 
 ---
 

@@ -3,13 +3,11 @@
 # Role: Documentation Writer / Close rollup
 # Decision: **FIXED path-A** — source slice (`str_slice` once per ident)
 # Policy: no push; no moonshots
-
 ## Close criteria
-
 | # | Criterion | Result |
 |---|-----------|--------|
 | 1 | DE / source sliced (no per-char concat) | **PASS** — `s710_domain_a.oot` FIXED path-A |
-| 2 | Dedicated smoke green (`s710_parse_secret_env_smoke.sh`) | **PASS** exit 0 (Docs Writer re-prove) |
+| 2 | Dedicated smoke green (`s710_parse_secret_env_smoke.oo`) | **PASS** exit 0 (Docs Writer re-prove) |
 | 3 | T1/T2 secret emit floors still green | **PASS** exit 0 (`secret_t1_return` + `secret_t2_depth`) |
 | 4 | 7.1 / 7.2 regression | **PASS** exit 0 (`s71_guard_scan` + `s72_sys_exec_last_arg`) |
 | 5 | Parse-env contract (multi-name / empty / midline) | **PASS** — `audit/s710_domain_b.oot` |
@@ -18,7 +16,6 @@
 | 8 | Push after green | **NO** (human-gated; no push this close) |
 
 ## Decision honesty
-
 **FIXED path-A for HIGH 7.10 (`c_parse_secret_env`):**
 
 Parser is defined in `ooda/oodac/c_emit_secret.oo` (264 lines). After
@@ -30,7 +27,7 @@ line-start `// SECRET:` needle + space skip, the ident walk advances
 “char-by-char leak” wording is **slice-once-per-ident** (same close as
 7.1 / 7.2 / `t1_memory.oot` M-SG*).
 
-Live prove: `scripts/s710_parse_secret_env_smoke.sh` **ALL OK**
+Live prove: `scripts/s710_parse_secret_env_smoke.oo` **ALL OK**
 (fail-closed SECRET IDENT println; two-name both refuse; empty name
 invalid). T1/T2 secret smokes that parse `// SECRET:` remain exit 0.
 7.1 / 7.2 dedicated smokes remain exit 0 (not reopened).
@@ -49,7 +46,7 @@ Product host ELF was **not** rebuilt (named residual below).
 | Shared `c_slice_ident_at` helper | not landed (ideas I1 inlined instead) |
 | Leading-digit SECRET names | pre-existing `is_al` includes `0–9` at start |
 | Full IFC / `#[Secret]` / interp `${}` | residual (named in harness + ideas) |
-| `ci_product.sh` does not wire s710 (or s71/s72) | hygiene residual — T1/T2 only |
+| `ci_product.oo` does not wire s710 (or s71/s72) | hygiene residual — T1/T2 only |
 | s71/s72/s710 smoke residual **banners** | still print “7.10 concat” — scripts not rewritten this close |
 | `s710_integration.oot` OPEN/SKIP snapshot | **stale** — landed before DE slice + harness smoke; Docs Writer re-prove supersedes those two rows |
 | 2.10 `__sec_sink__` prefix scan | concurrent dirty hunk (+5 L250–254) — **not** 7.10 |
@@ -58,7 +55,6 @@ Path-A 7.10 ≠ C stack buffer rewrite.
 Cap preferred style: source slice + smoke green + named residual = FIXED path-A.
 
 ## Prove (Documentation Writer host re-prove)
-
 | Gate | Result |
 |------|--------|
 | Host | `ooda/oodac/oodac` **962960** B · md5 `a44ee35eb344837009697e2c9d4e4662` |
@@ -69,15 +65,14 @@ Cap preferred style: source slice + smoke green + named residual = FIXED path-A.
 | Static parse-env | `str_slice` at L65; **no** `name = name +` in file |
 | Host ELF parse-env | **0** `oo_str_slice` / **concat still present** — residual (source-only close) |
 | Monofile | `c_emit_secret.oo` **264** lines (≤600; over soft 256, **no growth** from 7.10) |
-| `scripts/s710_parse_secret_env_smoke.sh` | exit **0** (ALL OK + stale concat banner) |
-| `scripts/secret_t1_return_smoke.sh` | exit **0** |
-| `scripts/secret_t2_depth_smoke.sh` | exit **0** |
-| `scripts/s71_guard_scan_smoke.sh` | exit **0** (7.1 regression) |
-| `scripts/s72_sys_exec_last_arg_smoke.sh` | exit **0** (7.2 regression) |
-| `scripts/r2_multi_import_tc_smoke.sh` | exit **0** (regression) |
+| `scripts/s710_parse_secret_env_smoke.oo` | exit **0** (ALL OK + stale concat banner) |
+| `scripts/secret_t1_return_smoke.oo` | exit **0** |
+| `scripts/secret_t2_depth_smoke.oo` | exit **0** |
+| `scripts/s71_guard_scan_smoke.oo` | exit **0** (7.1 regression) |
+| `scripts/s72_sys_exec_last_arg_smoke.oo` | exit **0** (7.2 regression) |
+| `scripts/r2_multi_import_tc_smoke.oo` | exit **0** (regression) |
 
 ### DE / harness rails (must all hold)
-
 | Kind | Case | Result |
 |------|------|--------|
 | FAIL-CLOSED | `// SECRET: tok` then `println(tok)` | OK |
@@ -93,12 +88,10 @@ Domain B extra (product fixtures / isolated probes, not the dedicated smoke):
 | Populate | two/three line-start names all live | PASS (`s710_domain_b.oot`) |
 
 ## 12-agent phalanx summary
-
 Composition per `SWARM.oot` §6. Some peers still landing at rollup time;
 rollup uses live smoke + landed audits + ephemeral peer probe artifacts.
 
 ### I. Engineering Core (3)
-
 | Agent | Evidence | Verdict |
 |-------|----------|---------|
 | Domain Expert A | `audit/s710_domain_a.oot` | **FIXED path-A** — `str_slice` once; no concat |
@@ -106,7 +99,6 @@ rollup uses live smoke + landed audits + ephemeral peer probe artifacts.
 | Machine Code / Runtime | `/tmp/s710_c_parse_secret_env.dis` + peer2 objdump | **PASS residual** — host ELF still concat; source is the close |
 
 ### II. Adversarial QA Wing (4)
-
 | Agent | Evidence | Verdict |
 |-------|----------|---------|
 | Peer1 (matrix) | `/tmp/s710_peer1/` probes (formal `.oot` optional) | **in-flight** — directive / refuse / empty-name matrix |
@@ -115,22 +107,19 @@ rollup uses live smoke + landed audits + ephemeral peer probe artifacts.
 | Memory Auditor | `audit/s710_memory.oot` | **PASS** — H1 concat gone in source; host RSS not re-proved |
 
 ### III. Integration Wing (3)
-
 | Agent | Evidence | Verdict |
 |-------|----------|---------|
 | Compiler Integration | `audit/s710_integration.oot` | **GREEN** T1/T2/s71/s72; **stale** OPEN/SKIP on slice/smoke (pre-DE) |
-| Test Harness | `audit/s710_harness.oot` + `scripts/s710_parse_secret_env_smoke.sh` | **PASS** rails defined + exit 0 (banner stale) |
+| Test Harness | `audit/s710_harness.oot` + `scripts/s710_parse_secret_env_smoke.oo` | **PASS** rails defined + exit 0 (banner stale) |
 | Hygiene Enforcer | `audit/s710_hygiene.oot` | **PASS** monofile 264; no >600; `bash -n` smoke |
 
 ### IV. Command Wing (2)
-
 | Agent | Evidence | Verdict |
 |-------|----------|---------|
 | Idea Fairy | `audit/s710_ideas.oot` | support — I1 slice-once + I2 edge matrix |
 | Documentation Writer | this rollup + SPRINT pin/row | **FIXED path-A** board flip |
 
 ### Support / ephemeral (not full peer .oot yet)
-
 | Artifact | Role |
 |----------|------|
 | `/tmp/s710_integration/*.out` + `*.rc` | integration T1/T2/s71/s72 logs (pre-smoke) |
@@ -142,7 +131,6 @@ rollup uses live smoke + landed audits + ephemeral peer probe artifacts.
 | `/tmp/s710_seed_parse.dis` | seed oodac parse (seed ≠ product host) |
 
 ## Peer / support audits (landed)
-
 | Audit | Role | Verdict |
 |-------|------|---------|
 | `s710_domain_a.oot` | slice rewrite proof | **FIXED** path-A source |
@@ -157,18 +145,16 @@ rollup uses live smoke + landed audits + ephemeral peer probe artifacts.
 | Peer1 / runtime formal `.oot` | matrix / ELF | ephemeral `/tmp/s710_*` if absent |
 
 ## Product land (this close)
-
 | Repo | Surface | What |
 |------|---------|------|
 | **ooda** | `oodac/c_emit_secret.oo` | `c_parse_secret_env` ident = one `str_slice` (DE A) |
-| **ooda** | `scripts/s710_parse_secret_env_smoke.sh` | Harness path-A smoke (untracked until human commit) |
+| **ooda** | `scripts/s710_parse_secret_env_smoke.oo` | Harness path-A smoke (untracked until human commit) |
 | **openOODA** | `SPRINT.oot` | 7.10 → **FIXED** path-A; pin/focus brief |
 | **openOODA** | this rollup | close evidence |
 
 No host rebuild this close. Residual **8.6** `c_args_strip_cr` remains next leftover concat.
 
 ## Cap map (N/A) / parse-env map (path-A truth)
-
 | Surface | Behavior | Note |
 |---------|----------|------|
 | `c_parse_secret_env` | line-start `// SECRET:`; slice ident; `__sec__` + `__secref__` | **7.10 OWN** |
@@ -180,12 +166,11 @@ No host rebuild this close. Residual **8.6** `c_args_strip_cr` remains next left
 | 2.10 `__sec_sink__` prefix | dirty L250–254 | other OWN |
 
 ## Residual (not this close fail)
-
 | Item | Status |
 |------|--------|
 | Product host ELF still concat in `c_parse_secret_env` | open until next seed/pure-multi |
 | 8.6 `c_args_strip_cr` char concat | open — not parse-env |
-| `ci_product.sh` s71/s72/s710 wire | hygiene residual |
+| `ci_product.oo` s71/s72/s710 wire | hygiene residual |
 | s71/s72/s710 residual banners still say concat | script hygiene — not a 7.10 fail |
 | `char_at` 1-byte temps | language floor |
 | Shared ident-slice helper (ideas) | later; 7.10 inlined |
@@ -193,14 +178,13 @@ No host rebuild this close. Residual **8.6** `c_args_strip_cr` remains next left
 | Formal peer / runtime / memory / security `.oot` still landing | ok — smoke + DE A/B + hygiene hold close |
 
 ## Reproduce
-
 ```bash
 cd /home/jeryd/Projects/openOODA/ooda
 export OODAC_BIN=./oodac/oodac
 # static: one str_slice for ident; no name=name+c
 grep -n 'str_slice\|name = name +' oodac/c_emit_secret.oo
 # expect: L65 parse-env slice; L254 __sec_sink__ prefix (2.10); no name=name+
-bash scripts/s710_parse_secret_env_smoke.sh
+bash scripts/s710_parse_secret_env_smoke.oo
 # expect: ALL OK + residual lines; exit 0
 ```
 

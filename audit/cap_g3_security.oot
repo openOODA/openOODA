@@ -5,26 +5,22 @@
 # Host: product `ooda/oodac/oodac` (md5 `0de4edd3…`, size 949456 B, mtime 2026-08-12 04:55)
 #       = `oodac/oodac.bak.pre_cap_g3` (pre-type-driven inject witness)
 # Tip:  `0cbc4aa` CAP-G2 land (check/runtime path-A). CAP-G3 **emit grant** residual OPEN on host.
-# WT:   dirty CAP-G3 WIP in `c_emit_fn.oo` / `c_emit_skip.oo` / `c_emit_preamble.oo` (not in product host)
 # OWN: CRITICAL fail-open hunt for wrong grant-for-type, ambient all-grants, unused HW claims.
-#      No push. No host rebuild this pass (document dual-evidence; DE wire residual).
 
 ---
 
 ## Claim under pressure
 
 SPRINT **CAP-G3** (grant matrix / unused V2 grants honesty):
+- `main(p: &HttpCap)` injects `oo_cap_grant_http`, not `grant_net`.
+- `main(fs: &FsReadCap)` injects `oo_cap_grant_fsread`, not `grant_fs`.
+- `main(fs: &FsWriteCap)` injects `oo_cap_grant_fswrite`.
+- Pure / undeclared caps must not mint full privilege bag as live tokens.
+- HW/UI/Process: wire product require path or honest residual-only.
+- Dual path: `oodac check` refuse + runtime wrong-token refuse remain CAP-G1/G2 path-A.
 
-| Slice | Path-A expectation |
-|-------|--------------------|
-| Type → grant | `main(p: &HttpCap)` injects **`oo_cap_grant_http`**, not `grant_net` |
-| Type → grant | `main(fs: &FsReadCap)` injects **`oo_cap_grant_fsread`**, not `grant_fs` |
-| Type → grant | `main(fs: &FsWriteCap)` injects **`oo_cap_grant_fswrite`** |
-| Ambient | Pure / undeclared caps must **not** mint full privilege bag as live tokens for ops |
-| HW/UI/Process… | Wire product require path **or** honest residual-only (no product claim) |
-| Dual path | `oodac check` refuse + runtime wrong-token refuse remain CAP-G1/G2 path-A |
-
-Adversarial stance: treat **any** emit path where declared type is granular but runtime token is legacy supersede (full Fs/Net) as **CRIT privilege widen** when check is skippable. Treat always-on main inject of unused families as **ambient all-grants** honesty fail.
+Adversarial stance: treat any emit path where declared type is granular but runtime
+token is legacy supersede as CRIT privilege widen when check is skippable.
 
 ---
 
@@ -32,140 +28,43 @@ Adversarial stance: treat **any** emit path where declared type is granular but 
 
 | Surface | Path | Role |
 |---------|------|------|
-| Main inject (product host) | embedded emit in `oodac/oodac` | fixed-name `grant_fs/sys/env/net/time/rand/alloc/ffi/thread/gpu` only |
-| Main inject (WT source) | `oodac/c_emit_fn.oo` | ambient legacy + partial granular + WIP type rebind |
-| Type→suffix map (WT) | `oodac/c_emit_skip.oo` `c_cap_grant_suffix` / `c_emit_main_typed_cap_grants` | CAP-G3 WIP (not host) |
+| Main inject (host) | embedded emit in `oodac/oodac` | fixed-name legacy grants only |
+| Main inject (WT) | `oodac/c_emit_fn.oo` | ambient legacy + partial granular + WIP rebind |
+| Type→suffix map (WT) | `oodac/c_emit_skip.oo` | `c_cap_grant_suffix` / `c_emit_main_typed_cap_grants` |
 | Preamble decls | `oodac/c_emit_preamble.oo` | host: legacy only; WT: + granular/HW grant protos |
-| Runtime grants | `runtime/chs_rt_sys.c` | all V2 `oo_cap_grant_*` mint process-local tokens |
-| Runtime require | same + `chs_rt_fs.c` / `chs_rt_netfloor.c` | granular require exact **or** legacy supersede |
-| HW require stubs | `chs_rt_sys.c` L182–215 | exact-token only; **no product op callers** |
-| Check preferred maps | `oodac/check_cap_util.oo` / `check_caps.oo` | CAP-G1/G2 path-A (not CAP-G3) |
-| Build / emit gate | `oodac/cli_build.oo` | **does not** re-run `check` |
-| Catalog | `openOODA/CAPS.oot`, `SPRINT.oot` CAP-G3, `CAPS_MATRIX.oot` | honesty residual |
+| Runtime grants | `runtime/chs_rt_sys.c` | all V2 `oo_cap_grant_*` mint tokens |
+| Runtime require | same + `chs_rt_fs.c` / `chs_rt_netfloor.c` | granular require exact or legacy supersede |
+| HW require stubs | `chs_rt_sys.c` L182–215 | exact-token only; no product op callers |
+| Check preferred maps | `oodac/check_cap_util.oo` / `check_caps.oo` | CAP-G1/G2 path-A |
+| Catalog | `openOODA/CAPS.oot`, `SPRINT.oot` CAP-G3 | honesty residual |
 
 ---
 
 ## Hunt results
 
-### H1 — Wrong grant function for type (FsReadCap → `grant_fs`)  → **CRIT (product host emit)**
+### H1 — Wrong grant function for type (FsReadCap → `grant_fs`) → **CRIT (host emit)**
+- `main(fs: &FsReadCap) { write_file(fs, ...) }` fails `oodac check` (rc=1), but `oodac emit-c` emits `long long fs = oo_cap_grant_fs();` which authorizes write at runtime when check is skipped.
+- Root cause: main inject is name-fixed (`fs` always receives `g_tok_fs`), not type-driven.
 
-| Source | Check | Emit inject | Runtime if linked |
-|--------|-------|-------------|-------------------|
-| `main(fs: &FsReadCap) { write_file(fs, …) }` | **rc=1** requires `&FsWriteCap` (CAP-G2 path-A) | `long long fs = oo_cap_grant_fs();` + `oo_write_file(fs,…)` **emitted** | **ALLOW write** under `OODA_FS_WRITEDIR` |
+### H2 — HttpCap getting `grant_net` (wrong grant for type) → **CRIT class**
+- `main(net: &HttpCap)` check passes for fetch, but injects `grant_net` (full NetCap), allowing bind/raw at runtime.
+- `main(http: &HttpCap)` fails at emit-c (undeclared variable `http`) — fail-closed by accident.
 
-**Live dual-evidence (2026-08-12 host `0de4edd3`):**
+### H3 — Ambient all-grants fail-open → **HIGH (host + WT WIP)**
+- `main()` with zero parameters still emits the full legacy bag (`grant_fs`, `sys`, `env`, `net`, etc.) in generated C.
+- WT WIP adds granular tokens to ambient list before type rebind.
 
-```text
-$ oodac check fsread_write_skipcheck.oo
-ERR … write_file … requires a &FsWriteCap …   # rc=1 DENY
+### H4 — Missing / partial grant matrix for preferred names → **HIGH residual (host)**
+- Preferred names like `fsread`, `http`, `tcp`, `bind` have no emit inject on host binary.
 
-$ oodac emit-c fsread_write_skipcheck.oo | sed '/oo_seccomp_init/,/^}/d' | gcc … -o bin
-$ OODA_FS_WRITEDIR=/tmp ./bin
-# /tmp/cap_g3_pwn contains: PWNED
-```
+### H5 — Unused HW / Process / Sync / Mem grants claiming product → **HIGH honesty residual**
+- `oo_cap_grant_*` and `oo_cap_require_*` exist for Audio, Camera, USB, HID, Window, Frame, Sync, Mem, Sign, but zero product ops consume them. Catalog must treat as residual-only.
 
-Root cause: main inject is **name-fixed**, not **type-driven**. Param name `fs` always receives **full FsCap** token (`g_tok_fs`). CAP-G2 runtime `oo_cap_require_fswrite` **accepts** `g_tok_fs` as legacy supersede. Type claim `&FsReadCap` is a lie on the emit/runtime path when check is skipped.
+### H6 — LLVM emit name-only grants → **MED residual**
+- `llvm_emit_fn.oo` maps only `"fs"|"sys"|"env"|"net"`, storing 0 for other names.
 
-Contrast runtime honesty when correct grant is used:
-
-| Token | `oo_write_file` |
-|-------|-----------------|
-| `oo_cap_grant_fs()` | **ok=1** (ALLOW) |
-| `oo_cap_grant_fsread()` | **ERR cap write_file** exit 1 (DENY) |
-
-**Severity:** CRITICAL on **emit-c / build without check** product residual. Check path-A remains green. Same class as CAP-G2 H7 residual elevated to dual-proved CRIT emit fail-open.
-
-### H2 — HttpCap getting `grant_net` (wrong grant for type)  → **CRIT class (name collision)**
-
-| Source | Check | Emit (host) | Runtime token |
-|--------|-------|-------------|---------------|
-| `main(net: &HttpCap) { fetch(net, …) }` | **rc=0 OK** (HttpCap preferred for fetch) | `net = oo_cap_grant_net()` | **full NetCap** (`g_tok_net`) |
-| `main(http: &HttpCap) { fetch(http, …) }` | **rc=0 OK** | **no `http` inject** → C **undeclared** `http` (link fail-closed) | n/a |
-
-**Live runtime:**
-
-| Token | `oo_tcp_bind` | Meaning |
-|-------|---------------|---------|
-| `oo_cap_grant_net()` | **ok=1 ALLOW** | HttpCap-named-`net` can bind (supersede) |
-| `oo_cap_grant_http()` | **ERR cap tcp_bind** exit 1 | Correct granular refuses bind |
-
-So: declaring `net: &HttpCap` is accepted by check for `fetch`, but the process holds a **full network** token. Any later sealed net op that uses the same IDENT (`tcp_bind`, `tcp_connect`, `sock_raw` family via NetCap-only) is authorized at **runtime** if check is skipped or if a check bug reappears. Type says HTTP-only; grant is NetCap.
-
-**Also:** `main(http: &HttpCap)` product path is **broken** on host (undeclared C var) — fail-closed by accident, not least-privilege.
-
-### H3 — Ambient all-grants fail-open  → **HIGH (product host + WT WIP)**
-
-**Product host main inject (every `main`, including pure):**
-
-```c
-long long fs = oo_cap_grant_fs();
-long long sys = oo_cap_grant_sys();
-long long env = oo_cap_grant_env();
-long long net = oo_cap_grant_net();
-long long time = oo_cap_grant_time();
-long long rand = oo_cap_grant_rand();
-long long alloc = oo_cap_grant_alloc();
-long long ffi = oo_cap_grant_ffi();
-long long thread = oo_cap_grant_thread();
-long long gpu = oo_cap_grant_gpu();
-```
-
-Proved: `pub fn main() { let x = 1; }` still emits the full bag. Tokens are always minted process-local (R1′ residual: binary can call `oo_cap_grant_*` anyway). For pure OO, sealed ops still need matching IDENT args — so ambient bag is not a free check bypass by itself. **Fail-open class** is:
-
-1. **Privilege over-mint:** least-privilege claim for `main()` is false at C level.
-2. **Name collision trap (H1/H2):** ambient fixed names make wrong-type rebind the supersede token.
-3. **Check skip:** emit/build without check turns ambient supersede tokens into real effects (H1 PWN).
-
-**WT CAP-G3 WIP** (`c_emit_fn.oo` dirty, **not** product host) **widens** ambient inject further before type rebind:
-
-```c
-// still always:
-… legacy 10 …
-long long http = oo_cap_grant_http(); long long tcp = oo_cap_grant_tcp();
-long long udp = oo_cap_grant_udp(); long long bind = oo_cap_grant_bind();
-long long fsread = oo_cap_grant_fsread(); long long fswrite = oo_cap_grant_fswrite();
-long long process = oo_cap_grant_process();
-// then: c_emit_main_typed_cap_grants(mcap) rebinds ambient names to type suffix
-```
-
-WIP rebind **does** fix H1 when param is named `fs` with type `FsReadCap` (`fs = oo_cap_grant_fsread()` after ambient `grant_fs`). Residual honesty: ambient mint of unused families remains; pure main still holds http/tcp/bind/fsread/… tokens as dead locals.
-
-### H4 — Missing / partial grant matrix for preferred names  → **HIGH residual (host)**
-
-| Main param | Host inject | Product C path |
-|------------|-------------|----------------|
-| `fs: &FsCap` | `grant_fs` | works (legacy) |
-| `fs: &FsReadCap` | `grant_fs` (**wrong type**) | works + **over-privileged** |
-| `fsread: &FsReadCap` | **none** | uninit / undeclared residual |
-| `http: &HttpCap` | **none** | undeclared (gcc fail) |
-| `net: &HttpCap` | `grant_net` (**wrong type**) | works + **over-privileged** |
-| `tcp: &TcpCap` | **none** | emit residual / undeclared |
-| `bind: &BindCap` | **none** | emit residual for some lowers |
-| `usb: &UsbCap` | **none** (+ ambient legacy bag) | type-accept only |
-
-**Doc drift:** `CAPS.oot` / `CAPS_MATRIX.oot` claim partial granular inject (`tcp` / `fsread` / `process` today). **Product host strings for main body inject do not include those lines.** WT source is mid-land; host remains pre-CAP-G3.
-
-### H5 — Unused HW / Process / Sync / Mem grants claiming product  → **HIGH honesty residual**
-
-| Layer | Status |
-|-------|--------|
-| `is_cap_type` | Accepts Audio/Camera/Usb/Hid/Window/Frame/Process/Sync/Mem/Sign (27 catalog) |
-| `oo_cap_grant_{audio,camera,usb,hid,window,frame,process,sync,mem,sign}` | **Implemented** — mint real process-local tokens |
-| `oo_cap_require_*` for same | **Implemented** as exact-token stubs (`chs_rt_sys.c` L182–215 comment: CAP-G3 residual) |
-| Product sealed ops | **None** — no `sealed_kind_of` branch; no emit lower; **zero call sites** of HW requires outside definitions |
-| Std | HW files still SysCap stubs / cap-free parsers (prior `std_caps_batch_*`) |
-
-**Claim risk:** catalog + header + grant symbols look like product HW isolation. Truth: **type accept + token mint + orphan require**, no effect path. SPRINT CAP-G3 wording is correct (“wire **or remove**”); do **not** greenwash as product floor.
-
-Live: `oo_cap_grant_audio/usb/process/…` all mint nonzero tokens; no product op consumes them.
-
-### H6 — LLVM emit name-only grants  → **MED residual**
-
-`llvm_emit_fn.oo` main path: `pn == "fs"|"sys"|"env"|"net"` → matching legacy grant; other names store **0**. No type map. Same wrong-grant / missing-inject class as C host, zero path.
-
-### H7 — CAP-G1 / CAP-G2 check soft re-run  → **GREEN (not regressed by this audit)**
-
-Wrong-granular check denials remain path-A (prior rollups). CAP-G3 holes are **emit inject + ambient mint + unused families**, not reopening CAP-G1 any-granular bag.
+### H7 — CAP-G1 / CAP-G2 check soft re-run → **GREEN**
+- Check-level denials remain intact.
 
 ---
 
@@ -185,19 +84,12 @@ Wrong-granular check denials remain path-A (prior rollups). CAP-G3 holes are **e
 
 ---
 
-## Root-cause notes (for DE / SPRINT CAP-G3)
+## Root-cause & Remediation notes
 
-1. **Type-driven main inject is the seal for H1/H2.** Map Ooda type → `oo_cap_grant_<suffix>` for each main `&Cap` param. Rebind ambient fixed names when type is more precise (`fs: &FsReadCap` → `fs = grant_fsread()`). WT WIP (`c_emit_main_typed_cap_grants`) is the right direction; **must land in product host** and dual-prove C2 turns DENY.
-
-2. **Do not “fix” ambient by adding more always-on granular mints alone.** That expands the bag (WT risk). Prefer: mint **only declared main caps** (true least privilege) **or** keep ambient for compat but **rebind by type** and document residual.
-
-3. **emit-c / build without mandatory check** remains a product residual that turns grant confusion into CRIT effects. Optional harden: refuse emit of sealed ops when check not green (out of pure grant map if needed, but dual-path honesty).
-
-4. **Unused HW/Process/…:** either wire one residual product op + smoke, **or** remove from product claim surface (keep type residual + no grant inject + header note). Orphan `require_*` stubs are fine if catalog says residual-only.
-
-5. **CAPS / CAPS_MATRIX:** stop claiming host injects `tcp`/`fsread`/`process` until host binary proves it. Align docs with `strings oodac/oodac` main inject lines.
-
-6. **Duplicate `c_cap_grant_suffix` definitions** in WT `c_emit_skip.oo` (L81 and L270) — hygiene residual before pure multi land.
+1. **Type-driven main inject is the seal for H1/H2:** Map Ooda type → `oo_cap_grant_<suffix>`. Rebind ambient fixed names when type is more precise. WT WIP must land in product host and prove C2 turns DENY.
+2. **Do not expand ambient bag:** Mint only declared main caps or rebind by type.
+3. **Build without check residual:** Sealed ops should require green check.
+4. **Unused HW:** Catalog must state residual-only until product ops exist.
 
 ---
 
@@ -206,73 +98,19 @@ Wrong-granular check denials remain path-A (prior rollups). CAP-G3 holes are **e
 ```bash
 cd /home/jeryd/Projects/openOODA/ooda
 O=./oodac/oodac
-TMP=${TMPDIR:-$HOME/.cache/ooda-tmp}/cap_g3_probe
-mkdir -p "$TMP"
+TMP=${TMPDIR:-$HOME/.cache/ooda-tmp}/cap_g3_probe; mkdir -p "$TMP"
 
 # C1 check DENY
 cat > "$TMP/fsread_write.oo" <<'EOF'
-pub fn main(fs: &FsReadCap) {
-    let _ = write_file(fs, "/tmp/cap_g3_pwn", "PWNED");
-}
+pub fn main(fs: &FsReadCap) { let _ = write_file(fs, "/tmp/cap_g3_pwn", "PWNED"); }
 EOF
 $O check "$TMP/fsread_write.oo"   # expect rc=1
 
-# C2 emit skip-check PWN (strip dead seccomp_init for gcc)
-$O emit-c "$TMP/fsread_write.oo" 2>/dev/null \
-  | sed '/static inline void oo_seccomp_init/,/^}/d' \
-  > "$TMP/fsread_write.c"
-gcc -O0 -Iruntime runtime/chs_rt.c "$TMP/fsread_write.c" -o "$TMP/fsread_write.bin" \
-  -lm -lpthread -ldl
-OODA_FS_WRITEDIR=/tmp "$TMP/fsread_write.bin"
-# expect file /tmp/cap_g3_pwn == PWNED on pre-CAP-G3 host
-
-# C3–C6 runtime token matrix
-# (see audit session rt_wrong_grants.c pattern)
-
-# C7 ambient
-cat > "$TMP/pure.oo" <<'EOF'
-pub fn main() { let x = 1; }
-EOF
-$O emit-c "$TMP/pure.oo" 2>/dev/null | sed -n '/^int main/,/^}/p'
-# expect full grant_fs/sys/env/net/… bag
-
-# Host inject honesty
-strings oodac/oodac | grep 'long long fs = oo_cap_grant'
+# C2 emit skip-check PWN
+$O emit-c "$TMP/fsread_write.oo" 2>/dev/null | sed '/oo_seccomp_init/,/^}/d' > "$TMP/fsread_write.c"
+gcc -O0 -Iruntime runtime/chs_rt.c "$TMP/fsread_write.c" -o "$TMP/fsread_write.bin" -lm -lpthread -ldl
+OODA_FS_WRITEDIR=/tmp "$TMP/fsread_write.bin" # file /tmp/cap_g3_pwn == PWNED on pre-CAP-G3 host
 ```
-
----
-
-## WT CAP-G3 WIP (not product host — honesty)
-
-| File | Intent |
-|------|--------|
-| `oodac/c_emit_fn.oo` | Capture `mcap` type map; call `c_emit_main_typed_cap_grants` |
-| `oodac/c_emit_skip.oo` | `c_cap_grant_suffix`, ambient name set, typed rebind emit |
-| `oodac/c_emit_preamble.oo` | Declare granular + HW `oo_cap_grant_*` protos |
-| `oodac/oodac.bak.pre_cap_g3` | Witness = current product md5 `0de4edd3` |
-
-**Security note on WIP:** type rebind closes H1 for ambient param names when rebuild lands; ambient over-mint (H3) and unused HW product claim (H5) remain unless inject is declaration-scoped and catalog honesty is tightened. **Do not mark CAP-G3 FIXED until product host dual-proves C2 DENY.**
-
----
-
-## CRITICAL fix landed (this turn)
-
-| Item | Change |
-|------|--------|
-| **None** | Audit-only. No push. Product host remains pre-CAP-G3 inject. |
-
-**Not fixed (OWN residual ledger):**
-
-| ID | Item | Sev |
-|----|------|-----|
-| G3-C1 | Emit inject `grant_fs` for `fs: &FsReadCap` + check-skip write PWN | **CRIT** |
-| G3-C2 | `net: &HttpCap` → `grant_net` supersede (bind/tcp/raw capable token) | **CRIT class** |
-| G3-H3 | Ambient all-grants on every main | **HIGH** |
-| G3-H4 | Missing inject for `http`/`fsread`/`tcp`/… preferred names on host | **HIGH** |
-| G3-H5 | HW/Process/Sync/Mem grants + require stubs, zero product ops | **HIGH honesty** |
-| G3-H6 | LLVM name-only grants | **MED** |
-| G3-doc | CAPS/MATRIX partial-granular inject overclaim vs host | **MED doc** |
-| product | emit-c/build without mandatory check | **product residual** |
 
 ---
 
@@ -290,4 +128,8 @@ strings oodac/oodac | grep 'long long fs = oo_cap_grant'
 | CRITICAL OWN code fix this pass | **none (audit)** |
 | Push | **none** |
 
-**Security Auditor CAP-G3:** dual-proved **emit grant confusion CRIT** — `main(fs: &FsReadCap)` gets full `oo_cap_grant_fs`, and emit-without-check writes under WRITEDIR. **HttpCap↔grant_net** name collision is the same class. Ambient all-grants and unused HW grant surface are HIGH honesty residuals. WT type-rebind WIP is not product until host dual-proves C2 closed.
+**Security Auditor CAP-G3:** dual-proved **emit grant confusion CRIT** — `main(fs: &FsReadCap)`
+gets full `oo_cap_grant_fs`, and emit-without-check writes under WRITEDIR. HttpCap↔grant_net
+is the same class. Ambient all-grants and unused HW grant surface are HIGH honesty residuals.
+
+end of cap_g3_security.oot

@@ -5,35 +5,32 @@
 # Scope: live tip oodac secret rails; SPRINT 2.8 macro-body SECRET second pass
 #        (or residual doc) re-prove
 # Policy: no push; no seed_pure_multi; run listed smokes (90s each); run any s28_*
-
 ## Verdict (honest)
-
 | Layer | Result | Exit | Notes |
 |-------|--------|------|-------|
-| **`secret_t1_return_smoke.sh`** | **PASS** | **0** | return / alias / if-taint refuse+allow + CI wire |
-| **`secret_t2_depth_smoke.sh`** | **PASS** | **0** | field/method/args/dlopen/sys_exec argv/comment-skip + CI wire |
-| **`s61_env_set_secretsink_smoke.sh`** (6.1 regression) | **FAIL** | **1** | emit-c refuse+no-FP **GREEN**; `check` type-first (`undefined variable 'env_set'`) — no `ERR secret` |
-| **`s71_guard_scan_smoke.sh`** (7.1 regression) | **PASS** | **0** | println IDENT refuse + write_file payload refuse + string-lit no-FP |
-| **`s72_sys_exec_last_arg_smoke.sh`** (7.2 regression) | **PASS** | **0** | last-arg IDENT refuse + quoted commas/SECRET-spelling no-FP |
-| **`s710_parse_secret_env_smoke.sh`** (7.10 regression) | **PASS** | **0** | println IDENT + two-name + empty-name fail-closed |
-| **`s28_macro_secret_smoke.sh`** (Harness extra; landed mid-pass) | **PASS** | **0** | residual-refuse + invented-syntax fail-closed + first-pass SECRET + N/A residual doc |
+| **`secret_t1_return_smoke.oo`** | **PASS** | **0** | return / alias / if-taint refuse+allow + CI wire |
+| **`secret_t2_depth_smoke.oo`** | **PASS** | **0** | field/method/args/dlopen/sys_exec argv/comment-skip + CI wire |
+| **`s61_env_set_secretsink_smoke.oo`** (6.1 regression) | **FAIL** | **1** | emit-c refuse+no-FP **GREEN**; `check` type-first (`undefined variable 'env_set'`) — no `ERR secret` |
+| **`s71_guard_scan_smoke.oo`** (7.1 regression) | **PASS** | **0** | println IDENT refuse + write_file payload refuse + string-lit no-FP |
+| **`s72_sys_exec_last_arg_smoke.oo`** (7.2 regression) | **PASS** | **0** | last-arg IDENT refuse + quoted commas/SECRET-spelling no-FP |
+| **`s710_parse_secret_env_smoke.oo`** (7.10 regression) | **PASS** | **0** | println IDENT + two-name + empty-name fail-closed |
+| **`s28_macro_secret_smoke.oo`** (Harness extra; landed mid-pass) | **PASS** | **0** | residual-refuse + invented-syntax fail-closed + first-pass SECRET + N/A residual doc |
 | **2.8 extra: `macro_expand`/`ast_macro` check refuse** | **PASS** | **1** | `ERR residual` `AST_MACROS` (path-A default-deny) |
 | **2.8 extra: emit-c of those names** | **PASS/residual** | **1** | `ERR c_emit unknown free call` — **no** expansion, **no** `ERR residual` on emit |
 | **2.8 extra: first-pass SECRET still live** | **PASS** | **1** | `ERR secret println sink refuses SECRET tok` (check + emit-c) |
 | **Push** | **NOT DONE** | — | human-gated |
 
-**2.8 path-A claim:** Macro-body SECRET **second pass is unneeded** on Path A because AST macros are **not expanded**. SPRINT 2.8 is **residual-doc** (`or residual doc`), not a new walker. Residual packs are on disk (`MACRO_SECRET_RESIDUAL.oot` cited by SPRINT; plus `MACRO_SECRET_PASS.oot` / `MACRO_BODY_SECRET.oot`). Live `oodac check` default-denies `macro_expand` / `ast_macro` (`ERR residual` / `AST_MACROS`). Live `emit-c` does **not** expand those names — it dies `unknown free call`. First-pass token SECRET (`check_secret_println_sinks`) still refuses visible `println(tok)` under `// SECRET: tok`. There is **no** `c_secret_macro` / second-pass function in `c_emit*`. Dedicated harness `s28_macro_secret_smoke.sh` **GREEN** (exit 0) — residual N/A rail honest.
+**2.8 path-A claim:** Macro-body SECRET **second pass is unneeded** on Path A because AST macros are **not expanded**. SPRINT 2.8 is **residual-doc** (`or residual doc`), not a new walker. Residual packs are on disk (`MACRO_SECRET_RESIDUAL.oot` cited by SPRINT; plus `MACRO_SECRET_PASS.oot` / `MACRO_BODY_SECRET.oot`). Live `oodac check` default-denies `macro_expand` / `ast_macro` (`ERR residual` / `AST_MACROS`). Live `emit-c` does **not** expand those names — it dies `unknown free call`. First-pass token SECRET (`check_secret_println_sinks`) still refuses visible `println(tok)` under `// SECRET: tok`. There is **no** `c_secret_macro` / second-pass function in `c_emit*`. Dedicated harness `s28_macro_secret_smoke.oo` **GREEN** (exit 0) — residual N/A rail honest.
 
 **Assigned script battery:** **RED** (1 of 7 listed+landed). RED is **6.1 dual-path `check`**, not a 2.8 expander miss. T1/T2 + 7.1/7.2/7.10 + s28 remain **GREEN**. First `find` this pass had **no** `s28_*`; harness landed mid-pass and was re-run.
 
 **Overall 2.8 integration status: GREEN** (residual-doc + `s28_macro_secret_smoke` + live AST_MACROS refuse + first-pass SECRET) / **RED** (`s61_*` `check` vs this host ELF) / **not a second-pass implementation**
 
-Do **not** greenwash: no macro-body SECRET walker landed. `emit-c` does **not** run `check_residual_free_calls` (check-only). Dirty `check_drive.oo` moves SECRET **before** typecheck (6.1 dual-path intent) but the **07:49 host ELF was not rebuilt**, so live `check` still type-firsts `env_set`. Full IFC / `#[Secret]` / `${}` not claimed. `ci_product.sh` wires T1/T2 + `ast_macros_residual_smoke.sh` — **not** s61/s71/s72/s710/s28.
+Do **not** greenwash: no macro-body SECRET walker landed. `emit-c` does **not** run `check_residual_free_calls` (check-only). Dirty `check_drive.oo` moves SECRET **before** typecheck (6.1 dual-path intent) but the **07:49 host ELF was not rebuilt**, so live `check` still type-firsts `env_set`. Full IFC / `#[Secret]` / `${}` not claimed. `ci_product.oo` wires T1/T2 + `ast_macros_residual_smoke.oo` — **not** s61/s71/s72/s710/s28.
 
 ---
 
 ## TIP SHA / binary
-
 ```
 ooda     git rev-parse --short HEAD → 52cc4b5
 ooda     git log -1 --oneline       → 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
@@ -52,14 +49,13 @@ date -u                             → 2026-08-12T19:16:30Z
 | Host used | `OODAC_BIN=/home/jeryd/Projects/openOODA/ooda/oodac/oodac` |
 | Host `strings` | `macro_expand`, `ast_macro`, `AST_MACROS`, `env_set`, `setenv` present |
 | `nm` | **no** `oo_env_set` / `macro_expand` / `ast_macro` text symbols |
-| Working tree (ooda) | dirty: `c_emit_secret*.oo` + `c_emit_args.oo` + `check_drive.oo` + staged `bootstrap/MACRO_SECRET_PASS.oot`; untracked `MACRO_BODY_SECRET.oot`, `MACRO_SECRET_RESIDUAL.oot`, `scripts/s28_macro_secret_smoke.sh`, `s61_*`, `s71_*`, `s72_*`, `s710_*` |
+| Working tree (ooda) | dirty: `c_emit_secret*.oo` + `c_emit_args.oo` + `check_drive.oo` + staged `bootstrap/MACRO_SECRET_PASS.oot`; untracked `MACRO_BODY_SECRET.oot`, `MACRO_SECRET_RESIDUAL.oot`, `scripts/s28_macro_secret_smoke.oo`, `s61_*`, `s71_*`, `s72_*`, `s710_*` |
 
 Host ELF is the **same** 07:49 binary used by s61/s71/s72/s710 integration. Dirty hunks this wave are **not** a 2.8 second-pass rewrite: `c_emit_secret.oo` is 7.10 `str_slice` + 2.10 `__sec_sink__`; `check_drive.oo` is 6.1 secret-before-type (source only).
 
 ---
 
 ## 0) DE / Harness landing observed
-
 | Path | Role |
 |------|------|
 | `ooda/bootstrap/MACRO_SECRET_RESIDUAL.oot` (23) | SPRINT-cited 2.8 residual; marker `MACRO_SECRET_RESIDUAL_ALPHA`; **untracked** |
@@ -67,7 +63,7 @@ Host ELF is the **same** 07:49 binary used by s61/s71/s72/s710 integration. Dirt
 | `ooda/bootstrap/MACRO_BODY_SECRET.oot` (29) | sibling residual; marker `MACRO_BODY_SECRET_RESIDUAL_ALPHA`; **untracked** |
 | `openOODA/audit/issue_2_8_macro_secret_residual.oot` (21) | Security Auditor 2.8 residual (same claim) |
 | `openOODA/audit/s28_harness.oot` | harness pointer (landed mid-pass) |
-| `ooda/scripts/s28_macro_secret_smoke.sh` (305) | Harness extra (untracked; landed mid-pass); ephemeral TMPDIR fixtures |
+| `ooda/scripts/s28_macro_secret_smoke.oo` (305) | Harness extra (untracked; landed mid-pass); ephemeral TMPDIR fixtures |
 | `ooda/bootstrap/AST_MACROS.oot` | M153 path-A: check default-deny of `macro_expand` / `ast_macro` |
 | `ooda/bootstrap/RESIDUAL_PATH_A.oot` L20 | table row AST_MACROS |
 | `ooda/oodac/check_residual.oo` L28–29 | `macro_expand` / `ast_macro` → `"AST_MACROS"` |
@@ -75,14 +71,14 @@ Host ELF is the **same** 07:49 binary used by s61/s71/s72/s710 integration. Dirt
 | `ooda/oodac/c_emit.oo` L77–86 | emit SECRET first-pass; **no** residual-free-call walk |
 | `ooda/oodac/c_emit_secret.oo` | first-pass `c_parse_secret_env` + `check_secret_println_sinks` — **no** macro expand |
 | `ooda/fixtures/residual_macro_fail.oo` | `pub fn main() { let r = macro_expand("m"); }` |
-| `ooda/scripts/ast_macros_residual_smoke.sh` | **doc** smoke; looks for `bootstrap/AST_MACROS.md` (**absent**; tree has `.oot`) |
-| `ooda/scripts/secret_{t1,t2}_*.sh` | listed T1/T2 integration rails |
-| `ooda/scripts/s61_env_set_secretsink_smoke.sh` | 6.1 regression (untracked; now **dual-path** emit-c **and** check) |
-| `ooda/scripts/s71_guard_scan_smoke.sh` | 7.1 regression |
-| `ooda/scripts/s72_sys_exec_last_arg_smoke.sh` | 7.2 regression |
-| `ooda/scripts/s710_parse_secret_env_smoke.sh` | 7.10 regression |
+| `ooda/scripts/ast_macros_residual_smoke.oo` | **doc** smoke; looks for `bootstrap/AST_MACROS.md` (**absent**; tree has `.oot`) |
+| `ooda/scripts/secret_{t1,t2}_*.oo` | listed T1/T2 integration rails |
+| `ooda/scripts/s61_env_set_secretsink_smoke.oo` | 6.1 regression (untracked; now **dual-path** emit-c **and** check) |
+| `ooda/scripts/s71_guard_scan_smoke.oo` | 7.1 regression |
+| `ooda/scripts/s72_sys_exec_last_arg_smoke.oo` | 7.2 regression |
+| `ooda/scripts/s710_parse_secret_env_smoke.oo` | 7.10 regression |
 
-**Only** `scripts/s28_*` is `s28_macro_secret_smoke.sh`. Mid-pass also landed `audit/s28_{harness,hygiene,ideas,memory}.oot`. Integration did **not** invent the smoke.
+**Only** `scripts/s28_*` is `s28_macro_secret_smoke.oo`. Mid-pass also landed `audit/s28_{harness,hygiene,ideas,memory}.oot`. Integration did **not** invent the smoke.
 
 Source (tip, live) — AST_MACROS refuse is name-only at check:
 
@@ -97,250 +93,7 @@ Dirty `check_drive.oo` vs `52cc4b5`: SECRET walk **moved before** typecheck (6.1
 
 ---
 
-## 1) Primary smokes — exit codes
 
-All runs: `cd ooda && OODAC_BIN=./oodac/oodac` ; `timeout 90s`. Logs under `/tmp/s28_integration/`.
+*(Continued in `openOODA/audit/s28_integration_part2.oot`)*
 
-`bash -n` **OK** on all seven scripts (six assigned + landed `s28_*`).
-
-### 1a) secret_t1_return_smoke — exit 0
-
-`bash -n` **OK** (81 lines).
-
-```
-OK secret_function_return_fail emit refuses (rc=1)
-OK secret_function_return_pass emit OK
-OK secret_alias_rebind_pass emit refuses (rc=1)
-OK secret_alias_rebind_fail emit OK (sticky cleared)
-OK secret_if_taint_fail emit refuses (rc=1)
-OK secret_if_taint_pass emit OK
-OK ci_product wires secret_t1_return_smoke
-OK secret_t1_return_smoke
-```
-
-Log: `/tmp/s28_integration/secret_t1_return_smoke.out`
-
-### 1b) secret_t2_depth_smoke — exit 0 (includes sys_exec argv)
-
-`bash -n` **OK** (96 lines).
-
-```
-OK secret_field_assign_fail emit refuses (rc=1)
-OK secret_field_assign_pass emit OK
-OK secret_method_return_fail emit refuses (rc=1)
-OK secret_method_return_pass emit OK
-OK secret_call_arg_fail emit refuses (rc=1)
-OK secret_multi_arg_println_fail emit refuses (rc=1)
-OK secret_multi_name_fail emit refuses (rc=1)
-OK secret_multi_name_pass emit OK
-OK secret_dlopen_arg_fail emit refuses (rc=1)
-OK secret_dlopen_arg_pass emit OK
-OK secret_sys_exec_argv_fail emit refuses (rc=1)
-OK secret_sys_exec_argv_pass emit OK
-OK secret_midline_safe emit OK
-OK comment-skip fixture shape (no line-start SECRET directive)
-OK ci_product wires secret_t2_depth_smoke
-OK secret_t2_depth_smoke
-```
-
-Log: `/tmp/s28_integration/secret_t2_depth_smoke.out`
-
-### 1c) s61_env_set_secretsink_smoke (6.1 regression) — exit 1
-
-`bash -n` **OK** (176 lines). Harness now requires **emit-c AND check** (`ERR secret`).
-
-```
-OK fail-closed emit-c: secret_tok_env_set_ident
-FAIL fail-closed check missing ERR secret: secret_tok_env_set_ident
-     (got: ERR	type	Type error at 5:13: undefined variable 'env_set')
-OK fail-closed emit-c: secret_tok_setenv_ident
-FAIL fail-closed check missing ERR secret: secret_tok_setenv_ident
-     (got: ERR	type	undefined variable 'setenv')
-OK fail-closed emit-c: secret_tok_unsetenv_ident
-FAIL fail-closed check missing ERR secret: secret_tok_unsetenv_ident
-     (got: ERR	type	undefined variable 'unsetenv')
-OK no-FP emit-c: secret_tok_env_set_string_lit (no ERR secret; env_set product-lower residual)
-OK no-FP check: secret_tok_env_set_string_lit (no ERR secret; env_set product-lower residual)
-s61_env_set_secretsink_smoke: FAILED
-```
-
-Log: `/tmp/s28_integration/s61_env_set_secretsink_smoke.out`
-
-Honesty: earlier `s61_integration.oot` scored this smoke **PASS** when the harness was emit-c-only. Current script is dual-path. Dirty-tree `check_drive.oo` would run `check_secret_println_sinks` **before** typecheck; **this host ELF still typechecks first**. Emit-c refuse rails for 6.1 are still **GREEN**. This is **not** a 2.8 expander regression.
-
-### 1d) s71_guard_scan_smoke (7.1 regression) — exit 0
-
-`bash -n` **OK** (123 lines).
-
-```
-OK fail-closed: secret_tok_println_ident
-OK fail-closed: secret_tok_write_file_payload
-OK no-FP: secret_tok_println_string_lit
-s71_guard_scan_smoke: ALL OK
-RESIDUAL full IFC / #[Secret] attr / string-interp ${} deep taint — not claimed closed
-RESIDUAL 7.10: c_parse_secret_env still char-by-char name concat (not this OWN)
-RESIDUAL interproc SECRET beyond path-A __fr_secret__ (cross-file return taint)
-```
-
-Log: `/tmp/s28_integration/s71_guard_scan_smoke.out`
-
-Honesty: working-tree `c_parse_secret_env` is already `str_slice(src, start, k)` (no `name = name + c`). Host ELF was **not** rebuilt after that slice. Smoke residual banner is **stale** vs working-tree source; parse/refuse rails still hold either way.
-
-### 1e) s72_sys_exec_last_arg_smoke (7.2 regression) — exit 0
-
-`bash -n` **OK** (111 lines).
-
-```
-OK fail-closed: secret_tok_sys_exec_last_ident
-OK no-FP: secret_tok_sys_exec_last_quoted_commas
-s72_sys_exec_last_arg_smoke: ALL OK
-RESIDUAL full IFC / #[Secret] attr / string-interp ${} deep taint — not claimed closed
-RESIDUAL 7.10: c_parse_secret_env still char-by-char name concat (not this OWN)
-RESIDUAL last-arg slice hygiene is product (c_sys_exec_last_arg); this smoke proves emit rails only
-```
-
-Log: `/tmp/s28_integration/s72_sys_exec_last_arg_smoke.out`
-
-### 1f) s710_parse_secret_env_smoke (7.10 regression) — exit 0
-
-`bash -n` **OK** (119 lines).
-
-```
-OK fail-closed: secret_tok_println_ident
-OK fail-closed: secret_two_names_refuse_a
-OK fail-closed: secret_two_names_refuse_b
-OK fail-closed: secret_empty_invalid_name
-s710_parse_secret_env_smoke: ALL OK
-RESIDUAL full IFC / #[Secret] attr / string-interp ${} deep taint — not claimed closed
-RESIDUAL 7.10 concat hygiene is product (c_parse_secret_env name = name + c); this smoke proves parse/refuse rails only
-```
-
-Log: `/tmp/s28_integration/s710_parse_secret_env_smoke.out`
-
-Same stale-banner note as 1d: working-tree source is `str_slice`; host is 07:49.
-
-### 1g) s28_macro_secret_smoke (Harness extra) — exit 0
-
-`bash -n` **OK** (305 lines). Absent at first `find` this pass; landed mid-pass; re-run `timeout 90s`.
-
-```
-OK probe: check refused macro_expand (rc=1)
-OK probe: check refused ast_macro (rc=1)
-OK probe: check refused macro_kw (rc=1)
-OK SECRET floor refuse: secret_tok_println
-OK residual-refuse check macro_expand: residual_macro_expand
-OK residual-refuse check ast_macro: residual_ast_macro
-OK fail-closed check: macro_kw_syntax
-OK fail-closed emit-c: emit_macro_expand
-OK fail-closed emit-c: emit_ast_macro
-OK fail-closed emit-c: emit_macro_kw
-OK N/A rail documented: MACRO_SECRET_RESIDUAL.oot
-N/A rail: SECRET-in-expanded-body not claimed (residual free-name refuse)
-N/A rail: product refuses residual free-name macro_expand / ast_macro (AST_MACROS) — no expansion surface
-N/A rail: second-pass SECRET walker unneeded while residual deny holds
-OK macros unsupported: residual N/A rail honest
-s28_macro_secret_smoke: ALL OK
-RESIDUAL full IFC / #[Secret] attr / string-interp ${} deep taint — not claimed closed
-RESIDUAL 2.8 second-pass walker: unneeded while AST_MACROS residual deny holds
-RESIDUAL emit-c residual-deny is check-path; emit-c unknown-free-call is not expansion
-```
-
-Log: `/tmp/s28_integration/s28_macro_secret_smoke.out`
-
-Classification: macros **unsupported** (no `check` accept of `macro_expand` / `ast_macro` / invented `macro` keyword). SECRET-in-expanded-body rail is **N/A** and documented. Smoke does **not** claim a second-pass walker.
-
----
-
-## 2) Extra 2.8 probes (independent of harness; same host)
-
-Ephemeral fixtures: `/tmp/s28_integration/probes/` (not repo root). Same host ELF. `timeout 15s`. Run before the harness landed; results match `s28_macro_secret_smoke`.
-
-| Probe | check | emit-c | Read |
-|-------|-------|--------|------|
-| `fixtures/residual_macro_fail.oo` (`macro_expand("m")`) | rc=1 `ERR residual` `AST_MACROS` | rc=1 `ERR c_emit unknown free call … macro_expand` | check **TP** refuse; emit **no expand** |
-| `ast_macro("m")` | rc=1 `ERR residual` `AST_MACROS` | rc=1 `unknown free call … ast_macro` | same split |
-| `// SECRET: tok` + `macro_expand(tok)` + `println(tok)` | rc=1 `ERR secret println sink refuses SECRET tok` | rc=1 same `ERR secret` | first-pass **still wins** (visible sink) |
-| `// SECRET: tok` + `ast_macro(tok)` (no println) | rc=1 `ERR residual` `AST_MACROS` | rc=1 `unknown free call … ast_macro` | `ast_macro` is **not** a SECRETSINK; fail-closed is residual/unknown, not secret |
-| ordinary `// SECRET: tok` + `println(tok)` (control) | rc=1 `ERR secret` | rc=1 `ERR secret` | first-pass live |
-| `let macro_expand = 1; println(macro_expand)` (no call) | rc=0 `OK` | rc=0 (lowers as local Int) | residual is **IDENT+LPAREN** only |
-| `println("macro_expand(tok)")` string-lit | rc=0 `OK` | rc=0 | no-FP |
-
-`check_residual_free_calls` is invoked from `check_drive.oo` only. `c_emit.oo` never calls it. That split is **by design** for Path A: macros are not a product emit lower. Unknown-call on emit is **fail-closed**, not an expander.
-
-`ast_macro` / `macro_expand` are **not** in the emit SECRETSINK set. A SECRET ident passed **only** as a residual free-call argument is refused as residual/unknown, not as `ERR secret`. That is correct **while those names do not expand**. If AST macros are ever promoted off the refuse list, a second pass (or expanded-token SECRET walk) **must** land — residual docs already say this.
-
----
-
-## 3) Exit-code scoreboard
-
-| Script | Timeout | Exit | Color |
-|--------|---------|------|-------|
-| `ooda/scripts/secret_t1_return_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/secret_t2_depth_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s61_env_set_secretsink_smoke.sh` | 90s | **1** | RED |
-| `ooda/scripts/s71_guard_scan_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s72_sys_exec_last_arg_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s710_parse_secret_env_smoke.sh` | 90s | **0** | GREEN |
-| `ooda/scripts/s28_macro_secret_smoke.sh` | 90s | **0** | GREEN |
-
-Listed 6 + landed s28: **6 GREEN / 1 RED / 0 SKIP**.
-
----
-
-## 4) What GREEN is (and is not)
-
-| Claim | Status |
-|-------|--------|
-| T1 return / alias / if taint | **YES** (exit 0) |
-| T2 field/method/args/dlopen/sys_exec/comment-skip | **YES** (exit 0) |
-| 7.1 ident-scan regression | **YES** (s71 exit 0) |
-| 7.2 last-arg regression | **YES** (s72 exit 0) |
-| 7.10 parse-env rails (println / multi-name / empty) | **YES** (s710 exit 0) |
-| 6.1 emit-c `env_set`/`setenv` SECRET IDENT refuse | **YES** (s61 emit-c lines OK) |
-| 6.1 `oodac check` prints `ERR secret` for `env_set` on **this host** | **NO** — type-undefined first (s61 exit 1) |
-| 2.8 residual doc on disk (SPRINT "or residual doc") | **YES** — `MACRO_SECRET_RESIDUAL.oot` (+ two siblings) |
-| Dedicated `s28_*` smoke | **YES** — `s28_macro_secret_smoke.sh` exit 0 (landed mid-pass) |
-| Live `check` refuse `macro_expand` / `ast_macro` | **YES** (`ERR residual` / `AST_MACROS`) |
-| Invented `macro` keyword silent-green | **NO** — check + emit-c fail-closed |
-| Live emit **expands** macros | **NO** — unknown free call |
-| Macro-body SECRET second pass implemented | **NO** — unneeded on Path A; residual-doc close |
-| `ci_product.sh` wires s61/s71/s72/s710/s28 | **NO** — T1/T2 only (`ci_product.sh` L157–158) |
-| `ci_product.sh` wires `ast_macros_residual_smoke.sh` | **YES** (L182) — but that script wants `AST_MACROS.md` (**missing**; `.oot` exists) |
-| Full IFC / `#[Secret]` / `${}` | **residual** |
-| 2.10 `__sec_sink__` wrapper scan | **dirty-tree only** (not 2.8 OWN; not proved here) |
-| 7.10 source `str_slice` | **dirty-tree yes** / **host ELF not rebuilt** |
-
----
-
-## 5) Follow-ups (not this worker)
-
-1. Do **not** implement a macro-body SECRET second pass until `AST_MACROS` is promoted off residual refuse. Residual docs already require the second pass (or expanded-token walk) at that time.
-2. Optional: collapse the three overlapping 2.8 residual packs (`MACRO_SECRET_RESIDUAL` / `MACRO_SECRET_PASS` / `MACRO_BODY_SECRET`) to the SPRINT-cited file. Hygiene only.
-3. 6.1 dual-path: rebuild host from dirty `check_drive.oo` (secret-before-type) **or** relax `s61_env_set_secretsink_smoke.sh` `check` to accept type-undefined as residual (old emit-c-only honesty). Do **not** mix that rebuild into 2.8.
-4. Refresh s71/s72/s710 residual banners: working-tree `c_parse_secret_env` is `str_slice`; host ELF still 07:49.
-5. `ast_macros_residual_smoke.sh` still points at `bootstrap/AST_MACROS.md`. Point it at `.oot` or keep as known doc-path residual. Not run this pass (not in assigned list).
-6. Wire s61/s71/s72/s710/s28 into `ci_product.sh` if product wants those rails in CI. Harness scripts are **untracked** until human commit.
-
----
-
-## Evidence paths
-
-| Item | Path |
-|------|------|
-| This audit | `/home/jeryd/Projects/openOODA/openOODA/audit/s28_integration.oot` |
-| Harness pointer | `/home/jeryd/Projects/openOODA/openOODA/audit/s28_harness.oot` |
-| Harness smoke | `/home/jeryd/Projects/openOODA/ooda/scripts/s28_macro_secret_smoke.sh` |
-| SPRINT-cited residual | `/home/jeryd/Projects/openOODA/ooda/bootstrap/MACRO_SECRET_RESIDUAL.oot` |
-| Sibling residuals | `ooda/bootstrap/MACRO_SECRET_PASS.oot`, `ooda/bootstrap/MACRO_BODY_SECRET.oot` |
-| Security residual | `openOODA/audit/issue_2_8_macro_secret_residual.oot` |
-| AST_MACROS pack | `/home/jeryd/Projects/openOODA/ooda/bootstrap/AST_MACROS.oot` |
-| Residual refuse | `/home/jeryd/Projects/openOODA/ooda/oodac/check_residual.oo` |
-| Check drive | `/home/jeryd/Projects/openOODA/ooda/oodac/check_drive.oo` |
-| First-pass SECRET | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret.oo` |
-| Emit (no residual walk) | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit.oo` |
-| Product fixture | `/home/jeryd/Projects/openOODA/ooda/fixtures/residual_macro_fail.oo` |
-| Smoke logs | `/tmp/s28_integration/*.out` + `*.rc` |
-| Extra probes | `/tmp/s28_integration/probes/` |
-| Sprint row | `openOODA/SPRINT.oot` ID **2.8** MED |
-
-end of s28_integration.oot
+end of s28_integration.oot (part 1)

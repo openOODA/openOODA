@@ -4,16 +4,14 @@
 # Cwd: /home/jeryd/Projects/openOODA/ooda
 # Scope: live tip oodac check rails for multi-import load + typecheck; this audit only
 # Policy: no push; no full seed_pure_multi (integration skip if >2 min without timeout)
-
 ## Verdict (honest)
-
 | Layer | Result | Exit | Notes |
 |-------|--------|------|-------|
-| **`import_load_smoke.sh`** | **PASS** | **0** | multi_ok + missing/cycle fail-closed + concat/pure_build residual |
-| **`typecheck_line_smoke.sh`** | **PASS** | **0** | single-file local LINE < 50; residual multi-import expanded LINE |
-| **`r2_multi_import_tc_smoke.sh`** (DE) | **PASS** | **0** | 2-file call + struct-across-import + arg mismatch + missing import |
-| **`typecheck_pass_smoke.sh`** | **PASS** | **0** | 44 single-file pass fixtures (floor, not multi) |
-| **`typecheck_bug_rails_smoke.sh`** | **FAIL** | **1** | multi_shim pass OK; unrelated if_field fail rails accepted — **not R2 claim** |
+| **`import_load_smoke.oo`** | **PASS** | **0** | multi_ok + missing/cycle fail-closed + concat/pure_build residual |
+| **`typecheck_line_smoke.oo`** | **PASS** | **0** | single-file local LINE < 50; residual multi-import expanded LINE |
+| **`r2_multi_import_tc_smoke.oo`** (DE) | **PASS** | **0** | 2-file call + struct-across-import + arg mismatch + missing import |
+| **`typecheck_pass_smoke.oo`** | **PASS** | **0** | 44 single-file pass fixtures (floor, not multi) |
+| **`typecheck_bug_rails_smoke.oo`** | **FAIL** | **1** | multi_shim pass OK; unrelated if_field fail rails accepted — **not R2 claim** |
 | **Ad-hoc multi matrix** (`/tmp/r2_multi_import` + `tmp_multi_import/`) | **PASS w/ residual** | — | see §3; ann-on-call-result residual is **broader TC**, also single-file |
 | **`seed_pure_multi_smoke`** | **SKIP** | — | policy: do not run full pure multi >2 min without timeout |
 | **Push** | **NOT DONE** | — | human-gated |
@@ -27,7 +25,6 @@ Do **not** greenwash: (1) Issue #9 expanded-stream LINE:COL residual, (2) broade
 ---
 
 ## TIP SHA / binary
-
 ```
 git rev-parse --short HEAD → 92ecf15
 git log -1 --oneline       → 92ecf15 fix(caps): DNS residual prefers UdpCap (no wire DNS product)
@@ -39,31 +36,28 @@ git log -1 --oneline       → 92ecf15 fix(caps): DNS residual prefers UdpCap (n
 | md5 | `7e1ce7df9bd366b607f35724e0efe80b` |
 | BuildID | `78d775e7817c08f55e7376aa7f0358d15e27da98` |
 | Seed | `bootstrap/seed/oodac` present (878392 B) — pure multi **not** re-run this pass |
-| DE smoke | `ooda/scripts/r2_multi_import_tc_smoke.sh` (present; ran) |
+| DE smoke | `ooda/scripts/r2_multi_import_tc_smoke.oo` (present; ran) |
 
 ---
 
 ## 0) DE landing observed
-
 | Path | Role |
 |------|------|
-| `ooda/scripts/r2_multi_import_tc_smoke.sh` | Domain Expert R2 path-A smoke (2-file call, struct across import, arg mismatch, missing import) |
+| `ooda/scripts/r2_multi_import_tc_smoke.oo` | Domain Expert R2 path-A smoke (2-file call, struct across import, arg mismatch, missing import) |
 | `ooda/oodac/load_import.oo` | multi-file import expand; cycle/missing fail-closed; residual Issue #9 LINE |
 | `ooda/oodac/tc_diag.oo` / `check_drive.oo` | type error LINE:COL from expanded token stream |
 | `bootstrap/corpus/import/{pass,fail}/` | multi_ok + missing + cycle corpus |
 | `fixtures/typecheck_bugs/pass/multi_shim/` | Issue #12 multi-module shim rail (dnssec-style) |
 | `fixtures/xfail/dup_import_names/` | residual: duplicate free-names still accept (Issue #10) |
 
-No additional `scripts/r2_*_smoke.sh` beyond `r2_multi_import_tc_smoke.sh`.
+No additional `scripts/r2_*_smoke.oo` beyond `r2_multi_import_tc_smoke.oo`.
 
 ---
 
 ## 1) Primary smokes — exit codes
-
 ### 1a) import_load_smoke — exit 0
-
 ```
-cd ooda && OODAC_BIN=./oodac/oodac bash scripts/import_load_smoke.sh
+cd ooda && OODAC_BIN=./oodac/oodac bash scripts/import_load_smoke.oo
 # exit 0
 OK check multi_ok (in-tree load)
 OK check missing fail-closed
@@ -78,9 +72,8 @@ import_load_smoke: ALL OK
 Log: `/tmp/r2_import_load.out`
 
 ### 1b) typecheck_line_smoke — exit 0
-
 ```
-OODAC_BIN=./oodac/oodac bash scripts/typecheck_line_smoke.sh
+OODAC_BIN=./oodac/oodac bash scripts/typecheck_line_smoke.oo
 # exit 0
 OK let_ann_mismatch.oo line=3 (<50 single-file local)
 OK undefined_var.oo line=3 (<50 single-file local)
@@ -93,9 +86,8 @@ RESIDUAL: multi-import expanded LINE offsets — see oodac/tc_diag.oo
 Log: `/tmp/r2_typecheck_line.out`
 
 ### 1c) r2_multi_import_tc_smoke (DE) — exit 0
-
 ```
-OODAC_BIN=./oodac/oodac bash scripts/r2_multi_import_tc_smoke.sh
+OODAC_BIN=./oodac/oodac bash scripts/r2_multi_import_tc_smoke.oo
 # exit 0
 OK pass: 2file_import_call
 OK pass: struct_type_across_import
@@ -108,19 +100,17 @@ RESIDUAL Issue #9: multi-import expanded LINE offsets …
 Log: `/tmp/r2_de_smoke2.out`
 
 ### 1d) Related floors (context)
-
 | Smoke | Exit | Relation to R2 |
 |-------|------|----------------|
-| `typecheck_pass_smoke.sh` | **0** | single-file TC floor green |
-| `typecheck_bug_rails_smoke.sh` | **1** | multi_shim **PASS**; `if_field_eq_false_type_bad` / `if_missing_field_eq_false` **accepted** (want ERR) — Issue #12 field rails, **not multi-import load** |
-| `seed_pure_multi_smoke.sh` | **SKIP** | policy |
+| `typecheck_pass_smoke.oo` | **0** | single-file TC floor green |
+| `typecheck_bug_rails_smoke.oo` | **1** | multi_shim **PASS**; `if_field_eq_false_type_bad` / `if_missing_field_eq_false` **accepted** (want ERR) — Issue #12 field rails, **not multi-import load** |
+| `seed_pure_multi_smoke.oo` | **SKIP** | policy |
 
 Log: `/tmp/r2_tc_pass.out`, `/tmp/r2_bug_rails2.out`
 
 ---
 
 ## 2) Existing multi-import smokes / fixtures
-
 | Fixture / smoke | Exit / result | Notes |
 |-----------------|---------------|-------|
 | `bootstrap/corpus/import/pass/multi_ok.oo` | check **0** OK | load + cross-module `helper()` |
@@ -131,7 +121,6 @@ Log: `/tmp/r2_tc_pass.out`, `/tmp/r2_bug_rails2.out`
 ---
 
 ## 3) Ad-hoc multi check matrix (`/tmp/r2_multi_import/` + copied under `tmp_multi_import/`)
-
 Host: tip `oodac/oodac` (md5 `7e1ce7df…`).
 
 | Case | Expect | Exit | Status | Evidence |
@@ -149,13 +138,12 @@ Host: tip `oodac/oodac` (md5 `7e1ce7df…`).
 
 Matrix log: `/tmp/r2_multi_import_results.txt`
 
-**Matrix honest summary:** multi-import **load + cross-module call/arg TC + nested + 3-file = GREEN**.  
+**Matrix honest summary:** multi-import **load + cross-module call/arg TC + nested + 3-file = GREEN**.
 One ad-hoc fail-rail (`ann_bad`) is a **broader call-result annotation residual** (reproduced single-file); does not regress R2 multi-import path-A claim.
 
 ---
 
 ## 4) Residual — Issue #9 expanded LINE
-
 `main_line_probe.oo` (local error on file line 4 `let x: Int = "hi"`; two leading `import` lines; imports total ~8 lines when expanded):
 
 ```
@@ -173,13 +161,11 @@ ERR	type	Type error at 8:18: argument 0 of 'add_one' expects Int but got String
 ---
 
 ## 5) seed_pure_multi — SKIP
-
 Integration policy: do **not** run full `seed_pure_multi` if expected >2 min without timeout. Seed binary present at `bootstrap/seed/oodac`; residual doc `bootstrap/SEED_PURE_MULTI.oot` exists. No pure multi rebuild claimed this pass. Tip host binary used as-is.
 
 ---
 
 ## 6) Integration status rollup
-
 ```
 import_load_smoke              exit=0  GREEN
 typecheck_line_smoke           exit=0  GREEN
@@ -191,7 +177,6 @@ seed_pure_multi                SKIP
 ```
 
 ### GREEN / RED
-
 | Claim | Status |
 |-------|--------|
 | **R2 Multi-Import Type Check path-A (load + TC across imports)** | **GREEN** |
@@ -202,13 +187,12 @@ seed_pure_multi                SKIP
 ---
 
 ## 7) Reproduce
-
 ```bash
 cd /home/jeryd/Projects/openOODA/ooda
 export OODAC_BIN=./oodac/oodac
-bash scripts/import_load_smoke.sh
-bash scripts/typecheck_line_smoke.sh
-bash scripts/r2_multi_import_tc_smoke.sh
+bash scripts/import_load_smoke.oo
+bash scripts/typecheck_line_smoke.oo
+bash scripts/r2_multi_import_tc_smoke.oo
 # ad-hoc:
 $OODAC_BIN check /tmp/r2_multi_import/main_pass.oo
 $OODAC_BIN check /tmp/r2_multi_import/main_arg_bad.oo

@@ -13,11 +13,7 @@
 #
 # ID: SPRINT **2.8** = "Macro-body SECRET second pass (or residual doc)".
 # Do not mix with import `load_expand` (R2) or C preprocessor macros.
-
-========================================================================
-SUMMARY
-========================================================================
-
+## SUMMARY
 | Claim | Expected | Actual | VERDICT |
 |-------|----------|--------|---------|
 | Backend-C emit expands AST macros | **no** rewriter | no `macro_expand`/`ast_macro` lower; `c_emit*.oo` never rewrite toks | **PASS** (no expand) |
@@ -42,10 +38,7 @@ Do **not** greenwash: product `emit-c` / `emit-llvm` / `emit-bc` **skip** residu
 refuse. Stmt-form becomes an **unresolved C/LLVM/BC call**, not an expander.
 `macro_expand` is **not** a SECRETSINK. `oodac build` still dies at gcc.
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Static: `check_residual.oo`, `check_drive.oo`, `c_emit.oo` /
    `c_emit_let_ext.oo` / `c_emit_preamble.oo` / `c_emit_secret.oo`,
    `llvm_emit.oo` / `llvm_emit_call.oo`, `bc_emit*.oo`, `vm_builtin.oo` /
@@ -60,9 +53,9 @@ METHOD
 4. gcc + `chs_rt.c` link of stmt-form emit (implicit-decl fail).
 5. No `chs_rt` / emit logic edits.
 
-========================================================================
+---
 1. Residual refuse names
-========================================================================
+---
 
 Path-A names (DESIGN / `RESIDUAL_PATH_A.oot` / `AST_MACROS.oot`):
 
@@ -103,16 +96,15 @@ Host ELF:
 
 Seed `bootstrap/seed/oodac` also contains the three strings (not this proof).
 
-========================================================================
+---
 2. Emit does **not** expand macros
-========================================================================
+---
 
 No OO rewriter: grep of `oodac/*.oo` finds `macro_expand`/`ast_macro` **only**
 in `check_residual.oo`. `c_emit_lower.oo` has no special case. Import
 `load_expand` (`test_expand.oo`) concatenates modules — **not** AST macros.
 
 ### emit-c (product floor)
-
 | Form | rc | What printed |
 |------|----|----------------|
 | `let r = macro_expand("m")` | 1 | `ERR\tc_emit\tunknown free call needs annotation\tmacro_expand` (`c_emit_let_ext.oo` L190) |
@@ -133,7 +125,6 @@ ERR\tbuild\tgcc linking failed
 Link is fail-closed because `chs_rt` has no such symbol.
 
 ### emit-llvm (smoke)
-
 ```
 %t0 = call %OoStr @oo_str_lit(...)
 %t1 = call i64 @macro_expand(%OoStr %t0)
@@ -144,7 +135,6 @@ L139+). No declare of a product expander. `llvm_emit.oo` L79 **does** run
 `check_secret_println_sinks` (sinks only — residual names not gated).
 
 ### emit-bc / VM
-
 ```
 PUSH_STR m
 CALL macro_expand 1
@@ -157,13 +147,12 @@ fall through (no expand, no residual ERR). `oodac run` never reaches VM
 because check refuses first.
 
 ### emit-wasm
-
 `run_check_core` then `wasm_emit_stream`. Residual refuse; **no** wasm
 body. Dual-path stronger than emit-c.
 
-========================================================================
+---
 3. Runtime (`chs_rt`) — not a macro host
-========================================================================
+---
 
 `grep` of `ooda/runtime/*.{c,h}`: **zero** `macro_expand` / `ast_macro`.
 
@@ -183,9 +172,9 @@ Emitted-C macros (also **not** 2.8):
 
 SECRET runs on **OO tokens** before these `#define`s exist.
 
-========================================================================
+---
 4. SECRET second pass — unneeded (2.8)
-========================================================================
+---
 
 Issue: if macros rewrote AST, a pre-expansion token scan could miss
 `println(secret)` hidden in a body.
@@ -210,9 +199,9 @@ gcc still fails. check still residual-refuses.
 secret refuse (bc has no `check_secret_println_sinks`). Residual smoke
 only — not product floor.
 
-========================================================================
+---
 RESIDUAL (named, not 2.8 blockers)
-========================================================================
+---
 
 | ID | Kind | Note |
 |----|------|------|
@@ -228,10 +217,7 @@ RESIDUAL (named, not 2.8 blockers)
 If `AST_MACROS` is ever implemented, 2.8 **reopens**: second-pass SECRET
 on **expanded** toks/AST (see `MACRO_SECRET_RESIDUAL.oot`).
 
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 **SPRINT 2.8 (runtime auditor): PASS.**
 
 Q1. Does emit/runtime expand macros? **No.**

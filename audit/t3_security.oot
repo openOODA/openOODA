@@ -5,11 +5,9 @@
 # Surfaces: `chs_rt_sys.c` (oo_sys_exec), `chs_rt_ffi.c` (oo_dlopen), `chs_rt_fs.c` (oo_write_file)
 # Method: adversarial code review + live gcc-linked runtime probes (not product oodac dual-path)
 # OWN fix: small CRITICAL minisign child-env scrub in `chs_rt_ffi.c` only. No push.
-
 ---
 
 ## Claim under pressure
-
 SPRINT **T3** (IDs **1.8, 1.10, 4.5, 6.4**; **6.5** optional minisig):
 
 | Slice | Path-A expectation |
@@ -24,7 +22,6 @@ Do **not** greenwash DE comments as product seals.
 ---
 
 ## Surfaces reviewed
-
 | Surface | Path | Role |
 |---------|------|------|
 | Child exec env | `/home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_sys.c` | `oo_sys_exec` / `oo_sys_exec1` DE1.8 filter |
@@ -32,14 +29,12 @@ Do **not** greenwash DE comments as product seals.
 | FFI load | `/home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_ffi.c` | `oo_dlopen` / `ffi_verify_signature` / handle table |
 | FS write allow | `/home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_fs.c` | `oo_write_file` + `path_under_writedir` + `writedir_open_trunc` |
 | Claim docs | `ooda/bootstrap/CAP_FFI.oot`, `openOODA/SPRINT.oot` T3 | path-A vs residual honesty |
-| Smokes (stale risk) | `scripts/ffi_dlopen_path_a_smoke.sh`, `caps_matrix_smoke.sh` | pre-minisig / pre-WRITEDIR expectations |
+| Smokes (stale risk) | `scripts/ffi_dlopen_path_a_smoke.oo`, `caps_matrix_smoke.oo` | pre-minisig / pre-WRITEDIR expectations |
 
 ---
 
 ## Explicit: path-A sealed vs residual
-
 ### Path-A **sealed** (proved this pass)
-
 | Gate | Evidence |
 |------|----------|
 | SysCap on exec | `oo_cap_require_sys` before fork |
@@ -61,7 +56,6 @@ Do **not** greenwash DE comments as product seals.
 | Minisign child env scrub (**OWN CRITICAL fix**) | `clearenv` + `PATH=/usr/bin:/bin` + absolute `/usr/bin`/`/bin` minisign before `execlp` |
 
 ### Residual (**not** sealed — honesty)
-
 | Residual | Sev | Why still open |
 |----------|-----|----------------|
 | Minisig TOCTOU (verify then `dlopen` path string) | **HIGH** | open+close with `O_NOFOLLOW`, then `dlopen(rp_path)` — content replace / rename between verify and load; no `fdlopen` / verify-by-fd |
@@ -85,7 +79,6 @@ Do **not** greenwash DE comments as product seals.
 ---
 
 ## Attack matrix
-
 Verdict key:
 - **BLOCK** = refused / sealed on live probe or hard fail-closed code path
 - **BYPASS** = attack succeeds (escape / gadget)
@@ -131,9 +124,7 @@ Verdict key:
 ---
 
 ## Live probe evidence (this host)
-
 ### `oo_sys_exec` child env (`/usr/bin/env`)
-
 Parent set: `LD_PRELOAD`, `BASH_ENV`, `ENV`, `IFS`, `DYLD_*`, `LD_LIBRARY_PATH`, `OODA_*`, `OO_*`, evil `PATH`.
 
 Child observed:
@@ -148,7 +139,6 @@ PATH=/usr/bin:/bin
 Classic loader/shell vars **absent**. Policy prefix vars **present**.
 
 ### `oo_dlopen`
-
 ```text
 no ALLOW:     ffi residual: set OODA_FFI_ALLOW_DLOPEN=1 for OS dlopen
 ALLOW only:   ffi residual: missing or invalid minisig   # libc unsigned
@@ -157,7 +147,6 @@ relative:     ffi residual: path not under system lib dirs
 ```
 
 ### `oo_write_file`
-
 ```text
 unset WRITEDIR: deny
 .. escape:      deny
@@ -169,8 +158,7 @@ hardlink outside into dir: allow + overwrites outside  # BYPASS
 ---
 
 ## OWN fix applied (CRITICAL only)
-
-**File:** `/home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_ffi.c`  
+**File:** `/home/jeryd/Projects/openOODA/ooda/runtime/chs_rt_ffi.c`
 **Function:** `ffi_verify_signature`
 
 | Change | Why |
@@ -180,7 +168,7 @@ hardlink outside into dir: allow + overwrites outside  # BYPASS
 | `execl("/usr/bin/minisign"…)` then `/bin` then `execlp` | prefer absolute verifier |
 | Drop `-P <hex fp>` | was not a fingerprint pin; wrong minisign API; residual FP pin documented |
 
-**Compile:** `gcc -Wall -Wextra -Werror -O0 -c ooda/runtime/chs_rt.c` → rc=0  
+**Compile:** `gcc -Wall -Wextra -Werror -O0 -c ooda/runtime/chs_rt.c` → rc=0
 **Not fixed here (residual):** hardlink writedir escape; minisig content TOCTOU; signed-ctor TCB; FP pin; smoke lag.
 
 **No push.**
@@ -188,7 +176,6 @@ hardlink outside into dir: allow + overwrites outside  # BYPASS
 ---
 
 ## Root-cause notes (for DE / SPRINT T3)
-
 1. **1.8 child env** — tip is path-A strong for classic gadgets **if** filter stays prefix-before-clearenv. Do not regress to `getenv` after `clearenv`. Residual: broad `OODA_*`/`OO_*` passthrough.
 
 2. **1.10 / 4.5 FFI concurrency + reentry** — tip has handle mutex, process-wide dlopen mutex, TLS depth refuse. Residual: no handle refcount; raw ctor `dlopen(3)`.
@@ -202,7 +189,6 @@ hardlink outside into dir: allow + overwrites outside  # BYPASS
 ---
 
 ## Scorecard
-
 | Metric | Count |
 |--------|------:|
 | Attacks tabulated | 28 |
@@ -216,7 +202,6 @@ hardlink outside into dir: allow + overwrites outside  # BYPASS
 ---
 
 ## What path-A is **not**
-
 > Child-env filter + allowlisted minisig `dlopen` + WRITEDIR openat is **not** a full OS sandbox, **not** Landlock/seccomp, **not** a seal over signed constructor TCB, and **not** hardlink-proof multi-tenant FS isolation.
 
 Re-open T3 only if: (a) getenv-after-clearenv regresses, (b) minisign child loses env scrub, (c) write returns to `fopen(path.data)` without `O_NOFOLLOW`, (d) nested depth refuse removed.

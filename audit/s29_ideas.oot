@@ -4,9 +4,7 @@
 # Audience: Domain Experts (implement winner) · peers (smoke / dual-path) · Security
 # Scope: 2.9 **unify call sites** vs **prove existing dual refuse**
 #        — **not** M1–M20, not full IFC, not 2.10 `__sec_sink__`, not 5.8 `${}`
-
 ## Problem (tree truth)
-
 | Fact | Evidence |
 |------|----------|
 | Sprint pin | `SPRINT.oot` 2.9 MED: println walker → full `c_secret_emit_guard` — still **open** |
@@ -23,14 +21,13 @@
 | Host | product `ooda/oodac/oodac` **962960 B** 2026-08-12 07:49 (`T c_secret_emit_guard` @ `0x461080`, `T c_emit_println`, `T check_secret_println_sinks`) |
 | Live dual (clean CWD `/tmp/s29_clean`, **no** `.ooda-cache`) | `println(api_key)` / `eprintln(api_key)` / multi-arg / `let f = println; f(api_key)` / concat IDENT → **BLOCK** check+emit-c+llvm. String/comment spelling → **ALLOW** 0 FP |
 | Poisoned check | Same `secret_sink_fail` from a CWD with a stale `.ooda-cache/check` hit → **OK** (s71 R9). Smoke **must** use a virgin CWD |
-| Existing rails | `secret_sink_enforce_smoke.sh` emit-c println; `secret_eprintln_smoke.sh` **check-only**; `secret_t1_return_smoke` **omits** `secret_t1_alias_println`; T2 smoke has multi-arg emit-c. **No** `s29_*` script. **No** dual-path eprintln emit-c in eprintln smoke |
+| Existing rails | `secret_sink_enforce_smoke.oo` emit-c println; `secret_eprintln_smoke.oo` **check-only**; `secret_t1_return_smoke` **omits** `secret_t1_alias_println`; T2 smoke has multi-arg emit-c. **No** `s29_*` script. **No** dual-path eprintln emit-c in eprintln smoke |
 | s71 already named this | `audit/s71_security.oot` R1: stmt println skip of `c_guard_scan_idents` = **MED residual (unify later)**, **not** a 7.1 FN. Live stmt println still BLOCK via token rail |
 | Leftover family (live) | `print_err`/`log`/`fprintf`/`syslog`: emit-c **SECRET**; check **type undefined**; llvm **rc=0 no secret**. `print`: emit-c **no secret**; check type; llvm builtin **no secret** |
 
 **Not this wave:** full IFC, `${}` (5.8), 2.10 user `__sec_sink__`, product `print` API, wasm/vm print lattice, check-cache versioning as the 2.9 close, M1–M20.
 
 ## Constraints (hard)
-
 1. **Path A only** — named-sink refuse, not “perfect taint.”
 2. **Rank: unify call sites vs prove existing dual refuse.** One winner. No “do both architectures.”
 3. **Do not greenwash 2.9 from DE2.9 comments.** The walker does **not** call `c_secret_emit_guard`. Close only on **static map + immune smoke**.
@@ -44,7 +41,6 @@
 11. **Fairy writes ideas only** — DE owns land + prove.
 
 ## Darwin scorecard (path-A residual)
-
 Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 
 | Axis | Meaning |
@@ -60,7 +56,6 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 ---
 
 ## Ideas evaluated
-
 ### I1 — Prove/close 2.9 as **existing dual refuse** (no product rewrite) ⭐
 **Shape:** Treat 2.9 product as **already the Path-A floor**: three rails that **already refuse** product `println` / `eprintln`. Close MED with:
 
@@ -78,12 +73,12 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 
 **Do not:** delete the check walker; do not call `c_secret_emit_guard` from check; do not rewrite stmt println into a free-call.
 
-**Smoke:** I2 matrix.  
-**Darwin:** Close 10 · Honest 10 · Smoke 9 · Entropy 10 · Ship 10 → **avg 9.8**  
+**Smoke:** I2 matrix.
+**Darwin:** Close 10 · Honest 10 · Smoke 9 · Entropy 10 · Ship 10 → **avg 9.8**
 **Why winner:** Live host already dual-BLOCKS product println/eprintln (clean CWD). 2.9 is **re-prove**, not invent. LLVM refuse **is** the check walker. Matches s71 “unify later, not FN” and Zero Trust Agency.
 
 ### I2 — Smoke matrix: dual refuse (2.9 prove rail) ⭐
-**Shape:** New `scripts/s29_println_guard_smoke.sh` (s28/s61 TMPDIR shape). Prefer **new script** — eprintln smoke is check-only; sink smoke is emit-c-only; neither is a 2.9 dual map. **`cd` a virgin TMPDIR** (no `.ooda-cache`) before `check`.
+**Shape:** New `scripts/s29_println_guard_smoke.oo` (s28/s61 TMPDIR shape). Prefer **new script** — eprintln smoke is check-only; sink smoke is emit-c-only; neither is a 2.9 dual map. **`cd` a virgin TMPDIR** (no `.ooda-cache`) before `check`.
 
 | Case | Source | Expect |
 |------|--------|--------|
@@ -100,9 +95,9 @@ Axes 0–10 (higher = survives compile cycle). Sum/5 ≈ rank:
 | leftover `print` | TMPDIR | emit-c **no** secret; llvm **no** secret — **assert residual** (I7) |
 | Static 2.9 | grep | check walker **has no** `c_secret_emit_guard`; `c_emit_println` **has no** emit_guard; emit_guard list **has** println/eprintln; `c_emit_lower` **has** emit_guard |
 
-**Helper:** `expect_secret_refuse` on **each** of check / emit-c / llvm for product names.  
-**Wire:** `ci_product.sh` one line.  
-**Darwin:** Close 9 · Honest 10 · Smoke 10 · Entropy 10 · Ship 9 → **avg 9.6**  
+**Helper:** `expect_secret_refuse` on **each** of check / emit-c / llvm for product names.
+**Wire:** `ci_product.oo` one line.
+**Darwin:** Close 9 · Honest 10 · Smoke 10 · Entropy 10 · Ship 9 → **avg 9.6**
 **Why must-bundle:** Without this, “2.9 FIXED” is comment-greenwash (DE2.9 already flipped from a **non-call**). Cache-false-OK is why I2 must not run `check` from a dirty workspace CWD.
 
 ### I3 — Cheap check unify: println/eprintln → `c_secret_scan_call` ⭐ (optional)
@@ -114,215 +109,71 @@ Same helper as write_file/fetch/…. **Requires LPAREN** (kills accidental scan 
 
 **Do not** call `c_secret_emit_guard` here. **Do not** delete stmt `c_emit_println` refuse.
 
-**Smoke:** I2 alias case **must** still refuse after this (proves real `__alias__`, not accidental scan).  
-**Darwin:** Close 6 · Honest 9 · Smoke 7 · Entropy 7 · Ship 7 → **avg 7.2**  
+**Smoke:** I2 alias case **must** still refuse after this (proves real `__alias__`, not accidental scan).
+**Darwin:** Close 6 · Honest 9 · Smoke 7 · Entropy 7 · Ship 7 → **avg 7.2**
 **Why optional same-wave:** Real DRY + LPAREN honesty. **Not** required to close 2.9 (dual refuse already holds). Land **after** I2 green so a regress is visible. Do **not** fold “scan_call swapped” into “emit_guard unified.”
 
 ### I4 — Stmt println refuse helper → `c_secret_refuse_sink_resolved`
 **Shape:** `c_emit_println` calls the same resolved refuse as the guard (today: raw `__sec__` via `c_secret_refuse_println_ident`). Dest-taint already tags `y` after `y = api_key`. Callee alias never enters `c_emit_println`.
 
-**Darwin:** Close 4 · Honest 8 · Smoke 5 · Entropy 5 · Ship 8 → **avg 6.0**  
+**Darwin:** Close 4 · Honest 8 · Smoke 5 · Entropy 5 · Ship 8 → **avg 6.0**
 **Why later hygiene:** Tiny; **does not** move 2.9. Keep the println-specific error string or accept `println sink refuses` via the generic helper.
 
 ### I5 — Full emit unify: stmt println → `c_secret_emit_guard`
 **Shape:** Join per-arg C texts and call `c_secret_emit_guard(env, "println", a0, a1, a2, args)` from `c_emit_println` (or delete the stmt intercept so println goes through `c_emit_lower`).
 
-**Darwin:** Close 5 · Honest 5 · Smoke 4 · Entropy 3 · Ship 2 → **avg 3.8**  
+**Darwin:** Close 5 · Honest 5 · Smoke 4 · Entropy 3 · Ship 2 → **avg 3.8**
 **Why later / weak now:** Stmt println is a **multi-`oo_print_*` builtin**, not `println(args)`. A fake `args` string is a **second re-lexer** of tokens already walked. Deleting the intercept changes product lowering. LLVM still needs the check walker. This is the **expensive** side of “unify call sites.”
 
 ### I6 — Add `print_err` / `log` / `fprintf` / `syslog` to the check walker
 **Shape:** Extend `sid == "println" \|\| "eprintln"` (or I3 scan_call list) so check/llvm refuse like emit-c. Optionally `is_known_name`.
 
-**Darwin:** Close 4 · Honest 8 · Smoke 6 · Entropy 5 · Ship 6 → **avg 5.8**  
+**Darwin:** Close 4 · Honest 8 · Smoke 6 · Entropy 5 · Ship 6 → **avg 5.8**
 **Why leftover, not 2.9:** Live emit-c already refuses (guard list). Check type-fails. llvm fail-open. Same class as T2 `ffi_call`. Same-wave **only after** I2; do **not** call this “2.9 FIXED.”
 
 ### I7 — Treat LLVM `print` as a SECRET sink
 **Shape:** Check walker + `is_known_name` include `print` (llvm already lowers it as println-shape).
 
-**Darwin:** Close 3 · Honest 8 · Smoke 5 · Entropy 4 · Ship 5 → **avg 5.0**  
+**Darwin:** Close 3 · Honest 8 · Smoke 5 · Entropy 4 · Ship 5 → **avg 5.0**
 **Why later:** `print` is **not** a typed product API. C emit does **not** `oo_print_*` it. s71 R2. Do not promote to product sink.
 
 ### I8 — Drop check / stmt token walk (“emit_guard only”)
 **Shape:** Delete inline walker and/or `c_emit_println` refuse; rely on `c_secret_emit_guard`.
 
-**Darwin:** Close 3 · Honest 2 · Smoke 2 · Entropy 0 · Ship 3 → **avg 2.0 — REJECT**  
+**Darwin:** Close 3 · Honest 2 · Smoke 2 · Entropy 0 · Ship 3 → **avg 2.0 — REJECT**
 **Why dies:** `emit-llvm` **FN** (no emit_guard). Stmt `println` **never reaches** emit_guard today. Opposite of dual refuse.
 
 ### I9 — Check walker calls `c_secret_emit_guard` (DE2.9 literal)
 **Shape:** `c_secret_emit_guard(env, id, …)` from `check_secret_println_sinks`.
 
-**Darwin:** Close 2 · Honest 1 · Smoke 1 · Entropy 0 · Ship 1 → **avg 1.2 — DISQUALIFIED**  
+**Darwin:** Close 2 · Honest 1 · Smoke 1 · Entropy 0 · Ship 1 → **avg 1.2 — DISQUALIFIED**
 **Why dies:** Guard wants **C arg strings**. Check has **toks**. This is the stale eighth-sprint sentence. Theater or a compile-break.
 
 ### I10 — Full IFC / AST arg lattice (drop string + token belts)
 **Shape:** Typed arg nodes; one IR sink pass.
 
-**Darwin:** Close 6 · Honest 4 · Smoke 1 · Entropy 0 · Ship 0 → **avg 2.2 — REJECT**  
+**Darwin:** Close 6 · Honest 4 · Smoke 1 · Entropy 0 · Ship 0 → **avg 2.2 — REJECT**
 **Why dies:** Moonshot. Out of residual 2.9.
 
 ### I11 — Doc-only SPRINT flip / “DE2.9 already did it”
 **Shape:** Mark 2.9 FIXED from the eighth-sprint table.
 
-**Darwin:** Close 2 · Honest 2 · Smoke 0 · Entropy 1 · Ship 9 → **avg 2.8**  
+**Darwin:** Close 2 · Honest 2 · Smoke 0 · Entropy 1 · Ship 9 → **avg 2.8**
 **Why not alone:** Greenwash. Honesty **belongs inside I1+I2**.
 
 ### I12 — Delete stmt println builtin; lower via `c_emit_lower`
 **Shape:** One call site for all names.
 
-**Darwin:** Close 4 · Honest 4 · Smoke 3 · Entropy 1 · Ship 1 → **avg 2.6 — REJECT this turn**  
+**Darwin:** Close 4 · Honest 4 · Smoke 3 · Entropy 1 · Ship 1 → **avg 2.6 — REJECT this turn**
 **Why dies:** Product `oo_print_str`/`oo_print_int`/`oo_println()` lowering **is** the floor. Not a secret residual.
 
 ### I13 — Check-cache keyed by oodac identity
 **Shape:** `.ooda-cache/check` includes host digest so stale OK cannot hide a refuse.
 
-**Darwin:** Close 3 · Honest 8 · Smoke 4 · Entropy 5 · Ship 4 → **avg 4.8**  
+**Darwin:** Close 3 · Honest 8 · Smoke 4 · Entropy 5 · Ship 4 → **avg 4.8**
 **Why later (R9):** Real process hole (proved: dirty CWD false-OK on `secret_sink_fail`). **Not** 2.9. I2 `cd` TMPDIR is the path-A mitigation this turn.
 
----
 
-## Rank (path-A survivors)
+*(Continued in `openOODA/audit/s29_ideas_part2.oot`)*
 
-| Rank | ID | Avg | Verdict |
-|-----:|----|----:|---------|
-| **1** | **I1 + I2** | 9.8 / 9.6 | **WINNER BUNDLE — ship now** prove existing dual refuse |
-| **2** | I3 | 7.2 | **Optional same-wave** — check walker → `c_secret_scan_call` **after** I2 |
-| **3** | I4 | 6.0 | Later — stmt refuse helper DRY |
-| **4** | I6 | 5.8 | Later leftover — check/llvm `print_err` family |
-| **5** | I7 | 5.0 | Later — LLVM `print` shape (named residual) |
-| **6** | I13 | 4.8 | Later — cache version key (R9) |
-| **7** | I5 | 3.8 | Do **not** force stmt println through emit_guard this turn |
-| — | I11 | 2.8 | Doc inside I1; not a solo close |
-| — | I12 | 2.6 | Reject product-lower rewrite |
-| — | I10 | 2.2 | Reject IFC moonshot |
-| — | I8 | 2.0 | Reject drop token walk |
-| — | I9 | 1.2 | Disqualified (wrong signature) |
-
-## Unify call sites vs prove existing dual refuse (Decide card)
-
-| | Prove existing dual refuse (I1+I2) | Unify call sites |
-|--|------------------------------------|------------------|
-| 2.9 pin | “walker → full emit_guard” as a **missing belt** | Same words, read as **one function** |
-| Host proof | Live 2026-08-12: println **and** eprintln **BLOCK** check+emit-c+llvm | No FN to fix on product names |
-| Check walker | KEEP (llvm front-door) | Cheap = I3 `c_secret_scan_call`. Literal emit_guard = **I9 die** |
-| Stmt println | KEEP token refuse (`c_emit_println`) | Full unify = I5 fake `args` / delete builtin |
-| eprintln emit | **Already** `c_secret_emit_guard` | Already unified |
-| LLVM | **Only** check walker | Drop walker → **FN** (I8) |
-| Entropy \(S\) | **Down** (untested / DE2.9 lie → proved dual) | **Up** if rewrite working rails |
-| Ship this turn | **Yes** | I3 optional; I5/I8/I9 **no** |
-
-**Ship-now decision:** **prove the dual refuse.**  
-Unify that is **honest** this wave is I3 (check → `c_secret_scan_call`), **not** “everything calls `c_secret_emit_guard`.”
-
-A stub call from check into emit_guard (I9) is **neither** side of this card — prune it.
-
-## Dual-path map (do not collapse)
-
-| Surface | check | emit-c | emit-llvm |
-|---------|-------|--------|-----------|
-| stmt `println(secret)` | inline IDENT walker | `c_emit_println` token + `__sec__` | check front-door, then builtin |
-| `eprintln(secret)` | same walker | `c_emit_lower` → **emit_guard** → C-text scan | check front-door, then builtin |
-| `let f = println; f(s)` | resolve `f` + walker (and/or accidental no-LPAREN) | free-call emit_guard + `__alias__` | check front-door |
-| `print_err` / `log` / `fprintf` / `syslog` | type undefined | emit_guard **SECRET** | **no secret** (I6) |
-| `print(secret)` | type undefined | **no secret** (not lowered) | builtin, **no secret** (I7) |
-
-Path-A job of 2.9 = **prove the first three rows**. Not flatten the table.
-
----
-
-## Top recommendation (this turn — path-A residual close)
-
-### **Ship: Prove existing dual refuse (I1) + dual-path smoke (I2). Do not unify stmt println into `c_secret_emit_guard`. Do not delete the check walker.**
-
-**Why this closes 2.9:**
-- Product println/eprintln **already refuse** on all three commands. eprintln emit **already is** emit_guard.
-- Unclosed part is **untested claim** (\(U\)): DE2.9 says the check walker calls emit_guard (**it does not**); eprintln smoke is check-only; alias fixture is unwired; dirty-CWD check can lie.
-- Full unify (I5/I8/I9) is the wrong tool: guard is C-text, llvm has no guard, stmt println is not a C call.
-
-### DE winner advice (plain English)
-
-1. **Do not** call `c_secret_emit_guard` from `check_secret_println_sinks`. **Do not** delete the println IDENT walker. **Do not** rewrite `c_emit_println` into `c_emit_lower`.
-2. **Prove static:**
-   - `c_emit_secret.oo` println/eprintln block is token refuse (or I3 `c_secret_scan_call`) — **zero** `c_secret_emit_guard`
-   - `c_emit_print.oo` has no emit_guard
-   - `c_emit_lower.oo:90` still calls emit_guard (eprintln / alias `f`)
-   - emit_guard args-scan list still names println/eprintln
-3. **Wire smoke (I2):** `scripts/s29_println_guard_smoke.sh` + `ci_product.sh`. **`cd` virgin TMPDIR** before any `check`.
-   - fail → check **and** emit-c **and** llvm `ERR\tsecret`
-   - clean → no `ERR\tsecret`
-   - eprintln dual (not check-only)
-   - alias `secret_t1_alias_println` refuse
-   - string/comment ALLOW
-   - leftover `print` / `print_err` **named**, not a fail
-4. **SPRINT 2.9:** mark FIXED path-A **only after** I2 exit 0 on **this** host. Wording: **dual refuse + prove**, not “walker → emit_guard landed.” Drop the DE2.9 “calls emit_guard” sentence.
-5. **SECRET_TAINT:** keep “path A bare IDENT println/eprintln refuse **In**.” Point rails at `s29_println_guard_smoke.sh`. Keep `print` / log-family / cache as **residual**.
-6. **If same-wave budget after I2:** I3 swap check loop → `c_secret_scan_call(..., 0, false, sid)`. Re-run I2; alias **must** still refuse.
-7. **Done bar:**
-   - `println(secret)` refuses check + emit-c + llvm
-   - `eprintln(secret)` refuses check + emit-c + llvm
-   - string/comment spelling **0 FP**
-   - `let f = println; f(secret)` refuses
-   - grep: check walker does **not** call `c_secret_emit_guard`
-   - leftovers (`print`, `print_err` family, cache, wasm) **named**
-8. **Out of scope:** I5 fake args; I8 drop walker; I9 check→guard; I10 IFC; I12 builtin delete; I6/I7 as the 2.9 claim.
-
-### Explicit non-winners (do not build this turn)
-
-- Check-path `c_secret_emit_guard(...)` (I9 — DE2.9 literal)
-- Delete token walk / check front-door (I8)
-- Stmt println → joined-C emit_guard / delete `c_emit_println` (I5 / I12)
-- Full IFC / `${}` / 2.10 `__sec_sink__` (I10)
-- SPRINT flip without I2 (I11)
-- M1–M20 moonshots
-
-## Entropy report (expected after winner)
-
-`S: ↓` — 2.9 “walker calls emit_guard” → **smoke-proved dual refuse**; eprintln emit-c dual scripted; cache-false-OK named in the rail.  
-`U` holds only for: I3 LPAREN DRY, I6 log-family check/llvm, I7 `print`, I13 cache key, `${}` / IFC.  
-`O` does not rise (no new walker). `W` does not rise (no fake emit_guard call).
-
-## Leave-off
-
-- Fairy: ideas only in this file.
-- DE owns land + prove; peers: product println/eprintln **0 FN** dual-path, string/comment **0 FP**, no “emit_guard call” lie, no dirty-CWD check.
-- Security: do not treat type-undefined or llvm `@print` as secret refuse; do not drop the llvm front-door.
-- Memory: no new C-text scan; 7.1 walker stays the eprintln belt.
-
----
-
-## One-page DE pocket card (I1+I2, optional I3)
-
-```
-2.9 ship-now:
-  KEEP  check_secret_println_sinks println/eprintln IDENT walk
-        (llvm + check front-door)
-  KEEP  c_emit_println token refuse          (stmt println)
-  KEEP  c_secret_emit_guard                  (eprintln + let f = println)
-  PROVE check+emit-c+llvm println(secret)  → ERR secret
-  PROVE check+emit-c+llvm eprintln(secret) → ERR secret
-  PROVE string/comment spelling            → NO ERR secret
-  PROVE secret_t1_alias_println            → ERR secret
-  GREP  no c_secret_emit_guard in c_emit_secret.oo
-        no c_secret_emit_guard in c_emit_print.oo
-        emit_guard list still has println/eprintln
-  WIRE  scripts/s29_println_guard_smoke.sh + ci_product.sh
-        (cd virgin TMPDIR — check cache lies)
-  FIX   SPRINT 2.9 after host prove: dual refuse, NOT emit_guard call
-  NAME  print / print_err family (I6/I7); cache R9 (I13)
-
-DO NOT this turn:
-  check → c_secret_emit_guard          (I9 wrong sig)
-  delete check walker                  (I8 llvm FN)
-  stmt println → fake args emit_guard  (I5)
-  delete c_emit_println builtin        (I12)
-  grow log-family as the 2.9 claim     (I6)
-  full IFC / ${} / 2.10                (I10)
-
-OPTIONAL after I2:
-  sid println/eprintln → c_secret_scan_call(want=0)
-  alias fixture must still refuse      (I3)
-```
-
-Path-A residual callout after land:  
-“2.9 = proved dual refuse of product println/eprintln (token front-door + eprintln emit_guard). Not a single call site. Not check→emit_guard. Not stmt-println C-text. Not LLVM `print`. Not full IFC.”
-
-end of s29_ideas.oot
+end of s29_ideas.oot (part 1)

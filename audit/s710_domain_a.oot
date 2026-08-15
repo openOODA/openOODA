@@ -7,11 +7,7 @@
 # OWN: finish last leak in `c_parse_secret_env`; same Path-A as 7.1/7.2
 #      (`str_slice` once); no 7.1/7.2 reopen; monofile ≤600 (soft 256);
 #      no moonshots; no auto-push
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 **FIXED** (path-A source close).
 
 `c_parse_secret_env` still walks with `char_at` to classify ident chars after
@@ -25,12 +21,8 @@ Directive match, space skip, fail-closed empty name, and
 Monofile `c_emit_secret.oo` = **264** lines (≤600; same as pre-fix;
 already over soft 256 — did not grow).
 
-========================================================================
-DIAGNOSIS + CLOSE
-========================================================================
-
+## DIAGNOSIS + CLOSE
 ### Parser body (product host source)
-
 File: `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret.oo`
 
 - L7–82: `pub fn c_parse_secret_env(src: String) -> String`
@@ -53,7 +45,6 @@ Static grep of this file for `name = name +`, `name + c`: **no hits**.
 `str_slice` hits: L65 (this close) and L254 (`__sec_sink__` prefix, unrelated).
 
 ### Semantics kept (do not change)
-
 | Rule | Still |
 |------|--------|
 | Line-start `// SECRET:` only | yes |
@@ -64,7 +55,6 @@ Static grep of this file for `name = name +`, `name + c`: **no hits**.
 | Mid-line `// SECRET:` ignored | yes (T2 midline rail) |
 
 ### Stack / buffer honesty
-
 | Layer | What happens | Class |
 |-------|----------------|-------|
 | Ident accumulate | `str_slice` once per directive name | **path-A** — no O(token²) concat |
@@ -77,7 +67,6 @@ Complexity: time O(|src|) char visits; aux = O(1) scalars + one name
 slice per `// SECRET:` hit. No growing concat buffer on the ident.
 
 ### Out of OWN (do not claim closed here)
-
 - **7.1** `c_guard_scan_idents` — already FIXED; **not reopened.**
 - **7.2** `c_sys_exec_last_arg` — already FIXED; **not reopened.**
 - Shared ident-slice helper (s71 I4 / s72 I3) — moonshot / line growth.
@@ -85,24 +74,18 @@ slice per `// SECRET:` hit. No growing concat buffer on the ident.
 - Product `oodac` binary **not rebuilt** this turn (semantic smokes on
   tip host; leak close is source-static; next seed picks it up).
 
-========================================================================
-FILES TOUCHED
-========================================================================
-
+## FILES TOUCHED
 | File | Change |
 |------|--------|
 | `ooda/oodac/c_emit_secret.oo` | ident loop: `start` + advance `k` + one `str_slice`; removed `name = name + c` |
 | `openOODA/audit/s710_domain_a.oot` | this evidence |
 
 **Not touched:** 7.1 walker, 7.2 last-arg, T1–T2 taint, sink lists,
-`s71_guard_scan_smoke.sh` / `s72_sys_exec_last_arg_smoke.sh` residual
+`s71_guard_scan_smoke.oo` / `s72_sys_exec_last_arg_smoke.oo` residual
 banners (still print stale “7.10 concat” — those smokes are 7.1/7.2 OWN),
 SPRINT table, remotes (no push).
 
-========================================================================
-PROVE COMMANDS
-========================================================================
-
+## PROVE COMMANDS
 ```bash
 cd /home/jeryd/Projects/openOODA/ooda
 export OODAC_BIN=./oodac/oodac
@@ -111,20 +94,16 @@ export OODAC_BIN=./oodac/oodac
 # (expect: L65 str_slice; no name=name+c)
 grep -n 'str_slice\|name = name +\|name + c' oodac/c_emit_secret.oo
 wc -l oodac/c_emit_secret.oo   # 264
-
-timeout 90 bash scripts/secret_t1_return_smoke.sh
+timeout 90 bash scripts/secret_t1_return_smoke.oo
 # observed: EXIT 0
 #   function return / alias-rebind / if-taint rails + ci wire
-
-timeout 90 bash scripts/secret_t2_depth_smoke.sh
+timeout 90 bash scripts/secret_t2_depth_smoke.oo
 # observed: EXIT 0
 #   field/method/multi-arg/dlopen/sys_exec/midline + ci wire
-
-timeout 90 bash scripts/s71_guard_scan_smoke.sh
+timeout 90 bash scripts/s71_guard_scan_smoke.oo
 # observed: EXIT 0  (7.1 not reopened)
 #   NOTE: script still prints stale "RESIDUAL 7.10: … concat"
-
-timeout 90 bash scripts/s72_sys_exec_last_arg_smoke.sh
+timeout 90 bash scripts/s72_sys_exec_last_arg_smoke.oo
 # observed: EXIT 0  (7.2 not reopened)
 #   NOTE: script still prints stale "RESIDUAL 7.10: … concat"
 ```
@@ -132,9 +111,9 @@ timeout 90 bash scripts/s72_sys_exec_last_arg_smoke.sh
 T1/T2 emit floors that **parse** `// SECRET:` names (then refuse/allow)
 **green**. 7.1/7.2 dedicated smokes **green**.
 
-========================================================================
+---
 RESIDUAL HONESTY (do not claim closed)
-========================================================================
+---
 
 1. **`char_at` 1-char temps** — every visit allocates a 1-byte `OoStr`.
    Inherent to `.oo` string model. Not quadratic ident leak.
@@ -161,10 +140,7 @@ RESIDUAL HONESTY (do not claim closed)
    `0–9` at start). Pre-existing; changing it would be a directive
    semantic change. Not “fixed” to 7.1 is_start.
 
-========================================================================
-STATUS FOR SPRINT/PM
-========================================================================
-
+## STATUS FOR SPRINT/PM
 | Item | Status |
 |------|--------|
 | 7.10 `c_parse_secret_env` no per-char OoStr concat | **FIXED** (source path-A) |

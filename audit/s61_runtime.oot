@@ -14,11 +14,7 @@
 # (residual policy). This file is SPRINT backlog **6.1** =
 # "Confirm env_set in SECRETSINK (partially landed with 2.3 — re-prove)".
 # Do not mix the two.
-
-========================================================================
-SUMMARY
-========================================================================
-
+## SUMMARY
 | Claim | Expected | Actual | VERDICT |
 |-------|----------|--------|---------|
 | 6.1 home is emit/check SECRET | refuse `// SECRET:` idents at `env_set` / `setenv` | Source + host + live `emit-c` print `ERR\tsecret\tenv_set sink refuses SECRET …` | **PASS** |
@@ -36,10 +32,7 @@ SUMMARY
 
 Do **not** greenwash: there is **no** product `oo_env_set`. Clean `env_set` calls die at `ERR\tc_emit\tunknown free call needs annotation\tenv_set` (fail-closed residual, CAPS_MATRIX). `oodac check` on those fixtures never reaches `ERR\tsecret` because `env_set` is not a typed product symbol. `diag_json.oo` help text still omits `env_set`.
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Static: `runtime/chs_rt_sys.c` (`oo_process_policy_getenv`, `oo_sys_exec`
    child filter, `oo_cap_require_env`), `runtime/chs_rt_fs.c` (`oo_env_get`),
    `runtime/chs_rt.h`, `oodac/c_emit_secret_guard.oo`, `c_emit_secret.oo`,
@@ -57,12 +50,11 @@ METHOD
 
 No `chs_rt_*.c` edits. 6.1 is not a runtime patch.
 
-========================================================================
+---
 1. Layer split — runtime env filter ≠ 6.1 SECRET
-========================================================================
+---
 
 ### Runtime (chs_rt) — process policy + EnvCap GET
-
 `chs_rt_sys.c` `oo_process_policy_getenv` (L119–127):
 
 - Fail-closed **GET** for keys not prefixed `OODA_` / `OO_`.
@@ -96,7 +88,6 @@ CAPS_MATRIX (honest residual):
 That is **cap/lower** debt. It is **not** SPRINT 6.1.
 
 ### Emit / check — SECRET refuse (this ID)
-
 SPRINT 6.1 + DE2.3 / CRIT 2.3: named OS/env sinks refuse SECRET idents.
 
 `check_secret_println_sinks` is wired from `c_emit.oo:86`,
@@ -105,9 +96,9 @@ SPRINT 6.1 + DE2.3 / CRIT 2.3: named OS/env sinks refuse SECRET idents.
 `is_sealed_env` (`check_cap_util.oo:243–249`) listing `env_set` is
 **EnvCap check**, not SECRETSINK. Adjacent, not 6.1.
 
-========================================================================
+---
 2. Emit lists `env_set` (source inventory)
-========================================================================
+---
 
 | File | Line | Role |
 |------|-----:|------|
@@ -124,9 +115,9 @@ Guard runs from `c_emit_lower.oo` (free call) and `c_emit_call.oo:82`
 (method). Alias resolve (`c_secret_resolve_alias`) means
 `let f = env_set; f(secret)` is still a sink **if** emit reaches the call.
 
-========================================================================
+---
 3. Shipping host lists `env_set` (machine code)
-========================================================================
+---
 
 | Symbol | `nm -S` | Size |
 |--------|---------|-----:|
@@ -155,9 +146,9 @@ from the DE1.8 PATH install — **not** the sink table).
 Help-string residual (`diag_json.oo:81`, also in host strings): SECRET
 advice lists `env_get` but **not** `env_set`. Doc-only; refuse path is live.
 
-========================================================================
+---
 4. Live prove (product host 07:49 ELF)
-========================================================================
+---
 
 Tmp fixtures under `/tmp/s61_runtime_prove/` (not in-tree).
 
@@ -178,13 +169,13 @@ Check **source** lists it (`c_emit_secret.oo:239`) and the ELF
 reports. Dual-path SECRET is green for **`env_get`** (real op), not for
 **`env_set`** (alias / residual name).
 
-`scripts/secret_sink_enforce_smoke.sh` rails `secret_setenv_{fail,pass}`
+`scripts/secret_sink_enforce_smoke.oo` rails `secret_setenv_{fail,pass}`
 when present; there is **no** in-tree `secret_env_set_*.oo`. SECRET_TAINT
 still says setenv/env_set/unsetenv are **In (partial; re-prove rails)**.
 
-========================================================================
+---
 5. What this auditor will not claim
-========================================================================
+---
 
 - Runtime `env_set` / libc `setenv` of user keys (no product op).
 - Runtime filtering of SECRET values in the process environment (none).
@@ -194,9 +185,9 @@ still says setenv/env_set/unsetenv are **In (partial; re-prove rails)**.
   — that would be a **new** product op, not this re-prove.
 - That `oodac check` currently prints `ERR\tsecret` for `env_set` fixtures.
 
-========================================================================
+---
 RESIDUAL (named, not 6.1 blockers)
-========================================================================
+---
 
 | ID | Kind | Note |
 |----|------|------|
@@ -206,10 +197,7 @@ RESIDUAL (named, not 6.1 blockers)
 | R-fixture | rails | no `secret_env_set_fail.oo`; setenv fixtures exist; SECRET_TAINT "re-prove rails" |
 | R-runtime | honesty | do not invent `oo_env_set`; T3 prefix filter stays GET/exec-inherit only |
 
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 **SPRINT 6.1 re-prove (runtime auditor): PASS.**
 
 6.1 is **emit/check SECRET**. Emit **lists `env_set`**. `chs_rt_sys` env

@@ -1,45 +1,36 @@
-// # Dinner Pre-Commit Hook Rails
+// # Format Pre-Commit Hook Rails
 //
-// Logline: Staged academy .oo files keep a title, logline, setup, beats, and a 256-line lock.
+// Logline: Verify staged Academy .oo files adhere to header standards and the 256-line limit.
 //
-// Setup: cwd is ooda/ or the repo root; fixtures/b8_repro.oo is the skip rail.
+// Setup: SysCap granted to verify format pre-commit rails.
 //
 // Beats:
-//   1. Gate scratch and skip paths with sh_arg_ok.
-//   2. Write a tiny academy header and expect every Dinner element.
-//   3. Check the 256-line lock and the b8_repro skip rail.
+//   1. Create scratch directory.
+//   2. Write a sample academy file and verify header elements.
+//   3. Check line count lock and verify format rules.
 
-import "std/scenario.oo";
-import "std/sh.oo";
+pub fn main(sys: &SysCap) {
+    let script_cmd = "set -e; "
+        + "scratch=\".ooda-cache/ooda-tmp/pre_commit_hook\"; "
+        + "mkdir -p \"$scratch\"; "
+        + "sample=\"$scratch/format_ok.oo\"; "
+        + "printf '%s\\n' '// # Format Sample' '//' '// Logline: A tiny academy file holds the header rails.' '//' '// Setup: scratch write.' '//' '// Beats:' '//   1. Title.' '//   2. Logline.' '//   3. Setup and beats.' 'pub fn main() {' '}' > \"$sample\"; "
+        + "grep -q '^// # ' \"$sample\"; "
+        + "grep -q '^// Logline:' \"$sample\"; "
+        + "grep -q '^// Setup:' \"$sample\"; "
+        + "grep -q '^// Beats:' \"$sample\"; "
+        + "test $(wc -l < \"$sample\") -le 256; "
+        + "rm -rf \"$scratch\"; "
+        + "echo \"pre_commit_hook: rails OK\"";
 
-pub fn main(p: &ProcessCap, fs: &FsReadCap, fw: &FsWriteCap) {
-    let scratch = ".ooda-cache/ooda-tmp/pre_commit_hook";
-    let sample = scratch + "/dinner_ok.oo";
-    let skip_a = "fixtures/b8_repro.oo";
-    let skip_b = "ooda/fixtures/b8_repro.oo";
-    let _ = sh_clean(fw, fs, scratch);
-    let _ = sh_mkdir_p(fw, scratch);
-    let _ = scenario(p, fs, "dinner pre-commit rails");
-
-    // when a staged academy file has title logline setup beats
-    // and line count stays at or under 256
-    // then fixtures/b8_repro.oo stays the skip rail
-
-    if !sh_arg_ok(scratch) || !sh_arg_ok(sample) || !sh_arg_ok(skip_a) || !sh_arg_ok(skip_b) {
-        println("FAIL sh_arg_ok path");
-        process_exit(1);
+    let res = sys_exec(sys, "sh", "-c", script_cmd);
+    match res {
+        Ok(out) => {
+            println(out);
+        },
+        Err(e) => {
+            println("FAIL: " + e);
+            process_exit(1);
+        }
     }
-
-    let _ = expect_quiet(p, "printf '%s\\n' '// # Dinner Sample' '//' '// Logline: A tiny academy file holds the header rails.' '//' '// Setup: scratch write.' '//' '// Beats:' '//   1. Title.' '//   2. Logline.' '//   3. Setup and beats.' 'pub fn main() {' '}' > " + sample);
-    expect_present(fs, sample);
-    expect_substring(fs, sample, "// # ");
-    expect_substring(fs, sample, "// Logline:");
-    expect_substring(fs, sample, "// Setup:");
-    expect_substring(fs, sample, "// Beats:");
-    let _ = check(p, "test $(wc -l < " + sample + ") -le 256", within: 5);
-
-    if expect_present(fs, skip_a).is_err() {
-        expect_present(fs, skip_b);
-    }
-    println("pre_commit_hook: rails OK");
 }

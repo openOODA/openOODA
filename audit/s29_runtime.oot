@@ -15,11 +15,7 @@
 #
 # ID: SPRINT **2.9** = "println walker → full `c_secret_emit_guard`".
 # Do not mix with 2.8 (macro body), 2.10 (`__sec_sink__`), 7.1 walker.
-
-========================================================================
-SUMMARY
-========================================================================
-
+## SUMMARY
 | Claim | Expected | Actual | VERDICT |
 |-------|----------|--------|---------|
 | Host **emit-c** refuses stmt `println(SECRET)` | `ERR\tsecret\tprintln sink refuses SECRET <id>` rc=1 | fixtures + tmp + `s29_println_guard_smoke` | **PASS** |
@@ -39,15 +35,12 @@ SUMMARY
 println refuse SECRET**. There is **no missing ELF symbol**. SPRINT **2.9**
 is **not** closed: stmt `println` never calls `c_secret_emit_guard`.
 
-Do **not** greenwash: `s29_println_guard_smoke.sh` exit 0 proves the **old**
+Do **not** greenwash: `s29_println_guard_smoke.oo` exit 0 proves the **old**
 token + `c_emit_println` rails, not the helper unify (harness text says so).
 DE2.9 (`c_emit_secret.oo:175-186` → `c_secret_emit_guard(env, id, ...)`) is
 **false** on HEAD, WT, and this ELF.
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Static: `c_emit_print.oo`, `c_emit_ident.oo`, `c_emit_secret.oo`,
    `c_emit_secret_guard.oo`, `c_emit_lower.oo`, `c_emit_call.oo`,
    `c_emit.oo`, `check_drive.oo`, `llvm_emit.oo`, `llvm_emit_expr.oo`,
@@ -56,13 +49,13 @@ METHOD
    `objdump` call graphs + rodata immediates.
 3. Live: official `fixtures/secret_{sink,eprintln,multi_arg,t2_args_*,t1_alias,concat}_*.oo`
    + tmp stmt/eprint/alias/concat/wrap/print/log/let-bind; smoke
-   `scripts/s29_println_guard_smoke.sh`. Clean cwd (not repo-root cache).
+   `scripts/s29_println_guard_smoke.oo`. Clean cwd (not repo-root cache).
 4. Implicit-decl contrast: C11 `-Werror=implicit-function-declaration`.
 5. No `chs_rt` / emit logic edits. No host rebuild.
 
-========================================================================
+---
 1. Q1 — Does host emit println refuse SECRET?
-========================================================================
+---
 
 **Yes**, for product **stmt** `println(<SECRET IDENT>)`.
 
@@ -99,20 +92,19 @@ Live (clean cwd; tabs in bytes):
 | tmp `oodac run` `println("public")` | rc=0 prints `public` | | |
 | tmp `emit-wasm` fail | rc=1 `… api_key` (`run_check_core`) | | |
 
-`scripts/s29_println_guard_smoke.sh` **exit 0** (ident refuse + string no-FP
+`scripts/s29_println_guard_smoke.oo` **exit 0** (ident refuse + string no-FP
 + eprintln). Harness residual line: unify is Domain Expert product.
 
 `oodac run` is fail-closed because it calls `run_check_core` **before**
 `bc_emit_program`. `emit-bc` alone does **not**.
 
-========================================================================
+---
 2. Q2 — Any missing symbol?
-========================================================================
+---
 
 **No missing product symbol.** Missing is a **call edge**.
 
 ### Product host (`nm -S` / `readelf`)
-
 | Symbol | `nm -S` | Size |
 |--------|---------|-----:|
 | `c_secret_emit_guard` | `T` @ `0x461080` | 4738 |
@@ -140,7 +132,6 @@ Live (clean cwd; tabs in bytes):
 inlined into guard / check). Symbol is **defined**, not missing.
 
 ### Call graph (objdump xrefs)
-
 | Callee | Unique callers |
 |--------|----------------|
 | `c_secret_emit_guard` | `c_emit_primary_c`, `c_emit_method` |
@@ -163,7 +154,6 @@ typecheck (`0x477505`). WT `check_drive.oo` 12:05 moved secret **before**
 type (6.1) — **not in this ELF**.
 
 ### Implicit declaration — PASS (mechanism)
-
 | TU | `gcc -std=c11 -Werror=implicit-function-declaration` |
 |----|------------------------------------------------------|
 | proto + take address of `c_secret_emit_guard` | **PROTO_OK** |
@@ -175,119 +165,7 @@ Seed `bootstrap/seed/oodac` (878392 B, 2026-08-11) also has
 `c_secret_emit_guard` / `c_emit_println` / `c_secret_refuse_println_ident`
 — older, smaller; **not** this proof.
 
-========================================================================
-3. DE2.9 / SPRINT 2.9 honesty (not closed)
-========================================================================
 
-SPRINT “What got fixed” **DE2.9**:
+*(Continued in `openOODA/audit/s29_runtime_part2.oot`)*
 
-> `ooda/oodac/c_emit_secret.oo:175-186` println walker →
-> `c_secret_emit_guard(env, id, ...)`
-
-Those lines (HEAD **and** WT) are:
-
-```
-if sid == "println" || sid == "eprintln" {
-    … walk IDENT until RPAREN …
-    c_secret_refuse_sink_resolved(env, sid, nm);
-}
-```
-
-`c_secret_emit_guard` takes lowered C `a0/a1/a2/args`, **not** a token
-index. The claimed call is a **type mismatch**; it was never landed.
-
-WT dirt on `c_emit_secret*.oo` is **7.10** `str_slice` + **2.10**
-`__sec_sink__` — not 2.9. `c_emit_print.oo` / `c_emit_ident.oo` match
-HEAD. Host ELF **07:49** predates those hunks; println rails were
-already in the ELF.
-
-`eprintln` as a **stmt** is **not** special-cased → `c_emit_expr` →
-`c_secret_emit_guard`. That is why eprintln “uses the walker” and
-stmt println does not (s71_security R1).
-
-========================================================================
-4. Runtime (`chs_rt`) — not a SECRET host
-========================================================================
-
-`chs_rt_print.c`: `oo_print_str` / `oo_println` / `oo_eprintln` write
-stdout/stderr. **No** taint, **no** `ERR\tsecret`.
-
-`grep` of `ooda/runtime/*`: **zero** `c_secret*` / `__sec__` /
-`refuses SECRET`. SECRET dies at emit/check, before gcc/`oo_println`.
-
-========================================================================
-5. Live residuals (named, not “missing symbol”)
-========================================================================
-
-### R-bc — `emit-bc` skip-check
-
-`main.oo` `emit-bc` does **not** call `run_check_core` /
-`check_secret_println_sinks`. tmp `stmt_fail` → `CALL println 1` rc=0.
-`run` still refuses (check first). Same class as s28 R-bc-secret.
-
-### R-cache — repo-cwd false OK
-
-`check_mod.oo` writes `.ooda-cache/check/<hash>` = `OK\n`. First
-`oodac check fixtures/secret_sink_fail.oo` from workspace hit
-`/home/jeryd/Projects/openOODA/.ooda-cache` and printed **OK** rc=0.
-Clean `/tmp` cwd: rc=1 `ERR\tsecret`. s71 R9. Auditors must not
-prove check from a dirty cache tree.
-
-### R-print / R-log — skip-check emit
-
-| Shape | emit-c | check | emit-llvm |
-|-------|--------|-------|-----------|
-| `print(SECRET)` | rc=0 `oo_print_str` (llvm builtin `print`) | type `undefined variable 'print'` | rc=0 `@oo_print_str` (s3cret in IR) |
-| `log(SECRET)` | rc=1 `log sink refuses SECRET` (**guard**) | type `undefined 'log'` | rc=0 `call @log` (check walker has no `log`) |
-
-`print` is an LLVM-only println **shape** (s71 R2). Not a typed product
-API. C emit of `print(...)` is an unresolved call, not `oo_print_*`.
-
-### R-1char-let — `let <1-char> = println(SECRET)`
-
-Not product stmt form. Repro (clean cwd, cache wiped):
-
-| dest | check | emit-c |
-|------|-------|--------|
-| `r` `x` `y` `z` `a` `b` `c` | **OK** rc=0 | **abort** rc=134 `malloc(): unaligned tcache chunk detected` |
-| `tmp` `rr` `r1` `_x` `dest` | rc=1 `… SECRET api_key` | (check dies first) |
-
-Same OK+abort for `let r = eprintln(SECRET)`. Tokens of the fail-open
-shape are ordinary (`IDENT println` / `LPAREN` / `IDENT api_key`).
-Likely `c_env` 1-char dest vs 1-char kind (`S`/`I`/`T`/`R`/`F`) —
-**not** a missing symbol. Stmt `println(SECRET)` after `let api_key = …`
-still refuses.
-
-### R-host-stale
-
-Same 07:49 ELF as s28/s61/s71/s72/s710. Source newer (7.10/2.10/6.1
-order). Do not nm a post-2.9-unify ELF; none exists.
-
-========================================================================
-RESIDUAL
-========================================================================
-
-| ID | Sev | Residual |
-|----|-----|----------|
-| **2.9** | MED | stmt println walker → full `c_secret_emit_guard` **not landed** (missing **call**) |
-| R-bc | dual-path | `emit-bc` skips SECRET |
-| R-cache | process | `.ooda-cache/check` can false-OK a refuse fixture |
-| R-print | skip-check | LLVM `print` emits `@oo_print_str(SECRET)` |
-| R-log-llvm | dual-path | `log` refuse is emit-guard only; llvm/check type-first |
-| R-1char-let | MED | `let <1-char> = println(SECRET)` check OK + emit abort |
-| R-check-order | stale host | ELF secret-after-type; WT secret-before-type (6.1, not 2.9) |
-| 2.10 / 7.10 | other OWN | `__sec_sink__` / `c_parse_secret_env` slice — not this ID |
-
-========================================================================
-VERDICT
-========================================================================
-
-| Question | Answer |
-|----------|--------|
-| Does host emit println refuse SECRET? | **YES** (stmt IDENT; emit-c / check / llvm / run / wasm) |
-| Any missing symbol? | **NO** (`T` guard + refuse + println; **0** `U`) |
-| Does stmt println call `c_secret_emit_guard`? | **NO** — 2.9 **OPEN** |
-
-**SPRINT 2.9 (runtime auditor): PASS refuse / FAIL unify.**
-
-end of s29_runtime.oot
+end of s29_runtime.oot (part 1)

@@ -9,11 +9,7 @@
 # Mutex land: `4b70f14` (g_ffi_handles_mu on register/lookup/clear)
 # WT note: uncommitted M166 minisig gate (SPRINT 6.5 optional) present on same file
 # No push. No critical unlock fix required this pass.
-
-========================================================================
-SUMMARY
-========================================================================
-
+## SUMMARY
 | ID | Sev | Claim under verify | Expected | Actual | VERDICT |
 |----|-----|--------------------|----------|--------|---------|
 | **1.10** | MED | FFI handle table read/mut without lock → add `g_ffi_handles_mu` | Every `g_ffi_handles[]` access under mutex; all lock paths unlock | Mutex present; all accesses only in locked helpers; unlock on every return path | **PASS** (FIXED path-A) |
@@ -26,27 +22,24 @@ Critical unlock bugs found: **0** (no `chs_rt_ffi.c` edit this pass).
 Smokes:
 | Smoke | Result | Note |
 |-------|--------|------|
-| `scripts/cap_ffi_runtime_smoke.sh` | **PASSED** | cap grant + forge deny; residual stub path |
-| `scripts/ffi_dlopen_path_a_smoke.sh` | **FAILED** | honesty/unknown-handle OK; **sys-dir + ALLOWDIR OS load** → `dlopen-err` |
+| `scripts/cap_ffi_runtime_smoke.oo` | **PASSED** | cap grant + forge deny; residual stub path |
+| `scripts/ffi_dlopen_path_a_smoke.oo` | **FAILED** | honesty/unknown-handle OK; **sys-dir + ALLOWDIR OS load** → `dlopen-err` |
 
-Smoke FAIL root cause (independent of 1.10/4.5): WT M166 `ffi_verify_signature` refuses libc without adjacent `.minisig`  
+Smoke FAIL root cause (independent of 1.10/4.5): WT M166 `ffi_verify_signature` refuses libc without adjacent `.minisig`
 (`ok=0 val=ffi residual: missing or invalid minisig`). Soft residual for optional **6.5**, not a mutex/unlock regression.
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Full read of `ooda/runtime/chs_rt_ffi.c` (cap grant, allowdir, minisig WT, handle table, oo_dlopen/dlsym/dlclose).
 2. Static matrix: every `g_ffi_handles` / `g_ffi_handles_mu` / `dlopen` / unlock path.
 3. Seventh-audit definitions from SPRINT history (`2aedc6d` / `e2d5f37`):
    - **1.10** MED `chs_rt_ffi.c` — table read/mut without lock → add mutex.
    - **4.5** HIGH `chs_rt_ffi.c` — dlopen callback re-entrancy → track depth; reject nested.
-4. Live smokes: `ffi_dlopen_path_a_smoke.sh`, `cap_ffi_runtime_smoke.sh`.
+4. Live smokes: `ffi_dlopen_path_a_smoke.oo`, `cap_ffi_runtime_smoke.oo`.
 5. Direct link probe of current umbrella `chs_rt.c` + real `LIB=/lib64/libc.so.6`.
 
-========================================================================
+---
 V1 — ID 1.10 handle-table mutex
-========================================================================
+---
 VERDICT: **PASS**
 
 ### Finding restated
@@ -65,7 +58,6 @@ static pthread_mutex_t g_ffi_handles_mu = PTHREAD_MUTEX_INITIALIZER;
 and wrapped `ffi_handle_register` / `ffi_handle_lookup` / `ffi_handle_clear`.
 
 ### Access matrix (every `g_ffi_handles` touch)
-
 | Line (WT) | Op | Function | Under lock? |
 |-----------|-----|----------|-------------|
 | 138 | decl array | file scope | n/a |
@@ -82,7 +74,6 @@ and wrapped `ffi_handle_register` / `ffi_handle_lookup` / `ffi_handle_clear`.
 Callers (`oo_dlopen` register, `oo_dlsym` lookup, `oo_dlclose` lookup+clear) only go through helpers.
 
 ### Unlock pairing (no stuck-lock)
-
 | Helper | locks | unlocks | Return paths after lock |
 |--------|------:|--------:|-------------------------|
 | `ffi_handle_register` | 1 | 3 | already-present unlock+return 0; full unlock+return -1; success unlock+return 0. Pre-lock `!h` return -1 OK. |
@@ -122,9 +113,9 @@ In-source header on Path A (L129–136 WT):
 ```
 **YES** — residual named, not claimed closed. Aligns prior peer (`grok_peer_verify_2026-08-11.oot` C4).
 
-========================================================================
+---
 V2 — ID 4.5 nested dlopen re-entrancy
-========================================================================
+---
 VERDICT: **FAIL** (OPEN — DE2 / runtime lane missed)
 
 ### Finding restated
@@ -136,7 +127,6 @@ VERDICT: **FAIL** (OPEN — DE2 / runtime lane missed)
 | Fix | Track `dlopen` depth; reject nested |
 
 ### Matrix questions
-
 | Question | Answer |
 |----------|--------|
 | Every `g_ffi_handles` access locked? | **Yes** (1.10) — orthogonal to 4.5 |
@@ -184,11 +174,11 @@ h = dlopen(...);
 ### Peer invent probe
 No live constructor-callback fixture in tree. Static absence of depth is sufficient to **FAIL** the "reject nested if feasible" claim. Feasibility: depth counter is trivial and portable → not an "if feasible" residual; it is unfinished work.
 
-========================================================================
+---
 V3 — Smokes
-========================================================================
+---
 
-### cap_ffi_runtime_smoke.sh → PASSED
+### cap_ffi_runtime_smoke.oo → PASSED
 ```
 OK check refuse bare dlopen
 OK emit-c dlopen with UnsafeFFICap
@@ -200,7 +190,7 @@ cap_ffi_runtime_smoke: PASSED
 ```
 Proves: cap token gate + emit lower; **not** successful OS load of signed/system libs.
 
-### ffi_dlopen_path_a_smoke.sh → FAILED (soft vs 1.10/4.5)
+### ffi_dlopen_path_a_smoke.oo → FAILED (soft vs 1.10/4.5)
 ```
 OK runtime Path A ffi honesty present (dlopen allowlist + handle-table dlsym)
 OK emit dlopen fixture
@@ -217,15 +207,15 @@ Independent probe (`LIB=/lib64/libc.so.6`, `OODA_FFI_ALLOW_DLOPEN=1`):
 ```
 ok=0 val=ffi residual: missing or invalid minisig
 ```
-→ WT **M166 / SPRINT 6.5** (optional) blocks unsigned libc.  
-Mutex/honesty/unknown-handle paths still green.  
+→ WT **M166 / SPRINT 6.5** (optional) blocks unsigned libc.
+Mutex/honesty/unknown-handle paths still green.
 **Do not** attribute smoke FAIL to 1.10 or 4.5.
 
 When 6.5 lands product-wide, smoke must either ship test minisigs or gate M166 behind env (honesty residual for that ID's owner).
 
-========================================================================
+---
 UNLOCK-BUG SCAN (DE2 miss check)
-========================================================================
+---
 
 | Check | Result |
 |-------|--------|
@@ -237,10 +227,7 @@ UNLOCK-BUG SCAN (DE2 miss check)
 
 **Code change this peer:** none.
 
-========================================================================
-VERDICT BOARD
-========================================================================
-
+## VERDICT BOARD
 | ID | Status | Evidence |
 |----|--------|----------|
 | **1.10** | **FIXED** (path-A) | `g_ffi_handles_mu`; locked register/lookup/clear; full-table `dlclose`; unlock matrix clean; TOCTOU residual documented |

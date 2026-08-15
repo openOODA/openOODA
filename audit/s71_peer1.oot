@@ -9,13 +9,8 @@
 #   md5=a44ee35eb344837009697e2c9d4e4662
 #   strings: `c_guard_scan_idents` + `c_secret_refuse_sink_resolved` present
 # Tip (ooda): 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 ## **ACCEPT path-A close of 7.1**
-
 SPRINT **7.1** (`c_guard_scan_idents` stack buffer / no per-char OoStr leak)
 is a real path-A floor on the live product host:
 
@@ -29,18 +24,15 @@ is a real path-A floor on the live product host:
    from a **clean cwd** (no `.ooda-cache` poison): SECRET IDENT refuse,
    string-literal no-FP, `//` comment no-FP, `let f = println; f(secret)`
    refuse (path-A claim holds).
-4. Regression: `scripts/secret_t1_return_smoke.sh` and
-   `scripts/secret_t2_depth_smoke.sh` both **exit 0**.
+4. Regression: `scripts/secret_t1_return_smoke.oo` and
+   `scripts/secret_t2_depth_smoke.oo` both **exit 0**.
 
 Do **not** over-claim: 7.10 (`c_parse_secret_env` `name = name + c`) stays
 OPEN. `/* */` is **not** product source comment syntax at check (residual
 lex). Check-result cache is cwd-relative and compiler-version-blind (can
 false-OK a refuse fixture — process residual, not a 7.1 FN).
 
-========================================================================
-CLAIM UNDER PRESSURE
-========================================================================
-
+## CLAIM UNDER PRESSURE
 | Slice | Path-A claim | Peer gate |
 |-------|--------------|-----------|
 | 7.1 memory | no per-char OoStr thrash in `c_guard_scan_idents` | source: `str_slice` once / ident; no `name = name + c` |
@@ -55,9 +47,9 @@ Path-A docs that force the alias probe:
 - `c_emit_secret_guard.oo:115` — `let f = tcp_write; f(secret)` is a sink
 - `c_emit_secret.oo:173` — resolve `let f = println` through `__alias__`
 
-========================================================================
+---
 SOURCE REVIEW (7.1 — no product edit)
-========================================================================
+---
 
 `ooda/oodac/c_emit_secret_guard.oo` (200 lines, under monofile ratchet):
 
@@ -86,19 +78,18 @@ Honest 7.1 reading vs ticket wording:
 
 7.10 still `name = name + c` in `c_parse_secret_env` — **not** 7.1.
 
-========================================================================
+---
 PROBE TABLE (live product host)
-========================================================================
+---
 
-Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`  
-Probes: `/tmp/s71_peer1/*.oo` (ephemeral; **not** landed in product)  
+Host: `OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`
+Probes: `/tmp/s71_peer1/*.oo` (ephemeral; **not** landed in product)
 Re-prove cwd: `/tmp/s71_peer1/clean` (no `.ooda-cache`).
 
-Expect: **refuse** = rc≠0 + `ERR\tsecret` on **both** `emit-c` and `check`.  
+Expect: **refuse** = rc≠0 + `ERR\tsecret` on **both** `emit-c` and `check`.
 Expect: **allow** = rc=0 on both and **no** `ERR\tsecret`.
 
 ### Assigned red-team (gate)
-
 | # | Probe | Shape | Expect | emit-c | check | Verdict |
 |---|-------|-------|--------|--------|-------|---------|
 | P01 | `p01_ident_fail.oo` | `// SECRET: api_key` + `println(api_key)` | refuse | rc=1 `println sink refuses SECRET api_key` | rc=1 same | **PASS** |
@@ -106,13 +97,12 @@ Expect: **allow** = rc=0 on both and **no** `ERR\tsecret`.
 | P03 | `p03_string_contains_fp.oo` | `println("header api_key placeholder")` | allow | rc=0 none | rc=0 none | **PASS** |
 | P04 | `p04_comment_line_fp.oo` | `// println(api_key)` + `println(public_tok)` | allow | rc=0 none | rc=0 none | **PASS** |
 | P06 | `p06_alias_println.oo` | `let f = println; f(secret_tok)` | refuse (path-A claims it) | rc=1 `println sink refuses SECRET secret_tok` | rc=1 same | **PASS** |
-| R1 | `scripts/secret_t1_return_smoke.sh` | T1 return / alias-rebind / if-taint | exit 0 | — | — | **PASS** (exit 0) |
-| R2 | `scripts/secret_t2_depth_smoke.sh` | T2 field / method / args / midline | exit 0 | — | — | **PASS** (exit 0) |
+| R1 | `scripts/secret_t1_return_smoke.oo` | T1 return / alias-rebind / if-taint | exit 0 | — | — | **PASS** (exit 0) |
+| R2 | `scripts/secret_t2_depth_smoke.oo` | T2 field / method / args / midline | exit 0 | — | — | **PASS** (exit 0) |
 
 **Gate: 7/7 PASS.**
 
 ### Bonus / control (not required to ACCEPT, still green)
-
 | # | Probe | Shape | Expect | emit-c | check | Verdict |
 |---|-------|-------|--------|--------|-------|---------|
 | P07 | `p07_multi_arg.oo` | `println(n, s)` SECRET `s` | refuse | rc=1 SECRET `s` | rc=1 | **PASS** |
@@ -142,15 +132,14 @@ T2 smoke detail:
 - `ci_product` wires the smoke
 
 ### Adversarial misses that are **not** 7.1 FNs
-
 | # | Probe | What happened | Classification |
 |---|-------|---------------|----------------|
 | P05 | `/* never print api_key here */` then `println(public_tok)` | emit-c rc=0 (no secret); check rc=1 `undefined variable 'never'` | **`/* */` not product source comments.** Not a secret FP. Lex residual. |
 | P09 | `println(/* api_key */ public_tok)` | emit-c rc=1 SECRET `api_key`; check rc=1 type `undefined variable 'api_key'` | Same: `/* */` tokenizes as live IDENTs. Emit fail-closed on live IDENT (not string/comment FP). SECRET_TAINT already says **not** full block-comment hardening. |
 
-========================================================================
+---
 COMMAND (repro)
-========================================================================
+---
 
 ```
 OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
@@ -164,16 +153,12 @@ $OODAC emit-c /tmp/s71_peer1/p02_string_lit_fp.oo  # rc=0
 $OODAC emit-c /tmp/s71_peer1/p04_comment_line_fp.oo
 $OODAC emit-c /tmp/s71_peer1/p06_alias_println.oo  # rc=1 ERR secret
 cd /home/jeryd/Projects/openOODA/ooda
-OODAC=./oodac/oodac bash scripts/secret_t1_return_smoke.sh   # exit 0
-OODAC=./oodac/oodac bash scripts/secret_t2_depth_smoke.sh    # exit 0
+OODAC=./oodac/oodac bash scripts/secret_t1_return_smoke.oo   # exit 0
+OODAC=./oodac/oodac bash scripts/secret_t2_depth_smoke.oo    # exit 0
 ```
 
-========================================================================
-FP / FN NOTES
-========================================================================
-
+## FP / FN NOTES
 ### False positives (refuse when should allow)
-
 | Probe | Result |
 |-------|--------|
 | `"api_key"` as println literal | **no FP** |
@@ -186,7 +171,6 @@ FP / FN NOTES
 **Assigned string/comment FP count: 0.**
 
 ### False negatives (allow when should refuse)
-
 | Probe | Result |
 |-------|--------|
 | `println(api_key)` | **no FN** dual-path |
@@ -196,9 +180,9 @@ FP / FN NOTES
 
 **Assigned IDENT / alias FN count: 0.**
 
-========================================================================
+---
 RESIDUALS (honest, out of 7.1 gate)
-========================================================================
+---
 
 1. **7.10 still OPEN** — `c_parse_secret_env` accumulates `name = name + c`.
    Do not close 7.10 on this peer.
@@ -216,17 +200,11 @@ RESIDUALS (honest, out of 7.1 gate)
 5. Full IFC / `${}` interp / higher-order beyond `__alias__` depth 16 —
    residual (SECRET_TAINT).
 
-========================================================================
-PEER OWN
-========================================================================
-
-No product compiler edit. No fixture land. No smoke change.  
+## PEER OWN
+No product compiler edit. No fixture land. No smoke change.
 Write: `openOODA/audit/s71_peer1.oot` only.
 
-========================================================================
-CLOSE TABLE
-========================================================================
-
+## CLOSE TABLE
 | Item | Status |
 |------|--------|
 | 7.1 walker defined + in product binary | **PASS** |

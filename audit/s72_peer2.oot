@@ -6,13 +6,8 @@
 # Scope: prove `c_sys_exec_last_arg` has no per-char concat; host not stale
 #        vs that slice body; long last-arg string — no hang ≤5s (reasonable size).
 # Write: this audit only. No product/std/oodac edits. No push.
-
-========================================================================
-VERDICT
-========================================================================
-
+## VERDICT
 ## **ACCEPT** 7.2 last-arg memory/perf honesty
-
 SPRINT **7.2** (`c_sys_exec_last_arg` — no per-char OoStr concat / same
 class as 7.1) is **true on source and on the live product host**:
 
@@ -35,10 +30,7 @@ closed; `c_args_strip_cr` sliced; seed `bootstrap/seed/oodac` current.
 **Do not REJECT 7.2** solely because WT grew two comments after host
 build — 7.2 slice body is identical HEAD↔WT↔host.
 
-========================================================================
-SUMMARY TABLE
-========================================================================
-
+## SUMMARY TABLE
 | # | Probe | Expected for 7.2 honesty | Actual | VERDICT |
 |---|--------|--------------------------|--------|---------|
 | 1 | Source `c_sys_exec_last_arg` has no `out = out + c` | none | **0** hits; `let out = str_slice(args, last_start, n)` | **PASS** |
@@ -64,10 +56,7 @@ SUMMARY TABLE
 **Scale no-hang at 5s: PASS** for last-arg ≤4 KiB. **FAIL** ≥8 KiB —
 **attributed outside 7.2** (string lexer/emit; println same).
 
-========================================================================
-METHOD
-========================================================================
-
+## METHOD
 1. Static read of live WT + `git show HEAD:oodac/c_emit_args.oo`.
 2. Python extract of `c_sys_exec_last_arg` body: concat-pattern scan.
 3. Host: `stat` / `md5sum` / `nm --print-size` / `objdump -d` over
@@ -78,10 +67,7 @@ METHOD
    **5s**. Dual-repro on key rows; isolation at 20s to attribute.
 7. No product rebuild. No push.
 
-========================================================================
-HOST / TIP / WT
-========================================================================
-
+## HOST / TIP / WT
 | Item | Value |
 |------|--------|
 | When (UTC) | 2026-08-12T18:51Z |
@@ -100,9 +86,9 @@ HOST / TIP / WT
 (“Runtime: product oodac … oo_str_slice×1”). Last-arg statements
 **untouched**.
 
-========================================================================
+---
 SOURCE (7.2 last-arg — live)
-========================================================================
+---
 
 ```
 pub fn c_sys_exec_last_arg(args: String) -> String
@@ -128,9 +114,9 @@ language floor, not quadratic last-arg accumulate. Same class as 7.1.
 **Same file L190** remains `c_args_strip_cr` `out = out + c` — **different
 function** (8.6 CR strip).
 
-========================================================================
+---
 HOST DISASSEMBLY (product `oodac`)
-========================================================================
+---
 
 ```
 nm:  0000000000452e10 T c_sys_exec_last_arg   (size 0x3c8 / 968)
@@ -155,16 +141,15 @@ Cache generated C (`oodac_pure_3086291`, 05:09; host 07:49) matches:
 Seed contrast (`bootstrap/seed/oodac`): same symbol `0x44df30` size
 `0x3b1` — **`oo_str_concat`×1, `oo_str_slice`×0**. Residual only.
 
-========================================================================
+---
 SCALE PROBES (product host — `/tmp/s72_peer2`)
-========================================================================
+---
 
 Hang budget = **5s** (`timeout`). Dual-repro where noted.
 Fixture: `sys_exec(sys, "sh", "-c", "<A×N>")` — last C-arg span is the
 long shell string (the 7.2 thrash surface).
 
 ### Long last-arg (`sys_exec` last string)
-
 | N | tokens | check | emit-c (5s) | emit-c (20s) |
 |---|--------|-------|-------------|--------------|
 | 256 | — | — | **0.08–0.17s PASS** dual | — |
@@ -185,16 +170,15 @@ eater; emit of the long literal is.
 strings; **<2.4s** on product host.
 
 ### Fail rail (correctness + no hang)
-
 | Probe | Result |
 |-------|--------|
 | `secret_sys_exec_pass.oo` | rc=0 **0.08s PASS** |
 | `secret_sys_exec_fail.oo` | rc=1 `ERR secret sys_exec sink refuses SECRET token` **0.04s PASS** |
 | argv pass/fail pair | allow **0.13s** / refuse **0.06s** |
 
-========================================================================
+---
 HOST vs SOURCE (the REJECT rail)
-========================================================================
+---
 
 Assigned rule: *if source fixed but host stale, REJECT until rebuilt
 or document.*
@@ -210,9 +194,9 @@ stale only vs concurrent WT comments. This peer did **not** rebuild.
 
 Do **not** use `oodac_bin` (Aug 11) or seed as product host.
 
-========================================================================
+---
 RESIDUALS (honest, out of 7.2 close)
-========================================================================
+---
 
 1. **Lexer / emit string concat** — `token_scan_string.oo` `s = s + …`.
    Dominates last-arg **≥8 KiB** (println same). Not 7.2.
@@ -222,19 +206,13 @@ RESIDUALS (honest, out of 7.2 close)
 5. **char_at walk** — O(|args|) 1-char `OoStr` visits. Linear factor,
    not quadratic concat.
 
-========================================================================
-WHAT THIS PEER WILL NOT RUBBER-STAMP
-========================================================================
-
+## WHAT THIS PEER WILL NOT RUBBER-STAMP
 - Peer1 / Domain last-arg **scan contract** (comma-in-string / IDENT
   refuse) — not re-litigated; different OWN. See `s72_domain_a.oot`.
 - Rollup “path-A closed including 8 KiB no-hang.”
 - Any claim that 5s no-hang holds for last-arg ≥8 KiB on product host.
 
-========================================================================
-REPRO
-========================================================================
-
+## REPRO
 ```
 OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
 # static
@@ -243,7 +221,6 @@ nm -C --print-size $OODAC | grep c_sys_exec_last_arg
 objdump -d --start-address=0x452e10 --stop-address=0x4531e0 $OODAC \
   | grep -c oo_str_slice    # 1
 objdump ... | grep -c oo_str_concat   # 0
-
 # scale (fixtures in /tmp/s72_peer2)
 timeout 5 $OODAC emit-c /tmp/s72_peer2/last_4096.oo   # rc=0 ~2.2s
 timeout 5 $OODAC emit-c /tmp/s72_peer2/last_8192.oo   # 124 (isolate @20s ~6.3s)
@@ -251,10 +228,7 @@ timeout 5 $OODAC emit-c ooda/fixtures/secret_sys_exec_fail.oo
 # rc=1 ERR secret
 ```
 
-========================================================================
-FILES
-========================================================================
-
+## FILES
 | Path | Role |
 |------|------|
 | `ooda/oodac/c_emit_args.oo` | 7.2 last-arg (read-only) |

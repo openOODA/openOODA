@@ -5,18 +5,16 @@
 # Scope: rebuild product host from WT paren-depth; re-prove assigned
 #        battery only: s29_println_guard_smoke + T1 + T2 + s28 + s71.
 # Policy: no push; timeout 90s each smoke; no Domain Expert rewrite.
-
 ## Verdict (honest)
-
 | Layer | Result | Exit | Notes |
 |-------|--------|------|-------|
 | **Rebuild** (seed emit + gcc -O0 + atomic install) | **PASS** | **0** | unique_fns=450 / 150 mods; tip-host emit **hangs** |
-| **`s29_println_guard_smoke.sh`** (2.9 own; **pre-rebuild**) | **FAIL** | **1** | stale 04:49 ELF: check FN on `(1), tok`; emit-c FN on H-same |
-| **`s29_println_guard_smoke.sh`** (2.9 own; **post-rebuild**) | **PASS** | **0** | dual-path bare + H-later + H-same + string/public no-FP + eprintln |
-| **`secret_t1_return_smoke.sh`** (T1 regression) | **PASS** | **0** | return / alias / if-taint refuse+allow + CI wire |
-| **`secret_t2_depth_smoke.sh`** (T2 regression) | **PASS** | **0** | field/method/args/dlopen/sys_exec argv/comment-skip + CI wire |
-| **`s28_macro_secret_smoke.sh`** (2.8 regression) | **PASS** | **0** | residual-refuse + invented-syntax fail-closed + first-pass SECRET |
-| **`s71_guard_scan_smoke.sh`** (7.1 regression) | **PASS** | **0** | println IDENT refuse + write_file payload refuse + string-lit no-FP |
+| **`s29_println_guard_smoke.oo`** (2.9 own; **pre-rebuild**) | **FAIL** | **1** | stale 04:49 ELF: check FN on `(1), tok`; emit-c FN on H-same |
+| **`s29_println_guard_smoke.oo`** (2.9 own; **post-rebuild**) | **PASS** | **0** | dual-path bare + H-later + H-same + string/public no-FP + eprintln |
+| **`secret_t1_return_smoke.oo`** (T1 regression) | **PASS** | **0** | return / alias / if-taint refuse+allow + CI wire |
+| **`secret_t2_depth_smoke.oo`** (T2 regression) | **PASS** | **0** | field/method/args/dlopen/sys_exec argv/comment-skip + CI wire |
+| **`s28_macro_secret_smoke.oo`** (2.8 regression) | **PASS** | **0** | residual-refuse + invented-syntax fail-closed + first-pass SECRET |
+| **`s71_guard_scan_smoke.oo`** (7.1 regression) | **PASS** | **0** | println IDENT refuse + write_file payload refuse + string-lit no-FP |
 | **Peer1 MUST 4** (extra; this host) | **PASS** | dual | all four + wave-3 H-same `("x")+tok` print `ERR	secret` both paths |
 | **2.9 walker → `c_secret_emit_guard`** | **OPEN** | — | stmt `println` still `c_emit_println` + token depth walk |
 | **Push** | **NOT DONE** | — | human-gated |
@@ -40,13 +38,12 @@ live host state**.
 
 Do **not** greenwash: stmt `println` does **not** call `c_secret_emit_guard`.
 Dual-path IDENT refuse is the **depth-aware token walker** plus emit belt.
-Full IFC / `#[Secret]` / `${}` not claimed. `ci_product.sh` wires T1/T2
+Full IFC / `#[Secret]` / `${}` not claimed. `ci_product.oo` wires T1/T2
 only — **not** s28/s29/s71.
 
 ---
 
 ## TIP SHA / binary
-
 ```
 ooda     git rev-parse --short HEAD → 52cc4b5
 ooda     git log -1 --oneline       → 52cc4b5 fix(r2): multi-import typecheck path-A + digit-0 import names
@@ -68,12 +65,11 @@ date -u                             → 2026-08-12T19:54:35Z
 | pure multi | unique_fns=**450** from_modules=**150** |
 | input_fp | `717789eb4cc92ab15b88fe78fff288e37a59c26e9ab9e972094a515f44fa97a5` |
 | Link flags | **gcc -O0** (see §1) |
-| Working tree (ooda) | dirty: `c_emit_print.oo` (97, md5 `4a993a55…`) + `c_emit_secret.oo` (231, md5 `b96bfc0e…`) + `check_drive.oo` + untracked `scripts/s29_*.sh` |
+| Working tree (ooda) | dirty: `c_emit_print.oo` (97, md5 `4a993a55…`) + `c_emit_secret.oo` (231, md5 `b96bfc0e…`) + `check_drive.oo` + untracked `scripts/s29_*.oo` |
 
 ---
 
 ## 0) DE landing observed (wave-3)
-
 | Path | Role |
 |------|------|
 | `ooda/oodac/c_emit_secret.oo` (231) | `c_secret_scan_call` L109 + `check_secret_println_sinks` L191 — **Int depth** (LPAREN++ / RPAREN--; stop at `depth<=0`) |
@@ -82,7 +78,7 @@ date -u                             → 2026-08-12T19:54:35Z
 | `ooda/oodac/c_emit_secret_guard.oo` (228) | `c_secret_emit_guard` lists println/eprintln for `c_guard_scan_idents` |
 | `ooda/oodac/c_emit_lower.oo` L90 | free-call → emit-guard (`eprintln` / `log`) |
 | `ooda/oodac/check_drive.oo` L62 | secret **before** typecheck (6.1) — **now in this ELF** |
-| `ooda/scripts/s29_println_guard_smoke.sh` (194, md5 `2ad0ee95…`) | wave-3 rails: H-later `println((1), tok)` + H-same `println(("x") + tok)` |
+| `ooda/scripts/s29_println_guard_smoke.oo` (194, md5 `2ad0ee95…`) | wave-3 rails: H-later `println((1), tok)` + H-same `println(("x") + tok)` |
 | `openOODA/audit/s29c_harness.oot` | harness pointer (H-same exact shape is `("x") + tok`, not extra wrap) |
 
 `all.c` from seed emit contains the depth loops (`c_emit_println` `d`;
@@ -92,20 +88,17 @@ helper-unify land.
 ---
 
 ## 1) Rebuild
-
 ### 1a) Tip-host emit — HANG (not the rebuild host)
-
 `OODAC_BIN=ooda/oodac/oodac` (04:49 ELF) `emit-c` of
 `check_cap_util.oo` / `main.oo` / `c_emit_secret.oo` **timeout 20–30s**
 (rc=124, preamble-only, 0 fn defs). Matches SPRINT AST-deadlock class.
-`scripts/oodac_pure_build.sh` via tip host → `ERR_EMIT check_cap_util.oo`
+`bootstrap/oodac_pure_build` via tip host → `ERR_EMIT check_cap_util.oo`
 (wave-3 rollup named this). **Not** a depth-hunk compile error.
 
 ### 1b) Seed emit — PASS
-
 ```
 env -u OODA OODAC_BIN=bootstrap/seed/oodac PURE_SKIP_CHECK=1 \
-  bash scripts/oodac_pure_build.sh oodac/main.oo ~/.cache/ooda-tmp/oodac_from_seed_s29c
+  bash bootstrap/oodac_pure_build oodac/main.oo ~/.cache/ooda-tmp/oodac_from_seed_s29c
 # emit phase: unique_fns=450 from_modules=150
 # official gcc -O2 killed at 300s under load ~11 (link of 1.0 MB all.c)
 ```
@@ -115,13 +108,11 @@ Leftover complete `all.c` (1054274 B, 29523 L) at
 `check_secret_println_sinks` depth + `c_emit_println` `d`.
 
 ### 1c) gcc -O0 link + atomic install — PASS (~27s)
-
 ```
 gcc -O0 -I runtime -DOO_HAVE_OPENSSL runtime/chs_rt.c all.c \
   -lm -ldl -lpthread /usr/lib64/libssl.so.3 /usr/lib64/libcrypto.so.3 \
   -o ~/.cache/ooda-tmp/oodac_from_seed_s29c
 # 1203120 B  md5 e47538a0…  BuildID 89fa663e…
-
 cp -a oodac/oodac oodac/oodac.bak.s29cpre
 cp -a ~/.cache/ooda-tmp/oodac_from_seed_s29c oodac/oodac.new
 mv -f oodac/oodac.new oodac/oodac
@@ -132,205 +123,7 @@ future -O2. Side and tip md5 match after install.
 
 ---
 
-## 2) Assigned smokes — exit codes
 
-All post-rebuild runs: `OODAC_BIN=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`
-(or the matching side path). `timeout 90s`. Logs under `/tmp/s29c_integration/`.
-Virgin cwd for s29 (`/tmp/s29c_integration/smoke_cwd*`) — s71 R9 cache.
+*(Continued in `openOODA/audit/s29c_integration_part2.oot`)*
 
-`bash -n` **OK** on all five scripts.
-
-### 2a) s29_println_guard_smoke (2.9 own)
-
-`bash -n` **OK** (194 lines). md5 `2ad0ee9592709771015e8fc55298a81e`.
-
-**Pre-rebuild (04:49 ELF) — exit 1:**
-
-```
-OK fail-closed emit-c/check: secret_tok_println_ident
-OK no-FP emit-c/check: secret_tok_println_string_lit
-OK fail-closed emit-c: secret_tok_println_grouped_later
-FAIL fail-closed check accepted: secret_tok_println_grouped_later
-FAIL fail-closed emit-c accepted: secret_tok_println_groupplus
-OK no-FP: secret_tok_println_grouped_public
-OK fail-closed emit-c/check: secret_tok_eprintln_ident
-s29_println_guard_smoke: FAILED
-```
-
-**Post-rebuild (this ELF) — exit 0** (side **and** installed product,
-virgin cwd both):
-
-```
-OK fail-closed emit-c: secret_tok_println_ident
-OK fail-closed check: secret_tok_println_ident
-OK no-FP emit-c: secret_tok_println_string_lit
-OK no-FP check: secret_tok_println_string_lit
-OK fail-closed emit-c: secret_tok_println_grouped_later
-OK fail-closed check: secret_tok_println_grouped_later
-OK fail-closed emit-c: secret_tok_println_groupplus
-OK fail-closed check: secret_tok_println_groupplus
-OK no-FP emit-c: secret_tok_println_grouped_public
-OK no-FP check: secret_tok_println_grouped_public
-OK fail-closed emit-c: secret_tok_eprintln_ident
-OK fail-closed check: secret_tok_eprintln_ident
-s29_println_guard_smoke: ALL OK
-RESIDUAL 2.9 walker→c_secret_emit_guard unify is Domain Expert product; this smoke proves refuse/no-FP
-```
-
-Classification: dual-path IDENT refuse + H-later + H-same + string/public
-no-FP **GREEN**. Smoke does **not** claim helper unify.
-
-### 2b) secret_t1_return_smoke (T1) — exit 0
-
-```
-OK secret_function_return_fail emit refuses (rc=1)
-OK secret_function_return_pass emit OK
-OK secret_alias_rebind_pass emit refuses (rc=1)
-OK secret_alias_rebind_fail emit OK (sticky cleared)
-OK secret_if_taint_fail emit refuses (rc=1)
-OK secret_if_taint_pass emit OK
-OK ci_product wires secret_t1_return_smoke
-OK secret_t1_return_smoke
-```
-
-### 2c) secret_t2_depth_smoke (T2) — exit 0
-
-```
-OK secret_field_assign_fail / _pass
-OK secret_method_return_fail / _pass
-OK secret_call_arg_fail
-OK secret_multi_arg_println_fail
-OK secret_multi_name_fail / _pass
-OK secret_dlopen_arg_fail / _pass
-OK secret_sys_exec_argv_fail / _pass
-OK secret_midline_safe + comment-skip shape
-OK ci_product wires secret_t2_depth_smoke
-OK secret_t2_depth_smoke
-```
-
-### 2d) s28_macro_secret_smoke (2.8) — exit 0
-
-```
-OK residual-refuse check + fail-closed emit-c (macro_expand / ast_macro / macro_kw)
-OK SECRET floor refuse: secret_tok_println
-OK N/A rail documented: MACRO_SECRET_RESIDUAL.oot
-s28_macro_secret_smoke: ALL OK
-```
-
-### 2e) s71_guard_scan_smoke (7.1) — exit 0
-
-```
-OK fail-closed: secret_tok_println_ident
-OK fail-closed: secret_tok_write_file_payload
-OK no-FP: secret_tok_println_string_lit
-s71_guard_scan_smoke: ALL OK
-```
-
-s71 residual banner still says `c_parse_secret_env` is char-concat;
-WT + this ELF are `str_slice`. Banner stale vs source; rails hold.
-
----
-
-## 3) Extra Peer1 MUST (this rebuilt host)
-
-Ephemeral `/tmp/s29c_integration/must/` — clean cwd. Expect refuse =
-rc≠0 + `ERR	secret` on **check and emit-c**. Front-door exits before
-lower: **no** `oo_print_*` of `tok` / `s3cret` in emit-c.
-
-| # | Shape | check | emit-c | Dual SECRET? |
-|---|-------|-------|--------|--------------|
-| 1 | `println((n), tok)` | rc=1 `ERR	secret` println | rc=1 same; no print of tok | **YES** |
-| 2 | `println((("x")+tok))` | rc=1 `ERR	secret` (not type) | rc=1 same; no leak | **YES** |
-| 2b | `println(("x") + tok)` (wave-3 H-same) | rc=1 `ERR	secret` | rc=1 same; no leak | **YES** |
-| 3 | `eprintln(id(1), tok)` | rc=1 `ERR	secret` eprintln | rc=1 same | **YES** |
-| 4 | `println(n, tok)` | rc=1 `ERR	secret` | rc=1 same | **YES** |
-
-Stale 04:49 ELF (Peer1 19:44Z): 3 of 4 **missed**. This ELF: **5/5**.
-
----
-
-## 4) Exit-code scoreboard
-
-| Script | Timeout | Exit | Color |
-|--------|---------|------|-------|
-| `s29_println_guard_smoke.sh` pre-rebuild | 90s | **1** | RED (stale ELF; honest) |
-| `s29_println_guard_smoke.sh` post-rebuild | 90s | **0** | GREEN |
-| `secret_t1_return_smoke.sh` | 90s | **0** | GREEN |
-| `secret_t2_depth_smoke.sh` | 90s | **0** | GREEN |
-| `s28_macro_secret_smoke.sh` | 90s | **0** | GREEN |
-| `s71_guard_scan_smoke.sh` | 90s | **0** | GREEN |
-
-Assigned 5 on rebuilt host: **5 GREEN / 0 RED / 0 SKIP**.
-
-Not in this wave-3 list (named only): `s61_*` / `s72_*` / `s710_*`.
-Do **not** treat their absence as a 2.9 pass. 6.1 secret-before-type
-**is** in this ELF (`check_drive.oo` L62) — not re-proved here.
-
----
-
-## 5) What GREEN is (and is not)
-
-| Claim | Status |
-|-------|--------|
-| Host rebuilt from WT depth | **YES** — new md5/BuildID/size/mtime |
-| Dual-path `println(SECRET)` refuse | **YES** |
-| Dual-path `println("tok")` no-FP | **YES** |
-| Dual-path `eprintln(SECRET)` refuse | **YES** |
-| Dual-path H-later `println((1), tok)` / `((n), tok)` | **YES** |
-| Dual-path H-same `println(("x") + tok)` and extra wrap | **YES** |
-| T1 / T2 / 2.8 / 7.1 floors | **YES** |
-| Dedicated `s29_*` smoke | **YES** — exit 0 after rebuild |
-| Stmt `println` calls `c_secret_emit_guard` | **NO** |
-| `check_secret_println_sinks` is `c_secret_emit_guard(...)` | **NO** — still IDENT depth walk |
-| Tip-host self-emit of `main.oo` | **NO** — hang (seed used) |
-| Official `gcc -O2` link this pass | **NO** — -O0 of same `all.c` |
-| `ci_product.sh` wires s28/s29/s71 | **NO** — T1/T2 only |
-| Full IFC / `#[Secret]` / `${}` | **residual** |
-| SPRINT 2.9 flipped FIXED | **NO** — not this worker |
-
----
-
-## 6) Delta vs wave-1 / wave-2 integration
-
-| Item | Wave-1 / s29b | Wave-3 (this) |
-|------|---------------|---------------|
-| Host ELF | 962960 / `a44ee35e…` / 04:49 | **1203120** / `e47538a0…` / 09:52 |
-| Smoke rails | wave-1 bare; s29b later grouped (157→206 L) | **194 L** H-later + H-same `("x")+tok` |
-| s29 smoke | GREEN on bare; s29b later **exit 1** | **exit 0** after rebuild |
-| T1 / T2 / s28 / s71 | GREEN | **GREEN** (no regression) |
-| Walker → emit-guard | OPEN | **still OPEN** |
-| Depth in ELF | no | **yes** |
-
----
-
-## 7) Follow-ups (not this worker)
-
-1. Peer1 / Docs Writer: re-ACCEPT / re-rollup on **this** ELF
-   (`e47538a0…`). Stale-host REJECT is not the live prove.
-2. Optional: `gcc -O2` of the same `all.c` if product wants -O2 size.
-   Do **not** treat -O0 as a SECRET hole.
-3. Tip-host AST hang on `check_cap_util.oo` / `main.oo` / `c_emit_secret.oo`
-   remains a SPRINT compiler-bug residual (not 2.9 OWN).
-4. Domain Expert: unify stmt `println` onto `c_secret_emit_guard` **or**
-   stop claiming DE2.9 wording. Depth-in-ELF is **not** that unify.
-5. Wire s29 (and s28/s71) into `ci_product.sh` if CI should own those rails.
-
----
-
-## Evidence paths
-
-| Item | Path |
-|------|------|
-| This audit | `/home/jeryd/Projects/openOODA/openOODA/audit/s29c_integration.oot` |
-| Wave-2 integration | `openOODA/audit/s29b_integration.oot` |
-| Wave-1 integration | `openOODA/audit/s29_integration.oot` |
-| Harness pointer | `openOODA/audit/s29c_harness.oot` |
-| Harness smoke | `ooda/scripts/s29_println_guard_smoke.sh` |
-| DE walker | `ooda/oodac/c_emit_secret.oo` L109 / L191 |
-| Stmt println belt | `ooda/oodac/c_emit_print.oo` L19 |
-| Side + product ELF | `~/.cache/ooda-tmp/oodac_from_seed_s29c` = `ooda/oodac/oodac` |
-| Stale bak | `ooda/oodac/oodac.bak.s29cpre` |
-| Smoke / rebuild logs | `/tmp/s29c_integration/` |
-| Peer1 MUST (this host) | `/tmp/s29c_integration/must/` |
-
-end of s29c_integration.oot
+end of s29c_integration.oot (part 1)

@@ -6,9 +6,7 @@
 # Source (2.9-relevant): `c_emit_print.oo` (3079 B, 87 L, HEAD-clean, 11:43) / `c_emit_ident.oo` (9501 B, 228 L, HEAD-clean) / `c_emit_lower.oo` (11734 B, 241 L, HEAD-clean) / `c_emit_call.oo` (4945 B, 141 L, HEAD-clean)
 # Adjacent dirty (not 2.9): `c_emit_secret.oo` (10864 B, 264 L, 11:54) / `c_emit_secret_guard.oo` (9779 B, 228 L, 11:46) / `c_emit_args.oo` (comment-only)
 # OWN: audit only (no product code changes this pass)
-
 ## Scope
-
 Prove or reject SPRINT **2.9** memory floor:
 
 > println walker → full `c_secret_emit_guard`
@@ -28,7 +26,6 @@ Out of scope (named residual only): 7.1/7.2/7.10 walkers (PASS `s71`/`s72`/`s710
 ID collision: none. This file is SPRINT backlog **2.9** = "println walker → full `c_secret_emit_guard`". Historical eighth-sprint **DE2.9** row (`c_emit_secret.oo:175-186`) is a **stale/false map** — those lines are still an inline IDENT loop, not a guard call (`s29_ideas.oot`, `s29_domain_b.oot`).
 
 ## Verdict — path-A memory floor
-
 | Result | Meaning |
 |--------|---------|
 | **PASS** | 2.9 added **no** product hunk and **no** concat. Three live rails already refuse without per-char `OoStr` rebuild. stmt `println` RSS **tracks** `eprintln` (the rail that already calls `c_secret_emit_guard`). A future unify **must reuse** `c_secret_scan_call` / `c_guard_scan_idents` / already-lowered `arg` — **not** a new `args = args + ", " + a` inside `c_emit_println`. |
@@ -47,12 +44,10 @@ ID collision: none. This file is SPRINT backlog **2.9** = "println walker → fu
 ---
 
 ## H1 — No new concat (the 2.9 close bar)
-
 ### What 2.9 actually landed this pass
-
 | Site | Form | Alloc? |
 |------|------|--------|
-| `scripts/s29_println_guard_smoke.sh` | harness, 157 L, `??` | none (script) |
+| `scripts/s29_println_guard_smoke.oo` | harness, 157 L, `??` | none (script) |
 | `audit/s29_*.oot` | phalanx evidence | none (doc) |
 | `SPRINT.oot` 2.9 row | still **open** MED | none |
 | `c_emit_print.oo` / `c_emit_ident.oo` / `c_emit_lower.oo` | stmt + free-call rails | **HEAD-clean** |
@@ -95,9 +90,7 @@ Every `+` in the check println block (`c_emit_secret.oo` L175–193) and in `c_s
 ---
 
 ## H2 — stmt `println` heap vs sibling `eprintln`
-
 ### Mechanism (two walkers, both already sliced/token)
-
 | Rail | File | Extract | Concat? |
 |------|------|---------|---------|
 | check / llvm front-door | `c_emit_secret.oo` L175–193 | `field_at(..., 3)` then `c_secret_refuse_sink_resolved` | **none** (token text already paid) |
@@ -120,7 +113,6 @@ Stmt `println` **never** builds a joined C `args` string. It lowers each arg via
 | `c_secret_refuse_println_ident` | `0x45de80` | 175 |
 
 ### Live rails (this binary)
-
 Ephemeral `/tmp/s29_mem_1130096/` (removed). `/usr/bin/time` `%e` / `%M`. `OODA_SRC_ROOT=ooda`. Check probes used isolated HOME when cache-poison was a risk (s71 R9).
 
 Direct refuse / allow (tiny fixtures):
@@ -134,7 +126,7 @@ Direct refuse / allow (tiny fixtures):
 | `secret_sink_pass.oo` | emit-c | 0 | 0.02 | 5004 | public println |
 | `hello.oo` | emit-c | 0 | 0.07 | 7224 | no secret |
 
-Harness `scripts/s29_println_guard_smoke.sh`: **ALL OK** (println refuse dual-path, string-lit no-FP, eprintln refuse). Smoke **does not** prove helper unify (Harness residual named).
+Harness `scripts/s29_println_guard_smoke.oo`: **ALL OK** (println refuse dual-path, string-lit no-FP, eprintln refuse). Smoke **does not** prove helper unify (Harness residual named).
 
 Long SECRET ident (same N on `println` / `eprintln`; refuse after parse — no full body emit):
 
@@ -162,7 +154,6 @@ Many public idents (`let a0000 = 0; …; println|eprintln(a0000, …)`) — epri
 ---
 
 ## H3 — Mechanism (reuse, not a new extract)
-
 | Artifact | What it says / does |
 |----------|---------------------|
 | `SPRINT.oot` 2.9 | “println walker → full `c_secret_emit_guard`” — still **open** |
@@ -175,7 +166,6 @@ Many public idents (`let a0000 = 0; …; println|eprintln(a0000, …)`) — epri
 | `s29_domain_b.oot` | empty-args `c_secret_emit_guard(env, sid, "", "", "", "")` would **FN** the scanner |
 
 ### Unify recipes (Memory OWN — hard)
-
 If Domain A lands a unify, Memory **PASS** only if **zero new concat**:
 
 | Recipe | Heap | Memory |
@@ -195,7 +185,6 @@ If Domain A lands a unify, Memory **PASS** only if **zero new concat**:
 ---
 
 ## Complexity (memory class)
-
 | Function | Time | Aux heap (2.9 delta) |
 |----------|------|----------------------|
 | check println/eprintln IDENT walk | O(#toks in args) | **0** (field_at) |
@@ -210,7 +199,6 @@ Progress: `i` / `p` / `sp` always increase. No spin. No new loop this pass.
 ---
 
 ## Scorecard
-
 | ID | Sev | Site | Finding | Status |
 |----|-----|------|---------|--------|
 | S29-1 / 2.9 | MED | 2.9 land | No product hunk; dual refuse already live | **PASS residual** (unify OPEN) |
@@ -226,7 +214,6 @@ Progress: `i` / `p` / `sp` always increase. No spin. No new loop this pass.
 | S29-11 | LOW | `c_emit_secret.oo` 264 L | >256 soft | **DOC residual** (hygiene; I3 would shrink) |
 
 ## Close bar for 2.9 (memory)
-
 Path-A **may close 2.9 as memory-floor PASS** if process accepts:
 
 1. No new concat (proven this pass; **must stay true** on any unify land).
@@ -239,7 +226,6 @@ Re-open 2.9 memory **only** if a unify lands with per-char `OoStr` rebuild, a **
 Ideas winner (I1+I2) needs **no** heap change. Memory will not block a prove-only close. Memory **will** block I5/I9.
 
 ## Evidence paths
-
 | Item | Path |
 |------|------|
 | Stmt println walker | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_print.oo` L9–85 |
@@ -250,12 +236,11 @@ Ideas winner (I1+I2) needs **no** heap change. Memory will not block a prove-onl
 | Free-call in | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_lower.oo` L90 |
 | Adjacent join | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_call.oo` L40 |
 | Check / llvm front-door | `oodac/check_drive.oo` L62 (WT), `c_emit.oo` L86, `llvm_emit.oo` L79 |
-| Smoke | `ooda/scripts/s29_println_guard_smoke.sh` |
+| Smoke | `ooda/scripts/s29_println_guard_smoke.oo` |
 | Ideas / family / hygiene | `audit/s29_ideas.oot` I5/I9 · `s29_domain_b.oot` · `s29_hygiene.oot` |
 | Prior floors | `s61_memory.oot` / `s71_memory.oot` / `s72_memory.oot` / `s710_memory.oot` / `s28_memory.oot` / `t1_memory.oot` |
 
 ## Notes (return)
-
 1. Did **not** edit product `.oo`. Audit + ephemeral `/tmp/s29_mem_1130096` only (removed).
 2. Did **not** add fixtures (Harness OWN; smoke already landed).
 3. Did **not** rebuild `oodac`. Host ELF already has `c_emit_println` + `c_secret_emit_guard` + `check_secret_println_sinks`.

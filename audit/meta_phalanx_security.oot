@@ -23,181 +23,43 @@ Adversarial stance: treat decoys as a **gadget factory** until proven inert.
 
 | Surface | Path | Role |
 |---------|------|------|
-| Decoy emit | `ooda/oodac/c_emit_meta.oo` | Parses path-a marker; emits decoys |
-| Emit wire | `ooda/oodac/c_emit.oo` | After each top-level fn, optional decoy |
-| Residual refuse | `ooda/oodac/check_residual.oo` | `metamorphic_*` free-name default-deny |
-| Runtime epoch | `ooda/runtime/chs_rt_meta.c` | `oo_meta_epoch` process-local seed |
-| Preamble decl | `ooda/oodac/c_emit_preamble.oo` | `oo_meta_epoch` prototype |
-| Lower | `ooda/oodac/c_emit_lower.oo` | `meta_epoch` → `oo_meta_epoch()` |
-| Fixture / smoke | `fixtures/metamorphic_path_a.oo`, `scripts/metamorphic_path_a_smoke.sh` | Product honesty |
+| Decoy emit | `oodac/c_emit_meta.oo` | Parses path-a marker; emits decoys |
+| Emit wire | `oodac/c_emit.oo` | After each top-level fn, optional decoy |
+| Residual refuse | `oodac/check_residual.oo` | `metamorphic_*` free-name default-deny |
+| Runtime epoch | `runtime/chs_rt_meta.c` | `oo_meta_epoch` process-local seed |
+| Preamble decl | `oodac/c_emit_preamble.oo` | `oo_meta_epoch` prototype |
+| Lower | `oodac/c_emit_lower.oo` | `meta_epoch` → `oo_meta_epoch()` |
+| Fixture / smoke | `fixtures/metamorphic_path_a.oo`, `scripts/metamorphic_path_a_smoke.oo` | Product honesty |
 | Doc | `bootstrap/METAMORPHIC.oot`, DESIGN §3/§6.1, RP-3.11 | Claim text |
 
 ---
 
 ## Threats considered
 
-### T1 — Exported callable decoys (dlsym / interposition)
-
-**Threat:** If decoys were global `void __oo_meta_decoy_N(void)`, an attacker
-(or accidental link with `-rdynamic` / plugin load) could resolve and call them;
-names become a stable public ABI gadget surface.
-
-**Finding (pre-fix):** Emit already used `static void` (internal linkage).
-
-**Mitigation:** Keep **file-local `static`**. Never emit non-static decoys.
-Names stay `__oo_meta_decoy_<seq>` (not user-derived). Documented in emit
-security contract. **Status: mitigated.**
-
-### T2 — Main-like / ctor / entry collision
-
-**Threat:** Decoy named `main`, `_start`, `_init`, or marked
-`constructor`/`destructor` becomes an unintended entry / auto-run gadget.
-
-**Finding:** Names are fixed prefix `__oo_meta_decoy_` + decimal sequence.
-No `__attribute__((constructor))`, no section tricks for .init_array.
-
-**Mitigation:** Forbidden name classes called out in `c_emit_meta.oo` contract;
-emit path never interpolates source identifiers into decoy symbols.
-**Status: mitigated.**
-
-### T3 — Function-pointer tables / indirect call gadgets
-
-**Threat:** Storing decoy addresses in a static array / vtable creates
-writable or readable call targets (CFI-bypass / ROP staging).
-
-**Finding:** Path-A emit takes **no addresses**, builds **no fptr tables**.
-
-**Mitigation:** Hard ban in security contract: no function pointers in decoys.
-Keep-alive uses `__attribute__((used,noinline))` only (no address materialization
-in generated C). **Status: mitigated.**
-
-### T4 — system / exec / spawn sinks inside decoys
-
-**Threat:** “Harmless” padding that calls `system`, `exec*`, `popen`, or
-runtime `oo_sys_exec` becomes a planted shell gadget if ever reached.
-
-**Finding:** Decoy body is only a volatile unsigned store + void cast.
-
-**Mitigation:** No libc process APIs, no oo_sys_*, no I/O in decoy emit.
-**Status: mitigated.**
-
-### T5 — Format-string / user-controlled string into decoy text
-
-**Threat:** If decoy names or bodies concatenated source identifiers, paths,
-or format templates (`printf(user)`), source becomes an inject/format surface
-in generated C.
-
-**Finding:** Body embeds only `idx` via `Int.to_string()` (emit sequence).
-Negative idx clamped to 0. No `printf`/`scanf` in decoy C.
-
-**Mitigation:** Sequence-only decimal; never source spans, paths, or env.
-**Status: mitigated.**
-
-### T6 — Opt-in marker as silent layout/hash footgun
-
-**Threat:** Accidental or adversarial addition of `// METAMORPHIC: path-a`
-changes object layout and disk hash vs default product builds (supply-chain /
-repro surprise). Mid-line / string occurrence might false-enable.
-
-**Finding:** Parser is **line-start only** (`i==0` or prior `\n`). Default OFF.
-Tension with deterministic builds is DESIGN-explicit (opt-in).
-
-**Mitigation:** Line-start match; default off; docs + residual free-names for
-full metamorphic APIs. Residual: marker still opt-in by anyone who can write
-source (expected for a compiler directive). **Status: accepted / residual
-(supply-chain policy, not gadget).**
-
-### T7 — Dead-code elimination kills diversity (feature death, not RCE)
-
-**Threat:** `-O2`/`LTO` discards unused `static` functions → path-A becomes a
-no-op while still advertising layout diversity.
-
-**Finding:** Pre-fix body had no keep-alive; DCE likely.
-
-**Mitigation (OWN fix):** Emit GCC/clang `__attribute__((used,noinline))`
-around static decoys so pads survive optimization **without** export or fptrs.
-**Status: mitigated (feature keep); residual ROP entropy still weak.**
-
-### T8 — Residual ROP / code-reuse on decoy bodies
-
-**Threat:** Even static, kept functions are bytes in `.text`. An exploit with
-a controlled PC may ret into decoy prologues/epilogues (classic ROP).
-
-**Finding:** Body is minimal (volatile store immediate + return). Low gadget
-richness vs real product code; still not zero.
-
-**Mitigation:** Minimize instructions; no indirect branches; no useful
-syscalls. **Honesty residual:** decoys are **not** CFI, **not** call-graph
-integrity (`sign_callgraph` / `verify_callgraph` still residual refuse).
-**Status: residual (inherent to any .text).**
-
-### T9 — Overclaim: “immune system” / continuous mutation
-
-**Threat:** Marketing or agent docs treat path-A as runtime polymorphic
-binary / ASLR replacement / CFI, leading to wrong threat models.
-
-**Finding:** DESIGN correctly labels path-A partial; full mutation residual.
-`meta_epoch` is process-local random fixed at first call — **not** re-morph
-of live assembly. Emit decoys are **deterministic per source order** (same
-source → same decoy indices); process ASLR still provides base slide.
-
-**Mitigation / required honesty statement:**
-
-> **Layout diversity (path-A decoys) is a weak ASLR-style helper only.
-> It is not control-flow integrity (CFI), not continuous runtime re-mutation,
-> and not a substitute for OS ASLR, stack canaries, or W^X.**
-
-**Status: residual documented; claim sealed to path-A floor.**
-
-### T10 — `meta_epoch` entropy quality / side channel
-
-**Threat:** Weak seed → predictable “future immune” hooks; epoch leak via
-println aids layout prediction if epoch ever drove layout (today it does not
-drive decoy emit).
-
-**Finding:** Prefers `getentropy`; fallback mixes address of static, pid,
-monotonic us. Not claimed CSPRNG for crypto. Epoch not wired into decoy
-generation (emit is deterministic sequence).
-
-**Mitigation:** Residual: not CSPRNG / attested entropy. Do not use epoch as
-crypto key material. **Status: residual (honest floor).**
-
-### T11 — Residual free-name bypass
-
-**Threat:** `metamorphic_emit` / `metamorphic_build` / `metamorphic_vs_det`
-ship as real codegen → false product immune APIs.
-
-**Finding:** `check_residual.oo` maps them to `METAMORPHIC` / `META_VS_DET`
-and default-denies at check. Smoke expects refuse.
-
-**Mitigation:** Keep residual refuse; do not implement stubs that pretend full
-immune product. **Status: mitigated (path-A refuse).**
-
-### T12 — Emit pipeline staleness / dual-green gap
-
-**Threat:** Source has path-A; product `oodac` binary may predate it
-(`emit-c` fixture failed on stale binary during this audit: unknown free call
-`meta_epoch`). Agents may claim green while binary lag hides decoys.
-
-**Mitigation:** Smoke already soft-skips live emit when binary lags; rebuild
-required for dual-green. **Status: residual process / rebuild — not a gadget.**
+- **T1 — Exported callable decoys:** If global, becomes dlsym gadget surface. Mitigation: keep file-local `static void` with fixed names `__oo_meta_decoy_<seq>`. Status: mitigated.
+- **T2 — Main/ctor collision:** Name collision with entry points or init_array. Mitigation: fixed decimal sequence, no attributes/sections. Status: mitigated.
+- **T3 — Function pointer tables:** Creating indirect call targets. Mitigation: hard ban on function pointers in decoys; `used,noinline` only. Status: mitigated.
+- **T4 — system/exec sinks:** Planting shell gadgets in padding. Mitigation: volatile unsigned store + return only, no libc/process APIs. Status: mitigated.
+- **T5 — Format-string / injection:** Source strings into decoy text. Mitigation: integer sequence only, clamped >= 0, no printf/scanf. Status: mitigated.
+- **T6 — Opt-in marker footgun:** Silent layout change. Mitigation: line-start match, default off, residual free-names. Status: accepted policy residual.
+- **T7 — Dead-code elimination:** Optimizers stripping decoys. Mitigation: emit `__attribute__((used,noinline))` under GNUC/clang. Status: mitigated.
+- **T8 — Residual ROP into decoy bytes:** Controlled PC into padding. Mitigation: minimal instructions, no syscalls. Status: residual inherent to .text.
+- **T9 — Overclaim vs CFI/ASLR:** Marketing path-A as runtime immune system. Mitigation: explicit residual wording — weak layout helper only, not CFI. Status: documented residual.
+- **T10 — meta_epoch entropy:** Weak seed or leak. Mitigation: getentropy + fallback, not claimed CSPRNG, does not drive layout today. Status: honest floor.
+- **T11 — Residual free-name bypass:** Full metamorphic codegen APIs. Mitigation: check_residual default-denies at check. Status: mitigated refuse.
+- **T12 — Emit pipeline staleness:** Source/host binary lag. Mitigation: smoke soft-skips when binary lags, rebuild required. Status: process residual.
 
 ---
 
 ## OWN fix applied
 
-**File:** `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_meta.oo` only.
-
-| Change | Why |
-|--------|-----|
-| Security contract block in file header | Pin invariants for future emit edits |
-| `static` retained; `used,noinline` under GNUC/clang | Keep layout pads without export/fptr |
-| Comment block on each decoy: not main, not CFI, no fptrs/exec/fmt | Greppable audit trail in generated C |
-| idx clamp `< 0 → 0` + empty-id guard | Well-formed C ident; no user strings |
-| `volatile unsigned int` pad only | No sinks, no format, no indirect calls |
-| Preserved `c_meta_layout_emit_decoys(mode)` | Multi-pass protos+bodies must not redefine static decoys (C compile break / duplicate .text) |
-
-**Not touched (out of OWN):** `c_emit.oo` (already wires mode gate), runtime, residual checker, std/.
+**File:** `ooda/oodac/c_emit_meta.oo` only.
+- Security contract block in file header pinning invariants.
+- `static` retained; `used,noinline` under GNUC/clang.
+- Comment block on each decoy: not main, not CFI, no fptrs/exec/fmt.
+- idx clamp `< 0 → 0` + empty-id guard.
+- `volatile unsigned int` pad only (no sinks, no format, no indirect calls).
+- Preserved `c_meta_layout_emit_decoys(mode)`.
 
 ---
 
@@ -222,41 +84,25 @@ required for dual-green. **Status: residual process / rebuild — not a gadget.*
 
 ## Residual (must not greenwash)
 
-1. **Layout diversity ≠ CFI.** Path-A decoys are a **weak ASLR-style helper**
-   (coarse function-boundary padding / keep-alive pads). They do **not**:
-   - enforce forward/back edges,
-   - re-mutate live assembly,
-   - defeat memory-disclosure + ROP against real product code,
-   - replace OS ASLR, RELRO, canaries, or W^X.
-2. **Full DESIGN immune system** (continuous RAM mutation, ROP graph reshape,
-   `metamorphic_emit` / `metamorphic_build`) remains **residual refuse**.
-3. **Decoy order is deterministic** for a given source (repro-friendly when
-   opt-in); diversity across hosts still leans on OS ASLR + (optional) epoch
-   for future hooks, not on re-rolling decoy bodies per process today.
-4. **`meta_epoch` is not a crypto API** and does not currently drive emit layout.
-5. **Dual-green** requires rebuilt `oodac` that lowers `meta_epoch` and emits
-   decoys; source-floor can pass while binary lags.
+1. **Layout diversity ≠ CFI.** Path-A decoys are a **weak ASLR-style helper** (coarse function padding). They do not enforce control-flow edges, re-mutate live RAM, or replace OS ASLR/canaries.
+2. **Full DESIGN immune system** remains **residual refuse**.
+3. **Decoy order is deterministic** per source order (repro-friendly when opt-in).
+4. **`meta_epoch` is not a crypto API** and does not drive emit layout.
+5. **Dual-green** requires rebuilt `oodac` that lowers `meta_epoch` and emits decoys.
 
 ---
 
 ## Prove / recheck
 
-```
-# Source contract still holds
+```bash
+# Source contract: no system/exec/printf in decoy strings; static present
 grep -n 'static void __oo_meta_decoy_' ooda/oodac/c_emit_meta.oo
-grep -n 'function pointer\|system\|exec\|printf' ooda/oodac/c_emit_meta.oo || true
-# Expect: no system/exec/printf in decoy body emit strings; static present
-
-# Residual free-names still refuse (live oodac)
+# Residual free-names refuse
 ooda/oodac/oodac check ooda/fixtures/residual_metamorphic_fail.oo
-# expect: ERR residual / METAMORPHIC
-
 # Path-A smoke
-bash ooda/scripts/metamorphic_path_a_smoke.sh
-
-# After rebuild: emit must contain static decoys, no global decoy symbols
+bash ooda/scripts/metamorphic_path_a_smoke.oo
+# After rebuild: static decoys emitted
 ooda/oodac/oodac emit-c ooda/fixtures/metamorphic_path_a.oo | grep __oo_meta_decoy_
-# expect: static void __oo_meta_decoy_N
 ```
 
 ---
@@ -271,7 +117,6 @@ exec / user-format gadget classes.
 on-disk polymorphism by default.
 
 **Ship honesty line for agents/docs:**
-
 > Path-A: opt-in emit layout decoys (static, inert) + process-local
 > `meta_epoch`. Weak ASLR-style layout helper only — **not CFI**. Full immune
 > mutation remains residual.
