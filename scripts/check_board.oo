@@ -8,76 +8,53 @@
 //   1. List .oot files in this folder only.
 //   2. Keep known openOODA board files and DINNER references.
 //   3. Flag every other board file as debris.
+// RULES.oot 1.4: Default-deny for privileged effects. Explicit &FsReadCap, &FsWriteCap required.
+// RULES.oot 1.7: Under 256 lines.
 
 pub fn ends_with(s: String, suffix: String) -> Bool {
-    if suffix.len() > s.len() {
-        return false;
-    }
-    let mut i = 0;
-    let offset = s.len() - suffix.len();
-    while i < suffix.len() {
-        if s[offset + i] != suffix[i] {
-            return false;
-        }
-        i = i + 1;
-    }
-    return true;
+    return str_ends_with(s, suffix);
 }
 
-pub fn strings_equal(a: String, b: String) -> Bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut i = 0;
-    while i < a.len() {
-        if a[i] != b[i] {
-            return false;
-        }
-        i = i + 1;
-    }
-    return true;
+pub fn is_whitelisted_board(name: String) -> Bool {
+    if name == "DESIGN.oot" { return true; }
+    if name == "SPRINT.oot" { return true; }
+    if name == "RULES.oot" { return true; }
+    if name == "SWARM.oot" { return true; }
+    if name == "OODA.oot" { return true; }
+    if name == "PROBE.oot" { return true; }
+    if name == "BOOTSTRAP.oot" { return true; }
+    if name == "SHIPPED.oot" { return true; }
+    if name == "PM.oot" { return true; }
+    if name == "CAPS.oot" { return true; }
+    if name == "LORE.oot" { return true; }
+    if name == "DINNER.oot" { return true; }
+    if name == "DINNER_CREATIVE.oot" { return true; }
+    if name == "DINNER_CAPS_REFERENCE.oot" { return true; }
+    if name == "DINNER_TOKENOMICS_REFERENCE.oot" { return true; }
+    if name == "SCRIPTING.oot" { return true; }
+    if name == "MOONSHOTS.oot" { return true; }
+    return false;
 }
 
 pub fn main(fs: &FsReadCap, fsW: &FsWriteCap) {
-    print("Running .oot hygiene check for openOODA/...\n");
-    let mut sludge_count = 0;
+    println("Running .oot hygiene check for openOODA/...");
+    let files: List[String] = oo_fs_read_dir(fs, ".");
+    let n: Int = list_len(files);
+    let mut sludge_count: Int = 0;
+    let mut i: Int = 0;
 
-    let files = fs::read_dir(".");
-    for file in files {
-        let name = file.name();
-        
-        if !ends_with(name, ".oot") {
-            continue;
+    while i < n {
+        let name: String = list_get(files, i);
+        if str_ends_with(name, ".oot") {
+            if !is_whitelisted_board(name) {
+                println("  [PURGE] Unrecognized .oot file: " + name);
+                let _ = oo_fs_remove_file(fsW, name);
+                sludge_count = sludge_count + 1;
+            }
         }
-
-        let mut is_whitelisted = false;
-        
-        if strings_equal(name, "DESIGN.oot") { is_whitelisted = true; }
-        if strings_equal(name, "SPRINT.oot") { is_whitelisted = true; }
-        if strings_equal(name, "RULES.oot") { is_whitelisted = true; }
-        if strings_equal(name, "SWARM.oot") { is_whitelisted = true; }
-        if strings_equal(name, "OODA.oot") { is_whitelisted = true; }
-        if strings_equal(name, "PROBE.oot") { is_whitelisted = true; }
-        if strings_equal(name, "BOOTSTRAP.oot") { is_whitelisted = true; }
-        if strings_equal(name, "SHIPPED.oot") { is_whitelisted = true; }
-        if strings_equal(name, "PM.oot") { is_whitelisted = true; }
-        if strings_equal(name, "CAPS.oot") { is_whitelisted = true; }
-        if strings_equal(name, "LORE.oot") { is_whitelisted = true; }
-        if strings_equal(name, "DINNER.oot") { is_whitelisted = true; }
-        if strings_equal(name, "DINNER_CREATIVE.oot") { is_whitelisted = true; }
-        if strings_equal(name, "DINNER_CAPS_REFERENCE.oot") { is_whitelisted = true; }
-        if strings_equal(name, "DINNER_TOKENOMICS_REFERENCE.oot") { is_whitelisted = true; }
-        if strings_equal(name, "SCRIPTING.oot") { is_whitelisted = true; }
-
-        if is_whitelisted {
-            continue;
-        }
-
-        print("  [PURGE] Unrecognized .oot file: {}\n", file.path());
-        fs::remove_file(file.path());
-        sludge_count = sludge_count + 1;
+        i = i + 1;
     }
 
-    print("Hygiene complete. Purged {} illegal .oot files.\n", sludge_count);
+    println("Hygiene complete. Purged " + sludge_count.to_string() + " illegal .oot files.");
     process_exit(0);
 }
