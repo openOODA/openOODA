@@ -1,0 +1,243 @@
+# sprint_sec_ci_product_part2.oot — (Part 2 of sprint_sec_ci_product.oot)
+# Continuation of `openOODA/audit/sprint_sec_ci_product.oot`.
+
+---
+
+`.oo` L62-63:
+
+    SEED_OODAC="${SEED_OODAC:-$_SEED_DEFAULT}" "$ROOT/scripts/bootstrap_no_cargo.oo"
+
+This is a **quoted prefix assignment**. The value is data, not
+shell. `;` in SEED_OODAC does not inject here. Good.
+
+The process is bash. The env is the **full parent env**.
+
+| Var | Reaches bootstrap.oo? | Effect |
+|-----|------------------------|--------|
+| `BASH_ENV` / `ENV` | **YES** | sourced **before line 1** of ci_product.oo and again on the shebang bash of bootstrap. RCE at entry. Shadow does not exist yet. |
+| `LD_PRELOAD` / `LD_LIBRARY_PATH` / `DYLD_*` | **YES** | seed ELF + gcc in L158-168. Minisign only is `env -i` (L136). |
+| `IFS` | **YES** | word-split inside bootstrap / pure_build |
+| `PATH` | shadow prepended | see hunt 2; not pinned |
+| `TMPDIR` | exported L12 | seed copy path ` $TMPDIR/bootstrap_seed_oodac ` |
+| `OODA_SEED_ALLOW_UNSIGNED=1` | **YES** | L99 skip minisign. Product-trust bypass. Loud WARN is not a seal. |
+| `OODA_STD` | **YES** (prefix `OODA_`) | `bootstrap/oodac_pure_build` L43 can resolve std from that dir |
+| `SEED_PUB` | **YES** | substitute pubkey path; body still pinned. Weaker than unsigned skip. |
+| `PURE_SKIP_CHECK` / `PURE_NO_ARC` | **YES** | build policy, not inject |
+| `OODA` | later exported L70; build uses `env -u OODA` | host soft-pass residual, not this inject |
+
+Minisign is cleaned (`env -i PATH=/usr/bin:/bin` + abs
+`/usr/bin` then `/bin` then `tools/` then PATH fallback).
+The **emit host** is not:
+
+    env -u OODA OODAC_BIN="$SEED" "bootstrap/oodac_pure_build" …
+
+Unsets OODA. Keeps loader gadgets. Keeps `OODA_*`.
+`command -v shred` / `srm` run **before** `set -euo` (L16-23)
+on attacker PATH.
+
+`.oo` L40-41 is **worse as shell**, **better as env filter**:
+
+    SEED_OODAC=" + seed + " PATH=" + shadow + ":/usr/bin:/bin "
+      + root + "/scripts/bootstrap_no_cargo.oo > " + tmpd + "/ci_boot.out"
+
+This is unquoted concat into `process_exec` → `sh -c`.
+
+What the runtime does first (good):
+
+- Drop `BASH_ENV`, `ENV`, `LD_PRELOAD`, `IFS`, parent PATH,
+  `TMPDIR`, `HOME`, `SEED_OODAC` (name is not `OODA_`).
+- Keep every `OODA_*` / `OO_*`.
+- Pin PATH `/usr/bin:/bin`, then the command string may
+  prefix another PATH.
+
+What the command string does (bad):
+
+- Writes `SEED_OODAC=` + seed with **no quotes** and **no**
+  `sh_arg_ok` at the site.
+- Writes redirects to `tmpd + "/ci_boot.out"` with no quotes.
+- `OODA_SEED_ALLOW_UNSIGNED` still inherited. Unsigned seed
+  still skips minisign.
+- `OODA_STD` / `OODA_FS_WRITEDIR` / `OODA_FFI_ALLOW_DLOPEN`
+  still inherited into the bash child and into pure_build.
+
+`seed` and `tmpd` come from `sh_env_get_or`. Two independent
+fails, both live:
+
+1. **No stdout.** `printenv` / `echo` exit 0 → `Ok("")`.
+   `.unwrap_or(default)` does not run. `tmpd` is `""`.
+   `seed` is `""`.
+2. **Even with stdout**, `SEED_OODAC` is not in the child
+   env (not `OODA_`). `printenv` fails. `echo DEFAULT`
+   returns the default, **never the caller's SEED_OODAC**.
+   The .oo honors `SEED_OODAC`. The .oo cannot.
+
+Today, with (1):
+
+    SEED_OODAC= PATH=<shadow>:/usr/bin:/bin ./scripts/bootstrap_no_cargo.oo > /ci_boot.out
+
+- Empty SEED_OODAC → bootstrap falls back to tree seed. Accidental OK.
+- Redirect to **`/ci_boot.out`** (and `/ci_fp.out`, `/ci_shadow`).
+  Root-fs write if the uid can create it.
+- `sh_mkdir_p(p, tmpd)` with `tmpd==""` hits `requires chars_len > 0`
+  on a contract-emitting emit, or `mkdir -p` with an empty operand
+  if requires are not in that run path.
+- bootstrap then sets `TMPDIR=${TMPDIR:-$HOME/.cache/ooda-tmp}`.
+  Both TMPDIR and HOME were stripped. HOME expands empty.
+  Seed copy lands at **`/.cache/ooda-tmp/bootstrap_seed_oodac`**.
+
+If stdout capture is later fixed and someone feeds a parent
+value through (or swaps in `OODA_SEED_OODAC`), `sh_arg_ok`
+still allows the inject class:
+
+    SEED_OODAC=x PATH=/tmp/evil /tmp/evil/pwn
+
+Class: letters, space, `=`, `:`, `/`. Concat becomes:
+
+    SEED_OODAC=x PATH=/tmp/evil /tmp/evil/pwn PATH=<shadow>:/usr/bin:/bin <root>/scripts/bootstrap_no_cargo.oo
+
+Prefix assigns `SEED_OODAC` and `PATH`. Command is `/tmp/evil/pwn`.
+**That is command injection in the bootstrap invoke.**
+
+Leading space is enough: `SEED_OODAC= /tmp/evil` → empty
+assignment, command `/tmp/evil`.
+
+`install_dress_rehearsal.oo` at least calls `dress_gate` /
+`sh_arg_ok` before concat. ci_product.oo does not.
+
+Adjacent, not invoked by the twin today:
+`bootstrap_no_cargo.oo` interpolates `seed` and `tmpd` into a
+large `if [ -z "…"` string (L23) and uses `$(cat seed_path)`
+(L33). Switching the twin to the .oo bootstrap would widen
+this hunt, not close it.
+
+---
+sh_arg_ok — what it stops here, what it cannot
+---
+
+Landed. Fail-closed on `;|&$` ` () {} <>` quotes backtick
+backslash CR LF. Multi-byte UTF-8 is not `char_is_alpha`
+(`len==1`). Overlong `;` is 2 bytes → reject. NUL byte is
+not in the class → reject. Good against classic meta.
+
+Allowed on purpose, and lethal in **this** file's concat
+shape (`VAR=` + user + ` PATH=` + user + ` cmd`):
+
+| Allowed | Why it injects in ci_product.oo |
+|---------|----------------------------------|
+| space | splits prefix-assign from command |
+| `=` | extra assignment (`PATH=…`) |
+| `:` | PATH component / URL / TMPDIR split |
+| `/` `.` | `../` traversal |
+| `-` | option inject |
+| `+` `_` | flags / names; not meta |
+
+`sh_arg_ok("")` is **true** (empty loop). Empty is not safe
+in an assignment or a redirect.
+
+git / tar / chmod stay shell after the gate. That is DE10 /
+`sprint_sec_sh.oot`. Not closed by this wave. Not this file's
+job to relitigate, except: ci_product.oo uses `sh_mkdir_p`
+and `sh_env_get_or`, so those residuals sit on its setup
+path.
+
+ProcessCap is the whole OS. EnvCap is never taken.
+`SEED_OODAC` and `TMPDIR` are not `OODA_` keys. EnvCap
+`env_get` would deny them. Signature freeze on
+`sh_env_get_or(&ProcessCap, …)` is still correct. It is
+also why the twin cannot honestly read those keys.
+
+---
+HONESTY HOLES (do not close on paper)
+---
+
+1. **ci_product.oo prints PASSED always** (L47). No fail
+   tally. `check` / `expect_*` Results discarded. A failed
+   bootstrap still prints PASSED if the process does not exit.
+2. **Beat "every listed rail exits 0" is false.** Zero rails
+   listed. Zero rails run. `ci_product_rails.oo` absent.
+3. **`when`/`and`/`then` are empty** (L17-24). Story, not
+   checks. SPRINT already names this. Still true.
+4. **L26 hygiene grep is broken.** Literal ` + | grep` after
+   `release.oo`. Extra argv `+`. `sh -c` has no `pipefail`.
+   `!` on a failing pipeline can PASS the expect.
+5. **`.oo` does not honor SEED_OODAC.** printenv cannot see
+   it; stdout is empty anyway. Claim in the logline is false.
+6. **`.oo` is still the product rail.** GHA step is
+   `./scripts/ci_product.oo`. PM same. INT skipped a full
+   run this week (long rail / race). Do not say the twin is
+   proven.
+7. **`within:` is message-only** (scenario.oo residual).
+   600s is not a timer. A hung bootstrap is not killed.
+8. **`sh_realpath(".")` is slash-fold, not realpath(1).**
+   Returns `.`. Fine for this hardcoded input. Do not claim
+   cwd resolve.
+9. **No live inject probe this turn.** Static only.
+   When a rail runner lands, refuse: space in rail, `../`,
+   `SEED_OODAC=x PATH=/tmp/e /tmp/e/pwn`, `TMPDIR` with `:`,
+   `BASH_ENV` on the .oo, `OODA_SEED_ALLOW_UNSIGNED=1`,
+   `/usr/bin/cargo` on the unprefixed .oo PATH.
+   Do not PASS on "alnum looks fine."
+
+## ATTACK MATRIX
+Verdict: BLOCK = refused on the path that exists.
+BYPASS = works. OPEN = no runner / no gate yet.
+N/A = surface absent.
+
+| # | Attack | .oo | .oo | Sev |
+|---|--------|-----|-----|-----|
+| R1 | Rail name `; id` as listed literal | BLOCK (quoted) | N/A (no rails) | — |
+| R2 | Rail name with space, unquoted concat | N/A (quoted) | **OPEN** if they concat | HIGH |
+| R3 | Rail `../evil` | BYPASS if listed | **OPEN** (`sh_arg_ok` allows) | MED |
+| R4 | Rails from env / file, no `rail_ok` | N/A today | **OPEN** (file absent) | HIGH |
+| P1 | `PATH=evil` before entry; `env` hijack on `#!/usr/bin/env` | **BYPASS** | BLOCK for `process_exec` children (PATH pin) | HIGH on .oo |
+| P2 | TMPDIR contains `:` → extra PATH dir | **BYPASS** | same if tmpd used in PATH= | HIGH |
+| P3 | `/usr/bin/cargo` while "shadowed" | BLOCK (.oo prepends) | **BYPASS** on unprefixed cmds | MED |
+| P4 | Abs-path cargo in a rail | **BYPASS** (log FN) | same | MED |
+| P5 | Shadow only cargo/rustc; evil `find`/`grep` | **BYPASS** | pin hides most; prefix reopens | MED |
+| E1 | `BASH_ENV` / `ENV` at .oo entry | **BYPASS** | BLOCK (filtered) | CRIT on .oo |
+| E2 | `LD_PRELOAD` on seed build | **BYPASS** (minisign only `env -i`) | BLOCK into `sh -c`; **BYPASS** again inside bootstrap.oo once it execs the seed with inherited child env — child of .oo has no LD_*; bootstrap then `env -u OODA` keeps that clean. So E2 is .oo. | HIGH on .oo |
+| E3 | `OODA_SEED_ALLOW_UNSIGNED=1` skips minisign | **BYPASS** | **BYPASS** (kept) | HIGH |
+| E4 | `OODA_STD` redirects std resolve | **BYPASS** | **BYPASS** | MED |
+| E5 | `SEED_OODAC=` + space/`=` concat | BLOCK (quoted assign) | **BYPASS** when seed nonempty; today seed is `""` so dormant | HIGH |
+| E6 | Empty tmpd → `> /ci_boot.out` | N/A (bash TMPDIR set) | **BYPASS** today (stdout hole) | HIGH |
+| E7 | Empty HOME/TMPDIR → seed at `/.cache/…` | N/A | **BYPASS** today | MED |
+| H1 | Twin prints PASSED with no rails | N/A | **BYPASS** (honesty) | CRIT claim |
+| H2 | Dropped check Results | N/A | **BYPASS** | HIGH |
+
+---
+RESIDUAL (do not close on paper)
+---
+
+- **Product path is ci_product.oo.** Twin is not a runner.
+  `ci_product_rails.oo` absent. 132 rails unported.
+- **Rail-name inject is sealed on .oo** by quotes + static
+  list. It is **not designed** on .oo. `sh_arg_ok` is the
+  wrong class for a leaf name.
+- **PATH shadow is a cargo/rustc scarecrow.** .oo keeps
+  attacker PATH and `env`. .oo pins `/usr/bin:/bin` and
+  then forgets the shadow on fixed_point (and any rail).
+  TMPDIR `:` splits PATH on .oo.
+- **Bootstrap env is unsanitized on .oo.** `BASH_ENV` and
+  `LD_PRELOAD` are live. Minisign is the only `env -i`.
+  `OODA_SEED_ALLOW_UNSIGNED` is a kept product-trust skip
+  on both paths.
+- **.oo bootstrap line is unsanitized concat.** seed/tmpd
+  are empty today because exec has no stdout, so the
+  spectacular inject is dormant and the root-fs redirect
+  is live. Fixing stdout without quoting **activates** E5.
+- **sh_arg_ok smoke does not cover this hunt.**
+- git/tar/chmod still shell. ProcessCap still reads env.
+  No DangerShellCap. Same DE10 residual as `sprint_sec_sh.oot`.
+
+**Not path-A.** Not a CI seal. Next twin must: argv or
+`cmd_execute` (not `sh -c` concat); `rail_ok` tighter than
+`sh_arg_ok`; PATH=`shadow:/usr/bin:/bin` on **every** child
+or drop the shadow story; `env -i` (or the runtime filter
+plus an explicit allowlist) around bootstrap; refuse
+`OODA_SEED_ALLOW_UNSIGNED` on the product rail; fail the
+script when a check is Err; stop printing PASSED if the
+rails did not run.
+
+Static only. No inject probe this turn.
+
+end of sprint_sec_ci_product_part2.oot

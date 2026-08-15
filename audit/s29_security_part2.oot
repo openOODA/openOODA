@@ -1,0 +1,150 @@
+# s29_security_part2.oot — (Part 2 of s29_security.oot)
+# Continuation of `openOODA/audit/s29_security.oot`.
+
+---
+
+## Related ALLOW (not 2.9 FAIL)
+| # | Shape | Live | Why not 2.9 |
+|---|-------|------|-------------|
+| 12 | `print(tok)` | emit-c `print(tok);` (unknown C); check **type** undefined; **llvm `@oo_print_str(%tok)`** + `c"s3cret"` | LLVM println **alias**; check sink list is only println/eprintln. **s71 R2** |
+| 13 | `println("${tok}")` | ALLOW; emit `oo_str_lit("${tok}")` | **no interp** — 5.8 |
+| 14 | `fn leak(x){ println(x); } leak(tok)` | ALLOW; emit-c **`oo_print_str(x)`** | user wrapper — **2.10** |
+| 18 | `tok.println()` | emit-c `tok.println();`; check OK; llvm no `@oo_print_str` of recv | method name + empty `margs` skips args scan; **not** a product print API |
+| 20 | `log(tok)` | emit-c `ERR secret`; check type undefined; llvm no secret | same dual-path honesty as T2 `ffi_call` |
+| 23 | `let f = println; foo(tok)` | emit-c secret (forward scan); check type `foo` | walker LPAREN-optional **FP/scan-forward**, not a hide |
+
+---
+
+## emit-bc (HIGH residual — not the Z2 class)
+`bc_emit*` does **not** call `check_secret_println_sinks`. Live:
+
+| Probe | emit-bc | Bytes |
+|-------|---------|-------|
+| 01 `println(tok)` | **rc=0** | `PUSH_STR s3cret` / `CALL println 1` |
+| 06 `println((n), tok)` | **rc=0** | `LOAD_LOCAL 1` / `LOAD_LOCAL 0` / `CALL println 2` |
+| 14 wrapper | **rc=0** | `leak`: `CALL println 1`; `main`: `CALL leak 1` |
+
+SECRET **reaches** the BC `println` opcode. This is fail-open of a
+product backend, **orthogonal** to 2.9 unify (the walker is never
+invoked). Do **not** soft-pass. Do **not** call it 2.8. Wire the
+same front-door or refuse emit-bc as residual-unsealed.
+
+---
+
+## Root-cause (why Z1/Z3/Z5 hold and Z2 does not)
+1. **Z1** — simple arg lists have no inner `RPAREN` before the SECRET
+   IDENT. Front-door + stmt belt + (llvm) front-door all see it.
+   `eprintln` free-call also hits `c_secret_emit_guard`.
+2. **Z2** — front-door walk is a **flat** RPAREN stop. LLVM and wasm
+   have **no second rail**. Stmt `c_emit_println` **does** continue
+   after `c_emit_expr_c`, so emit-c still BLOCK. That is why Z5 PASS
+   does not save Z2.
+3. **Z3** — STRING is not IDENT; `c_parse_secret_env` is line-start
+   only. Walker never treats string text as a name.
+4. **Unify is not landed.** `c_emit_ident_stmt` still early-returns
+   to `c_emit_println`. L175–193 is still the token loop, not
+   `c_secret_emit_guard(env, id, …)`. DE2.9 SPRINT “What got fixed”
+   row is the **check token refuse**, not this backlog close
+   (hygiene agrees).
+
+---
+
+## Scorecard
+| Metric | Count |
+|--------|------:|
+| Z1 bare/simple IDENT FN | **0** |
+| Z2 later-arg-after-RPAREN FN (check/llvm/wasm) | **4** live probes (06/07/08/22) |
+| Z3 string FP | **0** |
+| Z5 emit-c `oo_print_*`(SECRET IDENT) | **0** |
+| emit-bc `CALL println` of SECRET | **yes** (01/06/14) |
+| LLVM `print` SECRET byte print | **yes** (12) — not 2.9 |
+| 2.10 wrapper SECRET print | **yes** (14) — not 2.9 |
+| 2.8 reopened | **no** |
+| Official s29 smoke | **exit 0** (does not cover Z2) |
+| 2.9 unify implemented | **no** |
+
+**2.9 security path-A: FAIL** (Z2). Close when check + emit-llvm +
+emit-wasm refuse F1/F2 with `ERR\tsecret` (depth-aware walk **or**
+full `c_secret_emit_guard`). emit-c already does.
+
+---
+
+## Residual risks (return)
+| ID | Sev | Residual | Why not extra 2.9 FAIL |
+|----|-----|----------|------------------------|
+| R1 | **HIGH** | Check/LLVM/wasm later-arg after inner `RPAREN` (F1/F2) | **This is the 2.9 FAIL** — listed so peers do not lose it |
+| R2 | HIGH | `emit-bc` skips the walker; `CALL println` gets SECRET | Backend wiring; walker never runs. Name; do not bury |
+| R3 | MED | Stmt `println` ≠ `c_secret_emit_guard` (unify still OPEN) | Engineering of 2.9; emit-c belt still BLOCK on Z1/Z2 |
+| R4 | MED | LLVM builtin `print` prints SECRET (`s71` R2) | `print` not a typed product API; check type-fails |
+| R5 | MED | 2.10 user wrapper `leak(tok)` → `oo_print_str(x)` | Separate sprint |
+| R6 | MED | 5.8 `${}` interp not implemented | Literal string; IDENT never reached the sink |
+| R7 | LOW | Walker LPAREN-optional scan-forward (`let f = println` then later `foo(tok)`) | Accidental refuse / FP class, not a hide |
+| R8 | LOW | Method `recv.println()` empty args skips `c_guard_scan_idents`; receiver untainted as sink arg | Not a product print lower |
+| R9 | — | Full IFC / `#[Secret]` / interproc beyond `__fr_secret__` | `SECRET_TAINT.oot` — do not greenwash |
+| R10 | — | 2.8 macro second pass | **Closed residual-doc**; do not reopen |
+
+**Explicitly not residuals of this close:** T1 return/alias/if (smokes
+green); T2 field/args/comment-FP (smokes green); 6.1 `env_set` (other
+OWN; integration RED is check type-first, not println).
+
+---
+
+## What we do **not** claim
+- 2.9 walker → `c_secret_emit_guard` is **implemented** (it is not).
+- `oodac check` / `emit-llvm` / `emit-wasm` refuse every SECRET in a
+  println argument list (Z2 they do not).
+- `emit-bc` is a sealed SECRET backend.
+- Full IFC / `#[Secret]` / `${}` / `__sec_sink__` wrappers.
+- LLVM multi-arg println (builtin is first-arg only).
+- Runtime `oo_print_*` redaction.
+
+---
+
+## Evidence commands (repro)
+```text
+OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac
+cd ooda
+OODAC_BIN=$OODAC bash scripts/s29_println_guard_smoke.oo
+  # ALL OK (bare IDENT + string no-FP + eprintln IDENT)
+$OODAC check  fixtures/secret_sink_fail.oo
+  # ERR secret println sink refuses SECRET x   rc=1
+$OODAC emit-c fixtures/secret_sink_fail.oo
+  # same
+# Z2 FN (ephemeral /tmp/s29_sec_1131649):
+#   // SECRET: tok
+#   println((n), tok)   and   println(id(1), tok)
+$OODAC check     /tmp/s29_sec_1131649/06_group_later.oo   # OK rc=0   FN
+$OODAC emit-c    /tmp/s29_sec_1131649/06_group_later.oo   # ERR secret tok  rc=1
+$OODAC emit-llvm /tmp/s29_sec_1131649/06_group_later.oo   # rc=0  @oo_print_int only
+$OODAC emit-wasm /tmp/s29_sec_1131649/06_group_later.oo   # rc=0  tok dropped
+$OODAC emit-bc   /tmp/s29_sec_1131649/01_bare.oo          # rc=0  CALL println 1
+```
+
+Close criteria (Domain Expert; not this write):
+
+1. Check-path println/eprintln walk is **depth-aware** **or** replaced
+   by `c_secret_emit_guard` on lowered args.
+2. Live 06/07/08/22 become dual-path `ERR\tsecret` (check + emit-c +
+   emit-llvm + emit-wasm).
+3. Stmt `println` may keep `c_emit_println` as a belt; unify is the
+   **front-door**. Smoke must add a later-arg-after-RPAREN fixture.
+4. emit-bc: wire the same front-door **or** keep R2 named fail-open.
+5. Still **no** claim of full IFC / 2.8 expand / 2.10 wrappers.
+
+---
+
+## Close table
+| Item | Status |
+|------|--------|
+| Z1 path-A bare IDENT refuse | **PASS** |
+| Z2 all println shapes fail-closed | **FAIL** |
+| Z3 no string FP | **PASS** |
+| Z4 2.8 not reopened | **PASS** |
+| Z5 emit-c no SECRET `oo_print_*` | **PASS** |
+| **2.9 unify** | **OPEN** |
+| **2.9 security** | **FAIL** |
+| Residuals R2–R10 | **OPEN** (named; R1 is the FAIL) |
+
+end of s29_security.oot
+
+end of s29_security_part2.oot

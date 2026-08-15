@@ -1,0 +1,156 @@
+# t2_security_part2.oot — (Part 2 of t2_security.oot)
+# Continuation of `openOODA/audit/t2_security.oot`.
+
+## FP / FN notes (return)
+### False positives (FP) — refuse when should allow
+| Probe | Result | Why |
+|-------|--------|-----|
+| `"api_key"` string literal as value / arg | **no FP** | Token walk only sees `IDENT` / string tokens are not `IDENT`; emit `c_guard_scan_idents` skips `"..."` (and `\\` escapes) |
+| Longer string containing `api_key` spelling | **no FP** | Same |
+| `// println(api_key)` and doc comments naming `api_key` | **no FP** | Comments not tokenized as IDENTs; directive parse is **line-start** only (`c_parse_secret_env`) |
+| Mid-line `// SECRET: x` text | **no FP** (control `secret_midline_safe`) | Line-start gate |
+
+**FP count on assigned + extended string/comment matrix: 0.**
+
+Residual FP risk (not observed this pass, still T2 honesty):
+- If a future scanner greps raw source spans (not tokens / not string-aware emit text),
+  string/comment spelling could over-refuse — do **not** regress off IDENT/token +
+  string-aware guard.
+- Body-touch over-taint on `__fr_secret__` (T1 residual precision) can still
+  over-mark whole fns — that is fail-closed over-taint, not string-FP.
+
+### False negatives (FN) — allow when should refuse
+| Probe | Result | Why |
+|-------|--------|-----|
+| `println(api_key)` real SECRET IDENT | **no FN** | Dual-path `ERR secret` |
+| Concat prop `msg = "k=" + api_key; println(msg)` | **no FN** | Prop marks `msg` |
+| `dlopen(ffi, lib_path, …)` SECRET path | **no FN** | Dual-path `dlopen sink refuses SECRET lib_path` |
+| `dlopen(..., token)` SECRET flag | **no FN** | argi≥1 token scan |
+| `ffi_call(ffi, payload)` SECRET | **emit no FN**; **check dual-path secret incomplete** | emit-c refuses secret; check fails type (`undefined variable 'ffi_call'`) **without** `ERR secret` |
+
+**FN count on assigned println + dlopen path: 0.**
+
+Dual-path honesty note (T2-4d):
+- **Compile gate still fail-closed** on check (rc≠0) for unknown `ffi_call`, but the
+  **secret contract is emit-strong / check-type-weak** for this free name.
+- Prefer dual-path `ERR\tsecret` when the name is a sealed sink; type residual should
+  not be the only refuse story if product claims FFI payload taint In.
+
+### Residual FN surface (T2 backlog — not claimed closed)
+Per `SECRET_TAINT.oot` + `SPRINT.oot` T2 remaining:
+
+| Residual | Risk |
+|----------|------|
+| Nested RHS walker exhaustiveness (5.4–5.6) | complex RHS may drop prop |
+| Field / index / method-return taint | secret in fields/methods may miss sink |
+| Full `args` string scan completeness (2.5) | multi-arg / nested call text edges |
+| String interp `${}` (5.8) | separate residual |
+| Macro-body SECRET second pass (2.8) | macro-expanded sinks |
+| Cross-module interproc beyond path-A `__fr_secret__` | still residual IFC |
+
+Do **not** greenwash full T2 from this four-attack pass alone.
+
+---
+
+## Root-cause summary (why the four attacks behave)
+1. **String FP avoided**
+   - Check/emit secret walk uses lexer **IDENT** tokens for sink args
+     (`c_secret_scan_call` / println IDENT loop). String literals are not IDENTs.
+   - Emit-time `c_guard_scan_idents` is **string-aware** (`in_str` + escape skip) so
+     C arg text `"api_key"` is not treated as a bare ident.
+
+2. **Comment FP avoided**
+   - Comments never become IDENTs.
+   - `// SECRET:` tags only when **at line start** (`i==0` or prior `\n`).
+
+3. **Real arg refuse**
+   - `// SECRET: api_key` → `__sec__api_key=1` (+ `__secref__`).
+   - println walker refuses resolved SECRET IDENTs dual-path.
+
+4. **dlopen / FFI**
+   - Token path: `sid == "dlopen" | dlsym | dlclose | ffi_call | ffi_prep_cif` →
+     `c_secret_scan_call(..., want=1, eq_only=false)` (any argi ≥ 1).
+   - Emit guard: same names refuse `a1` + full `c_guard_scan_idents(args)`.
+   - **dlopen path SECRET**: dual-path BLOCK proved.
+   - **ffi_call**: emit secret BLOCK; check may type-fail first if free name untyped.
+
+---
+
+## Full T2 honesty (no false product claim)
+| Check | Result |
+|-------|--------|
+| `SECRET_TAINT.oot` claims T2 scan depth done? | **No** — residual: nested scan / FP hardening / field-index-method / FFI payload completeness |
+| `secret_taint_residual_smoke.oo` | **PASSED** |
+| Assigned four attacks | **all security-correct** (0 FP, 0 FN on core) |
+| Full T2 backlog closed? | **No** — do not mark SPRINT T2 checkbox from this audit alone |
+| Prior M-SG7 “dlopen missing in guard” | **stale** on host `1f67f4d` / 937592 B |
+
+**Confirmed: no false claim that full T2 / full IFC shipped.**
+
+---
+
+## Scorecard
+| Metric | Count |
+|--------|------:|
+| Core attacks (user four) | 4 |
+| **PASS** (correct allow/block) | **4 / 4** |
+| **FP** (string/comment) | **0** |
+| **FN** (real arg / dlopen path) | **0** |
+| Extended string/comment FPs | 0 |
+| Extended prop / dlopen flag | BLOCK as required |
+| ffi_call dual-path secret | partial (emit yes / check type-only) |
+| Full T2 residual closed | **no** |
+
+**T2 core (string FP + comment FP + real arg + dlopen path) on product host: CLOSED for these probes.**
+
+**T2 overall sprint item: still OPEN** for nested RHS exhaustiveness, field/index/method
+return, full args completeness, string-interp, and dual-path secret diagnostics on all
+FFI free names.
+
+---
+
+## Recommended prove (OWN / rails — not all done here)
+```bash
+cd ooda
+OODAC_BIN=./oodac/oodac
+for f in secret_t2_string_fp secret_t2_string_lit_arg_fp secret_t2_comment_fp \
+         secret_t2_real_arg_fail secret_t2_dlopen_path_fail secret_t2_dlopen_path_pass \
+         secret_t2_dlopen_flag_fail secret_t2_concat_real_fail; do
+  "$OODAC_BIN" emit-c fixtures/$f.oo
+  "$OODAC_BIN" check fixtures/$f.oo
+done
+# expect: string/comment/path_pass → rc=0 no ERR secret
+#         real_arg / dlopen_path_fail / flag / concat → rc!=0 + ERR secret both paths
+bash scripts/secret_taint_residual_smoke.oo
+bash scripts/secret_sink_enforce_smoke.oo
+```
+
+Close criteria for **full** SPRINT T2 (beyond this audit’s four probes):
+1. Keep string/comment matrix ALLOW (no FP regression)
+2. Keep real arg + dlopen path dual-path REFUSE
+3. Nested RHS / field / index / method-return fixtures dual-path refuse
+4. FFI free names that are sealed sinks dual-path **`ERR secret`** (not type-only)
+5. SECRET_TAINT residual table stays honest until 3–4 land
+6. Still **no** claim of full IFC
+
+---
+
+## Evidence commands (repro)
+```text
+cd ooda
+./oodac/oodac emit-c fixtures/secret_t2_string_fp.oo          # ALLOW
+./oodac/oodac emit-c fixtures/secret_t2_string_lit_arg_fp.oo  # ALLOW
+./oodac/oodac emit-c fixtures/secret_t2_comment_fp.oo         # ALLOW
+./oodac/oodac emit-c fixtures/secret_t2_real_arg_fail.oo      # ERR secret api_key
+./oodac/oodac check  fixtures/secret_t2_real_arg_fail.oo      # ERR secret api_key
+./oodac/oodac emit-c fixtures/secret_t2_dlopen_path_fail.oo   # ERR secret lib_path
+./oodac/oodac check  fixtures/secret_t2_dlopen_path_fail.oo   # ERR secret lib_path
+./oodac/oodac emit-c fixtures/secret_t2_dlopen_path_pass.oo   # ALLOW
+./oodac/oodac emit-c fixtures/secret_t2_ffi_call_fail.oo      # ERR secret payload
+./oodac/oodac check  fixtures/secret_t2_ffi_call_fail.oo      # type ERR (no secret line)
+bash scripts/secret_taint_residual_smoke.oo                   # PASSED
+```
+
+end of t2_security.oot
+
+end of t2_security_part2.oot

@@ -1,0 +1,129 @@
+# sprint12_typestate_fs_verify_part2.oot — (Part 2 of sprint12_typestate_fs_verify.oot)
+# Continuation of `openOODA/audit/sprint12_typestate_fs_verify.oot`.
+
+## 4. Process args
+`process_args(p)` → `oo_sys_args(p)` (`process.oo:15-17`).
+SHIPPED `:31` matches.
+
+C (`chs_rt_sys.c:442-467`):
+  `oo_cap_require_process` (ProcessCap or legacy SysCap, `:190-196`)
+  read `/proc/self/cmdline` into 4096-byte buf
+  `fread(..., sizeof(buf)-1)` — 4095 bytes
+  skip first NUL field (argv0)
+  push later fields
+  no `buf[n]='\0'`; trailing fragment without NUL is dropped
+
+Long argv truncates. argv0 is omitted. Last partial arg is lost.
+Residual, named. Product behavior, not a cap hole.
+
+## 5. Typestate on check
+`main.oo:26-32` imports tok/parse/walk/join/match/fn + `check_typestate.oo`.
+Not `check_typestate_call.oo`. Prior audit line 69 is false.
+
+`check_drive.oo:79-105` order:
+  secret sinks
+  type checks (ann, undef, arity, immut, mut, unary, cmp, if/while,
+  logic, missing return, refinements)
+  then `check_typestate(src, toks)` at line 105
+  then more type checks (must-use, call lits, field, struct)
+
+Prior audit said `:98`. Live is `:105`.
+
+`check_typestate.oo:16-21`: parse directives from `src`; if no
+`__tsf__` fn, return; else `ts_walk_program`.
+
+Parse (`check_typestate_parse.oo`):
+  `// TYPESTATE: Type S1 S2` → machine, states stored as `Type#S`
+  `// TYPESTATE fn name: From -> To` and `-> To`
+  `// TYPESTATE end S` → `__tsend__Type`
+  unknown From/To refused
+  two machines must not share a raw state name? Board
+  `TYPE_STATE.oot:36` says state names are global and two machines
+  must not share a name. Parse keys `__tss__` as `Type#state` so
+  `Sock Open` and `File Open` can both exist (`:146`). Board line
+  22 agrees. Line 36 conflicts with line 22. Residual docs, not
+  a code hole. `typestate_two_types.oo` is a smoke OK case.
+
+Walk:
+  paren call and `s.fn()` (`check_typestate_walk.oo:113-134`)
+  first arg must be a bare IDENT (`:52-64`); nested call / field
+  / index yields empty arg and is refused on From→To
+  let/assign alias (`:92-95`, `:143-146`)
+  ctor `>To` (`:101-102`)
+
+Fn compose (`check_typestate_fn.oo:134-174`):
+  body text that calls another TYPESTATE fn sets `__tscompose__`
+  live exit must leave first param as To
+  leaf body trusts the directive
+  process_exit does not require To (`check_typestate_join.oo:229-235`)
+  param rebind refused (`:126-132`)
+
+Join (`check_typestate_join.oo`):
+  if/else both sides same state; missing else keeps pre
+  return / process_exit mark `__tsdiv__` and do not join
+  while/for body must leave pre states unchanged
+  transition in if/loop condition refused (`:168-170`, `:215-217`)
+  match arms join like if/else (`check_typestate_match.oo:12-45`)
+
+`ts_merge_branch` builds a fresh env of `__tsv__` names from the
+pre bag (`:51-95`). `__tsa__` alias links are not copied. Use of
+an alias after if/else can fail closed (“no state”). Residual.
+Not a bypass.
+
+Cache: `check_cache_tree_key` prefix `t_ts3_` (`check_cache.oo:69-72`).
+Old OK without typestate is not reused. Prior audit said `:63`. Live `:70`.
+
+Rails exist: `scripts/typestate_check_smoke.oo`, fixtures listed in
+`TYPE_STATE.oot:53-70` plus more in the script (`:26-69`).
+This audit did not execute them.
+
+## 6. np>12 — FAIL vs prior PASS
+Prior audit: “`check_mod.oo` prepends `ts_extract_dir_src`”.
+Live `check_mod.oo:53-86` when `np > 12`:
+
+  collect paths
+  scan fn names into depth-0 binds
+  `body = strip_import_lines(raw2)`
+  `run_check_core_binds(sys, body, binds)`
+  print OK
+
+`strip_import_lines` (`check_collect.oo:141-172`) drops import
+lines only. Same-file `// TYPESTATE` comments stay.
+
+There is no extract. There is no prepend. Grep of ooda/ for
+`ts_extract` is empty.
+
+Small graphs `np <= 12` use `load_source_with_imports`.
+`load_import.oo:76-79` keeps non-import chunks, including comments.
+`typestate_cross_ok.oo` imports `typestate_lib.oo` (directives in
+the lib). That works only on the concat path.
+
+Large graphs: a consumer file without its own TYPESTATE lines
+parses no `__tsf__` and `check_typestate` returns at
+`check_typestate.oo:18-20`. Transitions in that file are not
+checked. `TYPE_STATE.oot:25` already says “small graphs”.
+`:41` “No inter-file lattice.”
+SHIPPED `:49` “Imports keep directives.” is wider than the code.
+
+## 7. Heap alias / field store
+`TYPE_STATE.oot:21` let-alias share one lifecycle via `__tsa__`
+(`check_typestate_fn.oo:112-119`). Depth cap 16 (`:93`).
+No heap object identity. No struct-field store lattice.
+`// TYPESTATE` does not watch `Box` or field writes.
+Named residual. Board agrees.
+
+## 8. Prior audit corrections (do not reuse those lines)
+  env.oo:6 is a comment. Call is `:15`.
+  check_drive typestate is `:105`, not `:98`.
+  check_cache `t_ts3_` is `:70`, not `:63`.
+  main.oo does not import `check_typestate_call.oo`.
+  np>12 does not prepend TYPESTATE.
+
+## 9. What this audit did not do
+  Did not rebuild oodac.
+  Did not run `scripts/typestate_check_smoke.oo`.
+  Did not edit `chs_rt_fs.c`, `std/os/*`, or `oodac/*`.
+
+Marker: TYPESTATE_FS_AUDIT_REQUEST_2026-08-13
+
+end of sprint12_typestate_fs_verify_part2.oot

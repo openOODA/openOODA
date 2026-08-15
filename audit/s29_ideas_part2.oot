@@ -1,0 +1,143 @@
+# s29_ideas_part2.oot — (Part 2 of s29_ideas.oot)
+# Continuation of `openOODA/audit/s29_ideas.oot`.
+
+---
+
+## Rank (path-A survivors)
+| Rank | ID | Avg | Verdict |
+|-----:|----|----:|---------|
+| **1** | **I1 + I2** | 9.8 / 9.6 | **WINNER BUNDLE — ship now** prove existing dual refuse |
+| **2** | I3 | 7.2 | **Optional same-wave** — check walker → `c_secret_scan_call` **after** I2 |
+| **3** | I4 | 6.0 | Later — stmt refuse helper DRY |
+| **4** | I6 | 5.8 | Later leftover — check/llvm `print_err` family |
+| **5** | I7 | 5.0 | Later — LLVM `print` shape (named residual) |
+| **6** | I13 | 4.8 | Later — cache version key (R9) |
+| **7** | I5 | 3.8 | Do **not** force stmt println through emit_guard this turn |
+| — | I11 | 2.8 | Doc inside I1; not a solo close |
+| — | I12 | 2.6 | Reject product-lower rewrite |
+| — | I10 | 2.2 | Reject IFC moonshot |
+| — | I8 | 2.0 | Reject drop token walk |
+| — | I9 | 1.2 | Disqualified (wrong signature) |
+
+## Unify call sites vs prove existing dual refuse (Decide card)
+| | Prove existing dual refuse (I1+I2) | Unify call sites |
+|--|------------------------------------|------------------|
+| 2.9 pin | “walker → full emit_guard” as a **missing belt** | Same words, read as **one function** |
+| Host proof | Live 2026-08-12: println **and** eprintln **BLOCK** check+emit-c+llvm | No FN to fix on product names |
+| Check walker | KEEP (llvm front-door) | Cheap = I3 `c_secret_scan_call`. Literal emit_guard = **I9 die** |
+| Stmt println | KEEP token refuse (`c_emit_println`) | Full unify = I5 fake `args` / delete builtin |
+| eprintln emit | **Already** `c_secret_emit_guard` | Already unified |
+| LLVM | **Only** check walker | Drop walker → **FN** (I8) |
+| Entropy \(S\) | **Down** (untested / DE2.9 lie → proved dual) | **Up** if rewrite working rails |
+| Ship this turn | **Yes** | I3 optional; I5/I8/I9 **no** |
+
+**Ship-now decision:** **prove the dual refuse.**
+Unify that is **honest** this wave is I3 (check → `c_secret_scan_call`), **not** “everything calls `c_secret_emit_guard`.”
+
+A stub call from check into emit_guard (I9) is **neither** side of this card — prune it.
+
+## Dual-path map (do not collapse)
+| Surface | check | emit-c | emit-llvm |
+|---------|-------|--------|-----------|
+| stmt `println(secret)` | inline IDENT walker | `c_emit_println` token + `__sec__` | check front-door, then builtin |
+| `eprintln(secret)` | same walker | `c_emit_lower` → **emit_guard** → C-text scan | check front-door, then builtin |
+| `let f = println; f(s)` | resolve `f` + walker (and/or accidental no-LPAREN) | free-call emit_guard + `__alias__` | check front-door |
+| `print_err` / `log` / `fprintf` / `syslog` | type undefined | emit_guard **SECRET** | **no secret** (I6) |
+| `print(secret)` | type undefined | **no secret** (not lowered) | builtin, **no secret** (I7) |
+
+Path-A job of 2.9 = **prove the first three rows**. Not flatten the table.
+
+---
+
+## Top recommendation (this turn — path-A residual close)
+### **Ship: Prove existing dual refuse (I1) + dual-path smoke (I2). Do not unify stmt println into `c_secret_emit_guard`. Do not delete the check walker.**
+**Why this closes 2.9:**
+- Product println/eprintln **already refuse** on all three commands. eprintln emit **already is** emit_guard.
+- Unclosed part is **untested claim** (\(U\)): DE2.9 says the check walker calls emit_guard (**it does not**); eprintln smoke is check-only; alias fixture is unwired; dirty-CWD check can lie.
+- Full unify (I5/I8/I9) is the wrong tool: guard is C-text, llvm has no guard, stmt println is not a C call.
+
+### DE winner advice (plain English)
+1. **Do not** call `c_secret_emit_guard` from `check_secret_println_sinks`. **Do not** delete the println IDENT walker. **Do not** rewrite `c_emit_println` into `c_emit_lower`.
+2. **Prove static:**
+   - `c_emit_secret.oo` println/eprintln block is token refuse (or I3 `c_secret_scan_call`) — **zero** `c_secret_emit_guard`
+   - `c_emit_print.oo` has no emit_guard
+   - `c_emit_lower.oo:90` still calls emit_guard (eprintln / alias `f`)
+   - emit_guard args-scan list still names println/eprintln
+3. **Wire smoke (I2):** `scripts/s29_println_guard_smoke.oo` + `ci_product.oo`. **`cd` virgin TMPDIR** before any `check`.
+   - fail → check **and** emit-c **and** llvm `ERR\tsecret`
+   - clean → no `ERR\tsecret`
+   - eprintln dual (not check-only)
+   - alias `secret_t1_alias_println` refuse
+   - string/comment ALLOW
+   - leftover `print` / `print_err` **named**, not a fail
+4. **SPRINT 2.9:** mark FIXED path-A **only after** I2 exit 0 on **this** host. Wording: **dual refuse + prove**, not “walker → emit_guard landed.” Drop the DE2.9 “calls emit_guard” sentence.
+5. **SECRET_TAINT:** keep “path A bare IDENT println/eprintln refuse **In**.” Point rails at `s29_println_guard_smoke.oo`. Keep `print` / log-family / cache as **residual**.
+6. **If same-wave budget after I2:** I3 swap check loop → `c_secret_scan_call(..., 0, false, sid)`. Re-run I2; alias **must** still refuse.
+7. **Done bar:**
+   - `println(secret)` refuses check + emit-c + llvm
+   - `eprintln(secret)` refuses check + emit-c + llvm
+   - string/comment spelling **0 FP**
+   - `let f = println; f(secret)` refuses
+   - grep: check walker does **not** call `c_secret_emit_guard`
+   - leftovers (`print`, `print_err` family, cache, wasm) **named**
+8. **Out of scope:** I5 fake args; I8 drop walker; I9 check→guard; I10 IFC; I12 builtin delete; I6/I7 as the 2.9 claim.
+
+### Explicit non-winners (do not build this turn)
+- Check-path `c_secret_emit_guard(...)` (I9 — DE2.9 literal)
+- Delete token walk / check front-door (I8)
+- Stmt println → joined-C emit_guard / delete `c_emit_println` (I5 / I12)
+- Full IFC / `${}` / 2.10 `__sec_sink__` (I10)
+- SPRINT flip without I2 (I11)
+- M1–M20 moonshots
+
+## Entropy report (expected after winner)
+`S: ↓` — 2.9 “walker calls emit_guard” → **smoke-proved dual refuse**; eprintln emit-c dual scripted; cache-false-OK named in the rail.
+`U` holds only for: I3 LPAREN DRY, I6 log-family check/llvm, I7 `print`, I13 cache key, `${}` / IFC.
+`O` does not rise (no new walker). `W` does not rise (no fake emit_guard call).
+
+## Leave-off
+- Fairy: ideas only in this file.
+- DE owns land + prove; peers: product println/eprintln **0 FN** dual-path, string/comment **0 FP**, no “emit_guard call” lie, no dirty-CWD check.
+- Security: do not treat type-undefined or llvm `@print` as secret refuse; do not drop the llvm front-door.
+- Memory: no new C-text scan; 7.1 walker stays the eprintln belt.
+
+---
+
+## One-page DE pocket card (I1+I2, optional I3)
+```
+2.9 ship-now:
+  KEEP  check_secret_println_sinks println/eprintln IDENT walk
+        (llvm + check front-door)
+  KEEP  c_emit_println token refuse          (stmt println)
+  KEEP  c_secret_emit_guard                  (eprintln + let f = println)
+  PROVE check+emit-c+llvm println(secret)  → ERR secret
+  PROVE check+emit-c+llvm eprintln(secret) → ERR secret
+  PROVE string/comment spelling            → NO ERR secret
+  PROVE secret_t1_alias_println            → ERR secret
+  GREP  no c_secret_emit_guard in c_emit_secret.oo
+        no c_secret_emit_guard in c_emit_print.oo
+        emit_guard list still has println/eprintln
+  WIRE  scripts/s29_println_guard_smoke.oo + ci_product.oo
+        (cd virgin TMPDIR — check cache lies)
+  FIX   SPRINT 2.9 after host prove: dual refuse, NOT emit_guard call
+  NAME  print / print_err family (I6/I7); cache R9 (I13)
+
+DO NOT this turn:
+  check → c_secret_emit_guard          (I9 wrong sig)
+  delete check walker                  (I8 llvm FN)
+  stmt println → fake args emit_guard  (I5)
+  delete c_emit_println builtin        (I12)
+  grow log-family as the 2.9 claim     (I6)
+  full IFC / ${} / 2.10                (I10)
+
+OPTIONAL after I2:
+  sid println/eprintln → c_secret_scan_call(want=0)
+  alias fixture must still refuse      (I3)
+```
+
+Path-A residual callout after land:
+“2.9 = proved dual refuse of product println/eprintln (token front-door + eprintln emit_guard). Not a single call site. Not check→emit_guard. Not stmt-println C-text. Not LLVM `print`. Not full IFC.”
+
+end of s29_ideas.oot
+
+end of s29_ideas_part2.oot

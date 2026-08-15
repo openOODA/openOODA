@@ -1,0 +1,155 @@
+# t5_peer2_net_part2.oot — (Part 2 of t5_peer2_net.oot)
+# Continuation of `openOODA/audit/t5_peer2_net.oot`.
+
+---
+FAIL #1 — EVALUATE / VERIFY FALSE-SUCCESS (stub honesty residual)
+---
+
+Adversarial finding: several **POLICY** evaluate functions return
+success-shaped results without invoking the paired **GATE** crypto
+functions. The gates themselves are honest (they exit). The *evaluate
+API* is not — it can report verified/secure/authenticated for
+pre-built in-memory structs that never touched crypto.
+
+| Path | Success shape | Crypto gate not called |
+|------|---------------|------------------------|
+| `jwt_verify.oo` `jwt_engine_evaluate_token` | `is_valid: true`, `"Token verified successfully"` | `jwt_verify` / `jwt_verify_rs256` / `jwt_verify_es256` |
+| `dnssec_evaluate.oo` `dnssec_evaluate_record` | `is_secure: true`, `status: "SECURE"`, `error_code: "OK"` when `has_rrsig` + metadata | `dnssec_crypto_verify_rrsig_signature` |
+| `mtls_engine.oo` `mtls_engine_evaluate_handshake` | `error_code: "OK"` after policy/serial checks | `mtls_parse_x509_der_asn1` / socket handshake |
+| `ztidentity_evaluate.oo` `zt_identity_engine_evaluate_access` | `is_authenticated: true`, `error_code: "OK"` | `zt_identity_verify_crypto_signature` |
+| `spiffe_api.oo` `spiffe_workload_api_evaluate_svid` | `error_code: "OK"` path after field validity | `spiffe_x509_verify_cert_chain` / `spiffe_jwt_validate_svid_token` |
+
+**Why this is stub-honesty (not just missing feature):**
+- Names like `evaluate_token` / `evaluate_handshake` / `is_secure` /
+  `"Token verified successfully"` read as cryptographic success.
+- Paired stubs exist and fail-closed — but evaluate never routes through them.
+- Callers can construct structs in pure OODA and get `OK` without ever
+  hitting `process_exit`.
+
+**Required honesty before commit (minimum):**
+1. Rename success strings to policy-only wording, e.g.
+   `"CLAIMS_POLICY_OK_NO_CRYPTO"` / `"METADATA_SECURE_UNVERIFIED"`, **or**
+2. Make evaluate call the gated crypto and inherit fail-closed, **or**
+3. Document in every family barrel HONESTY header:
+   `evaluate_* is policy-only; crypto is process_exit-gated and not wired`.
+
+WireGuard / pure WAF inspect are comparatively cleaner (no
+"crypto verified" success without gates).
+
+**Severity for T5:** HIGH honesty residual (not a product ZT floor break;
+std ship risk if agents treat evaluate OK as crypto seal).
+
+---
+FAIL #2 — LOCAL DUMMY CAP TYPES (cap theater)
+---
+
+Stub and mixed units redeclare empty local caps instead of importing
+product `SysCap`/`NetCap`:
+
+```
+ids_stubs.oo, jwt_stubs.oo, mtls_stubs.oo, spiffe_stubs.oo,
+waf_stubs.oo, wireguard_stubs.oo, ztidentity_stubs.oo,
+ipsec_ike.oo, dnssec_evaluate.oo
+  → pub type SysCap = struct {};
+  → (ids/mtls also) pub type NetCap = struct {};
+```
+
+Effect: `&SysCap` / `&NetCap` parameters typecheck against empty
+local structs. This is **not** the capability seal from CAPS.oot /
+runtime. Honest description: **parameter shape only; not enforced
+caps**. Same residual class as many std skeleton modules.
+
+**Severity:** MED for honesty docs; does not make gates fail-open
+(bodies still `process_exit(1)`).
+
+---
+WHAT IS HONEST (do not over-correct)
+---
+
+1. **Gates are load-bearing.** All 57 crypto/kernel/IO residual bodies
+   call `process_exit(1)` with COMPILER LIMITATION comments. No silent
+   return of forged ciphertext, signatures, or wire bytes as success.
+2. **No production-crypto greenwash strings** in headers/bodies
+   (grep clean).
+3. **Naming convention mostly honest:** `*_stubs.oo` for dedicated
+   residuals; shims label themselves "Re-export Shim (M171/M172)";
+   dnssec/mtls shims carry `// HONESTY:` lines for known residuals.
+4. **POLICY logic is real as policy** — not empty facades. Handshake
+   stage machines, claim clocks, allowlists, WAF string rules, SPIFFE
+   ID shape checks all have control flow. That is API skeleton value
+   if labeled correctly.
+5. **ipsec / dnssec put gates in MIXED files** rather than `*_stubs.oo`
+   — slightly worse discoverability, but still fail-closed and
+   comment-marked.
+
+---
+COMMIT / SHIP GUIDANCE (BATCH A2)
+---
+
+Per `audit/std_triage_2026-08-11.oot` BATCH A2 = `sec/net/*`.
+
+| Action | Guidance |
+|--------|----------|
+| Commit class | **P1** mixed real+partial — **with stub honesty note** |
+| Commit message must include | "policy/state real; crypto/kernel/IO process_exit-gated; evaluate≠crypto" |
+| Do not claim | production mTLS/JWT/DNSSEC/WireGuard/IPsec |
+| Prefer commit order | types+policy first, or whole family atomic; never "crypto complete" |
+| Pre-land fix (recommended) | FAIL #1 success strings / HONESTY headers on 5 evaluate paths |
+| Pre-land fix (optional) | rename dummy caps or import real cap types |
+| Push | **this peer: no push** (OWN audit only) |
+
+Suggested honesty blurb for commit body:
+
+```
+sec/net: API skeleton + policy engines. 57 residual crypto/kernel/IO
+entry points are fail-closed process_exit(1). Evaluate paths are
+claims/metadata policy only — not cryptographic verification.
+Do not treat is_valid/is_secure/authenticated OK as a crypto seal.
+```
+
+## RELATION TO T5 / PEERS
+- SPRINT T5: std honesty + ship; sec/net is A2 after/alongside sec/crypto.
+- Peer 2 OWN: classification + honesty verdict (this file).
+- Peer 3 (`t5_peer3_regression.oot`): product floor smokes — orthogonal.
+- Peer 1 (if crypto): do not assume net gates match crypto residual pack
+  (`bootstrap/STDLIB_CRYPTO_MATH.oot` lists sec/crypto ops only).
+- No std files touched by this peer.
+
+---
+EVIDENCE COMMANDS (reproducible)
+---
+
+```
+cd /home/jeryd/Projects/openOODA/std
+git rev-parse --short HEAD   # 3d614ad
+git status --porcelain src/ooda/sec/net/ | awk '{print $1}' | sort | uniq -c
+# 13 M, 51 ??
+grep -n 'process_exit' src/ooda/sec/net/*.oo | wc -l
+# includes comment lines; gated pub fn count = 57 (see table)
+grep -n 'is_valid: true\|is_secure: true\|is_authenticated: true\|Token verified successfully' \
+  src/ooda/sec/net/{jwt_verify,dnssec_evaluate,mtls_engine,ztidentity_evaluate,spiffe_api}.oo
+
+grep -n 'pub type SysCap\|pub type NetCap' src/ooda/sec/net/*stubs.oo \
+  src/ooda/sec/net/ipsec_ike.oo src/ooda/sec/net/dnssec_evaluate.oo
+```
+
+## RETURN SUMMARY
+| Item | Value |
+|------|--------|
+| Files classified | 64 |
+| Families | 9 — all **PARTIAL** |
+| Gated residual fns | 57 (`process_exit(1)`) |
+| Role mix | 10 SHIM + 8 TYPES + 31 POLICY + 7 GATE + 2 MIXED + residual thin |
+| Git | 13 M (mtls+waf) + 51 ?? (rest) |
+| Honesty PASS | gates fail-closed; no production-crypto claims; naming mostly honest |
+| Honesty FAIL | 5 evaluate paths success-without-crypto; dummy local Cap types |
+| Batch class | **P1** — commit with honesty note; fix FAIL #1 before green ship language |
+| Product edits | **none** |
+| Push | **none** |
+
+**Peer 2 verdict:** sec/net is an honest **API + policy skeleton** with
+**load-bearing fail-closed gates** for crypto/kernel/IO. It is **not**
+honest to treat evaluate/verify OK as cryptographic verification.
+Do not greenwash on commit.
+
+end of t5_peer2_net_part2.oot

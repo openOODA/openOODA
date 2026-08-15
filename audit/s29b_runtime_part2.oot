@@ -1,0 +1,142 @@
+# s29b_runtime_part2.oot — (Part 2 of s29b_runtime.oot)
+# Continuation of `openOODA/audit/s29b_runtime.oot`.
+
+---
+2. Q2 — Live host (clean cwd; this ELF)
+---
+
+`OODAC=/home/jeryd/Projects/openOODA/ooda/oodac/oodac`
+cwd `/tmp/s29b_runtime_prove` (no `.ooda-cache`). Tabs in refuse bytes
+(`cat -A`: `ERR^Isecret^I…`).
+
+| # | Shape | check | emit-c | emit-llvm | notes |
+|---|-------|-------|--------|-----------|-------|
+| 01 | `println(tok)` | rc=1 `SECRET tok` | rc=1 same | rc=1 same | wave-1 floor |
+| 02 | `eprintln(tok)` | rc=1 `SECRET tok` | rc=1 | rc=1 | wave-1 floor |
+| 03 | `println("tok")` | `OK` rc=0 | rc=0 no secret | rc=0 | no-FP |
+| 04 | `println(n, tok)` no inner paren | rc=1 `SECRET tok` | rc=1 | rc=1 | wave-1 multi |
+| 05 | `println((1), tok)` | **`OK`** | rc=1 after `oo_print_int((1LL));` | rc=0 `@oo_print_int(i64 1)` + `@.str.0 = "s3cret"` | **wave-2 FN** |
+| 06 | `println(id(1), tok)` | **`OK`** | rc=1 after `oo_print_int(id(1LL));` | rc=0 | same class |
+| 07 | `eprintln(id(1), tok)` | **`OK`** | rc=1 `eprintln … SECRET tok` (**guard**) | rc=0 | check FN |
+| 08 | `println((1), a, b)` two SECRETs | **`OK`** | rc=1 | rc=0 | same |
+| 09 | `println(("x") + tok)` | **`OK`** | rc=0 **leak** `oo_print_str(oo_str_concat((oo_str_lit("x")), tok))` | rc=0 | stmt belt FN |
+| 10 | `"x".len() + tok` | rc=1 **type** (no secret) | rc=0 prints `"x"` only (truncated) | rc=0 | type ≠ refuse |
+| 11 | `let f = println; f((1), tok)` | **`OK`** | rc=134 `malloc(): unaligned tcache` | rc=134 same | R-1char-let (`f`) |
+
+Extra backends on **05** (`grouped_later.oo`):
+
+| cmd | rc | secret? | bytes |
+|-----|---:|---------|-------|
+| `emit-wasm` | 0 | no | data `"s3cret"`; `call $println_str` of first arg |
+| `emit-bc` | 0 | no | `PUSH_STR s3cret` / `PUSH_INT 1` / `LOAD_LOCAL 0` / `CALL println 2` |
+| `run` | 0 | no | stdout **`1`** (check OK → `bc_emit_program` → `vm_run_bytecode_caps`) |
+
+`oodac tokens` of 05 (kinds only):
+
+```
+IDENT println  LPAREN  LPAREN  INT 1  RPAREN  COMMA  IDENT tok  RPAREN
+```
+
+Host walker skips the first `LPAREN`, then hits the grouping `RPAREN`
+and stops. `tok` is never a refuse candidate. That is the wave-2 hole
+s29_security Z2 / s29_peer2 R1 named; this ELF still has it.
+
+`main.oo` `run` (L261–266) **does** call `run_check_core` first. The
+front-door FN is what lets `run` execute. `emit-bc` (L269–273) still
+skips check entirely (s29 R-bc).
+
+### Official smoke (this host)
+`OODAC_BIN=<product ELF> bash ooda/scripts/s29_println_guard_smoke.oo`
+from a virgin TMPDIR:
+
+```
+OK fail-closed emit-c/check: secret_tok_println_ident
+OK no-FP emit-c/check: secret_tok_println_string_lit
+OK fail-closed emit-c/check: secret_tok_eprintln_ident
+OK fail-closed emit-c: secret_tok_println_grouped_later
+FAIL fail-closed check accepted (want ERR secret): secret_tok_println_grouped_later
+s29_println_guard_smoke: FAILED
+```
+
+exit **1**. Matches `s29b_harness.oot` / `s29b_peer1.oot`. Does **not**
+match `s29b_integration.oot` (ran the **157**-line pre-grouped script).
+
+---
+3. Source (WT) — what a rebuild *would* run
+---
+
+`check_secret_println_sinks` L173–200 (WT; **not** in this ELF):
+
+```
+if sid == "println" || sid == "eprintln" {
+    … optional one LPAREN …
+    let mut depth = 1;
+    while in_args && p < n {
+        if tk == "LPAREN" { depth = depth + 1; p = p + 1; }
+        else if tk == "RPAREN" {
+            depth = depth - 1;
+            if depth <= 0 { in_args = false; }
+            p = p + 1;
+        } else if tk == "IDENT" {
+            c_secret_refuse_sink_resolved(env, sid, nm);
+            …
+```
+
+`c_secret_scan_call` L97–113: same depth; `COMMA` only if `depth == 1`.
+
+**Still no** `c_secret_emit_guard` in this file (grep **none**). Wave-2
+is not DE2.9. After a rebuild, check / llvm / wasm / run / emit-c
+**front-door** should refuse 05/06/08/09. Stmt `c_emit_println` stays
+flat — emit-bc (no front-door) would still leak 09.
+
+`c_emit.oo` L86 / `llvm_emit.oo` L79 / `check_drive.oo` L62 still
+call `check_secret_println_sinks`. WT `check_drive` is secret-**before**
+type (6.1). ELF `run_check_core` is still secret-**after** type
+(s29 R-check-order). Not wave-2, still stale.
+
+---
+4. Runtime (`chs_rt`) — not a SECRET host
+---
+
+`chs_rt_print.c`: `oo_print_str` / `oo_println` / `oo_eprintln` write
+stdout/stderr. **No** taint, **no** `ERR\tsecret`.
+
+`grep` of `ooda/runtime/*`: **zero** `c_secret*` / `__sec__` /
+`refuses SECRET`. SECRET dies at emit/check, before gcc / the VM
+print floor. `oodac run` of 05 printing `1` is a **front-door miss**,
+not a runtime seal miss.
+
+---
+5. Named residuals (not “missing symbol”)
+---
+
+| ID | Sev | Residual |
+|----|-----|----------|
+| **2.9-w2 host** | HIGH | Shipping ELF first-`RPAREN` stop. WT depth **not linked**. check / llvm / wasm / run / bc FN on later-arg-after-inner-RPAREN |
+| **2.9 unify** | MED | stmt println / check walker still do **not** call `c_secret_emit_guard` (DE2.9 false on HEAD+WT+ELF) |
+| **stmt belt flat** | MED | `c_emit_print.oo` still first `COMMA`/`RPAREN`/`SEMI`. `println(("x")+tok)` emit-c **leaks** on this host; would be saved by front-door depth **after** rebuild, not by the stmt helper |
+| R-bc | dual-path | `emit-bc` skips `run_check_core` → `CALL println 2` with `PUSH_STR s3cret` |
+| R-run-via-check | HIGH | `run` trusts the same FN front-door; live stdout `1` |
+| R-cache | process | `.ooda-cache/check` can false-OK (s71 R9). Proves here used `/tmp` |
+| R-1char-let | MED | `let f = println; f((1), tok)` check OK + emit abort (1-char dest) |
+| R-check-order | stale | ELF secret-after-type; WT secret-before-type (6.1, not 2.9) |
+| 2.10 / 7.10 | other OWN | `__sec_sink__` / `str_slice` in the **same** WT file — not this ID |
+| smoke/integration desync | process | 170 L smoke FAILS this host; 157 L integration ALL OK was pre-rail |
+
+## VERDICT
+| Question | Answer |
+|----------|--------|
+| Does WT source have the wave-2 RPAREN / depth fix? | **YES** (`c_emit_secret.oo` L97–110, L179–190) |
+| Does the shipping host execute that walker? | **NO** — 07:49 ELF = HEAD first-`RPAREN` stop |
+| Any missing symbol? | **NO** (`T` check + scan_call + println + guard; **0** `U`) |
+| Does host `check` refuse `println((1), tok)`? | **NO** (`OK` rc=0) |
+| Does host emit-c refuse that shape? | **YES** (stmt belt, not depth) |
+| Does `oodac run` of that shape execute? | **YES** (prints `1`) |
+| Does stmt println call `c_secret_emit_guard`? | **NO** — 2.9 unify still **OPEN** |
+| May 2.9 wave-2 be marked FIXED from this ELF? | **NO** |
+
+**SPRINT 2.9 wave-2 (runtime auditor): PASS source / FAIL host.**
+
+end of s29b_runtime.oot
+
+end of s29b_runtime_part2.oot

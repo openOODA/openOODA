@@ -1,0 +1,122 @@
+# s72_ideas_part2.oot — (Part 2 of s72_ideas.oot)
+# Continuation of `openOODA/audit/s72_ideas.oot`.
+
+---
+
+## Rank (path-A survivors)
+| Rank | ID | Avg | Verdict |
+|-----:|----|----:|---------|
+| **1** | **I2 + I1** | 9.6 / 9.4 | **WINNER BUNDLE — ship now** prove 7.2 slice + quote/depth matrix |
+| **2** | **I3** | 8.4 | **Ship now if budget** — ident-slice helper; **apply to 7.10** (7.2 already sliced) |
+| **3** | I4 | 6.0 | Later hygiene (shared quote/depth skip) |
+| **4** | I5 | 6.0 | Later — `c_args_drop_first` string-aware (adjacent emit) |
+| **5** | I7 | 4.6 | **Later** — token-stream at emit (sig change) |
+| **6** | I6 | 3.8 | Do **not** expand last-arg into full argv this turn |
+| **7** | I11 | 3.6 | Doc line inside I1; not a solo close |
+| — | I9 | 2.2 | Reject architecture / IFC |
+| — | I10 | 1.8 | Disqualified (blind split) |
+| — | I8 | 1.4 | Disqualified (fake C stack buffer) |
+
+## Last-arg vs token walk (Decide card)
+| | Token-stream (`c_secret_scan_call` sys_exec) | C-text last (`c_sys_exec_last_arg`) |
+|--|----------------------------------------------|-------------------------------------|
+| Input | Lexer toks (`IDENT` field 3) | Lowered joined C `args` string |
+| Span | every argv after cap (`want=1`, `eq_only=false`) | **last** top-level comma span only |
+| When | check + emit-c + llvm IDENT walk | `c_secret_emit_guard` sys_exec after lower |
+| Quote comma | Impossible (not IDENT) | Must skip `"…"` / `\\` or last_start drifts |
+| Nested `,` | Tok depth / COMMA | Must use `depth` on `(`/`)` |
+| Heap | Token list already paid | O(\|args\|) char_at + **one slice** (7.2 claim) |
+| Path-A job | Mid-argv + last IDENT | Belt if last bare IDENT after lower |
+| 7.2 residual | Not the CRIT | **This is the CRIT** (concat fear + unproved skip) |
+
+**Ship-now decision:** keep **both**. Close 7.2 on the last-arg walker’s **slice + quote/depth prove**. Mid-argv stays token-walk. Unification = later (I7), not a substitute for I1.
+
+## Shared helper vs leftover concat (Decide card)
+| Surface | Span type | Heap now | Helper |
+|---------|-----------|----------|--------|
+| 7.1 `c_guard_scan_idents` | ident | **sliced** | optional call-site only |
+| 7.2 `c_sys_exec_last_arg` | last **comma** span | **sliced** | **do not** ident-slice |
+| 7.10 `c_parse_secret_env` | ident after `// SECRET:` | **`name = name + c`** | **I3 apply here** |
+| `c_count_top_args` | count only | no concat | I4 quote skip later |
+| `c_args_drop_first` | remainder span | sliced | I5 string-aware later |
+| `c_args_strip_cr` | filter rebuild | still concat | **not** 7.2 (CR-in-argv 8.6) |
+
+---
+
+## Top recommendation (this turn — path-A residual close)
+### **Ship: Prove/close 7.2 (I1) + quote/depth edge matrix (I2). Optionally land ident-slice helper (I3) on 7.10 same wave.**
+**Why this closes 7.2:**
+- Walker is already the Path-A fix (`str_slice`, no per-char OoStr). SPRINT “same” as 7.1 stack-buffer wording is a **wrong tool**.
+- Unclosed part is **untested quote/depth + untested claim** (\(U\)): last IDENT/lit fixtures exist; **quote-comma and nested-depth do not**.
+- Mid-argv refuse is **not** last-arg’s job; smoke must keep `secret_sys_exec_argv_fail` on the token rail so we do not fake-close via last-span.
+- Shared ident helper is the right **7.10** close using the **7.1/7.2** pattern — not a 7.2 rewrite.
+
+### DE winner advice (plain English)
+1. **Do not rewrite** `c_sys_exec_last_arg` into tokens, ident-slice, or a C `char[]`.
+2. **Prove static:** in `c_emit_args.oo` `c_sys_exec_last_arg`, last-span materialization is `str_slice` only (L121–129).
+3. **Wire smoke (I2):** new `scripts/s72_last_arg_smoke.oo` (preferred; s71 TMPDIR shape) **or** extend `secret_sink_enforce_smoke.oo`. Minimum:
+   - existing `secret_sys_exec_fail` REFUSE
+   - existing `secret_sys_exec_pass` ALLOW
+   - existing `secret_sys_exec_argv_fail` REFUSE (dual-path honesty)
+   - TMPDIR quote-comma ALLOW
+   - TMPDIR quote-comma + last IDENT REFUSE
+   - TMPDIR nested `helper(a, b)` last ALLOW
+4. **SPRINT 7.2:** mark FIXED path-A **only after** smoke exit 0 on rebuilt host. Replace “same” wording.
+5. **If same-wave budget:** I3 `c_ident_end` / `c_slice_ident_at` → rewrite **7.10** `c_parse_secret_env` name loop to one slice. Leave last-arg as-is.
+6. **Done bar:**
+   - Last argv SECRET IDENT **does** refuse (`ERR\tsecret`).
+   - Last argv string lit with unused SECRET name **does not** refuse.
+   - Comma inside a C string does **not** steal `last_start`.
+   - Comma inside nested `(` `)` does **not** steal `last_start`.
+   - Grep: no per-char last-span concat in `c_sys_exec_last_arg`.
+   - Mid-argv / nested-call-inner IDENT / interp / IFC remain **named residual** if not already on token walk.
+7. **Out of scope:** I6 full argv C-text scan; I7 emit tok plumbing; I8 C buffer; I9 lattice; I10 blind split; I5 drop-first unless quote smoke proves emit split.
+
+### Explicit non-winners (do not build this turn)
+- C stack buffer / runtime C helper as the 7.2 “fix” (I8)
+- Blind last-comma split / `contains` (I10)
+- Delete token walk “because last-arg exists” (I6)
+- Emit-guard signature rewrite to toks (I7)
+- Full IFC / AST lattice (I9)
+- SPRINT flip without I2 smoke (I11)
+- M1–M20 moonshots
+
+## Entropy report (expected after winner)
+`S: ↓` — 7.2 “FIXED in comments” → **smoke-proved** slice + quote/depth matrix; SPRINT wording debt cleared.
+`U` holds only for: 7.10 until I3 lands, `c_args_drop_first` quote skip (I5), token/C-text unification (I7), nested-call inner IDENT if token walk misses, `${}` (5.8).
+`O` does not rise (no second last-arg architecture).
+
+## Leave-off
+- Fairy: ideas only in this file.
+- DE owns land + prove; peers: last IDENT **0 FN**, last lit **0 FP**, quote/depth **0 last_start steal**, no SPRINT stack-buffer lie.
+- Memory: 7.2 already sliced; **7.10 is the leftover concat** (I3).
+- Security: do not regress argv token walk; do not add grep/split.
+
+---
+
+## One-page DE pocket card (I1+I2, optional I3)
+```
+7.2 ship-now:
+  KEEP  c_sys_exec_last_arg   (comma span, str_slice once)
+  KEEP  c_secret_scan_call    (sys_exec want>=1 IDENT walk)
+  WIRE  s72_last_arg_smoke.oo
+        fail/pass + argv_fail + quote-comma + nested-depth
+  GREP  no per-char last-span concat
+  FIX   SPRINT 7.2 wording after host prove
+
+7.10 same-wave (I3) if budget:
+  name = str_slice(src, name_start, k)   # not name = name + c
+  helper is IDENT slice — do not apply to last-arg
+
+LATER (not 7.2):
+  share c_skip_c_quote / depth   (I4)
+  string-aware c_args_drop_first (I5)
+  pass toks into emit-guard      (I7)
+```
+
+Path-A residual callout after land:
+“7.2 = slice last top-level C span + proved quote/depth. Not ident-slice. Not stack buffer. Not full argv IFC. 7.10 leftover concat is the shared-helper close.”
+
+end of s72_ideas.oot
+
+end of s72_ideas_part2.oot

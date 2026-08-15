@@ -1,0 +1,143 @@
+# s29c_ideas_part2.oot — (Part 2 of s29c_ideas.oot)
+# Continuation of `openOODA/audit/s29c_ideas.oot`.
+
+---
+
+## Rank (path-A survivors)
+| Rank | ID | Avg | Verdict |
+|-----:|----|----:|---------|
+| **1** | **I1 + I2** | 9.6 / 9.6 | **WINNER BUNDLE — ship now** seed isolate + prove side ELF |
+| **2** | I3 | 8.6 | Same land, cleaner overlay (depth-only secret) |
+| **3** | I4 | 7.0 | Fallback — two-TU splice if isolate multi fails |
+| **4** | I5 | 4.8 | Print-only — **insufficient** (check/llvm FN) |
+| — | I6 | 3.8 | Reject as close (belt only) |
+| — | I8 | 3.0 | Reject dirty-tree mix |
+| — | I12 | 2.8 | Last resort hand C |
+| — | I7 | 2.2 | Reject wait-for-deadlock |
+| — | I11 | 1.8 | Reject doc-only |
+| — | I10 | 1.2 | Reject fake args |
+| — | I9 | 0.6 | Reject tree self-rebuild |
+
+## Seed isolate vs tree rebuild (Decide card)
+| | Seed isolate (I1) | Tree `oodac build main.oo` (I9) |
+|--|-------------------|----------------------------------|
+| Emit host | pinned seed (6s secret) | 04:49 ELF — **hangs** on secret |
+| `check main.oo` | **skipped** (R4 / `PURE_SKIP_CHECK=1`) | **deadlock / timeout** |
+| Inputs | HEAD + 2 files | 11 dirty files + hang |
+| 2.9 claim | depth-in-ELF, named riders | never gets an ELF |
+| Hygiene | side path; no ELF commit | same, but never green |
+| Ship this turn | **Yes** | **No** (proved) |
+
+**Ship-now decision:** **seed-host isolate rebuild.**
+Tree self-rebuild is not a 2.9 close. It is the failed path.
+
+---
+
+## Top recommendation (this turn)
+### **Ship: Seed-host isolate of print+secret depth (I1, prefer I3 overlay) + prove on that ELF (I2). Do not tree-rebuild. Do not wait for the deadlock. Do not join C args.**
+Wave-2 I1+I2 is still the **product** (Int depth + smoke). Wave-3 is
+the **vehicle** after that product could not be linked through the
+shipping host.
+
+### DE winner advice (plain English)
+1. **Do not** run `run_build.oo` or tree `oodac emit-c c_emit_secret.oo`.
+2. **Do not** `pure_build` the live 11-file dirty tree as the 2.9 host.
+3. **Do not** call `c_secret_emit_guard` from check or `c_emit_println`.
+4. **Do not** flip SPRINT until I2 is green on a **new** BuildID.
+5. **Land I1:**
+   - isolate dir = HEAD `oodac/` + WT `c_emit_print.oo` + secret depth
+     (I3) or whole WT secret with riders **named**
+   - `OODAC_BIN=bootstrap/seed/oodac`
+   - `PURE_SKIP_CHECK=1`
+   - out = `$TMPDIR/s29c_oodac_depth` (never clobber first)
+6. **Prove I2** on that binary, virgin cwd. Peer1 four MUST = dual
+   `ERR	secret`. Harness H-same = `("x") + tok` (not extra wrap).
+7. If isolate multi fails: **I4** splice the two seed TUs into a HEAD
+   `all.c`. If that fails: stop and write the emit error — do **not**
+   I7 / I9 / I10.
+8. After I2 exit 0: copy side ELF → gitignored `oodac/oodac`.
+   **No** `git add` ELF. **No** seed refresh from this binary unless
+   owner asks.
+9. SPRINT 2.9 wording if later FIXED: **depth-aware IDENT walk
+   (RPAREN class) + prove on rebuilt host**. Not “walker → emit_guard”.
+   Not “source had depth”.
+10. **Out of scope:** I5 print-only as close; I6 wrapper; I7 deadlock;
+    I8 dirty tree; I9 tree host; I10 fake args; I11 docs; I12 hand C;
+    I13 IFC.
+
+### Explicit non-winners (do not build this turn)
+- Tree-host self-rebuild / `run_build.oo` (I9)
+- Waiting on AST deadlock (I7)
+- Full dirty-tip seed multi as the 2.9 ELF (I8)
+- Print-only splice as the close (I5)
+- `tokens` wrapper as FIXED (I6)
+- Fake C `args` / check→guard (I10)
+- Doc flip on 04:49 ELF (I11)
+- Hand-written C (I12) unless I1 **and** I4 die
+- IFC / `${}` / 2.10 / delete builtin (I13)
+
+## Entropy report (expected after winner)
+`S: ↓` — stale-host lie → **seed-linked** depth ELF + smoke; rebuild-fail
+named so the next agent does not retry I9.
+`U` holds only for: emit-bc skip, log-family, LLVM `print`, `${}` / IFC /
+2.10 (if not a named rider), deadlock still OPEN as its own task.
+`O` does not rise (no new monofile; isolate is a tmp tree).
+`W` does not rise (no concat, no emit_guard theater).
+
+## Leave-off
+- Fairy: ideas only in this file. Probes: `/tmp/s29c_ideas_rebuild_probe_*`,
+  `/tmp/s29c_ideas_seed_*` (ephemeral; seed C has depth).
+- DE owns isolate + link + I2; do not collide 6.1/2.10/R2 into the 2.9 ELF.
+- Peers: ACCEPT only on a **new** BuildID; `ERR	type` is not refuse.
+- Runtime: use the `s29c_runtime.oot` LPAREN-count gate on the new ELF.
+- Hygiene: no ELF commit; do not clobber until smoke 0.
+- Memory: isolate must not grow a join `args` string.
+
+---
+
+## One-page DE pocket card (I1+I2)
+```
+2.9 wave-3 ship-now (rebuild failed — next path):
+  KEEP  WT Int depth (print d + secret depth). NOT a new walker.
+  KEEP  c_emit_println builtin. NOT c_secret_emit_guard from check/stmt.
+  STOP  tree oodac as emit host (secret emit-c HANGS; check main TIMEOUT)
+  STOP  run_build.oo / oodac build main.oo
+  STOP  pure_build of the 11-file dirty tip as the 2.9 host
+  LAND  isolate = HEAD oodac/ + print WT + secret depth (I3 prefer)
+  LAND  OODAC_BIN=bootstrap/seed/oodac
+        PURE_SKIP_CHECK=1
+        bootstrap/oodac_pure_build oodac/main.oo $TMPDIR/s29c_oodac_depth
+  PROVE OODAC_BIN=$TMPDIR/s29c_oodac_depth  (virgin TMPDIR cwd)
+        println((1), tok)        → ERR secret  check+emit-c
+        println(("x") + tok)     → ERR secret  check+emit-c  (no oo_print tok)
+        eprintln(id(1), tok)     → ERR secret  check+emit-c
+        println(n, tok) / "tok"  → still BLOCK / ALLOW
+        s29_println_guard_smoke  → exit 0
+        NEW md5/BuildID          → not a44ee35e / a93cfd09
+  THEN  cp side ELF → oodac/oodac (gitignored). NO git add ELF.
+  FIX   SPRINT 2.9 only after that prove:
+        depth-aware IDENT walk, NOT emit_guard, NOT source-only
+
+FALLBACK if isolate multi fails:
+  I4  splice seed TUs (println + scan_call + check_secret_println_sinks)
+      into HEAD all.c; gcc side ELF; same I2.
+
+DO NOT this turn:
+  tree self-rebuild / run_build.oo          (I9 — proved dead)
+  wait for AST deadlock                     (I7)
+  dirty 11-file seed multi as 2.9 host      (I8)
+  print-only splice as the close            (I5)
+  tokens wrapper as FIXED                   (I6)
+  join C args / stmt → emit_guard           (I10)
+  SPRINT flip on 04:49 ELF                  (I11)
+  full IFC / ${} / 2.10 as this close       (I13)
+```
+
+Path-A residual callout after land:
+“2.9 wave-3 = **link** the wave-2 depth walk with the **seed** emit host
+on an **isolated** HEAD+two-file tree, then prove. Not a tree self-rebuild.
+Not check→emit_guard. Not source-only FIXED. Not the AST-deadlock sprint.”
+
+end of s29c_ideas.oot
+
+end of s29c_ideas_part2.oot

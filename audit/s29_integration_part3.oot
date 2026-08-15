@@ -1,0 +1,102 @@
+# s29_integration_part3.oot — (Part 3 of s29_integration.oot)
+# Continuation of `openOODA/audit/s29_integration.oot`.
+
+---
+
+## 2) Extra 2.9 probes (independent of harness; same host)
+Ephemeral fixtures: `/tmp/s29_integration/probes/` (not repo root). Same host ELF. `timeout 15s`.
+
+| Probe | check | emit-c | Read |
+|-------|-------|--------|------|
+| stmt `println(tok)` SECRET | rc=1 `ERR secret` `println sink refuses SECRET tok` | rc=1 same | front-door token walker **TP** |
+| stmt `eprintln(tok)` SECRET | rc=1 `ERR secret` `eprintln sink refuses SECRET tok` | rc=1 same | same front-door (`sid == eprintln`) |
+| stmt `println(1, tok)` | rc=1 `ERR secret` println | rc=1 same | multi-arg IDENT still walked |
+| stmt `eprintln(1, tok)` | rc=1 `ERR secret` eprintln | rc=1 same | same |
+| `let f = println; f(tok)` | rc=1 `ERR secret` println | rc=1 same | alias resolve in token walker (2.4) |
+| `let f = eprintln; f(tok)` | rc=1 `ERR secret` eprintln | rc=1 same | same |
+| `let r = eprintln(tok)` | rc=1 `ERR secret` eprintln | rc=1 same | expr form still front-door |
+| `println("tok")` / `eprintln("tok")` | rc=0 `OK` | rc=0 | no-FP (STRING ≠ IDENT) |
+| `log(tok)` SECRET | rc=1 `ERR type` `undefined variable 'log'` | rc=1 `ERR secret` `log sink refuses SECRET tok` | **emit-guard path** (log **not** in L175–192 walker); check type-first |
+| `print_err(tok)` SECRET | rc=1 `ERR type` `undefined variable 'print_err'` | rc=1 `ERR secret` `print_err sink refuses SECRET tok` | same split |
+
+`check_secret_println_sinks` is invoked from `c_emit.oo` L86 **before** lower. SECRET IDENT on `println`/`eprintln` therefore **never reaches** `c_secret_emit_guard` on emit-c — the token walker `process_exit`s first. Live eprintln refuse is **not** proof that stmt println was unified.
+
+`log` / `print_err` are **not** in the L175–192 println/eprintln token branch. emit-c continues to `c_emit_expr_c` → `c_secret_emit_guard` → `c_guard_scan_idents` and refuses. That is the **existing** emit-guard rail for sibling sinks. `oodac check` on this host typechecks first and never prints `ERR secret` for those names.
+
+Stmt `println` after a clean front-door still lowers via `c_emit_println` (`c_secret_refuse_println_ident`, `__sec__` only — **no** alias resolve at that belt). Alias refuse is the front-door `c_secret_resolve_alias` + `c_secret_refuse_sink_resolved`. Unifying to `c_secret_emit_guard` would put alias + C-text scan on one helper; that land has **not** happened.
+
+---
+
+## 3) Exit-code scoreboard
+| Script | Timeout | Exit | Color |
+|--------|---------|------|-------|
+| `ooda/scripts/secret_t1_return_smoke.oo` | 90s | **0** | GREEN |
+| `ooda/scripts/secret_t2_depth_smoke.oo` | 90s | **0** | GREEN |
+| `ooda/scripts/s28_macro_secret_smoke.oo` | 90s | **0** | GREEN |
+| `ooda/scripts/s61_env_set_secretsink_smoke.oo` | 90s | **1** | RED |
+| `ooda/scripts/s71_guard_scan_smoke.oo` | 90s | **0** | GREEN |
+| `ooda/scripts/s72_sys_exec_last_arg_smoke.oo` | 90s | **0** | GREEN |
+| `ooda/scripts/s710_parse_secret_env_smoke.oo` | 90s | **0** | GREEN |
+| `ooda/scripts/s29_println_guard_smoke.oo` | 90s | **0** | GREEN |
+
+Listed 7 + landed s29: **7 GREEN / 1 RED / 0 SKIP**.
+
+---
+
+## 4) What GREEN is (and is not)
+| Claim | Status |
+|-------|--------|
+| T1 return / alias / if taint | **YES** (exit 0) |
+| T2 field/method/args/dlopen/sys_exec/comment-skip | **YES** (exit 0) |
+| 2.8 residual-doc + AST_MACROS refuse | **YES** (s28 exit 0) |
+| 7.1 ident-scan regression | **YES** (s71 exit 0) |
+| 7.2 last-arg regression | **YES** (s72 exit 0) |
+| 7.10 parse-env rails (println / multi-name / empty) | **YES** (s710 exit 0) |
+| 6.1 emit-c `env_set`/`setenv` SECRET IDENT refuse | **YES** (s61 emit-c lines OK) |
+| 6.1 `oodac check` prints `ERR secret` for `env_set` on **this host** | **NO** — type-undefined first (s61 exit 1) |
+| Dedicated `s29_*` smoke | **YES** — `s29_println_guard_smoke.oo` exit 0 (landed mid-pass) |
+| Dual-path `println(SECRET)` refuse | **YES** (s29 + extra probes) |
+| Dual-path `println("tok")` no-FP | **YES** |
+| Dual-path `eprintln(SECRET)` refuse | **YES** (product names eprintln) |
+| Stmt `println` calls `c_secret_emit_guard` | **NO** — `c_emit_println` + token walker |
+| `check_secret_println_sinks` L175–192 is `c_secret_emit_guard(...)` | **NO** — still IDENT token loop |
+| `c_secret_emit_guard` lists println and is reachable from free-call lower | **YES** (source + `log`/`print_err` emit-c refuse) |
+| Front-door println/eprintln SECRET IDENT reaches emit-guard | **NO** — token walker exits first |
+| `ci_product.oo` wires s28/s61/s71/s72/s710/s29 | **NO** — T1/T2 only (`ci_product.oo` L157–158) |
+| Full IFC / `#[Secret]` / `${}` | **residual** |
+| 2.10 `__sec_sink__` wrapper scan | **dirty-tree only** (not 2.9 OWN; not proved here) |
+| 7.10 source `str_slice` | **dirty-tree yes** / **host ELF not rebuilt** |
+
+---
+
+## 5) Follow-ups (not this worker)
+1. Domain Expert: replace `c_emit_secret.oo` L175–192 token walker with a real `c_secret_emit_guard` call **or** stop special-casing stmt `println` so it lowers like `eprintln` (`c_emit_expr_c` → emit-guard). Do **not** claim 2.9 closed until that land is in **source and host ELF**.
+2. Optional belt: `c_emit_println` should call `c_secret_refuse_sink_resolved` (or emit-guard on joined arg text) so the emit belt matches alias resolve. Front-door currently carries alias.
+3. 6.1 dual-path: rebuild host from dirty `check_drive.oo` (secret-before-type) **or** relax `s61_env_set_secretsink_smoke.oo` `check` to accept type-undefined as residual. Do **not** mix that rebuild into 2.9.
+4. Refresh s71/s72/s710/`s29_harness` residual banners: working-tree `c_parse_secret_env` is `str_slice`; host ELF still 07:49.
+5. Wire s29 (and s28/s61/s71/s72/s710) into `ci_product.oo` if product wants those rails in CI. Harness scripts are **untracked** until human commit.
+6. If `log`/`print_err` stay product sinks, either teach the check-path walker those names or keep the type-first split as a **named residual** (same class as 6.1).
+
+---
+
+## Evidence paths
+| Item | Path |
+|------|------|
+| This audit | `/home/jeryd/Projects/openOODA/openOODA/audit/s29_integration.oot` |
+| Harness pointer | `/home/jeryd/Projects/openOODA/openOODA/audit/s29_harness.oot` |
+| Harness smoke | `/home/jeryd/Projects/openOODA/ooda/scripts/s29_println_guard_smoke.oo` |
+| DE2.9 walker | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret.oo` L175–192 |
+| Stmt println belt | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_print.oo` |
+| Ident stmt dispatch | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_ident.oo` L129–131 |
+| Emit guard | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_secret_guard.oo` |
+| Free-call site | `/home/jeryd/Projects/openOODA/ooda/oodac/c_emit_lower.oo` L90 |
+| Check drive | `/home/jeryd/Projects/openOODA/ooda/oodac/check_drive.oo` |
+| Smoke logs | `/tmp/s29_integration/*.out` + `*.rc` |
+| Extra probes | `/tmp/s29_integration/probes/` |
+| Sprint row | `openOODA/SPRINT.oot` ID **2.9** MED |
+| Prior 2.8 integration | `openOODA/audit/s28_integration.oot` |
+| Prior 7.1 security residual | `openOODA/audit/s71_security.oot` R1 / Z2 |
+
+end of s29_integration.oot
+
+end of s29_integration_part3.oot

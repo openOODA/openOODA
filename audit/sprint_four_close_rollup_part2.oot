@@ -1,0 +1,173 @@
+# sprint_four_close_rollup_part2.oot — (Part 2 of sprint_four_close_rollup.oot)
+# Continuation of `openOODA/audit/sprint_four_close_rollup.oot`.
+
+---
+
+What changed
+  `scripts/ci_product.oo` is 142 lines. `when` / `and` / `then` are
+  comments. Fail counter is live. Prints FAILED + exit 1, or PASSED.
+  Imports `scripts/ci_product_rails.oo` (198 lines, 132 `list_push`
+  names, `ci_run_product_rails`). Rails still exec the `.oo` files.
+  HARN: `oodac check scripts/ci_product.oo` rc=0, 2.06s, RSS 773 MB.
+  Check is not run.
+
+  Two live runs on disk (INT watch, did not start a third):
+
+  | Log | Wall | First FAIL | End |
+  |-----|------|------------|-----|
+  | `/tmp/ci_product_run.log` | ~2m29s (03:27–03:30) | `bootstrap_no_cargo` — minisign missing, unsigned seed refused | `ci_product: FAILED` |
+  | `/tmp/ci_product_unsigned.log` | ~4m19s (03:30–03:34) | `product_pure_dispatch_smoke.oo` — `test --fuzz` Int-domain rc=1 | `ci_product: FAILED` |
+
+  Unsigned log: ^OK 108, ^FAIL 164, 51 unique FAIL `.oo` names, plus
+  `FAIL fixed_point`. Bootstrap OK on that run is the loud
+  `OODA_SEED_ALLOW_UNSIGNED=1` skip. Not trust. Not a signed seal.
+  Tail: `ERR c_emit unknown free call needs annotation helper` then
+  `./oodac/oodac: No such file or directory` from the fixed_point
+  workdir. Tree `oodac/oodac` was still the 03:23 ELF after the rail
+  (INT). This rollup still sees that ELF +x and same hash as seed.
+
+Why it matters
+  The residual "full rail RUN not executed" is no longer true. The
+  product rail was run. It failed. The `.oo` twin is a checkable
+  runner with a roster, not a 47-line story that always prints PASSED.
+
+What is not done
+  Result is FAILED. Do not green the twin. Do not green GHA from this.
+  First signed-path FAIL is missing minisign. First unsigned-path FAIL
+  is fuzz Int-domain. Many later FAILs are old residuals (forge-deny
+  theater, fixture markers, bc banner noise).
+  Product path is still `ci_product.oo` (GHA + PM). Twin runs `.oo`
+  rails through `process_exec` concat. `sh_arg_ok` is the wrong class
+  for a rail leaf (sprint_sec_ci_product.oot hunt). That SEC file's
+  "rails file ABSENT / 47-line PASSED theater" half is stale vs disk.
+  Pack / extract / DFS collector still execute `.oo`.
+
+Peer
+  Current: sprint_int_ci_product_run.oot FAILED; sprint_harn_fs_check.oot
+  check OK; sprint_hyg_four.oot rails 198 ≤256.
+  Stale: sprint_sec_ci_product.oot (ABSENT / 47 L);
+  sprint_hyg_close.oot (rails ABSENT);
+  sprint_mem_close.oot (no rail loop);
+  sprint_pv1_close_open.oot (live when/and/then; parse FAIL);
+  sprint_int_close_open.oot (`ERRparseunclosed brace` on the 47-line
+  file). Those were true at 03:12. Disk moved by 03:26.
+
+---
+4 — B6 LAZY ret_table
+---
+
+What changed
+  Two walkers only:
+
+  | File | Entry | Build |
+  |------|-------|-------|
+  | `tc_call_let.oo` `typecheck_let_ann_call_init` | :20 `let mut ret_table: String = ""` | :77-78 first non-cap miss |
+  | `tc_call_ret.oo` `typecheck_return_and_assign_calls` | :14 same `""` | :131-132 `return f();` miss; :185-186 mut assign miss |
+
+  Annotated `let x: T = cap(...)` hits `cap_builtin_ret` and skips the
+  table. Unannotated `let x = cap(...)` also hits the helper and
+  **drops** `gty` (dead store). `tc_call_ret.oo` is 256 lines (at the
+  soft lock). HYG four: no unit over 256.
+
+Why it matters
+  Entry-time concat is gone in the two named files. Cap-only lets in
+  those walkers do not pay `build_fn_ret_table`. That is the owner
+  bar. PV1: PASS on that bar.
+
+What is not done
+  Lazy is defer, not delete. First non-cap miss still calls
+  `build_fn_ret_table` and still concatenates the full `fname:Ret`
+  String (`tc_tables_ret.oo`: `table = table + …`). O(F²) copies.
+  The two walkers do not share a table.
+  Siblings still build at entry (PV1 + MEM named list):
+  `tc_ann_prep.oo:16`, `tc_call_arg_prep.oo:15`, `tc_call_eq.oo:14`,
+  `tc_call_order.oo:14`, `tc_call_binop.oo:14`, `tc_call_logic.oo:14`,
+  `tc_struct_method.oo:15`, `tc_ops_unary.oo:15` and `:92`.
+  In-loop rebuilds: `tc_tables.oo:208` (inside `build_pure_lit_env`,
+  which ret still runs at entry), `tc_control_cond.oo:200`.
+  Unannotated non-cap `let x = foo()` never types and never builds.
+  `cap_builtin_ret` still returns bare "Result" / "List" / "Bool" /
+  "Int". Split vs `tc_names.oo` (`oo_file_size` Bool vs Int) stands.
+  `match_rparen` still runs before the short-circuit on `return f();`.
+  Cheap is unproven. No new `oodac check oodac/main.oo` this wave.
+
+  Last INT clock (not re-timed here):
+  sprint_int_close_open.oot 26.75s / 12.26 GiB RSS, rc=0.
+  That is still over F26 WARN 8 GiB and under FAIL 32 GiB.
+  **12 GiB is not closed.**
+
+Peer
+  Current: sprint_pv1_b6_lazy.oot PASS (two files);
+  sprint_mem_b6_fs.oot OPEN leftover (first miss = full table).
+  Stale (said let:20 / ret:14 were eager): sprint_pv1_b2b4b6b7.oot,
+  sprint_pv1_open.oot, sprint_pv1_close_open.oot,
+  sprint_mem_close.oot, sprint_residuals_rollup.oot B6 line.
+
+---
+STALE PEERS (do not cite as now)
+---
+
+Morning 2026-08-14 files that lost the land:
+
+| File | Stale claim |
+|------|-------------|
+| sprint_hyg_close.oot | `ci_product_rails.oo` ABSENT; F20=38 |
+| sprint_sec_ci_product.oot | rails ABSENT; 47 L always PASSED |
+| sprint_sec_sh.oot | `sh_arg_ok` ABSENT |
+| sprint_int_close_open.oot | seed untouched; ci_product.oo parse FAIL |
+| sprint_pv1_close_open.oot | live when/and/then; eager ret_table |
+| sprint_mem_close.oot | let L20 full table every entry; rails absent |
+| sprint9a_match_result.oot | seed 878392 B / `37a99a97…` |
+
+F20 live `find ooda/std -name '*.oo' | wc -l` is **39** (HYG four +
+this grep). Board expected-38 is stale. COORD owns the board.
+
+## STILL OPEN
+- Seed minisig not refreshed. Unsigned skip is not a product seal.
+- Compiler-graph seed rebuild not proved as a 9a close. Live
+  `bootstrap/oodac_pure_build` may rewrite the tree ELF after this file.
+- ci_product: FAILED. First signed fail = no minisign. First
+  unsigned fail = fuzz Int-domain. `.oo` stays the GHA rail.
+- 16 sh.oo sinks still `sh -c`. No rmdir. copy_tree unbounded.
+- ret_table: first miss + all sibling walkers still concat. Cheap
+  unproven.
+- **12 GiB check RSS not closed.** Last pin 26.75s / 12.26 GiB.
+  Not 1–2 s / 39 MB. Do not say memory is closed.
+- `process_exec` match scrutinee unlowered.
+- Keep `.oo` copies. Do not delete them on this rollup.
+
+---
+PEER AUDITS THIS CLOSE (sprint_*)
+---
+
+On disk, used
+  sprint_pv2_seed_9a.oot         PV2  seed replace + emit-c PASS
+  sprint_rt_seed.oot             RT   sha + tmp + tree confirm
+  sprint_de1_mkdir_leftover.oot  DE1  old-API leftovers = 0
+  sprint_de2_fs.oot              DE2  fs_mkdir_p / fs_copy_tree PASS
+  sprint_harn_fs_check.oot       HARN isolated check five files OK
+  sprint_hyg_four.oot            HYG  named-four line lock PASS; F20=39
+  sprint_int_ci_product_run.oot  INT  unsigned + first-run FAILED
+  sprint_pv1_b6_lazy.oot         PV1  two walkers lazy PASS
+  sprint_mem_b6_fs.oot           MEM  defer ≠ delete; copy_tree = walk
+
+Prior wave (context, partly stale)
+  sprint9a_match_result.oot      old seed pin; tiny emit already green
+  sprint_sec_sh.oot              pre-DE1 snapshot
+  sprint_sec_ci_product.oot      hostile hunt; roster snapshot stale
+  sprint_int_prove.oot           26.05s / 12.25 GiB; ci skipped
+  sprint_int_open_prove.oot      26.30s / 12.26 GiB
+  sprint_int_close_open.oot      26.75s / 12.26 GiB; seed not yet replaced
+  sprint_residuals_rollup.oot    2026-08-13 DOCS
+
+Missing
+  New SEC file on landed `sh_arg_ok` + native mkdir/copy: not on disk.
+  Verified with grep of sh.oo (16 `process_exec` left) instead.
+
+Do not edit SPRINT. COORD owns the board.
+Do not say the check is cheap.
+Do not say 12 GiB is closed.
+
+end of sprint_four_close_rollup.oot
+
+end of sprint_four_close_rollup_part2.oot
