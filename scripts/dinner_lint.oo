@@ -11,7 +11,12 @@
 //   4. Report total metrics and fail closed on any violation.
 
 pub fn main(sys: &SysCap) {
-    let check_cmd: String = "set -e; fails=0; "
+    let check_cmd: String = "src_root=\".\"; "
+        + "if [ -d \"openOODA\" ] && [ -d \"ooda\" ]; then src_root=\".\"; "
+        + "elif [ -d \"../openOODA\" ] && [ -d \"../ooda\" ]; then src_root=\"..\"; "
+        + "elif [ -d \"../../openOODA\" ]; then src_root=\"../..\"; "
+        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/ooda\" ] && [ -f \"$d/ooda/cli/main.oo\" ]; then src_root=\"$d\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
+        + "cd \"$src_root\" 2>/dev/null || true; set -e; fails=0; "
         + "echo '=== 1. Checking Forbidden File Extensions in Product Scope ==='; "
         + "forbidden=$(find openOODA ooda docs openOODA.github.io -type f \\( -name '*.py' -o -name '*.sh' \\) ! -path '*/.git/*' ! -path '*/node_modules/*' ! -path '*/target/*' ! -name 'oodac_pure_build' ! -name 'install.sh' 2>/dev/null | sort); "
         + "if [ -n \"$forbidden\" ]; then echo '[FORBIDDEN FILE FAIL] Found unauthorized .py/.sh files:'; echo \"$forbidden\"; fails=$((fails + 1)); fi; "
@@ -30,6 +35,13 @@ pub fn main(sys: &SysCap) {
         + "    if ! echo \"$hdr\" | grep -q '^// Logline:'; then echo \"[FORMAT FAIL] $f: missing // Logline:\"; fails=$((fails + 1)); fi; "
         + "  done; "
         + "done; "
+        + "echo '=== 4. Compiler is not the product CLI ==='; "
+        + "for b in ooda/oodac/oodac ooda/oodac_bin; do "
+        + "  [ -e \"$b\" ] || continue; "
+        + "  if grep -a -q 'pure .oo product CLI' \"$b\" 2>/dev/null; then echo \"[IDENTITY FAIL] $b is the product CLI\"; fails=$((fails + 1)); fi; "
+        + "  if ! grep -a -q 'oodac: usage:' \"$b\" 2>/dev/null; then echo \"[IDENTITY FAIL] $b missing oodac usage\"; fails=$((fails + 1)); fi; "
+        + "done; "
+        + "if [ -e ooda/bin/ooda ] && ! grep -a -q 'pure .oo product CLI' ooda/bin/ooda 2>/dev/null; then echo '[IDENTITY FAIL] ooda/bin/ooda is not the product CLI'; fails=$((fails + 1)); fi; "
         + "if [ \"$fails\" -gt 0 ]; then echo \"FAILED: $fails total violations found.\"; exit 1; fi; "
         + "echo \"Format & 9-Board Rule 1.13 Lint OK: zero forbidden files, all line counts <= 256, all $oo_count product modules compliant.\"";
 

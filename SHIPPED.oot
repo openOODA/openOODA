@@ -11,11 +11,13 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
 ## 2. Proven Capabilities
 
 ### Compiler Floor
-  - Pin: v0.200.0-beta. Live check of `oodac/main.oo`: OK. Cold about 523s; warm cache about 14s (174 modules, about 0.007 GiB RSS).
+  - Pin: v0.200.0-beta. Live check of `oodac/main.oo`: OK. RAM-cold about 164s; disk-warm new-process about 0.02s (179 modules).
   - C emit through `chs_rt`, then `gcc`. That is the product path.
   - Official rebuild is `../ooda/bootstrap/oodac_pure_build`. The old `.sh` path is gone.
   - `ooda run` is check + emit C + gcc + exec (`fixtures/hello.oo`).
   - LLVM hello works on the current host (emit-llvm + clang + run). Result `match` prints `ok`. Two-module import prints `2`. Lock: `scripts/open30_llvm_lock_smoke.oo`.
+  - LLVM self-host IR: `oodac --backend llvm emit-llvm oodac/main.oo` contains oodac symbols (`@main`, `@parse_cli_argv`). Clang link of full oodac is residual. Lock: `scripts/open68_llvm_lock.oo`.
+  - Standalone x86_64: `oodac emit-x86 fixtures/open69_hello.oo` writes `_start` that prints Hello; `as`+`ld` runs it. Not emit-c. AArch64 is residual. Lock: `scripts/open69_x86_smoke.oo`.
   - SECRET sinks include `process_exec`. Fail fixture refuses the secret.
 
 ### Capability Model & Sandboxing
@@ -24,15 +26,15 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
   - `spawn` / `wait` / `kill` are real. Child env is filtered (`OODA_`/`OO_` and `PATH`).
   - `process_exec` is a shell line and a secret sink.
   - `GpuCap` is CPU only. No device shaders.
-  - Hierarchical HMAC attenuation and enclaves are residual. HMAC-SHA256 of a cap payload string is product.
+  - Hierarchical HMAC attenuation, kernel object-cap seals, and enclave enter are product. HMAC-SHA256 of a cap payload string is product.
   - Bump arenas (`arena_create`/`alloc`/`reset`) and `actor_restart` are product C under AllocCap / ThreadCap.
 
 ### Standard Library & Developer Tooling
-  - Product std is 53 tracked files in `ooda/std` (50 historic plus `fs/path.oo`, `text/regex_nfa.oo`, `sec/objcap_hmac.oo`). Org `std/` (~4071 files, 93 domains) is Gemini volume, not certified. `audit/beta_standard_library_audit.oot` is not emit+gcc+run.
-  - vscode still talks to `vscode/server/ooda-lsp.js`. `ooda lsp` answers initialize and shutdown from a file or stdin. A multi-message loop is residual.
-  - `ooda check`, `build`, `run`, `test`, `dump`, `outline`, `reflect`, `fix`, `patch`, and `lsp` are native `.oo` in `cli/main.oo`. There is no `scripts/ooda_product.sh`.
-  - `crypto_sha256_internal("hello")` matches the FIPS hex. HMAC-SHA256 length is 64. AES still exits.
-  - `oodac emit-wasm` writes an empty `\0asm` module. `path_join` and `nfa_simulate("a+", …)` emit+gcc+run.
+  - Product std is 56 tracked files in `ooda/std`. Org `std/` is not certified. Named org proves: core, hmac_ops, crc32, fnv, murmur3, json, crypto.oo, aslr_entropy, xxh32, hash/sha256, prove_open80 (`crypto/aes.oo`).
+  - vscode still talks to `vscode/server/ooda-lsp.js`. `ooda lsp` is a multi-message stdio loop (initialize then shutdown).
+  - `ooda check`, `build`, `run`, `test`, `dump`, `outline`, `reflect`, `fix`, `patch`, `lsp`, `context`, `digest`, `health`, `pkg`, and `add` are native `.oo` in `cli/main.oo`. There is no `scripts/ooda_product.sh`.
+  - `crypto_sha256_internal("hello")` matches the FIPS hex. HMAC-SHA256 length is 64. AES-128-ECB encrypts one block to hex (NIST C.1).
+  - `oodac emit-wasm` writes a `\0asm` module with one code body per source `fn` and an `ooda-fns` custom section. `path_join` and `nfa_simulate("[ab]", …)` plus `dfa_compile` emit+gcc+run.
   - `ooda test` sets `OODA_TEST=1` and runs verify constructors plus `assert_eq!` / `assert!`. `ooda run` does not run verify blocks.
   - `ooda fix` applies `E_CAP`, `E_IMP` (missing import), `E_TC`, and `E_PARSE` (missing `}`). Multi-pass, max eight. It asks yes/no before it writes, unless `--yes`. Writes go through `write_file` and need `OODA_FS_WRITEDIR` (unset still denies). No TTY and no `--yes` refuses. Absolute paths and symlinks are refused.
   - `ooda patch` replaces one function body from a file (`--replace-fn` / `--with`) through `write_file`. Absolute paths, `..`, and symlinks are refused.
@@ -57,7 +59,7 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
   - Import C / `.h` imports are residual refuse.
   - SMT contracts, affine types, generics/traits, SoA, Undo-RAM, OTP, cap RPC, macros, hot-swap, GPU device shaders, and bare metal are residual refuse or not built. Bump arenas are product. `&ArenaCap` as its own token is residual.
   - Org `std/` and `std/src` are not product.
-  - LLVM self-host, standalone native backends, LTO/header FFI, and bit-identical rebuilds are residual.
+  - Clang link of full oodac via LLVM, AArch64 backend, LTO/header FFI, and bit-identical rebuilds are residual.
 
 ## 4. Cross References
 

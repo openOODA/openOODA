@@ -10,10 +10,18 @@
 //   3. Tally failures and report clean status.
 
 pub fn main(sys: &SysCap) {
-    let check_cmd: String = "set -e; fails=0; total=0; "
+    let check_cmd: String = "src_root=\".\"; "
+        + "if [ -d \"openOODA\" ] && [ -d \"ooda\" ]; then src_root=\".\"; "
+        + "elif [ -d \"../openOODA\" ] && [ -d \"../ooda\" ]; then src_root=\"..\"; "
+        + "elif [ -d \"../../openOODA\" ]; then src_root=\"../..\"; "
+        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/ooda\" ] && [ -f \"$d/ooda/cli/main.oo\" ]; then src_root=\"$d\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
+        + "cd \"$src_root\" 2>/dev/null || true; set -e; fails=0; total=0; "
         + "oodac_cmd=\"oodac\"; "
-        + "if command -v oodac >/dev/null 2>&1; then oodac_cmd=\"oodac\"; elif [ -x \"../ooda/oodac/oodac\" ]; then oodac_cmd=\"../ooda/oodac/oodac\"; fi; "
-        + "for f in $(find ../ooda/std ../std ooda/std -type f -name '*.oo' 2>/dev/null | sort -u); do "
+        + "if command -v oodac >/dev/null 2>&1; then oodac_cmd=\"oodac\"; "
+        + "elif [ -x \"$src_root/ooda/oodac/oodac\" ]; then oodac_cmd=\"$src_root/ooda/oodac/oodac\"; "
+        + "elif [ -x \"$src_root/target/debug/oodac\" ]; then oodac_cmd=\"$src_root/target/debug/oodac\"; "
+        + "elif [ -x \"../ooda/oodac/oodac\" ]; then oodac_cmd=\"../ooda/oodac/oodac\"; fi; "
+        + "for f in $(find \"$src_root/ooda/std\" \"$src_root/std\" \"$src_root/ooda/std\" -type f -name '*.oo' 2>/dev/null | sort -u); do "
         + "  total=$((total + 1)); "
         + "  if ! $oodac_cmd check \"$f\" >/dev/null 2>&1; then "
         + "    echo \"Fail: $f\"; fails=$((fails + 1)); "
