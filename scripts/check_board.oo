@@ -2,7 +2,7 @@
 //
 // Logline: Scan openOODA root and preserve the 9 canonical process boards while purging debris.
 //
-// Setup: Run only from openOODA/. FsReadCap and FsWriteCap. Deletes any other root *.oot.
+// Setup: Run only from openOODA/. FsReadCap, FsWriteCap and EnvCap. Deletes any other root *.oot.
 //
 // Beats:
 //   1. List .oot files in the openOODA root folder.
@@ -26,7 +26,7 @@ pub fn is_whitelisted_board(name: String) -> Bool {
     return false;
 }
 
-pub fn main(fs: &FsReadCap, fsW: &FsWriteCap) {
+pub fn main(fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) {
     println("Running .oot hygiene check for openOODA/...");
     let files: List[String] = oo_fs_read_dir(fs, ".");
     let n: Int = list_len(files);
@@ -38,7 +38,20 @@ pub fn main(fs: &FsReadCap, fsW: &FsWriteCap) {
         if str_ends_with(name, ".oot") {
             if !is_whitelisted_board(name) {
                 println("  [PURGE] Unrecognized .oot file: " + name);
-                let rm: Result[Void, String] = oo_fs_remove_file(fsW, name);
+                let dir_res: Result[String, String] = env_get(env, "OODA_FS_WRITEDIR");
+                let mut dir: String = ".";
+                if dir_res.is_ok() {
+                    dir = dir_res.unwrap();
+                }
+                let mut path: String = name;
+                if dir != "." {
+                    if str_ends_with(dir, "/") {
+                        path = dir + name;
+                    } else {
+                        path = dir + "/" + name;
+                    }
+                }
+                let rm: Result[Void, String] = oo_fs_remove_file(fsW, path);
                 if rm.is_err() {
                     println("  [WARN] failed to remove " + name);
                 }
