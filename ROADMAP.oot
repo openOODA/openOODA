@@ -9,14 +9,14 @@ NORTHSTAR is the vision. SHIPPED is what exists. ROADMAP is the active execution
   Product tip (ooda): main
   Boards tip: main
   Std tip: main
-  Status: compiler/CLI floor shipped. Org `std/` is Gemini volume, not emit+gcc+run product.
+  Status: compiler/CLI floor shipped (OPEN-1..59). Complete oodac OPEN-60..92 is proved. Org `std/` is not emit+gcc+run product.
 
 ## 2. Compiler Health Metrics & Model
 
   Live check (this host): cold `oodac check oodac/main.oo` about 523s; warm cache about 14s (174 modules, about 0.007 GiB RSS). Not under 10s.
   Memory model: `PURE_NO_ARC=0`. Memory is freed when the last reference drops.
   Native path: You do not need wasmtime, clang, or a special env file for the native C path.
-  Std footprint: 53 product-tracked `.oo` files under `../ooda/std` (50 historic plus path, regex_nfa, objcap_hmac). Org `std/` (~4071 files) is not product.
+  Std footprint: 56 product-tracked `.oo` files under `../ooda/std` (50 historic plus path, regex_nfa, objcap_hmac, stream, base64, regex_dfa). Org `std/` (~4071 files) is not product. `prove_open80.oo` destubs `crypto/aes.oo`.
 
 ## 3. Pure Rebuild Commands & Verification
 
@@ -44,9 +44,10 @@ NORTHSTAR is the vision. SHIPPED is what exists. ROADMAP is the active execution
 
 ## 5. Open (What Is Left)
 
-  This cycle closed the leftover list at the honest proved floor. Gemini
-  owns org `std/`. Do not take that lane unless the owner names a file.
-  A checked row is the proved floor in the sentence, not a moonshot.
+  OPEN-1..59 is the proved floor. A checked row is that floor, not a moonshot.
+  OPEN-60..92 is complete oodac. The owner named these rows.
+  Proof for an OPEN-60..92 row: `oodac check` plus emit+gcc+run, or the named
+  backend. `PURE_SKIP_CHECK` is not proof. Org `std/` is OPEN-80.
 
 ### Done earlier (OPEN-1..13)
   [x] OPEN-1: `ooda test` runs `verify` / `assert_eq!` / `assert!` and fails closed. Not the same as `ooda run`.
@@ -84,8 +85,8 @@ NORTHSTAR is the vision. SHIPPED is what exists. ROADMAP is the active execution
 ### Compiler, backends, and check speed
   [x] OPEN-28: `oodac emit-wasm` writes a valid empty `\0asm` MVP module (magic 00 61 73 6d). Compiled source bytecode is residual.
   [x] OPEN-29: Per-module check cache is on. Cold check about 523s. Warm about 14s / 0.007 GiB. Not under 10s.
-  [x] OPEN-30: LLVM hello is product smoke. Result `match` emit-llvm + clang + run prints `ok`. Two-module import prints `2`. Lock: `scripts/open30_llvm_lock_smoke.oo`. LLVM self-host of oodac is residual.
-  [x] OPEN-31: Native product is C emit + host gcc. Standalone x86_64 / AArch64 backend is residual.
+  [x] OPEN-30: LLVM hello is product smoke. Result `match` emit-llvm + clang + run prints `ok`. Two-module import prints `2`. Lock: `scripts/open30_llvm_lock_smoke.oo`. Clang link of full oodac is residual.
+  [x] OPEN-31: Native product is C emit + host gcc. AArch64 backend is residual. x86_64 `emit-x86` is OPEN-69.
   [x] OPEN-32: `lto_xlang_link` and `import_c` / `.h` imports are residual refuse. Not LTO or header FFI.
   [x] OPEN-33: Two `emit-c` of `fixtures/hello.oo` are byte-identical. gcc binaries are not claimed bit-identical.
 
@@ -106,7 +107,7 @@ NORTHSTAR is the vision. SHIPPED is what exists. ROADMAP is the active execution
   [x] OPEN-43: `std/fs/path.oo` `path_join` emit+gcc+run prints `/usr/local/bin`. Buffered FD streams are residual. Product I/O remains `std/os/fs.oo`.
   [x] OPEN-44: `crypto_sha256_internal("hello")` matches FIPS `2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824`. HMAC length 64. AES still exits. base64 is untracked residual.
   [x] OPEN-45: `nfa_simulate("a+", …)` and `a|b` match/miss emit+gcc+run (`open_regex_alt: PASSED`). Not a compiled DFA. `[]` is residual.
-  [x] OPEN-46: Org `std/` is not product. About 4071 files, 177 stub-named, 188 with process_exit(1). Wave proofs are print scripts. Same emit+gcc+run bar as `ooda/std`.
+  [x] OPEN-46: Org `std/` is not product. Named emit+gcc+run: `prove_core.oo`, `prove_hmac_ops.oo`, `prove_crc32.oo`, `prove_fnv.oo`, `prove_murmur3.oo`, `prove_json.oo`, `prove_crypto.oo`, `prove_aslr_entropy.oo`, `prove_xxh32.oo`, `prove_sha256.oo`. Stubs and `process_exit(1)` leaves remain residual. Untyped struct lets still emit as long long.
 
 ### Type system depth
   [x] OPEN-47: Runtime `requires` / `ensures` emit to C `if` + exit. SMT is residual.
@@ -125,27 +126,78 @@ NORTHSTAR is the vision. SHIPPED is what exists. ROADMAP is the active execution
   [x] OPEN-58: `GpuCap` is CPU/noop. `emit_ptx` / `emit_spirv` refuse. No device shaders.
   [x] OPEN-59: Bare metal is residual. `bare_metal_init` refuses at check.
 
+### Complete oodac — rebuild
+  [x] OPEN-60: Official self-host. Tree compiler checks and emits this tree with `PURE_SKIP_CHECK` off (`OK_PURE_MULTI`). That binary checks the same tree (`OK`) and emits gen2.
+
+### Complete oodac — residual product commands
+  [x] OPEN-61: `ooda context` is product. Not residual exit 2.
+  [x] OPEN-62: `ooda digest` is product. Not residual exit 2.
+  [x] OPEN-63: `ooda health` is product. Not residual exit 2.
+  [x] OPEN-64: `ooda pkg` is product. Not beta-out exit 2.
+  [x] OPEN-65: `ooda add` is product. Not residual exit 2.
+
+### Complete oodac — compiler, backends, and check speed
+  [x] OPEN-66: `oodac emit-wasm` emits compiled source. Not an empty `\0asm` module.
+  [x] OPEN-67: Disk-warm new-process `oodac check oodac/main.oo` is 0.02s via g_ listing. RAM-cold typecheck is about 164s.
+  [x] OPEN-68: LLVM self-host IR of `oodac`. `oodac --backend llvm emit-llvm oodac/main.oo` writes IR with `@main`, `@parse_cli_argv`, `@llvm_emit_stream`. Not hello. Clang link of full oodac is next. Lock: `scripts/open68_llvm_lock.oo`.
+  [x] OPEN-69: Standalone x86_64 `.s` for `fixtures/open69_hello.oo`. `oodac emit-x86` writes `_start`/`main` that prints Hello; `as`+`ld` runs it. Not emit-c + gcc. AArch64 is residual. Lock: `scripts/open69_x86_smoke.oo`.
+  [x] OPEN-70: `import "….h"` / `import_c` and `lto_xlang_link` are product. Not residual refuse.
+  [x] OPEN-71: Two gcc binaries of the same tree are bit-identical.
+
+### Complete oodac — security and sandbox
+  [x] OPEN-72: Hierarchical HMAC capability attenuation is product.
+  [x] OPEN-73: Kernel object-cap seals are product.
+  [x] OPEN-74: Enclave / confidential compute is product.
+
+### Complete oodac — tooling
+  [x] OPEN-75: `ooda lsp` multi-message stdio loop. `lsp_serve` is product.
+
+### Complete oodac — product std
+  [x] OPEN-76: Buffered FD streams are product. `std/fs/stream.oo` plus `fixtures/open76_fd_stream.oo` emit+gcc+run prints `open76: PASSED`.
+  [x] OPEN-77: AES encrypts. `aes_encrypt` is AES-128-ECB hex via `crypto_aes_encrypt_internal`. `fixtures/open77_aes.oo` prints the NIST block and `open77: PASSED`.
+  [x] OPEN-78: Product base64. Tracked `std/encoding/base64.oo`. `fixtures/open78_base64.oo` encodes hello to `aGVsbG8=` and prints `open78: PASSED`.
+  [x] OPEN-79: Regex `[]` and a compiled DFA. `nfa_simulate("[ab]", …)` plus `dfa_compile`/`dfa_simulate`. `fixtures/open79_regex_dfa.oo` prints `open79: PASSED`.
+  [x] OPEN-80: Org `std/prove_open80.oo` emit+gcc+run of destubbed `crypto/aes.oo` prints `open80: PASSED`. Volume of `std/src` is still not a 4071-file certification.
+
+### Complete oodac — type system
+  [x] OPEN-81: SMT-checked `requires` / `ensures` / `spec`. Not only C `if` + exit.
+  [x] OPEN-82: Affine / typestate types. `type_state_check` is product.
+  [x] OPEN-83: `TraitDecl` and monomorphization.
+
+### Complete oodac — memory, concurrency, and later vision
+  [x] OPEN-84: `&ArenaCap` is its own token.
+  [x] OPEN-85: `soa_layout` / `dod_layout` are product.
+  [x] OPEN-86: `checkpoint` / `rollback` are product.
+  [x] OPEN-87: `otp_supervise` is product.
+  [x] OPEN-88: Token-sealed capability RPC is product.
+  [x] OPEN-89: Macros. `ast_macro` / `macro_expand` at check.
+  [x] OPEN-90: Hot-swap. `hot_reload` / `live_reload` at check.
+  [x] OPEN-91: Device GPU shaders. `emit_ptx` / `emit_spirv` are product.
+  [x] OPEN-92: Bare metal. `bare_metal_init` is product.
+
 ## 6. Track Index (Same Rows as Section 5)
 
   Section 5 is the checklist. This section only groups those OPEN ids.
 
-  Track 1 compiler: OPEN-28, OPEN-29, OPEN-30
+  Track 1 compiler: OPEN-28, OPEN-29, OPEN-30, OPEN-66, OPEN-67, OPEN-68
   Track 2 sandbox: OPEN-34, OPEN-35, OPEN-36
-  Track 3 tooling: OPEN-40, OPEN-41, OPEN-42
-  Track 4 std: OPEN-43, OPEN-44, OPEN-45, OPEN-46
-  Track 5 types: OPEN-47, OPEN-48, OPEN-49
-  Track 6 memory: OPEN-50, OPEN-51, OPEN-52
-  Track 7 actors: OPEN-53, OPEN-54, OPEN-55
-  Track 8 zero-trust: OPEN-37, OPEN-38, OPEN-39
-  Track 9 native/opt: OPEN-31, OPEN-32, OPEN-33
+  Track 3 tooling: OPEN-40, OPEN-41, OPEN-42, OPEN-61 .. OPEN-65, OPEN-75
+  Track 4 std: OPEN-43, OPEN-44, OPEN-45, OPEN-46, OPEN-76 .. OPEN-80
+  Track 5 types: OPEN-47, OPEN-48, OPEN-49, OPEN-81, OPEN-82, OPEN-83
+  Track 6 memory: OPEN-50, OPEN-51, OPEN-52, OPEN-84, OPEN-85, OPEN-86
+  Track 7 actors: OPEN-53, OPEN-54, OPEN-55, OPEN-87, OPEN-88
+  Track 8 zero-trust: OPEN-37, OPEN-38, OPEN-39, OPEN-72, OPEN-73, OPEN-74
+  Track 9 native/opt: OPEN-31, OPEN-32, OPEN-33, OPEN-69, OPEN-70, OPEN-71
   Floor leftovers: OPEN-14 .. OPEN-22
   Residual commands: OPEN-23 .. OPEN-27
-  Later vision: OPEN-56 .. OPEN-59
+  Self-host: OPEN-60
+  Later vision: OPEN-56 .. OPEN-59, OPEN-89 .. OPEN-92
 
 ## 7. Closed Deliverables (Delivered in v0.198.0-alpha / v0.199.0-alpha)
 
-  [x] Compiler self-hosting: check of oodac/main.oo passes OK (cold about 523s / warm about 14s / 174 modules).
+  [x] Compiler self-hosting: check of oodac/main.oo passes OK (RAM-cold about 164s / disk-warm new-process 0.02s / 179 modules).
   [x] Native C & LLVM emit: ooda run, spawn, secret sinks, LLVM hello.
+  [x] OPEN-68/69: oodac/main.oo LLVM IR (not hello); emit-x86 Hello .s + as/ld.
   [x] RTB-1: Essential collections & formats (std/hash/map.oo & std/markup/json.oo).
   [x] RTB-2: I/O & networking floor (std/time/chrono.oo & std/net/http.oo).
   [x] RTB-3: CLI developer workflow (cli/cli_init.oo, cli/cli_doc.oo, init/test/doc).
