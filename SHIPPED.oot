@@ -25,9 +25,9 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
   - POSIX `setrlimit` is product under `&SysCap` (AS / NOFILE / CPU). Zero quotas fail closed.
   - `spawn` / `wait` / `kill` are real. Child env is filtered (`OODA_`/`OO_` and `PATH`).
   - `process_exec` is a shell line and a secret sink.
-  - `GpuCap` is CPU only. No device shaders.
-  - Hierarchical HMAC attenuation, kernel object-cap seals, and enclave enter are product. HMAC-SHA256 of a cap payload string is product.
-  - Bump arenas (`arena_create`/`alloc`/`reset`) and `actor_restart` are product C under AllocCap / ThreadCap.
+  - `GpuCap` CPU/noop launch is product. `emit_ptx` writes real kernel PTX text (`add.s64`); device GPU dispatch is residual. Not CUDA, not a device launch.
+  - Hierarchical HMAC attenuation, kernel object-cap seals, and measured isolate (hash of payload+token+domain) are product. Not SGX/TDX/SEV hardware enclaves. HMAC-SHA256 of a cap payload string is product.
+  - Bump arenas (`arena_create`/`alloc`/`reset`) under AllocCap, `&ArenaCap` as its own token, and `actor_restart` under ThreadCap are product.
 
 ### Standard Library & Developer Tooling
   - Product std is 56 tracked files in `ooda/std`. Org `std/` is not certified. Named org proves: core, hmac_ops, crc32, fnv, murmur3, json, crypto.oo, aslr_entropy, xxh32, hash/sha256, prove_open80 (`crypto/aes.oo`).
@@ -47,19 +47,21 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
   - `oodac check --json-errors` is in-process. No capture `.sh`. Product CLI also converts.
   - Named emit+gcc+run set: `scripts/ci_open_run.oo` (hello, int_main, open_ci_add).
   - Named emit-llvm+clang+run lock: `scripts/open30_llvm_lock_smoke.oo` (match `ok`, two-module `2`).
-  - `ooda.ebnf` names TraitDecl and `::` import as residual.
+  - `import_c` / header path and `lto_xlang_link` (gcc `-flto`) are product; emit may write `#include`. Not residual refuse.
+  - Check-time SMT folds const `requires` / `ensures` / `spec` in fn headers. Full general symbolic SMT is residual.
+  - `TraitDecl` and monomorphization are product.
+  - `bare_metal_init` is product (hosted canary after zeroing a static page).
   - Official rebuild does not export `PURE_SKIP_CHECK`. That flag is opt-in only.
   - Proved 2026-08-15 on `./bin/ooda` and `./oodac/oodac` rebuilt from tree sources.
 
 ## 3. Residual (Wanted in NORTHSTAR / ROADMAP, Not Built)
 
-  - Check is not under 10 seconds (cold about 523s; warm about 14s).
-  - `ooda context`, `digest`, `health`, and `add` remain residual. `ooda pkg` is beta-out.
-  - `oodac emit-wasm` writes an empty `\0asm` module. Compiled source bytecode is residual.
-  - Import C / `.h` imports are residual refuse.
-  - SMT contracts, affine types, generics/traits, SoA, Undo-RAM, OTP, cap RPC, macros, hot-swap, GPU device shaders, and bare metal are residual refuse or not built. Bump arenas are product. `&ArenaCap` as its own token is residual.
-  - Org `std/` and `std/src` are not product.
-  - Clang link of full oodac via LLVM, AArch64 backend, LTO/header FFI, and bit-identical rebuilds are residual.
+  - Org `std/` / `std/src` volume certification is residual (named org proves only; not a 4071-file cert).
+  - Clang link of full oodac via LLVM is residual (LLVM IR emit of oodac is product).
+  - AArch64 backend is residual (standalone x86_64 is product).
+  - Device GPU dispatch is residual. PTX text emit is product; launching on a GPU is not.
+  - SGX / TDX / SEV hardware enclaves are residual. Measured isolate is product.
+  - Full SMT solver / general symbolic is residual. Const + header `requires` / `ensures` / `spec` fold is product.
 
 ## 4. Cross References
 
