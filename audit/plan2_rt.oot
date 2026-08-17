@@ -1,0 +1,220 @@
+# PLAN2 RT — Exec uses host_run on a CAS path
+
+File: openOODA/audit/plan2_rt.oot
+Wave 0. Ship 2. Read only. Do not implement.
+Do not patch `chs_rt`. Do not patch `oodac`.
+Do not edit `/home/jeryd/Projects/openOODA/ooda`.
+
+Logline: Exec can call existing `host_run.run_oodac_run` on the
+CAS leaf file path. No new C spawn API is required.
+
+Setup: Worktree `/home/jeryd/.grok/worktrees/ooda-launch-exec`.
+SysCap is the system capability token. CAS is the content-addressed
+store under `.ooda_modules/cas/<sha>`. A CAS payload path is the
+host file path of the pinned `.oo` leaf, not the sha string alone.
+
+Beats:
+  1. State the verdict.
+  2. Show what `run_oodac_run` accepts.
+  3. Show that launch already has that host path.
+  4. Show the live spawn path. Name side effects. Name non-blockers.
+
+## 1. Verdict
+
+No blocker.
+
+`run_oodac_run` can take a CAS payload path.
+DE1 can call it after the gate returns ok.
+Do not edit `cli/host_run.oo`.
+Do not add a C spawn in `runtime/`.
+Do not call `sys_spawn`.
+
+Status: `run_oodac_run` is done. Launch `--exec` is residual.
+
+## 2. Files read
+
+Read only. No write in the worktree.
+
+  `cli/host_run.oo` (`run_oodac`, `run_oodac_run`, `sq`)
+  `cli/cmd_pm_launch.oo`
+  `cli/pm_launch.oo`
+  `cli/find_compiler.oo`
+  `cli/cmd_pm.oo`
+  `cli/cmd_pm_io.oo`
+  `cli/pm_store.oo`
+  `cli/pm_core.oo`
+  `cli/pm_recipe.oo`
+  `oodac/main.oo` (`run`)
+  `oodac/cli_build.oo`
+  `oodac/c_emit_lower.oo`
+  `oodac/load_import.oo`
+  `runtime/chs_rt_sys.c`
+  `runtime/chs_rt_caps.c`
+  `runtime/chs_rt_fs.c`
+  `openOODA/audit/plan_cli_launch.oot`
+  `openOODA/audit/plan_cli_three.oot`
+  `openOODA/audit/plan2_docs.oot`
+
+Shared read-only: `host_run.oo`.
+`plan_cli_three.oot` locks that file.
+
+## 3. What `run_oodac_run` accepts
+
+Type: `pub fn run_oodac_run(fs: &FsCap, sys: &SysCap, rargs: List[String])`.
+
+It walks `rargs`. The first token that is not a flag and not `--`
+is `path`. It refuses `--fuzz` and `--engine bc`.
+It requires `path != ""` and `path_exists(fs, path)`.
+It then calls `run_oodac` with `run` and that `path` only.
+
+`path_exists` is `oo_path_exists` in `chs_rt_fs.c`.
+It opens the path for read. Any host file that the process can
+open will pass. There is no sha256 type. There is no `.oo` suffix
+check. There is no CAS parser.
+
+`ooda run FILE` already uses this function (`cli/main.oo`).
+A list with one host path is enough:
+
+  `rargs = list_push(list_new(), path);`
+  `run_oodac_run(fs, sys, rargs);`
+
+`cli/cmd_pm_launch.oo` already imports `host_run.oo`.
+`run_ooda_pm_launch` already has `&FsCap` and `&SysCap`.
+No new import. No new main token. No `host_run` edit.
+
+## 4. What a CAS payload path is
+
+Launch already builds a host file path after the lock walk:
+
+  `cas = root + "/.ooda_modules/cas/" + sha`
+  `leaf = launch_pay_name(...)`
+  `path = cas + "/" + leaf`
+
+`pm_put_cas` writes `root/.ooda_modules/cas/<sha>/<fname>`.
+That is a normal file. Launch already slurps it and hashes it
+before the gate. The same `path` is what `--exec` must pass.
+
+Do not pass the sha string alone.
+Do not pass the CAS directory `cas`.
+`path_exists` can return true for a directory on this host.
+`oodac run` then fails when it reads that directory.
+Pass `cas + "/" + leaf` only.
+
+`pm_launch.oo` does not need a change.
+`pm_launch_gate` already returns `ok` or `err …`.
+Call `run_oodac_run` only after `ok`.
+
+## 5. Spawn path. No new C API
+
+`run_oodac` builds one shell line:
+
+  `OODA_SRC_ROOT=… OODA_COMPILER=… OODAC_BIN=… <oodac> run <path>`
+
+It quotes each token with `sq`.
+It starts the child with `sys_exec(sys, "sh", "-c", cmd)`.
+
+Emit (`c_emit_lower.oo`): `sys_exec` accepts `&SysCap` or
+`&ProcessCap`. It lowers to `oo_sys_exec`.
+Runtime (`chs_rt_caps.c`): `oo_cap_require_process` accepts
+the Process token or the Sys token. SysCap supersedes.
+
+`oo_sys_exec` (`chs_rt_sys.c`) does `fork`, `execvp`, and
+`waitpid`. It does not use `system(3)`.
+The child keeps `OODA_` and `OO_` keys and sets
+`PATH=/usr/bin:/bin`.
+The child keeps the parent stdout and stderr.
+`LAUNCH_EXEC_OK` from the payload will show.
+
+`oodac` `run` then checks, builds `path.bin`, and
+`sys_exec`s that binary. That is the same tree as `ooda run`.
+
+`sys_spawn` exists in `chs_rt_libfloor.c`.
+The CLI does not call it. Do not add it.
+Do not add a new symbol in `chs_rt`.
+
+Today `--exec` calls `sys_exec` on
+`test -e <path>; exit 0`.
+That is the same SysCap. The child is not the payload.
+Replace that line. Do not add a second spawn API.
+
+## 6. Side effects. Not CAS blockers
+
+These facts do not block a CAS leaf path.
+DE1 must still obey them. Do not edit `host_run.oo`.
+
+### 6.1 `process_exit`
+
+`run_oodac` ends the CLI with `process_exit(0)` or
+`process_exit(1)`. `run_oodac_run` does not return.
+
+Call it last.
+Do not print `ooda launch: ok` after it.
+Do not print `"ok":true` before it.
+On `--json` plus `--exec`, skip the JSON object.
+The child stream is the result.
+Gate fail still uses `launch_die` and never calls run.
+
+`sys_exec` treats any non-zero child as Err.
+The CLI exit is 0 or 1. That matches `ooda run`.
+
+### 6.2 Build files next to the leaf
+
+`oodac run` writes `path.bin` and `path.bin.tmp.c` next to
+the source. That is how `ooda run FILE` works.
+
+HARN must delete those files after the smoke.
+`launch_pay_name` returns the first name that does not start
+with `ingest_`. A leaf `name.oo` sorts before `name.oo.bin`.
+Keep one `.oo` leaf in the CAS dir.
+
+### 6.3 Compiler find
+
+`find_oodac` probes cwd paths, then two XDG paths.
+It does not read `OODA_COMPILER`.
+This is the same rule as `ooda run`.
+HARN must start the CLI from a tree that has `oodac_bin`,
+`bootstrap/seed/oodac`, or `oodac/oodac`.
+
+### 6.4 Extra argv and suffix
+
+`run_oodac_run` drops tokens after the path.
+This ship does not need payload argv.
+
+`run_oodac_run` does not refuse ELF, empty, or a directory
+that `fopen` can open. PV2 must refuse those before the call.
+
+## 7. What is not a blocker
+
+  Raw sha256: launch already has the leaf file path.
+  Gate strings: `ok` / `err yank` / `err sha256 mismatch` /
+    `err caps` already work.
+  `OODA_FS_WRITEDIR`: it gates `write_file`, not `gcc` via `sh`.
+  Public `hello.oo` with no `main`: HARN adds a new fixture.
+  `cli/main.oo`: launch already dispatches. Do not edit it.
+  Child reap: `waitpid` is live. No new reap API.
+  Line count: `cmd_pm_launch.oo` is 121 lines. Room exists.
+
+## 8. DE1 call
+
+After the gate is `ok` and `--exec` is set:
+
+  Delete `test -e`.
+  Pass the leaf `path` in a one-item list.
+  Call `run_oodac_run(fs, sys, rargs)`.
+  Do not wrap the payload bytes in a new `sh -c`.
+  Quote rules stay in `host_run`.
+
+Without `--exec`, print the path only.
+Do not call `run_oodac_run`.
+
+## 9. Out of scope
+
+  No product edit.
+  No `chs_rt` edit.
+  No `oodac` edit.
+  No `host_run.oo` edit.
+  No growth of `ooda/pm/`.
+  No new spawn symbol.
+
+C emit plus gcc remains the product.
+This file does not implement the work.

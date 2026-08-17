@@ -1,0 +1,133 @@
+# PLAN3_PV2 — no-file --run and no bench ok stub
+
+File: openOODA/audit/plan3_pv2.oot
+Wave 3 ATTACK. Ship 3. Worktree `/home/jeryd/.grok/worktrees/ooda-bench`.
+
+Logline: `ooda bench --run` with no file exits 2, and `ooda bench: ok` is absent from cmd_more.oo, main.oo, and the rebuilt CLI strings.
+Setup: Attack `cli/cmd_more.oo` and `cli/main.oo`. Scratch CLI is `/tmp/grok-goal-e3250e659225/implementer/ooda-pv2`. Dirty parent is read-only.
+Beats:
+  1. Drive `bench --run` with no file. Require a non-zero exit and no ok line.
+  2. Search cmd_more.oo and main.oo for `ooda bench: ok`. Fix cmd_more.oo only if the stub remains.
+  3. Search strings on a rebuilt CLI. Record PASS or FAIL.
+
+## 0. Verdict
+
+PASS
+
+`ooda bench --run` with no file prints usage and exits 2.
+It does not print `ooda bench: ok`.
+`cli/cmd_more.oo` and `cli/main.oo` have no `ooda bench: ok`.
+Scratch CLI strings have no `ooda bench: ok`.
+No product edit. The stub is already gone.
+
+## 1. Binary used
+
+Worktree `bin/ooda` is absent. INT owns the seed rebuild.
+This role built a scratch CLI with the worktree host:
+
+  `./oodac_bin build cli/main.oo /tmp/grok-goal-e3250e659225/implementer/ooda-pv2`
+
+  Exit 0. Prints `OK_PURE_NATIVE`.
+  Binary says `pure .oo product CLI` and `ooda 0.201.0-beta`.
+  Did not write `bin/ooda`. Did not copy onto `oodac/oodac`.
+
+## 2. Attack: `ooda bench --run` with no file
+
+Command from the worktree root:
+
+  `/tmp/grok-goal-e3250e659225/implementer/ooda-pv2 bench --run`
+
+Result:
+
+  stdout: `usage: ooda bench <file.oo> [--run]`
+  stderr: empty
+  exit: 2
+  `ooda bench: ok`: absent
+
+`--run` is a flag. It is not a path.
+`args[0]` is `bench`. The walk starts at index 1.
+No later token fails `str_slice(a, 0, 1) != "-"`.
+`path` stays `""`. Then:
+
+  `println("usage: ooda bench <file.oo> [--run]");`
+  `process_exit(2);`
+
+No `find_oodac`. No check. No run. No clock.
+
+Same refuse, same exit 2, same usage, no ok:
+
+  `ooda bench`
+  `ooda bench --run --run`
+  `ooda bench --not-a-file`
+
+`ooda bench --run missing_no_such.oo` exits 2 with
+`ERR<TAB>bench<TAB>unreadable file: missing_no_such.oo`.
+No check line. No run line. No ok.
+
+## 3. Attack: stub string gone
+
+Needles: exact `ooda bench: ok`.
+
+  `grep` of `cli/cmd_more.oo`: no matches.
+  `grep` of `cli/main.oo`: no matches.
+  `strings` on the scratch CLI: no matches.
+
+Scratch CLI strings that remain are honest:
+
+  `usage: ooda bench <file.oo> [--run]`
+  `ooda bench: check failed `
+  `ooda bench: check `
+  `ooda bench: run `
+  help: `ooda bench <file.oo> [--run]        # time oodac check`
+
+User order: if the stub remains, fix `cli/cmd_more.oo`.
+The stub is absent. This role did not edit `cmd_more.oo`.
+
+Parent `/home/jeryd/Projects/openOODA/ooda/cli/cmd_more.oo`
+still prints `ooda bench: ok` on both stub branches.
+That tree is dirty and read-only. This ship did not touch it.
+
+## 4. Path with `..` and absolute path
+
+Plan: attack `..` or an absolute path if write_file rules apply.
+Bench is read plus exec check only. It does not set
+`OODA_FS_WRITEDIR`. It does not write the user file.
+
+Live:
+
+  `bench --run ../ooda-bench/fixtures/hello.oo`
+  exit 0. Prints check Nms and run Nms. No ok.
+
+  `bench /home/jeryd/.grok/worktrees/ooda-bench/fixtures/hello.oo`
+  exit 0. Prints check Nms. No ok.
+
+That is not FAIL. A readable `.oo` path may use `..` or `/`.
+`sq` keeps the path one operand to `oodac check` or `oodac run`.
+
+`./--run` is a path (it does not start with `-`).
+It is absent. Exit 2. Unreadable-file line. No run.
+
+## 5. Isolation
+
+  Worktree porcelain stays:
+
+    M cli/cmd_more.oo
+    M cli/main.oo
+    ?? scripts/bench_smoke.oo
+
+  This role wrote only this audit note.
+  Did not write `/home/jeryd/Projects/openOODA/ooda`.
+  Did not write oodac/, runtime/, std/, or the public site.
+  No new `.py`, `.md`, or `.sh`.
+  Official `bin/ooda` remains absent.
+
+## 6. What this role does not do
+
+  It does not own check-fail of a typecheck-bad file (PV1).
+  It does not own `sh -c` vs product helpers (SEC).
+  It does not own two clocks or the 30s hang budget (MEM).
+  It does not rebuild or double-run `bin/ooda` (INT).
+
+Status: Wave 3 PV2 attack is PASS. Ship 3 stays open for INT.
+
+C emit plus gcc remains the product path.

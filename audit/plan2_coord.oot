@@ -1,0 +1,134 @@
+# PLAN2_COORD — Wave 0 observe for launch --exec
+
+File: openOODA/audit/plan2_coord.oot
+Wave 0 observe only. Ship 2. Process note. Do not implement --exec.
+
+Logline: This note records the worktree state, the fake --exec path, the seed rebuild result, and the host_run call path.
+
+## 0. Verdict
+
+  Worktree is clean at `64ef8bd` on `wip/launch-exec`.
+  `--exec` today runs `sh -c "test -e <path>; exit 0"`. It does not run the payload.
+  `cli/cmd_pm_launch.oo` already imports `host_run.oo`.
+  DE1 can call `run_oodac_run` today. Do not edit `host_run.oo`.
+  Seed rebuild of `cli/main.oo` failed. Exit 1. No `bin/ooda`.
+  Cause: seed `oodac` does not know `oo_fs_rmdir`. `cli/cmd_pm_tree.oo` calls it.
+
+## 1. Worktree
+
+  Path: `/home/jeryd/.grok/worktrees/ooda-launch-exec`
+  Branch: `wip/launch-exec`
+  Commit: `64ef8bd53eaa636931d85eadcf70f043804e9470`
+  Status: clean. Porcelain is empty.
+  Parent `/home/jeryd/Projects/openOODA/ooda` is dirty. Do not write there.
+  This worktree has no `oodac/oodac`. It has `oodac_bin` and `bootstrap/seed/oodac`.
+  `bin/ooda` is absent.
+
+## 2. Fake --exec
+
+  File: `cli/cmd_pm_launch.oo` (121 lines).
+  Gate: `pm_launch_gate(sha, live, grant, need, yanked)`.
+  Gate strings today: `ok`, `err yank`, `err sha256 mismatch`, `err caps`.
+  Gate fail calls `launch_die` before the `--exec` block. Exit 2. No payload process.
+  After a pass, lines 110 to 115 run:
+
+    sys_exec(sys, "sh", "-c", "test -e " + sq(path) + "; exit 0")
+
+  `test -e` checks that the file exists. `; exit 0` hides a missing file.
+  Then `--json` prints a path object, or the CLI prints `ooda launch: ok <path>`.
+  Header beat 2 says the gate must be ok or ERR and no exec. That gate path is real.
+  Header setup says `--exec` may run the blob. The code does not run the blob.
+
+## 3. Seed rebuild
+
+  Command from the worktree root:
+
+    OODAC_BIN=./bootstrap/seed/oodac \
+      bash bootstrap/oodac_pure_build cli/main.oo bin/ooda
+
+  Log: `/tmp/grok-goal-e3250e659225/implementer/wave0_ship2_cli_rebuild.log`
+  Exit: 1
+  Host: `./bootstrap/seed/oodac` (51 modules, check timeout 162s)
+  Check error: `undefined variable 'oo_fs_rmdir'` at 154:58
+  The check target is `cli/main.oo`. The call is in `cli/cmd_pm_tree.oo` line 158.
+  Same seed check on `cli/cmd_pm_tree.oo` fails with the same error.
+  `./oodac_bin check cli/cmd_pm_tree.oo` prints `OK`.
+  Seed sha256: `077d0f883edb083bc2598c0f1f87469d7a091c53e3db1ffd826f2cf5b046fef2`
+  That hash matches the parent seed. Seed has no `oo_fs_rmdir` string.
+  `oodac_bin` has the symbol. Parent mid-flight `oodac/oodac` is a different hash.
+  Plan law: seed only. Do not use mid-flight `oodac/oodac`. Do not copy CLI onto `oodac`.
+  Ship 2 must not edit `main.oo`, `cmd_pm_tree.oo`, `oodac/`, or the seed.
+
+## 4. host_run call path
+
+  Shared read-only: `cli/host_run.oo` (207 lines), `cli/find_compiler.oo`.
+  `run_oodac_run(fs, sys, rargs)` is `pub`. `cmd_pm_launch.oo` already imports it.
+  The file already calls `sq` from that import.
+  DE1 can build a list with the CAS path and call `run_oodac_run`.
+  No change to the gate string API is required. DE2 must not edit `cli/pm_launch.oo`.
+  `run_oodac_run` already refuses a missing path, `--engine bc`, and `--fuzz`.
+  It then calls `run_oodac` with `run` and the path. That is the same path as `ooda run`.
+  `run_oodac` quotes tokens and starts `oodac` with `sh -c`. It does not wrap the payload.
+  `run_oodac` then calls `process_exit(0)` or `process_exit(1)`.
+  After `--exec`, the CLI will not print JSON and will not print `ooda launch: ok`.
+  That is honest. Do not claim ok before the run finishes.
+  Do not edit `host_run.oo` to return a Result. The plan forbids a silent shared edit.
+
+## 5. Call constraints
+
+  `find_oodac` probes the current directory first (`./oodac_bin`, then seed).
+  Smoke must run from the worktree root so the compiler probe works.
+  Grant comes from cwd `ooda.pkg` `caps`. Need comes from the lock line.
+  `pm_caps_ok` accepts the child mask only when it is a subset of the parent.
+  Worktree `ooda.pkg` grant is `FsRead`. The new fixture must not ask for extra caps.
+  Public `/home/jeryd/Projects/openOODA/registry/hello/hello.oo` has `hello_ok` only.
+  It has no `pub fn main`. Do not change it. Do not treat `hello_ok` as a program.
+  `launch_pay_name` skips `ingest_*` names and takes the first other CAS leaf.
+
+## 6. File lock (later waves)
+
+  Write only:
+
+    cli/cmd_pm_launch.oo
+    cli/pm_launch.oo (only if the gate API must change; prefer no edit)
+    fixtures/pm_launch_exec/ (new)
+    scripts/pm_launch_exec_smoke.oo (new)
+    /home/jeryd/Projects/openOODA/qa/pm_hostile_spine.oo (add refuse cases)
+
+  Do not edit `main.oo`. Do not grow `ooda/pm/`. Do not edit `oodac/`, `runtime/`,
+  `std/`, the public site, or the dirty parent.
+  New fixture and new smoke are absent today.
+  Hostile spine is 85 lines. It already refuses `--exec` on yank, sha drift, and extra caps.
+  `want_bad` already refuses a zero exit and `ooda launch: ok`.
+  HARN must also refuse `LAUNCH_EXEC_OK` on those cases.
+
+## 7. Wave 1 order
+
+  DE1 owns `cli/cmd_pm_launch.oo`.
+  Delete the `test -e` shell line.
+  If the gate is not ok, keep the same die path.
+  If `--exec` and the gate is ok, call `run_oodac_run` on the payload path.
+  Let the child exit code stand. Do not print ok first.
+  Update the Academy header so `--exec` means run, not exists.
+  DE2 writes a read-only note and stops.
+  HARN adds a vendor payload with `pub fn main` that prints `LAUNCH_EXEC_OK`.
+  Smoke: add, launch without `--exec` (path only), launch with `--exec` (sees `LAUNCH_EXEC_OK`).
+
+## 8. Parent ask
+
+  `run_oodac_run` is not blocked. DE1 can call it without a `host_run.oo` edit.
+  Seed CLI rebuild is blocked at this pin. INT cannot prove with the official command.
+  Ask the parent to pick one:
+
+    1. Allow `OODAC_BIN=./oodac_bin` for this pin only. That file is in the worktree.
+       It is a compiler. It is not the dirty parent `oodac/oodac`.
+    2. Refresh `bootstrap/seed/oodac` so it knows `oo_fs_rmdir`. That is oodac work.
+    3. Stop the three ships until seed can check the CLI.
+
+  COORD recommends 1 for this pin. Do not copy `bin/ooda` onto `oodac/oodac`.
+
+## 9. Wave 0 status
+
+  Observe is done. Implement is not started.
+  Rebuild exit: 1
+  `run_oodac_run` callable from `cmd_pm_launch.oo` today: yes

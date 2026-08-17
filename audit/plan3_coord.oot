@@ -1,0 +1,189 @@
+# PLAN3_COORD — Ship 3 wave 0 observe
+
+File: openOODA/audit/plan3_coord.oot
+Wave 0 only. Observe and set up. Do not implement bench.
+
+Logline: The worktree is clean at 64ef8bd. The seed CLI rebuild exits 1. TimeCap on a small main already lowers.
+Setup: Worktree `/home/jeryd/.grok/worktrees/ooda-bench` branch `wip/ooda-bench`. Dirty parent is read-only.
+Beats:
+  1. Confirm commit, branch, and clean status.
+  2. Run the official seed CLI rebuild and record the exit.
+  3. Name the file lock, the stub, the line budget, and the TimeCap risk.
+
+## 1. Worktree
+
+  Path: `/home/jeryd/.grok/worktrees/ooda-bench`
+  Branch: `wip/ooda-bench`
+  Commit: `64ef8bd53eaa636931d85eadcf70f043804e9470`
+  Short: `64ef8bd`
+  Subject: feat(std): typecheck 402 modules and pin v0.201.0-beta
+  `git status --porcelain`: empty. Status: done.
+
+  Do not write in `/home/jeryd/Projects/openOODA/ooda`.
+  That tree is dirty. Parent `oodac/oodac` sha256 stays
+  `36995dc917b57cc3d2f6a1b5e6668ecf6c02f60e5d4196e8e77ecea1ccc44246`.
+  This ship did not touch it.
+
+  Worktree `oodac/oodac`: absent.
+  Worktree `bin/ooda`: absent.
+  Worktree `scripts/bench_smoke.oo`: absent.
+
+## 2. File lock
+
+  This ship only may write:
+
+    cli/cmd_more.oo
+    cli/main.oo
+    scripts/bench_smoke.oo (new)
+
+  Default: only ship 3 edits `cli/main.oo`.
+
+  Shared read-only:
+
+    cli/host_run.oo
+    cli/find_compiler.oo
+    cli/lsp_ident.oo
+
+  Do not edit `oodac/`, `runtime/`, `std/`, the public site,
+  or the dirty parent. Do not invent a fuzzer. Do not use
+  `date` or a bash timer.
+
+  Other stubs in `cli/cmd_more.oo` stay. They are not this ship.
+
+## 3. Seed rebuild
+
+  Command from the worktree root:
+
+    OODAC_BIN=./bootstrap/seed/oodac \
+      bash bootstrap/oodac_pure_build cli/main.oo bin/ooda
+
+  Log: `/tmp/grok-goal-e3250e659225/implementer/wave0_ship3_cli_rebuild.log`
+
+  Result: exit 1. Status: open. Not done.
+
+  Seed printed:
+
+    pure_build: input_fp=88cb9fd6fc5fd44725831d80e5c7d4ed7c98826e13defdc6380faa6c10540585
+    pure_build: check host=./bootstrap/seed/oodac nmods=51 timeout=162s
+    ERR_CHECK .../cli/main.oo
+    ERR type Type error at 154:58: undefined variable 'oo_fs_rmdir'
+
+  No `bin/ooda` was written. Strings `pure .oo product CLI`
+  were not confirmed on a product binary. That string is
+  absent because the binary is absent.
+
+  Seed sha256:
+    `077d0f883edb083bc2598c0f1f87469d7a091c53e3db1ffd826f2cf5b046fef2`
+  Seed mtime did not change.
+
+  Cause: the 51-module CLI graph calls `oo_fs_rmdir`.
+  The only product CLI call is `cli/cmd_pm_tree.oo`.
+  Seed `strings` has no `oo_fs_rmdir`.
+  Ship 3 must not edit `cli/cmd_pm_tree.oo`.
+
+  `bootstrap/oodac_pure_build` may fall back to `oodac/oodac`.
+  That file is absent here, so the fallback does not run.
+
+  Observe only (not the official rebuild):
+    `./oodac_bin check cli/main.oo` prints `OK` and exits 0.
+    `oodac_bin` strings include `oo_fs_rmdir`.
+    sha256 `783d8c6d2d8cc90f4b03479f3e49dbcea3eff46a2c7f65ad4eff273215471cda`
+  The board names the seed. Do not treat `oodac_bin` as the
+  official host. Do not set `PURE_SKIP_CHECK`.
+
+  Ships 1 and 2 hit the same seed error and the same input_fp.
+
+## 4. Current stub
+
+  File: `cli/cmd_more.oo` function `run_ooda_bench`.
+  Signature: `run_ooda_bench(fs: &FsCap, sys: &SysCap, args: List[String])`.
+  Both branches print `ooda bench: ok` and return.
+
+  `cli/main.oo` line 65:
+
+    if cmd == "bench" { run_ooda_bench(fs, sys, args); return; }
+
+  `args[0]` is the word `bench`. The stub does not read a file.
+  It tests `path_exists(fs, ".")`. It does not call the compiler.
+  It has no TimeCap and no `now_ms`.
+
+  Help line 47 groups bench with other floors:
+
+    ooda emit-health | errdigest | bench
+
+  Target help: `ooda bench <file.oo> [--run]`.
+
+## 5. Line count
+
+  `cli/main.oo`: 254 lines. Limit 256. Slack: 2 lines.
+  `cli/cmd_more.oo`: 96 lines.
+
+  DE2 may replace line 47 in place. One new println is 255.
+  TimeCap on `main` is an in-place change on line 50.
+  Pass `time` on line 65 in place.
+
+  If help cannot fit, DE2 splits `print_help` into `cli_help.oo`.
+  COORD will record that split. Do not grow `main.oo` past 256.
+
+## 6. TimeCap risk
+
+  TimeCap is a capability token. It grants wall-clock access.
+  `now_ms` reads that token and returns integer milliseconds.
+
+  Plan stop rule: if TimeCap on CLI main fails seed typecheck,
+  COORD stops ship 3. Do not fall back to `date`.
+
+  RT proof (`audit/plan3_rt.oot`): TimeCap on main: YES.
+
+  Seed check of scratch
+  `/tmp/grok-goal-e3250e659225/implementer/timecap_main_cli_shape.oo`
+  prints `OK` and exits 0. Shape:
+
+    pub fn main(fs: &FsCap, sys: &SysCap, time: &TimeCap, args: List[String])
+
+  Seed emit-c injects `time = oo_cap_grant_time();` and
+  lowers `now_ms(time)` to `oo_now_ms(time)`.
+
+  COORD does not stop ship 3 for TimeCap.
+
+  Residual risk: the official seed rebuild of the full CLI
+  still fails on `oo_fs_rmdir`. Wave 1 may edit locked files.
+  INT cannot prove a seed-built `bin/ooda` until the check
+  host accepts the 51-module graph. Parent decides the host.
+  Do not patch oodac. Do not patch chs_rt.
+
+  LLVM emit of TimeCap is residual. Product path is C emit
+  plus gcc.
+
+## 7. Shared helper constraint
+
+  `cli/host_run.oo` `run_oodac` and `run_oodac_check` call
+  `process_exit`. A wrap cannot print ms after those helpers.
+  DE1 must start the same oodac check (and optional run) so
+  a Result returns, then print, then exit with that status.
+  Import `find_compiler.oo` if needed. Do not edit
+  `host_run.oo`. Do not exec the user file with `sh -c`.
+
+## 8. Wave 1 owners
+
+  DE1: `cli/cmd_more.oo`. Replace the stub. Require a file.
+  t0 = now_ms(time); run check; t1 = now_ms(time).
+  Print `ooda bench: check FILE Nms`. Exit with check status.
+  `--run` only after check pass. Do not print `ooda bench: ok`.
+
+  DE2: `cli/main.oo`. Add `&TimeCap`. Pass it to
+  `run_ooda_bench`. Update the help line. Do not change
+  other command dispatch.
+
+  HARN: new `scripts/bench_smoke.oo`. Academy header required.
+  Drive rebuilt `bin/ooda` when a binary exists.
+
+## 9. What this file does not do
+
+  It does not implement bench.
+  It does not write product files in the worktree.
+  It does not write the dirty parent.
+  It does not merge.
+
+Status words: worktree clean is done. Rebuild is open.
+Bench is residual. Ship 3 is open.

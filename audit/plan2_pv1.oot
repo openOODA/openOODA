@@ -1,0 +1,164 @@
+# PLAN2_PV1 — Wave 3 attack: missing name, `..`, yank, sha drift
+
+File: openOODA/audit/plan2_pv1.oot
+Wave 3 ATTACK. Ship 2. PV1.
+Worktree: `/home/jeryd/.grok/worktrees/ooda-launch-exec`
+
+Logline: Four `--exec` refuses die before `run_oodac_run`.
+Setup: Read `cli/cmd_pm_launch.oo` and `cli/pm_launch.oo`. `bin/ooda` is absent. Did not edit dirty parent. Did not use parent `bin/ooda`.
+Beats:
+  1. Attack `--exec` with no package name.
+  2. Attack a name of `..`.
+  3. Attack yank-after-install.
+  4. Attack CAS byte drift after a pin.
+
+## 0. Verdict
+
+  | Attack | Result | `run_oodac_run` |
+  | :--- | :--- | :--- |
+  | `--exec` missing name | PASS | no |
+  | name with `..` | PASS | no |
+  | yanked | PASS | no |
+  | sha drift | PASS | no |
+
+  Fail-closed signs on every refuse (CFG):
+    1. `launch_die` -> `process_exit(2)`. Exit is not 0.
+    2. No `ooda launch: ok`.
+    3. No JSON `{"ok":true`.
+    4. No `LAUNCH_EXEC_OK`.
+    5. CAS body is hashed, never printed.
+    6. `run_oodac_run` is one call, after the gate, on a `.oo` path only.
+
+## 1. Method
+
+  `bin/ooda` is not in this worktree. Seed rebuild is blocked (COORD Wave 0).
+  Live CLI child watch is therefore not this note.
+  Proof is the launch CFG plus unit proofs that already run on `oodac_bin`.
+
+  Ran from the worktree:
+
+    ./oodac_bin check cli/cmd_pm_launch.oo     OK
+    ./oodac_bin check cli/pm_launch.oo         OK
+    ./oodac_bin run cli/pm_extract_proof.oo    PASSED
+      launch ok / launch sha / launch caps / launch yank
+    ./oodac_bin run cli/pm_today_proof.oo      PASSED
+      traversal refuse (`..`, `a/b`)
+
+  `run_oodac_run` appears once in `cli/cmd_pm_launch.oo` (line 117).
+  It is after name checks, lock lookup, `pm_launch_gate`, and the `.oo` suffix check.
+  `test -e` is gone. No `sys_exec` and no `sq(` in this file.
+
+  Wrote one smoke line. Did not write `cli/cmd_pm_launch.oo`.
+  Did not write `cli/pm_launch.oo`. Did not write `/home/jeryd/Projects/openOODA/ooda`.
+
+## 2. W3-P1 missing name — PASS
+
+  Attack: `ooda launch --exec` with no package name.
+
+  `pm_arg_name` skips verbs (`launch`), skips `--vendor`/`--from`/`--path`/`--registry`
+  plus the next token, and skips every token that starts with `-`.
+  `--exec` is a flag. The name is `""`.
+
+  `run_ooda_pm_launch` then:
+
+    if name == "" { launch_die("missing package name"); }
+
+  That is line 57. `run_oodac_run` is line 117. Not reached.
+  Empty argv name `""` also dies here.
+
+  `--exec --json` and `--exec --vendor ../registry` with no name
+  still yield `""` and die the same way.
+
+## 3. W3-P2 name with `..` — PASS
+
+  Attack: `ooda launch --exec ..` (also `../x`, `a/b`, a backslash name).
+
+  After the empty check:
+
+    if !pm_name_ok(name) { launch_die("refuse name"); }
+
+  `cli/pm_name.oo` returns false for empty, `.`, `..`, any `/`, any `\`,
+  any `..` substring, and a drive-letter form.
+  Unit proof: `pm_today_proof` prints `traversal refuse`.
+
+  The user name is never joined into a filesystem path.
+  It is compared to lock `pm_tok_name`, passed to `pm_yanked`, and
+  escaped into JSON. Path join uses `root + "/.ooda_modules/cas/" + sha`.
+  Refuse is before lock scan, before CAS, before the gate, before exec.
+
+  Smoke lock added:
+
+    want_bad(p, "./bin/ooda launch --exec ..", "refuse name");
+
+  `scripts/pm_launch_exec_smoke.oo` is 62 lines (cap 256).
+  `want_bad` already refuses rc 0, `LAUNCH_EXEC_OK`, and `ooda launch: ok`.
+
+## 4. W3-P4 yanked — PASS
+
+  Attack: after a good install, yank `name@version` or the bare name.
+  `--exec` with `--vendor` pointed at that yank dir.
+
+  Launch slurps `ydir + "/yank"` (`--vendor` or `../registry`).
+  `pm_yanked` is exact line match on `name@version` or bare `name`.
+  Gate order in `cli/pm_launch.oo`:
+
+    1. yanked           -> "err yank"
+    2. sha mismatch     -> "err sha256 mismatch"
+    3. extra caps       -> "err caps"
+    4. else             -> "ok"
+
+  Yank is first. Proof string: `pm_launch_gate(..., true) == "err yank"`.
+
+  Any gate string that is not `ok` and does not start with `ok `
+  calls `launch_die` with the tail (`yank`). Both the `--exec` branch
+  and the path-only branch die. Exit 2. Line 117 is not reached.
+
+  Parent `qa/pm_hostile_spine.oo` already drives this as
+  `launch --exec ingar --vendor .ooda-cache/ooda-tmp/yankv`.
+  That file was not edited.
+
+## 5. W3-P5 sha drift — PASS
+
+  Attack: after a good add/ingest, change CAS payload bytes. `--exec`.
+
+  Launch takes the first non-`ingest_*` CAS leaf, slurps those bytes,
+  and sets `live = pm_cas_id(body)` (`crypto_sha256_internal`).
+  Ingest uses the same `pm_cas_id` on the payload.
+  The hashed path and the exec path are the same `cas + "/" + leaf`.
+
+  `pm_recipe_sha_ok(want, live)` is `want == live` when `want` is not empty.
+  A good lock line has a sha field. Tampered bytes change `live`.
+  Gate returns `err sha256 mismatch`. `launch_die("sha256 mismatch")`.
+  No child. Body is not printed.
+
+  Proof string: `pm_launch_gate("aa", "bb", ...) == "err sha256 mismatch"`.
+  Hostile spine tampers `ingar` then `launch --exec ingar` (read only).
+
+## 6. Residual (not these four)
+
+  W3-P6 empty lock sha. `pm_recipe_sha_ok("", live)` is true.
+  `pm_is_pkg_line` only requires `@`. A hand-edited `name@ver` line
+  has an empty sha and would pass the sha arm.
+  After a good add the lock sha is present, so this is not W3-P5.
+  `--exec` still dies later if the leaf is not a `.oo` path.
+  A `.oo` sitting in `.ooda_modules/cas/` under a blank pin is PV later.
+
+  The unused `str_slice(gate, 0, 3) == "ok "` arm would accept a future
+  `ok …` string. Live `pm_launch_gate` returns exact `ok`. Not an exploit.
+
+  CRLF yank lines would miss `pm_yanked`. Hostile and SEC cases write LF.
+
+  Hash-then-exec TOCTOU is not this wave.
+
+  W3-P3 not installed (`--exec nosuchpkg`) also dies at line 83
+  (`not installed`) before the gate. Already in the smoke. Not scored
+  as one of the four named attacks.
+
+## 7. What was not done
+
+  No live `./bin/ooda launch --exec` (binary absent).
+  No edit of dirty parent `/home/jeryd/Projects/openOODA/ooda`.
+  No edit of `host_run.oo`, `main.oo`, `oodac/`, `runtime/`, `std/`, `ooda/pm/`.
+  No new `.py`. No public `hello.oo` change.
+
+C emit plus gcc remains product.

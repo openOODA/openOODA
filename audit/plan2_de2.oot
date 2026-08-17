@@ -1,0 +1,126 @@
+# PLAN2_DE2 — Gate string API is enough
+
+File: openOODA/audit/plan2_de2.oot
+Wave 1. Ship 2. Worktree `/home/jeryd/.grok/worktrees/ooda-launch-exec`.
+
+Logline: DE1 can call the live `pm_launch_gate` strings. The gate API does not change.
+
+Setup: Own `cli/pm_launch.oo` only if the gate API must change. Prefer no edit.
+Do not edit the dirty parent, `host_run.oo`, `main.oo`, `oodac/`, `runtime/`, or `std/`.
+Do not grow `ooda/pm/`.
+
+Beats:
+  1. State EDIT or NO-EDIT.
+  2. Show the live signature and the four return strings.
+  3. Show that `cmd_pm_launch.oo` already uses those strings.
+
+## 0. Verdict
+
+  NO-EDIT.
+
+  Did not write `cli/pm_launch.oo`.
+  Did not write `pm/pm_launch.oo`.
+  Did not write any product file in the worktree.
+
+  Wave 1 `--exec` is a call after the gate, not a new gate.
+  DE1 already has `ok` / `err yank` / `err sha256 mismatch` / `err caps`.
+  That is enough to keep the die path and then call `run_oodac_run`.
+
+## 1. Files read
+
+  Read only. No write in the worktree.
+
+  `cli/pm_launch.oo` (25 lines)
+  `cli/cmd_pm_launch.oo` (121 lines)
+  `cli/pm_extract_proof.oo` (four string proofs)
+  `cli/pm_recipe.oo` (`pm_recipe_sha_ok`)
+  `cli/pm_caps.oo` (`pm_caps_ok`)
+  `openOODA/audit/plan_cli_launch.oot`
+  `openOODA/audit/plan_cli_three.oot`
+  `openOODA/audit/plan2_coord.oot`
+  `openOODA/audit/plan2_docs.oot`
+  `openOODA/audit/plan2_rt.oot`
+  `openOODA/audit/plan2_sec.oot`
+
+## 2. Live gate API
+
+  Signature:
+
+    pub fn pm_launch_gate(
+      want_sha: String,
+      live_sha: String,
+      grant: Int,
+      need: Int,
+      yanked: Bool
+    ) -> String
+
+  Order and strings (fixed):
+
+    1. yanked           -> "err yank"
+    2. sha mismatch     -> "err sha256 mismatch"
+    3. extra caps       -> "err caps"
+    4. else             -> "ok"
+
+  Proof in `cli/pm_extract_proof.oo`:
+
+    pm_launch_gate("aa", "aa", 1, 1, false) == "ok"
+    pm_launch_gate("aa", "bb", 1, 1, false) == "err sha256 mismatch"
+    pm_launch_gate("aa", "aa", 1, 2, false) == "err caps"
+    pm_launch_gate("aa", "aa", 1, 1, true)  == "err yank"
+
+  No fifth string. No extra argument. No Result type.
+
+## 3. Why DE1 does not need a change
+
+  `run_ooda_pm_launch` already calls:
+
+    pm_launch_gate(sha, live, grant, need, yanked)
+
+  After the call it treats exact `"ok"` as pass.
+  Any other string dies with `str_slice(gate, 4, …)` (`yank`,
+  `sha256 mismatch`, `caps`).
+  Gate fail runs before the `--exec` block. Exit 2. No payload.
+
+  Wave 1 DE1 work is:
+
+    delete `test -e`
+    if gate is not ok: same die path
+    if `--exec` and gate is `ok`: `run_oodac_run` on the CAS leaf path
+
+  That call takes a host path list. It does not need a new gate
+  return. It does not need `"ok "` with a suffix.
+  `cmd_pm_launch.oo` already accepts both `"ok"` and an unused
+  `"ok "` prefix. Live gate returns exact `"ok"`. Leave it.
+
+  COORD: no change to the gate string API is required.
+  RT: the four strings already work.
+  DOCS: keep the gate strings if they already work.
+  SEC: gate strings are shipped. Wave 1 must not rewrite the blob.
+
+## 4. Not a Wave 1 API change
+
+  Empty want sha: `pm_recipe_sha_ok` treats `want == ""` as match.
+  SEC names this R-SHA0 / W3-P6. That is Wave 3.
+  If a later wave refuses a blank pin, it can still return
+  `err sha256 mismatch`. That is not a new string and not this wave.
+
+  ELF / empty / directory leaves are PV2. Refuse them in the
+  launch command before `run_oodac_run`. Do not add leaf-kind
+  arguments to `pm_launch_gate`.
+
+  Do not invert `pm_caps_ok(grant, need)`.
+  Do not add seccomp.
+  Do not print CAS bytes.
+
+## 5. Out of scope
+
+  No edit to `cli/pm_launch.oo`.
+  No edit to `cli/cmd_pm_launch.oo` (DE1).
+  No edit to `cli/host_run.oo`.
+  No edit to `cli/main.oo`.
+  No edit to `oodac/`, `runtime/`, `std/`.
+  No growth of `ooda/pm/`.
+  No write in `/home/jeryd/Projects/openOODA/ooda`.
+
+C emit plus gcc remains the product.
+This file does not implement `--exec`.

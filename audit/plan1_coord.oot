@@ -1,0 +1,162 @@
+# PLAN1 COORD — Wave 0 observe and file lock
+
+File: openOODA/audit/plan1_coord.oot
+Process only. Not product. Disk is the source.
+Ship 1. Product path is cli/lsp_*.oo. vscode starts bin/ooda lsp.
+Owner: COORD. Wave 0 only. Do not implement completion.
+
+Logline: The ship 1 worktree is clean at 64ef8bd. The seed CLI rebuild failed. Wave 1 may write the file lock only.
+
+Setup: Worktree /home/jeryd/.grok/worktrees/ooda-lsp-complete. Branch wip/lsp-complete. Dirty parent /home/jeryd/Projects/openOODA/ooda is read-only.
+
+Beats:
+  1. Confirm the worktree, the branch, and the commit.
+  2. Record compiler hashes and mtimes.
+  3. Run the seed CLI rebuild and record the exit.
+  4. Name the Wave 1 write set and the refuse set.
+
+## 1. Worktree
+
+  Path:    /home/jeryd/.grok/worktrees/ooda-lsp-complete
+  Branch:  wip/lsp-complete
+  HEAD:    64ef8bd53eaa636931d85eadcf70f043804e9470
+  Subject: feat(std): typecheck 402 modules and pin v0.201.0-beta
+  Status:  clean (git status porcelain empty; no untracked product files)
+  Parent:  /home/jeryd/Projects/openOODA/ooda is dirty. Do not write it.
+
+## 2. Compiler hashes
+
+  Worktree oodac/oodac: ABSENT before the rebuild. ABSENT after the rebuild.
+  Scratch before files were empty because the binary was absent.
+  Record: ABSENT  /home/jeryd/.grok/worktrees/ooda-lsp-complete/oodac/oodac
+
+  Parent oodac from $SCRATCH/parent_oodac.sha256 (match confirmed):
+    sha256  36995dc917b57cc3d2f6a1b5e6668ecf6c02f60e5d4196e8e77ecea1ccc44246
+    path    /home/jeryd/Projects/openOODA/ooda/oodac/oodac
+    mtime   1787002514  (2026-08-17 17:35:14.358875472 -0400)
+    size    1433360
+    strings compiler yes (oodac: usage:). CLI string no.
+
+  After the rebuild the parent hash and mtime were the same.
+  oodac hash unchanged: yes.
+
+  Seed used for the official rebuild:
+    path    /home/jeryd/.grok/worktrees/ooda-lsp-complete/bootstrap/seed/oodac
+    sha256  077d0f883edb083bc2598c0f1f87469d7a091c53e3db1ffd826f2cf5b046fef2
+    strings compiler yes. CLI string no.
+
+  Tracked tree compiler (not used for the official rebuild):
+    path    /home/jeryd/.grok/worktrees/ooda-lsp-complete/oodac_bin
+    sha256  783d8c6d2d8cc90f4b03479f3e49dbcea3eff46a2c7f65ad4eff273215471cda
+    strings compiler yes. CLI string no.
+
+## 3. Seed CLI rebuild
+
+  Command (from the worktree root):
+    OODAC_BIN=./bootstrap/seed/oodac \
+      bash bootstrap/oodac_pure_build cli/main.oo bin/ooda
+
+  Log: /tmp/grok-goal-e3250e659225/implementer/wave0_ship1_cli_rebuild.log
+  input_fp: 88cb9fd6fc5fd44725831d80e5c7d4ed7c98826e13defdc6380faa6c10540585
+  nmods: 51. Check timeout: 162s.
+
+  Exit: 1
+  bin/ooda: not created
+    intended path /home/jeryd/.grok/worktrees/ooda-lsp-complete/bin/ooda
+  Worktree oodac/oodac: still ABSENT. Not created. Not a CLI.
+
+  Seed check error (verbatim):
+    ERR_CHECK /home/jeryd/.grok/worktrees/ooda-lsp-complete/cli/main.oo
+    ERR	type	Type error at 154:58: undefined variable 'oo_fs_rmdir'
+
+  Source of the name: cli/cmd_pm_tree.oo calls oo_fs_rmdir.
+  The seed typechecker does not know that builtin.
+  The pin source oodac/tc_names_known.oo does know it.
+
+  Read-only diagnostics (no emit, no bin/ooda write):
+    ./oodac_bin check cli/main.oo  -> OK, exit 0
+    parent oodac check of the worktree cli/main.oo -> OK, exit 0
+
+  COORD did not switch the host. The board requires seed only.
+  COORD did not set PURE_SKIP_CHECK.
+  INT and the owner must rule if a later wave may use oodac_bin.
+  Do not copy any CLI onto oodac/oodac.
+
+## 4. File lock (Wave 1 may write only these)
+
+  DE1  cli/lsp_reply.oo            (exists, 220 lines)
+  DE2  cli/lsp_complete.oo         (new)
+  HARN fixtures/lsp_complete_probe.oo   (new)
+  HARN scripts/lsp_complete_smoke.oo    (new)
+  DE1  cli/lsp_drive.oo            (exists, 214 lines)
+       only if dispatch cannot stay in lsp_reply.oo
+
+  Default: do not edit cli/lsp_drive.oo.
+  lsp_drive.oo already calls lsp_build_reply for each method.
+  If DE1 adds textDocument/completion inside lsp_build_reply,
+  drive does not need a change.
+
+## 5. Wave 1 must not write
+
+  Hover and definition behavior in cli/lsp_reply.oo.
+  Add a dispatch branch. Do not rewrite those methods.
+  cli/main.oo (254 lines). Only ship 3 may edit main.oo.
+  cli/lsp_ident.oo. Shared read-only.
+  cli/host_run.oo. cli/find_compiler.oo.
+  oodac/  runtime/  std/  site
+  lsp/ and cli/lsp/  (plan name: ooda/lsp/). Read the catalog. Do not edit.
+  The dirty parent /home/jeryd/Projects/openOODA/ooda
+  Any .md .py extra .sh. Any tmp.c left in the worktree.
+
+## 6. Observe facts for Wave 1
+
+  initialize today (cli/lsp_reply.oo):
+    textDocumentSync, hoverProvider, documentSymbolProvider,
+    definitionProvider. No completionProvider. No trigger &.
+
+  No textDocument/completion branch exists in cli/.
+
+  Catalog to lift (do not import this path):
+    lsp/lsp_completion.oo
+    identical bytes: cli/lsp/lsp_completion.oo
+    Contains label &FsCap. Empty prefix returns the catalog.
+    Returns JSON with isIncomplete false.
+
+  Prefix rule: use line/character + lsp_ident_at.
+  Do not invent a JSON key "prefix".
+  lsp_ident_at does not treat "&" as an ident char.
+  DE2 must add a leading "&" in cli/lsp_complete.oo
+  when the previous source char is "&".
+  Do not edit cli/lsp_ident.oo.
+
+  Help line today: initialize/hover/symbols/definition.
+  Do not edit that line in Wave 1 (it lives in main.oo).
+
+  lsp_reply.oo has 36 lines under the 256-line cap.
+  If a file would pass 256 lines, split dispatch only.
+
+  Cursor lock (do not edit): scripts/lsp_cursor_smoke.oo
+  That smoke wants ./oodac/oodac and ./bin/ooda.
+  Both are absent in this worktree after Wave 0.
+  INT must not plant a CLI at oodac/oodac.
+
+## 7. Role map (later waves)
+
+  Wave 1 write: DE1, DE2, HARN (disjoint files above)
+  Wave 0 read:  RT, DOCS (already scheduled)
+  Wave 2 lock:  HYG
+  Wave 3 attack: PV1, PV2, SEC, MEM
+  Wave 4 prove: INT (seed rebuild + both smokes, double-run)
+  Wave 5: COORD pass/fail per claim. Skeptics after INT green.
+
+  First irrecoverable fail stops the ship.
+  Other ships may continue.
+
+## 8. Wave 0 result
+
+  Worktree clean at 64ef8bd on wip/lsp-complete: yes
+  Seed rebuild exit: 1
+  bin/ooda: absent
+  oodac hash unchanged: yes
+  File lock named: yes
+  Completion not implemented: yes

@@ -1,0 +1,119 @@
+# PLAN2 HYG — Ship 2 Wave 2 lock
+
+File: openOODA/audit/plan2_hyg.oot
+Process only. Not product. Disk is the source.
+Ship 2. Product path is cli/cmd_pm_launch.oo. --exec runs the pin.
+Owner: HYG. Wave 2 lock. Write set only. Did not edit dirty parent.
+
+Logline: The ship 2 write set stays under 256 lines, carries Academy headers, and adds no leftover .py, .md, .sh, .tmp.c, .bin, or root .ooda_modules.
+Setup: Worktree /home/jeryd/.grok/worktrees/ooda-launch-exec. Branch wip/launch-exec. Dirty parent /home/jeryd/Projects/openOODA/ooda is read-only.
+Beats:
+  1. Count every write-set .oo file.
+  2. Require Title, Logline, Setup, and Beats in the first 25 lines.
+  3. Refuse new .py .md .sh and leftover .tmp.c / .bin / root .ooda_modules.
+  4. Confirm cli/pm_launch.oo was not edited and test -e is gone.
+
+## 1. Write set
+
+  DE1  cli/cmd_pm_launch.oo              modified. 125 lines (was 121).
+  HARN fixtures/pm_launch_exec/runme.oo  new. 14 lines.
+  HARN fixtures/pm_launch_exec/manifest  new. 8 lines. Not .oo.
+  HARN scripts/pm_launch_exec_smoke.oo   new. 61 lines.
+
+  DE2  cli/pm_launch.oo                  not edited. 26 lines.
+       git status porcelain empty. git diff empty.
+       blob 3f548515cca4da5a4369d3f6f73db38f3759ce00 matches HEAD.
+       pm/pm_launch.oo is the same blob. Also unedited.
+
+  HYG did not edit the write set. No header or 256 repair was required.
+  HYG did not edit dirty parent.
+
+## 2. Line counts (wc -l, comments count)
+
+  | file | lines | 256 | header | verdict |
+  | --- | --- | --- | --- | --- |
+  | cli/cmd_pm_launch.oo | 125 | pass | Title Logline Setup Beats | PASS |
+  | scripts/pm_launch_exec_smoke.oo | 61 | pass | Title Logline Setup Beats | PASS |
+  | fixtures/pm_launch_exec/runme.oo | 14 | pass | Title Logline Setup Beats | PASS |
+  | fixtures/pm_launch_exec/manifest | 8 | n/a | not .oo | PASS |
+  | cli/pm_launch.oo | 26 | pass | not in this write | SKIP (unedited) |
+
+  Cap is 256. Closest file is cli/cmd_pm_launch.oo at 131 lines under the cap.
+  Each write-set file ends with a newline. last line == wc -l.
+
+## 3. Academy headers
+
+  dinner_lint product check: `// # ` and `// Logline:` in the first 25 lines.
+  FORMAT 1.1 also wants `// Setup:` and `// Beats:` (3 to 6 beats).
+
+  cli/cmd_pm_launch.oo
+    // # Launch a pinned ingest payload
+    Logline present tense. Period. 3 beats.
+    Setup says --exec runs the pinned .oo after the gate.
+    Beat 3 says path-only prints the path. No may. No transmutation.
+
+  scripts/pm_launch_exec_smoke.oo
+    // # Launch --exec smoke
+    Logline present tense. Period. 3 beats.
+
+  fixtures/pm_launch_exec/runme.oo
+    // # Launch-exec fixture payload
+    Logline present tense. Period. 3 beats.
+    dinner_lint skips *fixtures* for headers. Ship 2 still requires the header.
+
+  No beat names a line number. No missing field.
+
+## 4. File law
+
+  git status on the write set:
+    M  cli/cmd_pm_launch.oo
+    ?? fixtures/pm_launch_exec/
+    ?? scripts/pm_launch_exec_smoke.oo
+
+  No other porcelain in the worktree.
+  No new .py .md .sh in the write set.
+  Pre-existing tracked fixtures/pm_launch_tamper.py is not this ship.
+
+  find fixtures/pm_launch_exec: runme.oo and manifest only.
+  find cli scripts fixtures for *.tmp.c and *.bin: none.
+
+## 5. Vendor lock leftover
+
+  Worktree root has no .ooda_modules.
+  No ooda.lock. No vendor.lock.
+  test_pm_ws_add/.ooda_modules and test_pm_ws_inst/.ooda_modules
+  are older fixture dirs. They are not this smoke.
+  Smoke cleanup line deletes cas/*/*.bin and cas/*/*.tmp.c.
+  That smoke was not left on disk. No cruft to delete.
+
+## 6. test -e is gone
+
+  git diff on cli/cmd_pm_launch.oo deletes:
+
+    sys_exec(sys, "sh", "-c", "test -e " + sq(path) + "; exit 0")
+
+  The live file has no `test -e`.
+  The live file has no `sys_exec` and no `sq(`.
+  After the gate, --exec calls `run_oodac_run` on the .oo path.
+  Write-set grep for `test -e` is empty.
+
+## 7. dinner_lint
+
+  Path exists: /home/jeryd/Projects/openOODA/openOODA/scripts/dinner_lint.oo
+  The script does not edit boards. It walks openOODA ooda docs from a monorepo root.
+  Worktree has no bin/ooda (Wave 0 seed rebuild failed). Cannot exec the .oo linter.
+  Full-repo dinner_lint would leave this worktree and score the dirty parent. Out of scope.
+
+  Same rules applied to the write set only. scoped_fails=0.
+
+## 8. Result
+
+  PASS
+
+  cli/cmd_pm_launch.oo                 125  PASS
+  scripts/pm_launch_exec_smoke.oo       61  PASS
+  fixtures/pm_launch_exec/runme.oo      14  PASS
+  fixtures/pm_launch_exec/manifest       8  PASS
+  cli/pm_launch.oo                      26  not edited
+  test -e                               gone
+  root .ooda_modules                    absent

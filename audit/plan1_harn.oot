@@ -1,0 +1,71 @@
+# PLAN1 HARN — Ship 1 Wave 1 completion lock
+
+File: openOODA/audit/plan1_harn.oot
+Process only. Not product. Disk is the source.
+Ship 1. Product path is cli/lsp_*.oo. vscode starts bin/ooda lsp.
+Owner: HARN. Wave 1 write. Do not edit cli/. Do not edit dirty parent.
+
+Logline: The completion lock drives rebuilt ./bin/ooda lsp with a computed &Fs cursor and requires completionProvider, &FsCap, and isIncomplete false.
+Setup: Worktree /home/jeryd/.grok/worktrees/ooda-lsp-complete. Probe and smoke are new. bin/ooda is absent until INT rebuilds.
+Beats:
+  1. Name the owned files.
+  2. Record the probe text and the cursor rule.
+  3. Record how the smoke builds the request and asserts stdout.
+  4. Name what this lock refuses.
+
+## 1. Owned files
+
+  fixtures/lsp_complete_probe.oo   new. Academy header. 13 lines.
+  scripts/lsp_complete_smoke.oo    new. Academy header. Drives ./bin/ooda lsp.
+
+  No fixtures/lsp_complete_req.json. Position is computed at run time.
+  Did not edit cli/. Did not edit lsp/. Did not edit dirty parent.
+
+## 2. Probe
+
+  Path: fixtures/lsp_complete_probe.oo
+  Body ends with: pub fn demo(c: &Fs) { }
+  The literal type prefix is : &Fs. Header comments do not contain that text.
+  File is read-only source for lsp_load_src. Smoke does not oodac-check it.
+
+## 3. Cursor
+
+  Smoke reads the probe. Finds the first ": &Fs". Adds 3 to land on F of Fs.
+  Line and character use the same walk as cli/lsp_ident.oo lsp_line_at / lsp_col_at:
+    line = count of \n before that offset (0-based)
+    character = columns since the last \n (0-based)
+  On the Wave 1 probe that is line 11 character 16 (the F). Recompute if the header moves.
+  That is the LSP position of Fs in &Fs. Not a guessed column.
+  Product prefix path: line/character + lsp_ident_at. Ident at F is Fs.
+  DE2 prepends & when the previous source char is &. Prefix becomes &Fs.
+  Do not send a fake "prefix" JSON key. VS Code does not send one.
+
+## 4. Request and drive
+
+  Fail closed if ./bin/ooda is missing. INT rebuilds later. Smoke stays correct.
+  Fail closed if the probe is missing.
+  Write two raw JSON-RPC objects to .ooda-cache/ooda-tmp/lsp_complete_req.json:
+    id 1 initialize  rootUri file://.
+    id 2 textDocument/completion
+         uri  file://fixtures/lsp_complete_probe.oo
+         position.line / position.character from section 3
+  Command: timeout 10 ./bin/ooda lsp <req>   (hang budget 10s)
+  Capture stdout. Do not grep cli/*.oo source. A source grep is not this lock.
+
+## 5. Assert on product stdout
+
+  initialize result contains completionProvider
+  completion result contains &FsCap
+  completion result contains isIncomplete
+  fail if "isIncomplete":true
+  Success line: lsp_complete_smoke: PASSED
+
+  Item list cap named for MEM: 64 (catalog today is 30).
+
+## 6. Refuse set
+
+  Do not treat ooda/lsp/ or cli/lsp/ as the server.
+  Do not import those folders.
+  Do not require ./oodac/oodac (absent after Wave 0).
+  Do not plant a CLI at oodac/oodac.
+  Do not rewrite hover or definition. Cursor lock stays scripts/lsp_cursor_smoke.oo.

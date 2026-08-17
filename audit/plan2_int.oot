@@ -1,0 +1,121 @@
+# PLAN2_INT — Combined CLI launch --exec
+
+File: openOODA/audit/plan2_int.oot
+Wave 4 prove. Ship 2. Own this note. Do not edit product.
+
+Logline: Combined bin/ooda --exec prints LAUNCH_EXEC_OK. Path-only does not. nosuchpkg exits 2.
+Setup: Combined tree `/home/jeryd/.grok/worktrees/ooda-cli-three`. Used the existing `bin/ooda`. Did not rebuild. Did not edit product. Dirty parent is read-only.
+Beats:
+  1. Confirm combined `bin/ooda` is the product CLI.
+  2. Drive path-only launch. Require no `LAUNCH_EXEC_OK`.
+  3. Drive `--exec`. Require `LAUNCH_EXEC_OK`.
+  4. Drive `--exec nosuchpkg`. Require exit 2.
+
+## 0. Verdict
+
+PASS
+
+`--exec` prints `LAUNCH_EXEC_OK`.
+Path-only prints `ooda launch: ok` and the pin path. It does not print `LAUNCH_EXEC_OK`.
+`--exec nosuchpkg` exits 2.
+Smoke PASSED twice.
+
+## 1. Combined CLI
+
+  Path: `/home/jeryd/.grok/worktrees/ooda-cli-three/bin/ooda`
+  sha256: `1c51901daf7451d7163789026e4794947b1d2883227778d0e032fe730d8ca63f`
+  Version: `ooda 0.201.0-beta (pure .oo CLI)`
+  Help names `lsp`, `launch`, and `bench`.
+  Worktree `oodac/oodac` is absent.
+  Host `./oodac_bin` sha256 stayed
+  `783d8c6d2d8cc90f4b03479f3e49dbcea3eff46a2c7f65ad4eff273215471cda`.
+  Combined rebuild log: `OK_PURE_MULTI`. nmods=52. unique_fns=281.
+  input_fp=`15f41f10bfdf022e4b806e38d24c0803d9a534b687576354ec0dd92a37c0f458`.
+  This role did not rebuild. It used that combined binary.
+  `cli/cmd_pm_launch.oo` has no `test -e`. After the gate, `--exec`
+  calls `run_oodac_run` on the `.oo` path.
+
+## 2. Path-only
+
+  cwd is the combined tree. `OODA_FS_WRITEDIR` is that tree.
+
+    ./bin/ooda ingest --from fixtures/pm_launch_exec
+    ./bin/ooda launch runme
+
+  Ingest prints `ooda ingest: installed runme cas=` plus
+  `95a48b4d1875327343bbf8e29d6457c5a0eadc2c29f969917513226b76483ecd`.
+  Exit 0.
+  Path-only prints:
+
+    ooda launch: ok /home/jeryd/.grok/worktrees/ooda-cli-three/.ooda_modules/cas/95a48b4d1875327343bbf8e29d6457c5a0eadc2c29f969917513226b76483ecd/runme.oo
+
+  Exit 0.
+  No `LAUNCH_EXEC_OK`.
+  Second path-only print is the same path. Still no `LAUNCH_EXEC_OK`.
+  Log: `/tmp/grok-goal-e3250e659225/implementer/launch_path.log`
+
+## 3. --exec
+
+    timeout 10 ./bin/ooda launch --exec runme
+
+  Prints `LAUNCH_EXEC_OK`.
+  The compiler then prints `OK`.
+  Exit 0.
+  Second run prints `LAUNCH_EXEC_OK` again. Exit 0.
+  Logs: `launch_exec.log`, `launch_exec_run2.log`.
+
+  A leftover `test -e` child cannot print `LAUNCH_EXEC_OK`.
+  The payload `fixtures/pm_launch_exec/runme.oo` is the only source
+  of that line. Path-only did not print it.
+
+## 4. nosuchpkg
+
+    ./bin/ooda launch --exec nosuchpkg
+
+  Prints:
+
+    ERR	pm	not installed
+    ooda launch: not installed
+
+  Exit 2.
+  No `LAUNCH_EXEC_OK`.
+  No `ooda launch: ok`.
+  Log: `launch_refuse.log`. Same result in `launch_smoke.log`
+  (`NOSUCH_EXIT=2`).
+
+## 5. Double smoke
+
+  Log: `/tmp/grok-goal-e3250e659225/implementer/launch_smoke.log`
+  When: 2026-08-17T19:15:24-04:00.
+
+    timeout 90 ./bin/ooda run ./scripts/pm_launch_exec_smoke.oo
+
+  Pass 1: `pm_launch_exec_smoke: PASSED`. Exit 0.
+  Pass 2: `pm_launch_exec_smoke: PASSED`. Exit 0.
+
+  The smoke ingests `runme`, proves path-only, proves `--exec`,
+  and refuses `--exec nosuchpkg` and `--exec ..`.
+
+## 6. Isolation
+
+  This role wrote only this note.
+  It did not edit `cli/`, `scripts/`, `fixtures/`, `oodac/`,
+  `runtime/`, or `std/`.
+  It did not write `/home/jeryd/Projects/openOODA/ooda`.
+  It did not copy `bin/ooda` onto `oodac/oodac`.
+  It did not change public `registry/hello`.
+  Smoke left gitignored `.ooda_modules/` (runme lock and CAS leaf).
+  `--exec` left `runme.oo.bin` and `.tmp.c` next to the CAS leaf.
+  Those files are not product source.
+
+## 7. What this role does not do
+
+  It does not rebuild.
+  It does not merge.
+  It does not run the hostile spine. That spine already refuses
+  yank, sha drift, and extra caps.
+
+Status: Wave 4 INT is PASS. Combined `bin/ooda` `--exec` prints
+`LAUNCH_EXEC_OK`. Path-only does not. `nosuchpkg` exits 2.
+
+C emit plus gcc remains the product path.

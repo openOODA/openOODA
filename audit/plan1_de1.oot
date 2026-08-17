@@ -1,0 +1,37 @@
+# PLAN1 DE1 — Wave 1 write cli/lsp_reply.oo
+
+File: openOODA/audit/plan1_de1.oot
+Ship 1. Owner: DE1. Wave 1 WRITE. Product path is cli/lsp_reply.oo.
+Worktree: /home/jeryd/.grok/worktrees/ooda-lsp-complete
+Did not edit dirty parent /home/jeryd/Projects/openOODA/ooda.
+
+Logline: initialize now advertises completionProvider with trigger `&`. textDocument/completion dispatches to lsp_complete_result.
+
+Setup: Hover, definition, documentSymbol, shutdown, and unknown methods are unchanged. resolveProvider is not set.
+
+Beats:
+  1. Keep textDocumentSync:1, hoverProvider, documentSymbolProvider, definitionProvider.
+  2. Add completionProvider.triggerCharacters including `&`. Do not set resolveProvider.
+  3. Import lsp_complete.oo. Wrap DE2's result with existing lsp_ok(id, ...).
+  4. If DE2's file was missing, leave a stub that returns an empty CompletionList.
+
+## 1. initialize advertises
+
+  Before: {"capabilities":{"textDocumentSync":1,"hoverProvider":true,"documentSymbolProvider":true,"definitionProvider":true}}
+  After:  {"capabilities":{"textDocumentSync":1,"hoverProvider":true,"documentSymbolProvider":true,"definitionProvider":true,"completionProvider":{"triggerCharacters":["&"]}}}
+
+## 2. Dispatch
+
+  method == "textDocument/completion" -> lsp_ok(id, lsp_complete_result(fs, body))
+  Agreed API: pub fn lsp_complete_result(fs: &FsCap, body: String) -> String
+  Result object only (CompletionList). Not a wrapped JSON-RPC envelope.
+
+## 3. Line count
+
+  cli/lsp_reply.oo was 220 lines. After this write it is 224. Cap is 256.
+  Hover and definition bodies were not rewritten. Cursor lock path is intact.
+
+## 4. Stub
+
+  cli/lsp_complete.oo was absent. Left a stub empty list so the import typechecks.
+  DE2 owns that file and replaces the stub.

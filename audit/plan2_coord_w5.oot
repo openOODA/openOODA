@@ -1,0 +1,145 @@
+# PLAN2_COORD_W5 — Wave 5 pass/fail for launch --exec
+
+File: openOODA/audit/plan2_coord_w5.oot
+Process only. Not product. Disk is the source.
+Owner: COORD. Wave 5. Ship 2. Do not edit product. Do not merge.
+Wave 0 observe stays in `openOODA/audit/plan2_coord.oot`.
+
+Logline: Combined bin/ooda ingests runme, prints the CAS path without --exec, prints LAUNCH_EXEC_OK with --exec, and refuses a missing package.
+Setup: Proof binary is `/home/jeryd/.grok/worktrees/ooda-cli-three/bin/ooda`. Dirty parent `/home/jeryd/Projects/openOODA/ooda` is read-only.
+Beats:
+  1. Name the binary, the host, and the live `--exec` call.
+  2. Score ingest, path-only launch, `--exec` double-run, and nosuchpkg.
+  3. Score the ship-2 done-when list. Write PASS.
+
+## 0. Verdict
+
+PASS
+
+Ship 2 is `ooda launch --exec NAME`.
+The combined CLI runs the pinned `.oo` after the gate.
+`--exec` is not an exists check.
+
+## 1. Proof binary
+
+  Path: `/home/jeryd/.grok/worktrees/ooda-cli-three/bin/ooda`
+  Branch: `wip/cli-three`
+  sha256: `1c51901daf7451d7163789026e4794947b1d2883227778d0e032fe730d8ca63f`
+  Identity: `ooda 0.201.0-beta (pure .oo CLI)`
+
+  Combined rebuild from that worktree root:
+
+    OODAC_BIN=./oodac_bin bash bootstrap/oodac_pure_build cli/main.oo bin/ooda
+
+  Log: `/tmp/grok-goal-e3250e659225/implementer/cli_rebuild.log`
+  Host: `./oodac_bin`. nmods=52. `OK_PURE_MULTI`. Exit 0.
+  Seed rebuild stays blocked on `oo_fs_rmdir`. INT used Wave 0 option 1.
+  Worktree `oodac/oodac` was not the host.
+  Parent `oodac/oodac` was not the host.
+
+  Live `--exec` in `cli/cmd_pm_launch.oo` (125 lines):
+  no `test -e`. After `pm_launch_gate` is `ok`, require a `.oo` path,
+  then `run_oodac_run(fs, sys, [path])` and return.
+  Path-only prints `ooda launch: ok ` plus the CAS leaf.
+
+## 2. Ingest fixtures/pm_launch_exec
+
+  Cwd: `/home/jeryd/.grok/worktrees/ooda-cli-three`
+  `OODA_FS_WRITEDIR` is that cwd.
+
+    ./bin/ooda ingest --from fixtures/pm_launch_exec
+
+  Log: `/tmp/grok-goal-e3250e659225/implementer/launch_path.log`
+  Exit: 0
+  Text: `ooda ingest: installed runme cas=95a48b4d1875327343bbf8e29d6457c5a0eadc2c29f969917513226b76483ecd`
+
+  Lock: `runme@1.0.0#95a48b4d1875327343bbf8e29d6457c5a0eadc2c29f969917513226b76483ecd#FsRead`
+  CAS leaf: `.ooda_modules/cas/95a48b4d1875327343bbf8e29d6457c5a0eadc2c29f969917513226b76483ecd/runme.oo`
+  That sha matches `fixtures/pm_launch_exec/manifest`.
+  Payload `pub fn main` prints `LAUNCH_EXEC_OK`.
+
+## 3. launch runme (no --exec)
+
+    ./bin/ooda launch runme
+
+  Exit: 0
+  Text: `ooda launch: ok /home/jeryd/.grok/worktrees/ooda-cli-three/.ooda_modules/cas/95a48b4d1875327343bbf8e29d6457c5a0eadc2c29f969917513226b76483ecd/runme.oo`
+  `LAUNCH_EXEC_OK` is absent.
+  Second run (`launch_path2.log`) prints the same path line.
+  Still no `LAUNCH_EXEC_OK`.
+
+## 4. launch --exec runme (double-run)
+
+    timeout 10 ./bin/ooda launch --exec runme
+
+  Pass 1 (`launch_exec.log`): `LAUNCH_EXEC_OK` then `OK`. Exit 0.
+  Pass 2 (`launch_exec_run2.log`): `LAUNCH_EXEC_OK` then `OK`. Exit 0.
+  A leftover `test -e` cannot print `LAUNCH_EXEC_OK`.
+  `--exec` does not print `ooda launch: ok` first.
+  Hang budget is 10 seconds.
+
+  Smoke double-run (`launch_smoke.log`, 2026-08-17 19:15):
+
+    timeout 90 ./bin/ooda run ./scripts/pm_launch_exec_smoke.oo
+
+  Pass 1: `pm_launch_exec_smoke: PASSED`. Exit 0.
+  Pass 2: `pm_launch_exec_smoke: PASSED`. Exit 0.
+
+## 5. launch --exec nosuchpkg
+
+    ./bin/ooda launch --exec nosuchpkg
+
+  Log: `/tmp/grok-goal-e3250e659225/implementer/launch_refuse.log`
+  Exit: 2
+  Text: `ERR	pm	not installed`
+  Text: `ooda launch: not installed`
+  No `LAUNCH_EXEC_OK`.
+  No `ooda launch: ok`.
+
+## 6. Done-when (`plan_cli_launch.oot`)
+
+  | # | claim | verdict |
+  | ---: | --- | --- |
+  | 1 | `--exec` runs the pinned `.oo` through `run_oodac_run` | PASS |
+  | 2 | without `--exec`, print the path only | PASS |
+  | 3 | gate fail: exit 2, no payload, no ok | PASS |
+  | 4 | yank / sha / extra caps still refuse `--exec` | PASS |
+  | 5 | fixture prints `LAUNCH_EXEC_OK` | PASS |
+  | 6 | public `hello.oo` has `hello_ok` and no `main` | PASS |
+  | 7 | do not grow `ooda/pm/` | PASS |
+
+  Claim 4 on this binary: this wave did not re-drive
+  `qa/pm_hostile_spine.oo`. The gate still runs before `run_oodac_run`.
+  `cli/pm_launch.oo` was not edited. Wave 3 PV1 and SEC scored
+  yank, sha drift, and extra caps. Not a fail.
+
+  Public hello: `/home/jeryd/Projects/openOODA/registry/hello/hello.oo`
+  still has `hello_ok` and no `pub fn main`.
+
+## 7. Role board
+
+  Wave 0: COORD observe. RT no blocker. DOCS `--exec` means run.
+  Wave 1: DE1 wrote `cli/cmd_pm_launch.oo`. DE2 NO-EDIT. HARN fixture.
+  Wave 2: HYG PASS. Line cap and Academy headers hold.
+  Wave 3: PV1 PV2 SEC MEM all PASS (`plan_w3_coord.oot`).
+  Wave 4: INT PASS on `/home/jeryd/.grok/worktrees/ooda-launch-exec`.
+  Wave 5: this note. Combined `ooda-cli-three` proves the four claims.
+
+  Residual, not FAIL:
+    Empty lock sha still matches (W3-P6 / R-SHA0).
+    Helper `sh` for `pwd` / `ls` remains. It is not the payload.
+    ELF named `*.oo` reaches `oodac run` and fails closed there.
+    CAS leftover `runme.oo.bin` and `.tmp.c` after `--exec`.
+    Skeptics write `plan_skN.oot`. This note does not merge.
+
+## 8. Isolation
+
+  COORD wrote only this audit note.
+  Did not write `cli/`, `scripts/`, `fixtures/`, `oodac/`, `runtime/`, or `std/`.
+  Did not write `/home/jeryd/Projects/openOODA/ooda`.
+  Did not write the public site.
+  Did not copy `bin/ooda` onto `oodac/oodac`.
+  Did not merge.
+
+Status: Wave 5 COORD is PASS. Ship 2 is ready for skeptics.
+C emit plus gcc remains the product path.
