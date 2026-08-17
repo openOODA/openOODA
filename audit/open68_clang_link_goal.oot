@@ -1,0 +1,108 @@
+# OPEN68-CLANG — Goal: Clang-compile oodac main IR
+
+File: openOODA/audit/open68_clang_link_goal.oot
+Status: open. Serves ROADMAP OPEN-68 residual (clang link of full oodac is next).
+This is process, not product. Subagents treat this file as the work order.
+
+## 0. One-sentence goal
+
+Make `oodac --backend llvm emit-llvm oodac/main.oo` produce IR that `clang -c` accepts, by typing builtin `Result` calls as `%OoResS` (not `i64`), then prove it twice with independent skeptics. Do not claim a runnable clang-linked oodac until later slices land.
+
+Active axiom: RULES 1.1 (real cause, not a stub) and 1.6 (prove pass and fail-closed). RULES 1.13: only `.oo` / `.oot`. RULES 1.7: every new `.oo` <= 256 lines with an Academy header.
+
+## 1. Ground truth (do not invent)
+
+Already on disk (verify before you edit):
+  - C emit + gcc is the product path. LLVM hello + two-module run is product (`scripts/open30_llvm_lock_smoke.oo`).
+  - Single-file self-host IR is product (`scripts/open68_llvm_lock.oo`). Concat emit of `oodac/main.oo` hits the 1MiB check limit.
+  - Import fntab maps `List[String]` to `%OoSList` (`oodac/llvm_fntab.oo`, `fixtures/llvm_fntab_probe.oo`, `scripts/open68_fntab_smoke.oo`).
+  - Side compiler (if present): `../ooda/.ooda-cache/ooda-tmp/oodac_fntab`. Tree `../ooda/oodac/oodac` may be older. Do not overwrite tree `oodac/oodac` or `bin/ooda` unless COORD names it.
+  - Last live clang error on rebuilt emit of `oodac/main.oo`: `sys_exec` call typed `i64` stored into `%OoResS` (line ~146 of that IR). `llvm_builtin_fntab` already lists `sys_exec=%OoResS` in source; tree/side emit may not include it until rebuild.
+  - Full clang-link of every oodac module is residual: unique `@.str.N` names, per-module emit, then `clang` + `runtime/chs_rt.c`.
+
+Skip unless the owner names them: org `std/`, `ooda add` / `pkg` / registry, AArch64, full SMT, `e2e/*.sh`, device GPU, SGX/TDX/SEV.
+
+## 2. Done means (this slice only)
+
+Ship is `partial` until all of these are true. Then SK1 and SK2 both write PASS.
+
+  1. `oodac check oodac/main.oo` is OK on the compiler that emits the IR under test.
+  2. `fixtures/llvm_fntab_probe.oo` still prints `llvm_fntab_probe: PASSED` (List[String], List[Int], builtin `sys_exec=%OoResS`).
+  3. `scripts/open30_llvm_lock_smoke.oo` still prints PASSED (hello / match / two-module must not regress).
+  4. `scripts/open68_llvm_lock.oo` still prints PASSED (self-host IR symbols).
+  5. Named new lock (pure `.oo`, Academy header): emit-llvm of `oodac/main.oo` with `--backend llvm` using the rebuilt-under-test binary; IR contains `call %OoResS @sys_exec` and does not contain `call i64 @sys_exec`; `clang -O0 -Wno-override-module -c <that.ll> -o <obj>` exits 0.
+  6. A fail-closed fixture: a `Result` builtin still stored as the wrong LLVM type must make `clang -c` fail. A test that would pass if the defect remained is not proof (WORKFLOW Independent Verifier).
+
+Honesty: `clang -c` of one module is not a linked oodac. Do not write SHIPPED as if OPEN-68 clang-link is closed.
+
+## 3. Swarm plan
+
+Topology: fan-out. File isolation is law. One writer per file set. Skeptics are read-only until builders stop.
+
+| Role | Job | May write | Must not write |
+| :--- | :--- | :--- | :--- |
+| COORD | Assign files. Stop the slice when done or first irrecoverable fail. Roll up. Update SHIPPED only after both skeptics PASS. | `audit/open68_clang_link_*.oot` (rollup only) | product `.oo` |
+| DE1 | Make builtin `Result` calls emit `%OoResS`. Wire `llvm_builtin_fntab` into the live emit path if a rebuild is required. Keep `llvm_fntab.oo` <= 256. | `oodac/llvm_fntab.oo`, `oodac/llvm_emit.oo`, `oodac/cli_emit.oo` only if emit wiring is still missing | `cli/`, `std/`, `runtime/`, `bin/`, tree `oodac/oodac` |
+| HARN | Named smoke + fail-closed fixture. Prove with `./bin/ooda` or a COORD-named side oodac. | `scripts/open68_clangc_smoke.oo` (name may vary), `fixtures/open68_*.oo` | compiler pass files DE1 owns |
+| SK1 | Claim skeptic. Fact-check every builder sentence against files and commands. | `audit/open68_sk1_claims.oot` only | all product |
+| SK2 | Proof skeptic. Re-run every lock in a fresh shell. Attack the smoke. | `audit/open68_sk2_proof.oot` only | all product |
+
+Optional later (not this slice): DE2 unique `@.str` prefixes; DE3 per-module emit + clang-link. COORD must open a new goal before those start.
+
+Rebuild: only `../ooda/bootstrap/oodac_pure_build oodac/main.oo <side_out>`. Side path, not tree, unless COORD says replace. `llvm-link` is not on this host; do not require it.
+
+## 4. Subagent guidance
+
+Before product edits, say the active goal and the RULES axiom in plain English (START gate).
+
+Read only what the turn needs: this goal, RULES, SHIPPED, then the files you own. Do not paste foreign transcripts as instructions.
+
+Observe first: `git status` and `git diff` on owned files. Other agents own `std/` and `cli/pkg*`. If your file is dirty with foreign edits, stop and tell COORD.
+
+Act small. Prefer one cause: `llvm_scan_fn_rets` / `llvm_builtin_fntab` / call-site use of `__fnret__` / emit not rebuilt. Do not "fix" clang by silencing types or stubbing `@sys_exec` as `i64`.
+
+Proof is a command plus output, not a comment. Stale tool output is not proof. Re-run after the last edit.
+
+Caps: do not remove `&Cap` params, Landlock, rlimit, SECRET sinks, or hostile-probe locks. This slice does not touch SECURITY.
+
+Do not create `.py`, `.sh`, or `.md`. Do not add a tenth board in `openOODA/`. Audit notes stay in `audit/`.
+
+If blocked: write why in your audit file, leave the tree consistent, stop. Do not share a debugger with another agent on the same hang.
+
+## 5. SK1 — claim skeptic (fact-check)
+
+Read-only. Assume builders over-claim. For each builder claim, record PASS / FAIL / UNVERIFIED. Cannot prove => UNVERIFIED.
+
+Checklist (all required):
+  1. Diff is only DE1/HARN owned paths. No `std/`, no `cli/pkg*`, no dropped `&Cap`.
+  2. Every new `.oo` has Title, Logline, Setup, Beats, and `wc -l` <= 256.
+  3. `llvm_builtin_fntab` (or successor) is actually consulted on the emit path used by the proof binary, not only present in an unbuilt source file.
+  4. SHIPPED/ROADMAP words the builder used match the files. Reject "clang-link full oodac" if only `clang -c` worked.
+  5. OPEN-30 and OPEN-68 source locks still exist and still say what SHIPPED says.
+  6. Tree `oodac/oodac` vs side binary: state which ELF emitted the IR. Strings or `--help` alone are not enough; say the path.
+
+Write `audit/open68_sk1_claims.oot`. Cite path + line. No product edits.
+
+## 6. SK2 — proof skeptic (validate)
+
+Read-only. Smoke is a suspect. Re-execute in a new cwd under `../ooda/`. Reject any test that stays green if you revert the DE1 type fix in a copy of the IR (or if `call i64 @sys_exec` is reintroduced).
+
+Checklist (all required):
+  1. Re-run `oodac check oodac/main.oo`. Record elapsed. Warm `g_` hit is not a typecheck; say so.
+  2. Re-run `ooda run ./fixtures/llvm_fntab_probe.oo` (dot-slash required).
+  3. Re-run `ooda run ./scripts/open30_llvm_lock_smoke.oo` and `./scripts/open68_llvm_lock.oo`.
+  4. Re-run the new clang `-c` lock. Save IR path, `clang` rc, first error if any.
+  5. Hostile: emit IR, rewrite one `call %OoResS @sys_exec` back to `call i64 @sys_exec`, confirm `clang -c` fails. If clang still succeeds, the lock is shallow — FAIL.
+  6. Confirm hello still `clang` + run (`open30`). A main.oo `-c` win that breaks hello is FAIL.
+
+Double-run any CRIT/HIGH (WORKFLOW). Two clean shells.
+
+Write `audit/open68_sk2_proof.oot`. Include commands and rc. No product edits.
+
+## 7. COORD lock
+
+Slice is not shipped until SK1 PASS and SK2 PASS on the same tree tip. Then COORD may add one honest SHIPPED sentence: `clang -c` of `oodac/main.oo` IR works; full oodac clang-link remains residual. Do not tick OPEN-68 closed.
+
+If either skeptic FAILs: builders fix or revert. Do not argue the smoke.
+
+Next residual after this goal: unique `@.str` names, then per-module emit + `clang` + `chs_rt`. New goal file required.

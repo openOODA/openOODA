@@ -16,7 +16,8 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
   - Official rebuild is `../ooda/bootstrap/oodac_pure_build`. The old `.sh` path is gone.
   - `ooda run` is check + emit C + gcc + exec (`fixtures/hello.oo`).
   - LLVM hello works on the current host (emit-llvm + clang + run). Result `match` prints `ok`. Two-module import prints `2`. Lock: `scripts/open30_llvm_lock_smoke.oo`.
-  - LLVM self-host IR: `oodac --backend llvm emit-llvm oodac/main.oo` contains oodac symbols (`@main`, `@parse_cli_argv`). Clang link of full oodac is residual. Lock: `scripts/open68_llvm_lock.oo`.
+  - LLVM self-host IR: `oodac --backend llvm emit-llvm oodac/main.oo` contains oodac symbols (`@main`, `@parse_cli_argv`). Import fntab maps `List[String]` to `%OoSList` (`fixtures/llvm_fntab_probe.oo`). Builtin `Result` calls emit as `%OoResS`; `clang -c` of that IR exits 0 on a side ELF (`scripts/open68_clangc_smoke.oo`). Side LLVM-linked oodac (`emit-mods` + `chs_rt.c`, no `llvm-link`) stamp-walks `fixtures/hello.oo` with a real `check_listing_fresh` (not `ret i32 1`) and prints `OK` on a valid `g_` listing; a changed hello does not print OK. Lock: `scripts/open68_stamp_smoke.oo`. C emit + gcc remains the product path. Full gcc-parity (every oodac command, C path retired) is residual. Prior link lock: `scripts/open68_link_smoke.oo`.
+  - Clang link of full oodac as a gcc replacement is residual. Lock: `scripts/open68_llvm_lock.oo`.
   - Standalone x86_64: `oodac emit-x86 fixtures/open69_hello.oo` writes `_start` that prints Hello; `as`+`ld` runs it. Not emit-c. AArch64 is residual. Lock: `scripts/open69_x86_smoke.oo`.
   - SECRET sinks include `process_exec`. Fail fixture refuses the secret.
 
@@ -24,19 +25,20 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
   - Process-local tokens. Landlock is a real Linux jail under `&SysCap` (`oo_landlock_restrict`). Empty allowlists fail closed. Proved `OK: LANDLOCK_JAIL` on this host.
   - POSIX `setrlimit` is product under `&SysCap` (AS / NOFILE / CPU). Zero quotas fail closed.
   - `spawn` / `wait` / `kill` are real. Child env is filtered (`OODA_`/`OO_` and `PATH`).
+  - Hostile probes: `env_get` denies host keys; zero `FsWriteCap` exits; child drops `HOST_SECRET`; attenuate forged parent differs. Lock: `scripts/hostile_cap_probe_smoke.oo`.
   - `process_exec` is a shell line and a secret sink.
   - `GpuCap` CPU/noop launch is product. `emit_ptx` writes real kernel PTX text (`add.s64`); device GPU dispatch is residual. Not CUDA, not a device launch.
   - Hierarchical HMAC attenuation, kernel object-cap seals, and measured isolate (hash of payload+token+domain) are product. Not SGX/TDX/SEV hardware enclaves. HMAC-SHA256 of a cap payload string is product.
   - Bump arenas (`arena_create`/`alloc`/`reset`) under AllocCap, `&ArenaCap` as its own token, and `actor_restart` under ThreadCap are product.
 
 ### Standard Library & Developer Tooling
-  - Product std is 56 tracked files in `ooda/std`. Org `std/` is not certified. Named org proves: core, hmac_ops, crc32, fnv, murmur3, json, crypto.oo, aslr_entropy, xxh32, hash/sha256, prove_open80 (`crypto/aes.oo`).
-  - vscode still talks to `vscode/server/ooda-lsp.js`. `ooda lsp` is a multi-message stdio loop (initialize then shutdown).
+  - Product std README names a 56-file floor; other tracked `ooda/std` drops are residual. Org `std/` is not certified. Inventory: `audit/library_status.oot`. This pass: destubbed base32 RFC 4648 and varint zigzag. Not all 4000+ issues gone.
+  - vscode still talks to `vscode/server/ooda-lsp.js`. `ooda lsp` is a multi-message stdio loop. Hover and definition name the identifier under the cursor, not the first `fn`. Lock: `scripts/lsp_cursor_smoke.oo`.
   - `ooda check`, `build`, `run`, `test`, `dump`, `outline`, `reflect`, `fix`, `patch`, `lsp`, `context`, `digest`, `health`, `pkg`, and `add` are native `.oo` in `cli/main.oo`. There is no `scripts/ooda_product.sh`.
   - `crypto_sha256_internal("hello")` matches the FIPS hex. HMAC-SHA256 length is 64. AES-128-ECB encrypts one block to hex (NIST C.1).
   - `oodac emit-wasm` writes a `\0asm` module with one code body per source `fn` and an `ooda-fns` custom section. `path_join` and `nfa_simulate("[ab]", …)` plus `dfa_compile` emit+gcc+run.
   - `ooda test` sets `OODA_TEST=1` and runs verify constructors plus `assert_eq!` / `assert!`. `ooda run` does not run verify blocks.
-  - `ooda fix` applies `E_CAP`, `E_IMP` (missing import), `E_TC`, and `E_PARSE` (missing `}`). Multi-pass, max eight. It asks yes/no before it writes, unless `--yes`. Writes go through `write_file` and need `OODA_FS_WRITEDIR` (unset still denies). No TTY and no `--yes` refuses. Absolute paths and symlinks are refused.
+  - `ooda fix` applies `E_CAP`, `E_IMP` (missing import), `E_TC`, `E_PARSE` (missing `}`), and `E_MUST` (discarded Result → `is_err` wrap). Multi-pass, max eight. It asks yes/no before it writes, unless `--yes`. Writes go through `write_file` and need `OODA_FS_WRITEDIR` (unset still denies). No TTY and no `--yes` refuses. Absolute paths and symlinks are refused. Lock: `scripts/emust_autofix_smoke.oo`.
   - `ooda patch` replaces one function body from a file (`--replace-fn` / `--with`) through `write_file`. Absolute paths, `..`, and symlinks are refused.
   - HITL is not product. The human loop is `ooda fix`.
   - Tree `oodac` emits the product CLI. `cli/host_run.oo` is 205 lines. JSON check lives in `cli/json_check.oo`.
@@ -47,6 +49,8 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
   - `oodac check --json-errors` is in-process. No capture `.sh`. Product CLI also converts.
   - Named emit+gcc+run set: `scripts/ci_open_run.oo` (hello, int_main, open_ci_add).
   - Named emit-llvm+clang+run lock: `scripts/open30_llvm_lock_smoke.oo` (match `ok`, two-module `2`).
+  - QA master is pure `.oo`. From `qa/`: `../ooda/bin/ooda run ./qa_master.oo` prints `qa_master: PASSED` (22 green). Top-level `qa/*.sh` runners are gone. Residual: broken fixtures in the `qa_master.oo` header and `e2e/*.sh`.
+  - Two `emit-c` of `fixtures/hello.oo` are byte-identical. Named multi-backend lock: emit-c (hello/int_main/open_ci_add), emit-llvm, and emit-wasm are stable across two runs (`scripts/bit_identical_emit_lock.oo`). gcc binaries are not claimed bit-identical without strip+repro flags (OPEN-71).
   - `import_c` / header path and `lto_xlang_link` (gcc `-flto`) are product; emit may write `#include`. Not residual refuse.
   - Check-time SMT folds const `requires` / `ensures` / `spec` in fn headers. Full general symbolic SMT is residual.
   - `TraitDecl` and monomorphization are product.
@@ -57,7 +61,7 @@ This is what we have proved on disk. NORTHSTAR is the vision. ROADMAP is the act
 ## 3. Residual (Wanted in NORTHSTAR / ROADMAP, Not Built)
 
   - Org `std/` / `std/src` volume certification is residual (named org proves only; not a 4071-file cert).
-  - Clang link of full oodac via LLVM is residual (LLVM IR emit of oodac is product).
+  - Full gcc-parity LLVM oodac (every command, C path retired) is residual. Side linked hello stamp-walk is product.
   - AArch64 backend is residual (standalone x86_64 is product).
   - Device GPU dispatch is residual. PTX text emit is product; launching on a GPU is not.
   - SGX / TDX / SEV hardware enclaves are residual. Measured isolate is product.

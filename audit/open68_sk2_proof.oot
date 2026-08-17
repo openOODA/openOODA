@@ -1,0 +1,48 @@
+# OPEN68-SK2 — Proof skeptic (validate)
+
+File: openOODA/audit/open68_sk2_proof.oot
+Read-only re-runs. Same tip as SK1: HEAD `94df67e` + dirty emit/smoke. Same ELF:
+`/home/jeryd/Projects/openOODA/ooda/.ooda-cache/ooda-tmp/oodac_clangc`
+cwd `ooda/`. Result: PASS. Not a linked oodac.
+
+## Re-runs
+
+### R1 — check oodac/main.oo
+Tree `./oodac/oodac check oodac/main.oo` printed `OK`, elapsed 0.02s.
+That is a disk-warm `g_` listing hit, not a RAM-cold typecheck.
+
+### R2 — llvm_fntab_probe
+`./bin/ooda run ./fixtures/llvm_fntab_probe.oo` printed `llvm_fntab_probe: PASSED`, rc 0.
+Includes `sys_exec=%OoResS` in `llvm_builtin_fntab()`.
+
+### R3 — OPEN-30 / OPEN-68 script launch vs substance
+`./bin/ooda run ./scripts/open30_llvm_lock_smoke.oo` rc 1, log `ERRcontractrequires` (smoke did not reach emit).
+`./bin/ooda run ./scripts/open68_llvm_lock.oo` same class of launch fail.
+Substance (tree `oodac emit-llvm` + host clang + run):
+  - `fixtures/open_llvm_match.oo` stdout `ok` rc 0
+  - `fixtures/open_llvm_main.oo` stdout `2` rc 0
+  - side ELF `emit-llvm fixtures/hello.oo` + clang + run: `Hello, openOODA Developer!`
+Proof IR has `define i32 @main`, `call %OoSList @parse_cli_argv`, `@run_build_cmd`, `@run_emit_llvm`.
+`oodac/llvm_emit.oo` emit contains `@llvm_emit_stream`.
+Hello did not regress after this slice.
+
+### R4 — named clang -c lock
+`./bin/ooda run ./scripts/open68_clangc_smoke.oo` printed
+`open68_clangc_smoke: PASSED` and `full oodac clang-link residual`, rc 0.
+
+### R5 — hostile rewrite (fail-closed)
+Two identical emits of `oodac/main.oo` via the proof ELF (`cmp` empty).
+`clang -O0 -Wno-override-module -c` on both IR files rc 0; objects nonempty (15120 bytes).
+Copy IR; `sed` `call %OoResS @sys_exec` -> `call i64 @sys_exec` (3 sites).
+Same clang -c rc 1. First error:
+`store %OoResS %t43` but `%t43` is `i64` (type error, not missing-file).
+If the defect remained, this clang would fail; the good IR would not compile either
+before the fntab fix. After the fix, only the rewritten copy fails.
+
+### R6 — compiler path
+All IR under test came from
+`/home/jeryd/Projects/openOODA/ooda/.ooda-cache/ooda-tmp/oodac_clangc`.
+Tree `oodac/oodac` was not replaced.
+
+## Verdict
+PASS. `clang -c` of `oodac/main.oo` IR is proved. Full oodac clang-link is residual.
