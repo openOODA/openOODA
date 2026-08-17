@@ -1,0 +1,48 @@
+# OPEN68-LINK-SK2 — Proof skeptic (validate)
+
+File: openOODA/audit/open68_link_sk2_proof.oot
+Live re-runs from cwd `ooda/`. Same tip as SK1: HEAD `952a6fc` plus dirty emit/smoke.
+Proof ELF: `/home/jeryd/Projects/openOODA/ooda/.ooda-cache/ooda-tmp/oodac_lllink`
+Result: PASS. Not gcc-parity. OPEN-68 not closed.
+
+## Re-runs
+
+### R1 — check oodac/main.oo
+`./oodac/oodac check oodac/main.oo`
+  1. stdout `OK`, elapsed 152.62s, rc 0. Real check (not a 0.02s g_ hit).
+  2. stdout `OK`, elapsed 0.02s, rc 0. Disk-warm `g_` listing hit.
+
+### R2 — prior-slice clang -c lock
+`./bin/ooda run ./scripts/open68_clangc_smoke.oo`
+stdout includes `open68_clangc_smoke: PASSED` and `full oodac clang-link residual`, rc 0.
+
+### R3 — hello LLVM substance
+`./oodac/oodac --backend llvm emit-llvm fixtures/hello.oo` then
+`clang -O0 -Wno-override-module -Iruntime <ir> runtime/chs_rt.c -lm`
+run stdout `Hello, openOODA Developer!` rc 0.
+
+### R4 — named link lock + hello on ELF (double)
+`./bin/ooda run ./scripts/open68_link_smoke.oo` this session: `PASSED`,
+`linked check hello OK`, `C emit plus gcc remains product`, rc 0.
+Then the same named ELF twice:
+  `.ooda-cache/ooda-tmp/oodac_lllink check fixtures/hello.oo` → `OK` rc 0
+  again → `OK` rc 0
+ELF size 2057792, mtime after the smoke. Not `bin/ooda` (343696, older).
+
+### R5 — hostile drop (fail-closed)
+Copied `open68-mods/*.ll`, removed `oodac_ast_emit_outline.oo.ll`.
+`clang -O0 -Wno-override-module -Iruntime drop/*.ll runtime/chs_rt.c -lm -ldl -lpthread`
+rc 1. ld: undefined `ast_emit_outline_json` / `ast_emit_outline`. Not a missing-script error.
+
+### R6 — compiler path
+Linked proof is `.ooda-cache/ooda-tmp/oodac_lllink`. Tree `oodac/oodac` mtime 2026-08-15
+was not this slice’s dest. `bin/ooda` is the product CLI, not the linked oodac.
+
+## Residual (must stay on the record)
+LLVM `check_listing_fresh` is `ret i32 1` (`llvm_emit_listing_fresh_stub` in
+`oodac/llvm_link_shim.oo`; site `llvm_emit_fn.oo`). Hello OK is that short-circuit
+on a nonempty `g_` listing, not a stamp-walk and not a typecheck of hello.
+C emit + gcc still walks stamps in `check_hash.oo`. `_shim.ll` sys_exec re-grants sys.
+
+## Verdict
+PASS on the linked hello-check slice as locked. Do not claim gcc-parity. Do not close OPEN-68.

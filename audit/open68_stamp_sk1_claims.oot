@@ -1,0 +1,122 @@
+# OPEN68-STAMP-SK1 — Claim skeptic + SEC (fact-check)
+
+File: openOODA/audit/open68_stamp_sk1_claims.oot
+Read-only product. Tip HEAD `952a6fc` (ooda/.git/refs/heads/main) plus dirty
+stamp emit/smoke. Proof ELF (compiler_path.txt):
+`/home/jeryd/Projects/openOODA/ooda/.ooda-cache/ooda-tmp/oodac_stamp`
+Size 2090456 bytes. mtime 2026-08-16 19:15:14. Not tree `oodac/oodac`
+(1328000, 2026-08-15 23:16:10) or `bin/ooda` (343696, 2026-08-16 16:13:47).
+RULES 1.1/1.6. Result: PASS. Not OPEN-68 closed. Not “gcc retired.”
+C emit remains product.
+
+## Claims
+
+### C1 — This slice’s write set; no dropped &Cap; no tree binary overwrite — PASS
+COORD `git -C ooda status --short` for this write set:
+`M oodac/llvm_emit_binop.oo`, `M oodac/llvm_emit_env.oo`,
+`M oodac/llvm_emit_fn.oo`, `M oodac/llvm_emit_preamble.oo`,
+`M oodac/llvm_emit_ty.oo`, `?? oodac/llvm_fntab.oo`,
+`?? oodac/llvm_link_shim.oo`, `?? scripts/open68_stamp_smoke.oo`.
+That is emit / shim / binop / fntab / env / ty / preamble / smoke.
+This audit note is process, not product. Other dirty `oodac/llvm_emit*.oo`
+(`emit.oo`, arc, call, control, expr, let, method, stmt) have mtimes
+14:06–16:57 today: prior LLVM-link leftover, not this stamp-walk write
+set. Stamp mtimes: `llvm_emit_fn.oo` 19:14; `llvm_fntab.oo` 18:52;
+`llvm_link_shim.oo` 18:53. Tree binaries are older than the 19:15 proof
+ELF. Rebuild dest was side `.ooda-cache/ooda-tmp/oodac_stamp` /
+`oodac_stamp_gcc` (rebuild.log lines 10–14). No dropped `&Cap`:
+`check_cache_ensure` / `put` / `put_body` take `fs: &FsCap, sys: &SysCap`
+(`check_cache.oo` lines 21, 54, 67). `persist_graph`, `check_modules`,
+`run_check_path` take `fs: &FsCap, sys: &SysCap` (`check_mod.oo` lines
+14, 20, 58). IR maps those to `i64 %fs, i64 %sys`
+(`oodac_check_mod.oo.ll` line 110).
+
+### C2 — New/edited .oo: Academy header, wc -l <= 256 — PASS
+FORMAT 1.1 Title / Logline / Setup / Beats on:
+`llvm_fntab.oo` 232 lines (header lines 1–10). `llvm_emit_env.oo` 247
+(lines 1–10). `llvm_emit_ty.oo` 58 (lines 1–10). `llvm_link_shim.oo` 40
+(lines 1–9). `llvm_emit_binop.oo` 161 (lines 1–10). `llvm_emit_fn.oo` 253
+(lines 1–10). `llvm_emit_preamble.oo` 80 (lines 1–10). New lock
+`scripts/open68_stamp_smoke.oo` 64 (lines 1–11). `check_hash.oo` 104
+(walk intact, lines 43–102). All <= 256.
+
+### C3 — IR `check_listing_fresh` is a real body; stub hook gone — PASS
+Define in `open68-stamp-mods/oodac_check_hash.oo.ll` line 237:
+`define i32 @check_listing_fresh(%OoStr %listing)`. Body is not a lone
+`ret i32 1`. Calls `oo_bytes_len` (line 243), `oo_byte_at` (lines 290, 344),
+`oo_str_slice` (lines 319, 394, 405), `oo_file_stamp` (line 407). Empty
+listing returns 0 (lines 251–254). Final `ret i32 %t123` (line 493). Source
+`llvm_emit_fn.oo` has no `llvm_emit_listing_fresh_stub` (grep empty).
+`llvm_link_shim.oo` has no `ret i32 1`. Source walk still in
+`check_hash.oo` lines 43–102 (`byte_at` 10/9, `oo_file_stamp`, `now != old`).
+
+### C4 — No `declare <ty> @<name>(...)`; known builtins typed — PASS
+Grep of `open68-stamp-mods` for `\(\.\.\.\)` is empty. Scratch
+`abi_grep.txt` “variadic” is 0. fntab emit is
+`declare ` + ty + ` @` + nm + `(` + ps + `)` (`llvm_fntab.oo` line 220),
+not `(...)`. Builtins in `llvm_builtin_fntab` (`llvm_fntab.oo` line 146)
+include typed `oo_file_stamp=%OoStr#%OoStr` and
+`crypto_sha256_internal=%OoStr#%OoStr`. Proof IR:
+`oodac_check_hash.oo.ll` lines 64–65
+`declare %OoStr @oo_file_stamp(%OoStr)` /
+`declare %OoStr @crypto_sha256_internal(%OoStr)`; lines 72–79 typed
+`sys_exec` / `read_file` / `path_exists`. `llvm_env_seed_fnrets` strips `#`
+(`llvm_emit_env.oo` lines 233–236). Caps map to i64 (`llvm_emit_ty.oo`
+line 13).
+
+### C5 — `_shim.ll`: no grant; `%cap` passed; 24-byte C uses sret — PASS
+`open68-stamp-mods/_shim.ll`: no `oo_cap_grant_sys`. `path_exists` /
+`read_file` / `sys_exec` take `%cap` and pass it (lines 16–22, 36–45).
+sret declares and calls: `oo_read_file` (lines 8, 22), `oo_write_file`
+(lines 9, 28), `oo_sys_exec` (lines 10, 45). Source match:
+`llvm_link_shim.oo` lines 16–37. Same text as `abi_grep.txt`.
+
+### C6 — `%OoStr` retain at entry; string NEQ inverted via xor — PASS
+Non-main params: store then `call void @oo_str_retain(%OoStr %` + pn + `)`
+(`llvm_emit_fn.oo` lines 201–203). IR: `check_listing_fresh` stores
+`%listing` and retains it (`oodac_check_hash.oo.ll` lines 239–241).
+`llvm_emit_binop.oo` lines 119–130: `oo_str_eq` then on `NEQ`
+`xor i32 ` + treg + `, 1`. IR invert at `oodac_check_hash.oo.ll` lines
+433–434 (`%t102 = call i32 @oo_str_eq` then `%t103 = xor i32 %t102, 1`).
+COORD: PV2/MEM already PASS live (warm ELF hello OK twice, changed hello
+not OK, no intern abort, smoke PASSED twice). Scratch `asan.err` /
+`gdb_stamp2.txt` are older side ELFs, not this 19:15 proof.
+
+### C7 — SHIPPED/ROADMAP do not claim gcc retired; C emit remains product — PASS
+SHIPPED line 15: `C emit through chs_rt, then gcc. That is the product path.`
+SHIPPED line 19: `C emit + gcc remains the product path. Full gcc-parity
+(stamp-walk, every oodac command) is residual.` SHIPPED line 64: full
+gcc-parity LLVM with `C path retired` is residual, not shipped. ROADMAP
+line 142 `[x] OPEN-68` is self-host IR; `Clang link of full oodac is next.`
+Smoke lines 62–63: `C emit plus gcc remains product`. Product C path still
+in `cli_emit.oo` `run_emit_c_family` (line 22). This note does not close
+OPEN-68.
+
+## SEC — capability flow
+
+### S1 — No shim re-grant — PASS
+`llvm_link_shim.oo` has no `oo_cap_grant_sys`. `_shim.ll` wrappers pass
+caller `%cap` into `oo_path_exists` / `oo_read_file` / `oo_sys_exec`.
+Preamble still *declares* `@oo_cap_grant_sys` for `main` only
+(`llvm_emit_preamble.oo` line 74; `llvm_emit_fn.oo` lines 183–185). That
+is not a shim re-grant on `sys_exec` / `read_file` / `path_exists`.
+
+### S2 — `&FsCap` / `&SysCap` remain on check_cache / check_mod — PASS
+Cited in C1. `check_cache_hit` / `check_cache_read` keep `fs: &FsCap`
+(`check_cache.oo` lines 32, 39). Call sites still `path_exists(fs, …)`,
+`read_file(fs, …)`, `sys_exec(sys, …)` (`check_cache.oo` lines 23, 37, 47,
+61). No cap parameter was deleted.
+
+## Residual (must not be hidden)
+
+  - Other `oodac/llvm_emit*.oo` files stay dirty from the prior LLVM-link
+    slice. They are not this stamp-walk write set.
+  - Stamp-walk of a valid `g_` listing is the claim. LLVM typecheck of
+    hello after a stale listing may print `ERR	check	empty`.
+  - C emit + gcc remains the product path. Full gcc-parity is residual.
+  - Do not tick OPEN-68 closed on this note.
+
+## Verdict
+PASS. Do not claim OPEN-68 closed. Do not claim C emit gone. Do not claim
+gcc retired. C1–C7 and SEC cap-flow PASS on cited sources, IR, COORD
+git/stat, and the 2090456-byte side ELF.

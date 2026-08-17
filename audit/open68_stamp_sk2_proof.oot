@@ -1,0 +1,100 @@
+# OPEN68-STAMP-SK2 — Proof skeptic + MEM
+
+File: openOODA/audit/open68_stamp_sk2_proof.oot
+Live shell from cwd `/home/jeryd/Projects/openOODA/ooda`. Smoke is a suspect.
+Tip: HEAD `952a6fc` plus dirty emit/shim/fntab/stamp smoke (not a clean tree).
+Proof ELF: `/home/jeryd/Projects/openOODA/ooda/.ooda-cache/ooda-tmp/oodac_stamp`
+That path is `compiler_path.txt`. Not `bin/ooda`. Not tree `oodac/oodac`.
+Result: PASS on the stamp-walk slice as locked. OPEN-68 not closed.
+
+## Identity
+
+  - `oodac_stamp` ELF 64-bit, size 2090456, mtime 2026-08-16 19:15:14, inode 210259390
+    sha256 `4a09a291b26ffe93f9badd513fdab98199f4f4856f940944f390c88a52b90815`
+  - `bin/ooda` size 343696, mtime 2026-08-16 16:13:47, inode 210057251
+    sha256 `724d609410e358cf83ae30b86ad00319760bb8d05f328e3541ae8886e2649b05`
+  - tree `oodac/oodac` size 1328000, mtime 2026-08-15 23:16:10, inode 209871860
+  - `cmp` stamp vs `bin/ooda` and vs tree `oodac/oodac` both differ (rc 1).
+  - Side gcc helper (plant only): `.ooda-cache/ooda-tmp/oodac_stamp_gcc` size 1377920.
+
+## Re-runs
+
+### R1 — `./oodac/oodac check oodac/main.oo`
+Command as written. stdout `OK`. elapsed=0.02 rc=0.
+Sub-second: disk-warm `g_` listing hit, not a RAM-cold typecheck of main.
+
+### R2 — `./bin/ooda run ./scripts/open68_stamp_smoke.oo` (double)
+Smoke plants via `oodac_stamp_gcc` then ELF-checks hello twice and mutates hello.
+  1. elapsed=4.28 rc=0. Prints `linked stamp-walk hello OK twice`,
+     `C emit plus gcc remains product`, `open68_stamp_smoke: PASSED`.
+  2. elapsed=4.72 rc=0. Same three lines. Still PASSED.
+Smoke is not the only proof. Independent ELF runs are R3.
+
+### R3 — ELF `check fixtures/hello.oo` twice
+Command: `.ooda-cache/ooda-tmp/oodac_stamp check fixtures/hello.oo`
+
+Cold/stale first pair (no plant this session):
+  1. stdout `ERRcheckempty`, elapsed=0.00 rc=1. Does not match `^OK`.
+  2. same `ERRcheckempty` rc=1.
+
+Plant listing (allowed): `.ooda-cache/ooda-tmp/oodac_stamp_gcc check fixtures/hello.oo`
+  stdout `OK` elapsed=0.01 rc=0.
+  Wrote `.ooda-cache/check/g_e77568372ba4e38e` body
+  `fixtures/hello.oo<TAB>632:1786922373` (stamp line, not a typecheck dump).
+
+Warm stamp-walk (the slice claim):
+  hello_check:   stdout `OK` elapsed=0.00 rc=0. Matches `^OK`.
+  hello_check_2: stdout `OK` elapsed=0.00 rc=0. Matches `^OK`.
+
+Double-run after a second plant:
+  d2a stdout `OK` elapsed=0.00 rc=0
+  d2b stdout `OK` elapsed=0.00 rc=0
+No malloc/intern abort on any of these.
+
+### R4 — hostile changed hello
+Backup `fixtures/hello.oo`. Append `fn bad() { let x: Int = "no"; }`.
+Same ELF `check fixtures/hello.oo`:
+  stdout `ERRcheckempty`, elapsed=0.00 rc=1. Does not match `^OK`.
+Restore from bak immediately. `cmp` matches bak. `greet` still at line 10.
+`fn bad` gone. 24 lines. No malloc/intern abort.
+This is fail-closed on a changed file / stale `g_` stamps. It is not an LLVM
+typecheck of the bad `Int = "no"` assign. That is residual, not a cheat.
+
+### R5 — compiler path
+Every ELF check above used `oodac_stamp`. Tree `oodac/oodac` and `bin/ooda`
+were not overwritten this session. Product CLI is still `bin/ooda`.
+
+### R6 — MEM (heap / intern)
+Live re-runs (R2–R4) returned no `malloc():` abort, no intern abort, no ASan
+line. Did not re-stub `listing_fresh`. Did not ask builders to re-stub.
+
+Historical implementer leftovers (not this live ELF walk):
+  - `asan.err` 19:13:15: heap-use-after-free on older `oodac_stamp_asan`.
+    Cause class: releasing String params then reading them.
+  - `malloc_check.err` 19:12:28: `malloc(): unaligned tcache chunk detected`.
+Those did not return on the current proof ELF warm hello walk.
+
+Retain fix is in the proof IR and the emit source:
+  - `oodac/llvm_emit_fn.oo` ~200–203: after `store` of a `%OoStr` param,
+    emit `call void @oo_str_retain(%OoStr %pn)`.
+  - Proof IR `open68-stamp-mods/oodac_check_cache.oo.ll` `check_cache_path`:
+    `store %OoStr %key, %OoStr* %key.slot` then `call void @oo_str_retain(%OoStr %key)`.
+  - Same retain after store of `%listing` in `define i32 @check_listing_fresh`.
+
+`check_listing_fresh` IR is a real body (bytes_len, empty → `ret i32 0`,
+`oo_byte_at` 10 then 9, slice, `oo_file_stamp`). Not `ret i32 1`.
+Source `oodac/check_hash.oo` still walks stamps. No `llvm_emit_listing_fresh_stub`
+in `llvm_emit_fn.oo`. No `ret i32 1` stub text in `llvm_link_shim.oo`.
+
+## Residual (must stay on the record)
+
+LLVM typecheck of hello after a cold or stale `g_` listing may print
+`ERRcheckempty`. Stamp-walk of a valid `g_` listing is what this slice claims.
+C emit + gcc remains the product path. Full gcc-parity is residual.
+OPEN-68 is not closed.
+
+## Verdict
+
+PASS. Named ELF stamp-walks hello twice after a planted listing, refuses `^OK`
+on changed hello, and did not malloc/intern-abort on those walks.
+Do not claim gcc retired. Do not close OPEN-68.
