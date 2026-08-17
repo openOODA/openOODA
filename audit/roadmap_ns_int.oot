@@ -1,0 +1,83 @@
+# ROADMAP_NS_INT — Pin, rebuild, NORTHSTAR 5.1 / 5.2
+
+File: openOODA/audit/roadmap_ns_int.oot
+Logline: Records the live pin, the official rebuild path, and the backend hierarchy against NORTHSTAR 5.1 and 5.2.
+Setup: Survey only. No product edit. No ROADMAP edit. Sources: ROADMAP.oot, SHIPPED.oot, NORTHSTAR.oot, and the named ooda scripts.
+Beats:
+  1. Confirm pin v0.200.0-beta and live check numbers.
+  2. Confirm one official host rebuild (emit-c + gcc).
+  3. Split LLVM, WASM, and x86 into proved vs residual.
+  4. Split bit-identical emit from gcc binaries.
+  5. Recommend a new open row only if a production backend need is unmet and is not 5.3 or 5.4.
+
+## 1. Pin (live)
+
+  Pin: v0.200.0-beta.
+  ROADMAP §1 names the pin. SHIPPED §2 Compiler Floor names the same pin.
+  Live check of `oodac/main.oo`: OK.
+  RAM-cold about 164s. Disk-warm new-process about 0.02s. 179 modules.
+  Status: compiler/CLI floor shipped (OPEN-1..59). Complete oodac OPEN-60..92 is proved.
+  Org `std/` is not certified product (5.4). That is not a backend gap.
+
+## 2. Official rebuild (one host path)
+
+  Path exists: `../ooda/bootstrap/oodac_pure_build`.
+  One official host rebuild. The old `.sh` path is gone.
+  Header of that file: emit each `.oo`, then link once. Output is a native binary through emit-c + gcc + `chs_rt` only.
+  Official command from `ooda/` (ROADMAP §3):
+    export PURE_NO_ARC=0
+    OODAC_BIN=./bootstrap/seed/oodac bash bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
+    OODAC_BIN=./oodac/oodac bash bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
+    ./oodac/oodac check oodac/main.oo
+  `PURE_SKIP_CHECK=1` is opt-in only. The official path does not export that flag.
+  `oodac check scripts/ci_product.oo` typechecks rails. It does not emit, gcc, or run them.
+
+## 3. C emit + gcc (product)
+
+  C emit through `chs_rt`, then `gcc`, is the product path. It stays the product path.
+  Named emit+gcc+run set: `../ooda/scripts/ci_open_run.oo` (hello, int_main, open_ci_add).
+  `ooda run` is check + emit C + gcc + exec (`fixtures/hello.oo`).
+  Native C path does not need wasmtime, clang, or a special env file.
+
+## 4. NORTHSTAR 5.1 hierarchy — proved vs residual
+
+  Floor (native C emit): product. See §3.
+  LLVM emit: hello works (emit-llvm + clang + run). Result `match` prints `ok`. Two-module import prints `2`. Lock: `../ooda/scripts/open30_llvm_lock_smoke.oo`.
+  LLVM self-host IR: `oodac --backend llvm emit-llvm oodac/main.oo` contains `@main` and `@parse_cli_argv`.
+  Side LLVM-linked oodac stamp-walk of `fixtures/hello.oo` with a valid `g_` listing is product.
+  Residual (already ROADMAP 5.3, do not add a row):
+    LLVM-linked oodac as the gcc replacement (every command, C path retired).
+    LLVM-linked ELF `check` with no planted `g_` listing.
+    LLVM-linked ELF `check oodac/main.oo`.
+    Full gcc-parity LLVM.
+  WASM: `oodac emit-wasm` writes a `\0asm` module with one code body per source `fn` and an `ooda-fns` custom section. Two emits of hello are identical (`bit_identical_emit_lock.oo`). Browser host runtime is not the product path.
+  x86_64: `oodac emit-x86 fixtures/open69_hello.oo` writes `_start`. `as` + `ld` prints Hello. Not emit-c. Lock: `../ooda/scripts/open69_x86_smoke.oo`. Full `hello.oo` emit-x86 refuses (residual).
+  AArch64: residual. Do not add a row.
+  GPU / NPU: `emit_ptx` text is product. Device GPU dispatch is residual. Do not add a row.
+  Bare-metal: `bare_metal_init` is product (hosted canary). Freestanding microkernel is not this cycle.
+
+## 5. NORTHSTAR 5.2 determinism
+
+  Two `emit-c` of `fixtures/hello.oo` are byte-identical. Same for int_main and open_ci_add.
+  Two `emit-llvm` of hello are byte-identical. Two `emit-wasm` of hello are byte-identical.
+  Lock: `../ooda/scripts/bit_identical_emit_lock.oo`.
+  gcc binaries are not claimed bit-identical without strip + repro flags (OPEN-71).
+  Official rebuild records `input_fp`. It does not claim a bit-identical product binary.
+  Raw gcc `cmp` without strip + repro is already ROADMAP 5.3. Do not add a row.
+  SoA / DoD compiler support closed with OPEN-84..92. Auto-emit SoA stays a moonshot, not a 5.1/5.2 production gap.
+
+## 6. Verdict
+
+  Pin v0.200.0-beta is live.
+  Official rebuild is one host script: `bootstrap/oodac_pure_build` (emit-c + gcc + `chs_rt`).
+  C emit + gcc remains the product backend.
+  Live facts: RAM-cold about 164s; 179 modules.
+  NORTHSTAR 5.1 floor is met. LLVM, WASM, and x86 hello locks are proved. Unmet LLVM gcc-parity and raw gcc `cmp` sit in 5.3. AArch64, device GPU, and full gcc-parity LLVM stay residual. No new production-backend open row.
+
+## 7. Recommended open rows
+
+  None.
+
+  | id | title | why |
+  |----|-------|-----|
+  | —  | —     | No NORTHSTAR 5.1 / 5.2 production backend gap outside 5.3 / 5.4. |

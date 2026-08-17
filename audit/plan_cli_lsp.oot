@@ -1,0 +1,104 @@
+# PLAN CLI LSP — 12 agents for product completion
+
+File: openOODA/audit/plan_cli_lsp.oot
+Ship 1. Product path is cli/lsp_*.oo. vscode launches `bin/ooda lsp`.
+Today initialize advertises hover, documentSymbol, definition. Not completion.
+ooda/lsp/ has a catalog. It is not wired. Do not make that folder the server.
+
+## 0. Done when
+
+  1. initialize JSON includes completionProvider.
+     Trigger characters include `&`.
+  2. A buffer with `&Fs` at the cursor returns an item labeled `&FsCap`.
+  3. Prefix uses line/character + lsp_ident_at. Not a fake `"prefix"` key.
+     VS Code does not send `"prefix"`. ooda/lsp/ is wrong on that point.
+  4. Empty prefix still returns the catalog (not a hang, not a crash).
+  5. Hover and definition still name the identifier under the cursor.
+     Lock: scripts/lsp_cursor_smoke.oo still prints PASSED.
+  6. New lock: scripts/lsp_complete_smoke.oo prints PASSED.
+  7. A test that greps the catalog in source is not enough.
+
+## 1. Waves
+
+  Wave 0 (read): COORD, RT, DOCS
+  Wave 1 (write): DE1, DE2, HARN  — disjoint files
+  Wave 2 (lock): HYG
+  Wave 3 (attack): PV1, PV2, SEC, MEM
+  Wave 4 (prove): INT
+  Wave 5 (merge note): COORD
+
+## 2. Twelve agents
+
+  COORD
+    Own the worktree. Name the branch `wip/lsp-complete`.
+    Assign files. Refuse any edit outside the ship 1 write set.
+    After INT: write audit/plan1_coord.oot with pass/fail per claim.
+
+  DE1
+    Own cli/lsp_reply.oo.
+    Advertise completionProvider on initialize.
+    Dispatch textDocument/completion to DE2's helper.
+    If the file would pass 256 lines, split dispatch only. Do not
+    rewrite hover or definition.
+    Keep shutdown and unknown methods as they are.
+
+  DE2
+    Own new cli/lsp_complete.oo.
+    Lift the catalog (caps, keywords, types, builtins) from
+    ooda/lsp/lsp_completion.oo into the CLI folder.
+    Filter by prefix from lsp_ident_at (include a leading `&`).
+    Return LSP CompletionList JSON.
+    Do not import ooda/lsp/. Same-folder imports only.
+
+  RT
+    Read only. Prove no chs_rt change is required.
+    If emit of new CLI files fails, name the exact error.
+    Do not patch runtime. Do not patch oodac.
+    Write audit/plan1_rt.oot.
+
+  HARN
+    Own fixtures/lsp_complete_probe.oo and scripts/lsp_complete_smoke.oo.
+    Drive the rebuilt bin/ooda lsp with framed JSON-RPC:
+      initialize, then textDocument/completion on a file URI.
+    Assert `&FsCap` is in the result. Assert isIncomplete is false.
+    Hang budget 10 seconds.
+
+  PV1
+    Attack: completion on a missing file URI, a directory URI,
+    and a body with no position. Must not crash. Must not hang.
+    Must not read a path with `..`.
+
+  PV2
+    Attack: the old lsp_cursor_smoke must still pass.
+    Completion must not change the hover string for `add` vs `main`.
+    If a builder "fixed" hover to first-fn-only, fail the ship.
+
+  SEC
+    Completion reads a file:// path. Refuse `..`, absolute paths
+    outside the worktree if the current hover loader is loose.
+    Do not introduce process_exec. Do not print file bodies to logs.
+
+  MEM
+    Catalog build must not loop. Empty file, 0-byte file, huge
+    prefix: bound the item list (HARN names the cap, default 64).
+    No new long-lived buffers.
+
+  INT
+    Rebuild CLI with seed oodac. Run lsp_cursor_smoke and
+    lsp_complete_smoke twice in a clean shell (double-run).
+    Confirm strings on bin/ooda still say `pure .oo product CLI`.
+    Confirm oodac/oodac was not overwritten.
+
+  HYG
+    Line counts. Academy headers. No `.md` / `.py`. No tmp.c left
+    in the worktree. dinner_lint on the ship files.
+
+  DOCS
+    Do not edit the public site. Do not edit ROADMAP as truth.
+    One audit note: what initialize advertises now vs before.
+    If SHIPPED is later updated, it waits on skeptic pass.
+
+## 3. Failure
+
+  First irrecoverable fail stops the ship. COORD writes why.
+  Do not start ship-merge. Other ships may continue.

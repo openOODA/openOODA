@@ -1,0 +1,152 @@
+# ROADMAP_NS_DE2 — NORTHSTAR 2–4 grammar, AST, types vs disk
+
+File: openOODA/audit/roadmap_ns_de2.oot
+Survey only. No product edit. No ROADMAP edit. C emit + gcc remains the product.
+
+Logline: This board compares NORTHSTAR chapters 2 to 4 to SHIPPED, ooda.ebnf, corpus, and fixtures.
+Setup: Read NORTHSTAR.oot 2–4, SHIPPED.oot, ROADMAP.oot, ooda/ooda.ebnf, bootstrap/corpus, and fixtures language locks.
+Beats:
+  1. State the production test.
+  2. Score must-use, exhaustiveness, E_CAP, and contracts that fold.
+  3. Score ADTs, refinements, newtypes, typestate, traits, SECRET, macros, Merkle AST, spans.
+  4. End with a recommended open-row table.
+
+## 1. Method
+
+Production this cycle means users cannot ship a correct program without must-use Result/Option, exhaustive Option/Result match, E_CAP, and contracts that fold.
+These items are later, not this-cycle production open: full IFC lattice, product AST-macro expand, Merkle incremental cache, ghost typestate machines, `where` refinements, newtypes.
+Do not open oodac leftovers. Do not open library leftovers. Do not open moonshots.
+Pin: v0.200.0-beta. C emit + gcc remains the product path.
+
+Proof roots: `/home/jeryd/Projects/openOODA/ooda/ooda.ebnf`, `/home/jeryd/Projects/openOODA/ooda/oodac/`, `/home/jeryd/Projects/openOODA/ooda/bootstrap/corpus/`, `/home/jeryd/Projects/openOODA/ooda/fixtures/`.
+
+NORTHSTAR 2.3 lists TraitDecl, `::` import, `where`, newtype, and `spec` as product EBNF. Live `ooda.ebnf` tags those residual (OPEN-13). Trust the live file.
+
+## 2. Production floor
+
+### 2.1 Must-use Result and Option
+NORTHSTAR 2.2: Result and Option return values must be handled with `match` or `?`.
+Disk proof: `oodac/tc_effects.oo` refuses unused `Ok` / `Err` / `Some` and `let _ =`. `oodac/tc_must_use_call.oo` refuses discarded Result calls. Corpus `typecheck/fail/must_use_ok.oo`. Fixtures `open_unused_result.oo`, `open_let_underscore.oo`, `open_discard_write.oo`, `open_user_res_disc.oo`, `open_try_ok.oo`. SHIPPED: `ooda fix` applies E_MUST.
+Honesty: user `-> Option` calls are not in the discard table. Unused `Some(...)` still fails. SHIPPED names the Result-call floor.
+Production requirement? yes
+Recommend open row? no
+
+### 2.2 Exhaustiveness
+NORTHSTAR 4.1: `match` must cover all sum variants.
+Disk proof: `oodac/tc_match_exh.oo` refuses Option without Some and None, Result without Ok and Err, and `_`-only annotated matches. Fixtures `open_match_option_ok.oo`, `open_match_option_bad.oo`, `open_match_star.oo`, `open_match_unann.oo`. Corpus emit-c `match_result_let.oo`.
+User sum types have no exhaust walker. Product ADTs here are Option and Result.
+Production requirement? yes for Option/Result
+Recommend open row? no
+
+### 2.3 E_CAP
+NORTHSTAR 4.2: Privileged calls without the token fail closed (`E_CAP`).
+Disk proof: corpus `check/fail/no_cap_*.oo` and `wrong_granular_*.oo`; pass `ok_*_cap_*.oo`. Compiler `check_cap_util.oo` knows GpuCap, ThreadCap, FfiCap. SHIPPED hostile lock: `scripts/hostile_cap_probe_smoke.oo`. `ooda fix` applies E_CAP.
+Live EBNF lists the floor caps. It omits GpuCap / ThreadCap / FfiCap names. Check still enforces them.
+Production requirement? yes
+Recommend open row? no
+
+### 2.4 Contracts that fold
+NORTHSTAR 2.2 / 2.3: `requires`, `ensures`, `spec`.
+Disk proof: product EBNF has `requires` / `ensures`. Corpus lex `requires.oo`. Emit-c `fn_contracts_add.oo`, `requires_complex.oo`, `ensures_complex.oo`. Fixtures `open81_smt_ok.oo`, `open81_smt_bad.oo`, `open81_smt_spec_bad.oo`. SHIPPED: const header fold is product. Full symbolic SMT is residual (ROADMAP 5.1).
+EBNF marks `spec` residual. Check still folds const `spec`.
+Production requirement? yes for fold
+Recommend open row? no
+
+## 3. Grammar and ADTs on disk
+
+### 3.1 File, module, core syntax
+NORTHSTAR 2.1–2.2: `.oo` modules, immutable `let`, `let mut`, expression `if` / `match`, no null.
+Disk proof: product EBNF ImportDecl is `import` StringLiteral. Corpus import `multi_ok.oo`. Parse pass `let_mut.oo`. Emit-c `if_expr_let.oo`. 256-line and Academy header are RULES, not a typecheck rule.
+`import Ident::Ident` is residual. OPEN-13 lock keeps it off product Item.
+Production requirement? yes for string import and `let mut`
+Recommend open row? no
+
+### 3.2 ADTs
+NORTHSTAR 4.1: user sums, structs, Option, Result.
+Disk proof: product EBNF TypeDecl is SumType or StructType. Emit and check treat type as struct or alias (`c_emit_struct.oo`, `tc_ann_prep.oo`). Corpus typecheck `struct_field_ok.oo`, `missing_struct_field.oo`. Option/Result are primitives in EBNF. No fixture uses `type Shape = Circle | Rect`.
+PIPE in expressions is bitwise or, not a type-sum constructor.
+Production requirement? yes for struct + Option/Result. no for user sums
+Recommend open row? no
+
+## 4. Later or residual (not this-cycle open)
+
+### 4.1 Refinements
+NORTHSTAR 4.4: `type Port = Int where val >= 1 && val <= 65535`.
+Disk proof: EBNF tags `where` residual. Product is `Int[0..10]` (`tc_refine_*.oo`, corpus `refine_ret_ok.oo` / `refine_ret_neg.oo`).
+Production requirement? no
+Recommend open row? no
+
+### 4.2 Newtypes
+NORTHSTAR 4.4: `type OrderId = newtype u64`.
+Disk proof: none. EBNF residual. `u64` is residual.
+Production requirement? no
+Recommend open row? no
+
+### 4.3 Typestate
+NORTHSTAR 4.3: `File[Unopened]` linear consume.
+Disk proof: comment machines. Fixtures `open82_typestate.oo`, `open82_typestate_bad.oo`, `open_typestate_double.oo`. OPEN-82 is closed. Ghost `File[Opened]` types are later.
+Production requirement? no
+Recommend open row? no
+
+### 4.4 Traits
+NORTHSTAR 4.6: `trait` plus monomorphization.
+Disk proof: SHIPPED product. Fixture `open83_trait.oo`. Parser `parse_trait_item`. Emit monomorphizes (`c_emit_call.oo`). EBNF still tags TraitDecl residual (OPEN-13 honesty).
+Production requirement? no
+Recommend open row? no
+
+### 4.5 SECRET IFC
+NORTHSTAR 4.5: type-level `SECRET:` and a full taint lattice.
+Disk proof: line-start `// SECRET: ident`. Sink refuse includes `process_exec`. Fixtures `open_secret_sib.oo`, `secret_*_fail.oo`, `secret_struct_field_process_exec_fail.oo`. SHIPPED names that sink. Full lattice is a moonshot (MOONSHOTS 1).
+Production requirement? no for the lattice. Sink refuse is product.
+Recommend open row? no
+
+### 4.6 AST macros
+NORTHSTAR 3.2: compile-time AST rewrite with hygiene.
+Disk proof: `oodac/ast_macros.oo` `ast_macro(src)` is identity. `open89_macro.oo` expands `$(const)` strings at runtime. `ast_macros_fixture.oo` talks to `std/macro.oo`. Product expand is later.
+Production requirement? no
+Recommend open row? no
+
+### 4.7 Merkle AST
+NORTHSTAR 3.3: subtree hash and incremental skip of unchanged trees.
+Disk proof: none for AST Merkle. `oodac/check_hash.oo` hashes whole source to a 16-char cache key. `merkle_meta_fixture.oo` is a library DAG, not the compiler AST.
+Production requirement? no
+Recommend open row? no
+
+### 4.8 Span provenance
+NORTHSTAR 3.1: every node keeps file, line, column, length.
+Disk proof: tokens are kind, line, col, text (`token_fmt.oo`). JSON errors add path (`diag_json.oo`). SHIPPED: line, col, nonempty path. No length field. Dump AST is a token walk, not a typed tree (`parse_drive.oo`).
+Production requirement? no
+Recommend open row? no
+
+## 5. Pin facts to keep
+
+  Pin: v0.200.0-beta.
+  Live check: RAM-cold about 164s. Disk-warm about 0.02s. 179 modules.
+  C emit + gcc remains the product path.
+  Language locks: `open_unused_result.oo`, `open_match_option_bad.oo`, `open81_smt_ok.oo`, `open82_typestate.oo`, `open83_trait.oo`, corpus `check/fail/no_cap_write_file.oo`.
+  Grammar lock: `scripts/open13_ebnf_smoke.oo`.
+
+Do not change those words unless INT records a new live check.
+
+## 6. Recommended open rows
+
+None.
+
+| Row | NORTHSTAR | Class | Why |
+| --- | --- | --- | --- |
+| (none) | 2.2 must-use | done | Unused Ok/Err/Some and Result calls fail. E_MUST fix is product. |
+| (none) | 4.1 exhaust | done | Option/Result match without both arms fails. |
+| (none) | 4.2 E_CAP | done | Corpus no-cap and wrong-granular fail closed. |
+| (none) | 2.2 contracts | done | Const header requires/ensures/spec fold. Full SMT stays 5.1 residual. |
+| (none) | 4.1 user sums | residual | No Circle\|Rect fixture. Struct + Option/Result is the floor. |
+| (none) | 4.4 where / newtype | residual | EBNF residual. Int[lo..hi] is the live refine. |
+| (none) | 4.3 ghost typestate | residual | Comment walker only. Keep closed OPEN-82. |
+| (none) | 4.6 traits | done | OPEN-83 product. EBNF residual tag is honesty, not a hole. |
+| (none) | 4.5 IFC lattice | moonshot | Sink refuse is product. Lattice stays in MOONSHOTS. |
+| (none) | 3.2 AST macros | residual | `ast_macro` is identity. Not this-cycle `[ ]`. |
+| (none) | 3.3 Merkle AST | residual | File digest cache only. Not subtree skip. |
+| (none) | 3.1 full spans | residual | Line/col/path diagnostics exist. Length tree does not. |
+
+Do not add user-sum exhaust, `where` refinements, newtypes, ghost typestate, full IFC, AST-macro expand, Merkle AST cache, LLVM gcc replacement, List[Float] emit, untyped struct lets, org std, or PQC to section 5.
+C emit + gcc remains the product.
+Stop.

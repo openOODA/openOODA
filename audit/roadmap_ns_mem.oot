@@ -1,0 +1,135 @@
+# ROADMAP_NS_MEM — NORTHSTAR 1.2 memory vs disk
+
+File: openOODA/audit/roadmap_ns_mem.oot
+Survey only. No product edit. No ROADMAP edit. C emit + gcc remains the product.
+
+Logline: This board compares NORTHSTAR 1.2 memory words to ARC, arenas, and quotas on disk.
+Setup: Read NORTHSTAR.oot 1.2 and 6.1, SHIPPED.oot, ROADMAP.oot, SECURITY.oot, and ooda/runtime alloc, ARC, arena, rlimit files.
+Beats:
+  1. State the production test.
+  2. Score last-ref free and zero quotas.
+  3. Score pause-free GC, copies, and undo-RAM as later.
+  4. End with a recommended open-row table.
+
+## 1. Method
+
+Production this cycle means last-ref free and fail-closed zero quotas must hold.
+Those two facts must stay true on the pin.
+These items are later, not this-cycle production open: pause-free GC, undo-RAM, ghost-state transactional memory.
+Do not open oodac leftovers. Do not open library leftovers. Do not open moonshots.
+Keep live words: RAM-cold about 164s. 179 modules.
+
+Proof root: `/home/jeryd/Projects/openOODA/ooda/runtime/`.
+Key files: `chs_rt_str.c`, `chs_rt_list.c`, `chs_rt_alloc.c`, `chs_rt_arena.c`, `chs_rt_rlimit.c`.
+
+NORTHSTAR 6.1 already splits the model: deterministic ARC with RAII cleanup today; pause-free GC and micro-transactional undo buffers later.
+
+## 2. Production must hold
+
+### 2.1 Last-ref free (ARC)
+
+NORTHSTAR 1.2: Automatic Reference Counting with deterministic reclaim when the last reference drops.
+ROADMAP: `PURE_NO_ARC=0`. Memory is freed when the last reference drops.
+Official rebuild exports `PURE_NO_ARC=0`. The strip helper is only for `PURE_NO_ARC=1`.
+
+Disk:
+  `OoStrHeader` and `OoListHeader` hold `ref_count` (`chs_rt.h`).
+  `oo_str_release` decrements. Count 0 calls `free` (`chs_rt_str.c`).
+  List last-ref is atomic. Count 1 to 0 subtracts ambient bytes and frees (`chs_rt_list.c`).
+  C emit prints `oo_*_release` on scope exit (`oodac/c_emit_arc.oo`).
+  Interned literals set `OO_FLAG_STATIC`. Retain and release are no-ops by design (`chs_rt_str_intern.c`).
+
+Status: done. Production requirement? yes. Open row? no.
+
+Honesty note: `scripts/arc_smoke.oo` only checks that the fixture dir exists. It does not run the six fixtures. That is a thin lock, not a pin lie. Do not add a 5.3 LLVM row. Do not add a CLI/ops row this cycle.
+
+### 2.2 Fail-closed zero quotas
+
+SHIPPED: POSIX `setrlimit` is product under `&SysCap` (AS / NOFILE / CPU). Zero quotas fail closed.
+
+Disk:
+  `chs_rt_rlimit.c` rejects `megabytes <= 0`, `max_fds <= 0`, and `seconds <= 0` before `setrlimit`.
+  `std/sec/rlimit.oo` repeats the same refuse.
+  Fixture `fixtures/open_rlimit.oo` proves mem 0 and nofile 0 fail closed, then sets nofile 256.
+  Lock: `scripts/open_rlimit_smoke.oo` (emit-c + gcc + run prints `open_rlimit: PASSED`).
+
+Status: done. Production requirement? yes. Open row? no.
+
+### 2.3 Ambient list quota
+
+Default list budget is 64 MiB (`chs_rt_list.c`). `OO_LIST_AMBIENT_QUOTA` may raise it.
+Over-budget list growth prints an error and exits. This is process-local. It is not OS rlimit.
+`oo_alloc_bytes` is a smoke size token. It raises the ceiling. It does not `mmap` (`chs_rt_alloc.c`).
+SECURITY.oot already names this as smoke quota tokens.
+
+Status: done for the listed contract. Open row? no.
+
+## 3. Product on disk, not 1.2 production leftover
+
+### 3.1 Bump arenas
+
+SHIPPED: `arena_create` / `alloc` / `reset` under AllocCap. `&ArenaCap` is its own token.
+Disk: `chs_rt_arena.c`. Eight slots. Size 64 to 1<<28. Forged cap exits. Reset is O(1).
+Proof: `fixtures/open84_arena_cap.oo` (OPEN-84 closed).
+There is no `arena_destroy`. Slots stay live. That is a bound, not a 5.2 hole.
+
+Status: done. Open row? no.
+
+### 3.2 Checkpoint words
+
+`oo_checkpoint` / `oo_rollback` store up to eight `long long` values (`chs_rt_arena.c`).
+Proof: `fixtures/open86_checkpoint.oo` (OPEN-86 closed).
+This is not undo-RAM.
+
+Status: smoke. Open row? no.
+
+## 4. NORTHSTAR 1.2 later (not this-cycle open)
+
+### 4.1 Pause-free GC horizon
+
+NORTHSTAR 1.2 names the horizon. NORTHSTAR 6.1 says later.
+No collector symbol in `chs_rt_*.c`. ARC last-ref is the product path.
+MOONSHOTS names Undo-RAM and ghost-state TM. Keep those rows there.
+
+Status: residual / moonshot. Open row? no.
+
+### 4.2 Zero-copy slices
+
+NORTHSTAR 1.2 names zero-copy slicing across buffer boundaries.
+Disk: `oo_str_slice` and `oo_byte_slice` allocate a new payload and `memcpy` (`chs_rt_str.c`).
+Comments say not a borrow. SHIPPED does not claim zero-copy slices.
+
+Status: residual. Open row? no.
+
+### 4.3 Ghost-state transactional memory
+
+NORTHSTAR 1.2 names speculative buffers with rollback before commit.
+Disk is the eight-int stack in §3.2. Not a RAM undo log. Not isolated actor heaps.
+Actors share the process heap (`chs_rt_actor.c`). Isolated heaps stay later.
+
+Status: residual / moonshot. Open row? no.
+
+## 5. Pin facts to keep
+
+  Pin: v0.200.0-beta.
+  Live check: RAM-cold about 164s. Disk-warm about 0.02s. 179 modules.
+  Memory model: `PURE_NO_ARC=0`. Last reference frees the heap object.
+  C emit + gcc remains the product path.
+
+Do not change those words unless INT records a new live check.
+
+## 6. Recommended open rows
+
+None.
+
+| Row | NORTHSTAR | Class | Why |
+| --- | --- | --- | --- |
+| (none) | 1.2 last-ref | done | ARC retain/release frees on count 0. Keep `PURE_NO_ARC=0`. |
+| (none) | 6.1 / SHIPPED quotas | done | Zero `setrlimit` values fail closed. Lock: `open_rlimit_smoke.oo`. |
+| (none) | 1.2 pause-free GC | residual | Later. Not this-cycle `[ ]`. |
+| (none) | 1.2 zero-copy slice | residual | Slices copy. Not a pin lie. |
+| (none) | 1.2 ghost TM | moonshot | Eight-int checkpoint only. Keep in MOONSHOTS.oot. |
+
+Do not add pause-free GC, undo-RAM, zero-copy slices, isolated actor heaps, LLVM gcc replacement, or library work to section 5.2.
+C emit + gcc remains the product.
+Stop.

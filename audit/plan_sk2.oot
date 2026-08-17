@@ -1,0 +1,157 @@
+# PLAN SK2 — Exec and capability (final)
+
+File: openOODA/audit/plan_sk2.oot
+Skeptic. Read-only product. Disk is the source. Did not edit worktrees.
+Did not edit dirty parent `/home/jeryd/Projects/openOODA/ooda`.
+
+Question: did we add a new shell or a wider token?
+
+Logline: Combined CLI has no bench-ok stub, no test -e launch, no process_exec on complete, and bench times with now_ms.
+Setup: Confirm on `/home/jeryd/.grok/worktrees/ooda-cli-three`. Live `bin/ooda` is dated 2026-08-17 19:14.
+Beats:
+  1. strings of bin/ooda must not hold `ooda bench: ok`.
+  2. cmd_pm_launch.oo must not hold `test`.
+  3. lsp_complete.oo must not call process_exec.
+  4. cmd_more.oo must use now_ms, not date.
+
+## 0. Verdict
+
+PASS on `ooda-cli-three` for the SK2 question.
+
+| gate | claim | status | command |
+| --- | --- | --- | --- |
+| 1 | binary has no `ooda bench: ok` | PASS | `strings bin/ooda \| grep -F 'ooda bench: ok'` empty, exit 1 |
+| 2 | launch source has no `test` / `test -e` | PASS | `grep -n test cli/cmd_pm_launch.oo` empty, exit 1 |
+| 3 | complete path does not call process_exec | PASS | `grep -n 'process_exec(' cli/lsp_complete.oo` empty |
+| 4 | bench clock is now_ms, not date | PASS | `grep -nE 'now_ms\|date ' cli/cmd_more.oo` — four now_ms, no date |
+
+COORD may merge only if SK1, SK2, and SK3 are PASS on this tree.
+This file is SK2 only. Parent must re-run CRITs on the live `bin/ooda`.
+
+cwd for every command: `/home/jeryd/.grok/worktrees/ooda-cli-three`.
+
+## 1. Gate — strings bench stub
+
+Command:
+
+    strings bin/ooda | grep -F 'ooda bench: ok'
+
+Result: empty. grep exit 1. Hit count 0.
+
+Other bench strings in the same binary:
+
+    ooda bench: check failed
+    ooda bench: check
+    ooda bench: run
+    now_ms
+    oo_now_ms
+
+The leftover stub `ooda bench: ok` is gone from the product CLI.
+`strings bin/ooda | grep -F 'test -e'` is also empty.
+
+## 2. Gate — launch has no test
+
+Owner command as written (`grep test -e cli/cmd_pm_launch.oo`) is invalid
+grep usage: `-e` takes the next token as a second pattern, so grep looks
+for a file named `test` and exits 2. That is not a source hit.
+
+Intended emptiness holds:
+
+    grep -n test cli/cmd_pm_launch.oo
+    grep -nF 'test -e' cli/cmd_pm_launch.oo
+
+Both empty. grep exit 1.
+
+`--exec` after an ok gate:
+
+    rargs = list_push(rargs, path);
+    run_oodac_run(fs, sys, rargs);
+
+One `run_oodac_run` at line 117. No `sys_exec`. No `sh -c`. No `test -e`.
+
+Gate runs first. `pm_launch_gate` is line 96. Fail calls `launch_die`
+(`process_exit(2)`) before line 117. `cli/pm_launch.oo` still returns
+`err yank`, `err sha256 mismatch`, `err caps`. Those strings are unchanged.
+
+`run_oodac_run` finds oodac and starts `oodac run` plus the quoted path.
+The `.oo` bytes are not a `sh` script.
+
+## 3. Gate — complete has no process_exec
+
+`textDocument/completion` is in-process:
+
+    return lsp_ok(id, lsp_complete_result(fs, body));
+
+`lsp_complete_result` takes `&FsCap` only. It reads a `file://` path.
+It filters a fixed catalog. It does not take ProcessCap. It does not name oodac.
+
+Proof of no call:
+
+    grep -n 'process_exec(' cli/lsp_complete.oo
+    grep -n 'sys_exec(' cli/lsp_complete.oo
+    grep -n oodac cli/lsp_complete.oo
+
+All empty.
+
+One comment at line 52: `Do not call process_exec`. That is not a call.
+`cli/lsp_reply.oo` has no `process_exec` and no `sys_exec`.
+
+URI `..` does not walk to `/etc`. Load order is extract, then `..`,
+then exists, then `read_file`.
+
+    if str_index_of(p, "..") >= 0 { return ""; }
+
+`file://../etc/passwd` and `file://foo/../../etc/passwd` never call `read_file`.
+
+Token: FsCap is enough. No new SysCap on the complete path.
+
+## 4. Gate — bench uses now_ms, not date
+
+Main signature (RULES 1.4 record):
+
+    pub fn main(fs: &FsCap, sys: &SysCap, time: &TimeCap, args: List[String])
+
+Bench signature:
+
+    pub fn run_ooda_bench(fs: &FsCap, sys: &SysCap, time: &TimeCap, args: List[String])
+
+`time` goes only to `run_ooda_bench`. Other commands keep FsCap and SysCap.
+
+Clock on disk (`cli/cmd_more.oo`):
+
+    let t0: Int = now_ms(time);
+    sys_exec(sys, "sh", "-c", prefix + " check " + sq(path));
+    let t1: Int = now_ms(time);
+
+Optional `--run` uses `now_ms(time)` again. Negative delta becomes 0.
+
+Proof:
+
+    grep -nE 'now_ms|date |date\+|EPOCH|SECONDS|sleep_ms' cli/cmd_more.oo
+
+Hits: four `now_ms(time)` at lines 117, 119, 130, 132. No `date`.
+No bash timer. No `EPOCH`. No `SECONDS`. No `sleep_ms`.
+
+SysCap starts oodac through `find_oodac` + `sq`. It is not the clock.
+The user file is one quoted operand. It is not `sh PATH`.
+
+## 5. Residual (not FAIL)
+
+  `host_run` still uses `sh -c` to start oodac. That is the old helper.
+  Bench also starts oodac with `sh -c`. The script is not the user file.
+  `file:///etc/passwd` has no `..`. The completion gate allows that read.
+  TimeCap on `main` grants the clock to the CLI process. Only bench reads it.
+  This role did not re-run hostile yank / sha / caps. Gate strings are on disk.
+  SK1 owns live initialize, LAUNCH_EXEC_OK, and `ooda bench FILE` ms.
+
+## 6. Isolation
+
+  Wrote only this note.
+  Did not edit `cli/`, `oodac/`, `runtime/`, `std/`, or the public site.
+  Did not write `/home/jeryd/Projects/openOODA/ooda`.
+  Did not rebuild `bin/ooda`.
+  No new `.py`, `.md`, or `.sh`.
+
+Status: SK2 PASS on `/home/jeryd/.grok/worktrees/ooda-cli-three`.
+
+C emit plus gcc remains the product path.

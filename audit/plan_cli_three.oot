@@ -1,0 +1,87 @@
+# PLAN CLI THREE — LSP complete, launch --exec, bench
+
+File: openOODA/audit/plan_cli_three.oot
+Process only. Not product. Disk is the source, not ROADMAP.
+Owner: build ships 1, 2, and 3. Do not change the public site.
+Do not edit oodac/, runtime/, or std/. Other agent owns those trees.
+
+## 1. The three ships
+
+  1. Product `ooda lsp` serves `textDocument/completion`.
+  2. `ooda launch --exec NAME` runs the pinned `.oo` after the gate.
+  3. `ooda bench FILE` times a real check and prints wall ms.
+
+## 2. Isolation
+
+  One clean worktree per ship, from commit `64ef8bd` (ooda main).
+  Do not write in `/home/jeryd/Projects/openOODA/ooda` while it is dirty.
+  Rebuild only the CLI. Never rebuild `oodac/oodac`.
+
+  From a worktree root (`ooda/`):
+    OODAC_BIN=./bootstrap/seed/oodac \
+      bash bootstrap/oodac_pure_build cli/main.oo bin/ooda
+
+  Seed compiler only. Do not use a mid-flight `oodac/oodac`.
+  Never copy `bin/ooda` onto `oodac/oodac`.
+
+  File law: `.oo` product, `.oot` process. No `.py` / `.md` / extra `.sh`.
+  Every file stays <= 256 lines. Academy header required.
+
+## 3. File owners (no overlap across ships)
+
+  Ship 1 write:
+    cli/lsp_complete.oo (new)
+    cli/lsp_reply.oo
+    cli/lsp_drive.oo (only if dispatch must change)
+    scripts/lsp_complete_smoke.oo (new)
+    fixtures/lsp_complete_probe.oo (new)
+  Ship 1 must not edit hover or definition behavior.
+
+  Ship 2 write:
+    cli/cmd_pm_launch.oo
+    cli/pm_launch.oo (only if gate API must change)
+    fixtures/pm_launch_exec/ (new runnable payload)
+    scripts/pm_launch_exec_smoke.oo (new)
+    qa/pm_hostile_spine.oo (add --exec run and refuse cases)
+  Ship 2 must not grow ooda/pm/.
+
+  Ship 3 write:
+    cli/cmd_more.oo
+    cli/main.oo (help line + TimeCap on main if required)
+    scripts/bench_smoke.oo (new)
+  Ship 3 must not invent a fuzzer.
+
+  Shared read-only: host_run.oo, find_compiler.oo, existing lsp_ident.oo.
+  If two ships need the same file, COORD serializes. Default: only ship 3
+  may edit main.oo. Ship 1 and 2 do not touch main.oo.
+
+## 4. DAG
+
+  Parallel: three worktrees, three phalanxes, same clock.
+  Barrier: no ship merges until its 12 role files exist and INT is green.
+  Then three skeptics run on all three binaries.
+  Then COORD rollup. Then owner says merge.
+
+## 5. Out of scope
+
+  Public site, guide, registry HTML, wiki.
+  oodac, runtime C, product std, org std.
+  vscode JS. VS Code already starts `ooda lsp`.
+  `ooda/lsp/` is not the launch path. Do not grow it.
+  `ooda test --fuzz`. Public install. `curl | oo`.
+
+## 6. Role files
+
+  Each role writes one audit note under audit/:
+    audit/plan1_<role>.oot  ship 1
+    audit/plan2_<role>.oot  ship 2
+    audit/plan3_<role>.oot  ship 3
+    audit/plan_sk1.oot audit/plan_sk2.oot audit/plan_sk3.oot
+  Role files are proof notes. They are not a second product.
+
+## 7. Cross references
+
+  Ship 1 agents: audit/plan_cli_lsp.oot
+  Ship 2 agents: audit/plan_cli_launch.oot
+  Ship 3 agents: audit/plan_cli_bench.oot
+  Skeptics:      audit/plan_cli_skeptics.oot
