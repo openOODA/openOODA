@@ -1,0 +1,109 @@
+# PLAN CLI LAUNCH — 12 agents for real --exec
+
+File: openOODA/audit/plan_cli_launch.oot
+Ship 2. Today cli/cmd_pm_launch.oo on --exec runs:
+  sh -c "test -e <path>; exit 0"
+That checks that the file exists. It does not run the payload.
+pm_launch_gate already checks yank, sha256, and cap subset.
+
+## 0. Done when
+
+  1. After gate returns ok, --exec runs the pinned `.oo` with the
+     same path as `ooda run <payload>` (run_oodac_run / host_run).
+  2. Without --exec, print the path only. Do not run.
+  3. Gate fail: non-zero exit. No payload process. No
+     `ooda launch: ok`.
+  4. Yank after install, sha drift, and extra caps still refuse
+     with --exec (qa/pm_hostile_spine.oo).
+  5. A new fixture with `pub fn main` prints LAUNCH_EXEC_OK
+     when launched with --exec.
+  6. Public registry hello.oo has no main. Do not change it.
+     Do not treat hello_ok as a program.
+  7. Do not grow ooda/pm/. Product is cli/.
+
+## 1. Waves
+
+  Wave 0 (read): COORD, RT, DOCS, SEC
+  Wave 1 (write): DE1, DE2, HARN
+  Wave 2 (lock): HYG
+  Wave 3 (attack): PV1, PV2, SEC, MEM
+  Wave 4 (prove): INT
+  Wave 5: COORD
+
+## 2. Twelve agents
+
+  COORD
+    Worktree branch `wip/launch-exec`.
+    File lock: cmd_pm_launch.oo, optional pm_launch.oo,
+    new fixture dir, new smoke, qa/pm_hostile_spine.oo.
+    Do not edit main.oo.
+
+  DE1
+    Own cli/cmd_pm_launch.oo.
+    Delete the `test -e` shell line.
+    If gate is not ok: same die path as today.
+    If --exec and gate ok: call run_oodac_run on the payload path.
+    Propagate the child exit code.
+    If --json and --exec: do not claim ok before the run finishes.
+
+  DE2
+    Own cli/pm_launch.oo only if the gate string API must change.
+    Prefer no edit. If DE1 can call the existing `ok` / `err …`
+    strings, DE2 writes a read-only note and stops.
+    If a change is required, keep yank / sha / caps order.
+
+  RT
+    Read only. Exec must use existing SysCap host_run, not a new
+    C spawn API. If run_oodac_run cannot take a CAS path, name
+    the blocker. Do not patch chs_rt.
+
+  HARN
+    New fixtures/pm_launch_exec/: manifest + payload with
+    `pub fn main` that prints LAUNCH_EXEC_OK.
+    New scripts/pm_launch_exec_smoke.oo:
+      add from that vendor, launch without --exec (path only,
+      no LAUNCH_EXEC_OK), launch with --exec (sees LAUNCH_EXEC_OK).
+    Extend qa/pm_hostile_spine.oo: --exec on yank / tamper / extra
+    caps still refuse and must not print LAUNCH_EXEC_OK.
+
+  PV1
+    Attack: --exec on a missing lock name, a name with `..`,
+    a yanked name, a drifted CAS file.
+    Each must fail closed. No child `oodac run`.
+
+  PV2
+    Attack: payload that is not `.oo` (ELF / empty / directory).
+    Refuse. Do not `sh` the bytes.
+    Attack: --exec without a prior add.
+
+  SEC
+    No `sh -c` around the payload. Quote rules stay in host_run.
+    Caps: launch grant must still be a subset of the lock need.
+    OODA_FS_WRITEDIR must not widen because we exec.
+    SECRET: do not print CAS bytes.
+
+  MEM
+    One child per --exec. Child must be reaped (no zombie).
+    Hang budget 10 seconds on the smoke payload.
+    Do not leave .ooda-cache junk outside the smoke dir.
+
+  INT
+    Rebuild CLI with seed oodac.
+    Run pm_launch_exec_smoke twice.
+    Run the hostile spine twice (double-run on refuse cases).
+    Confirm oodac/oodac binary timestamp is unchanged.
+
+  HYG
+    Line counts on cmd_pm_launch.oo (121 today; room exists).
+    Academy headers on new files. No leftover vendor lock in
+    the worktree after smokes.
+
+  DOCS
+    No site edits. Audit note: `--exec` means run, not exists.
+    Help text in cmd_pm_launch header must match the code.
+
+## 3. Failure
+
+  If DE1 cannot call run_oodac_run without editing host_run.oo,
+  COORD stops and asks the parent. host_run.oo is shared.
+  Do not silently edit it.

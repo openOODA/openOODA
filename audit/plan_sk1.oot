@@ -1,0 +1,169 @@
+# PLAN SK1 — Lie detector on ooda-cli-three bin/ooda
+
+File: openOODA/audit/plan_sk1.oot
+Process only. Not product. SK1. Did not edit worktree product.
+
+Logline: Drive rebuilt ./bin/ooda so a leftover bug cannot hide behind a source grep.
+Setup: cwd /home/jeryd/.grok/worktrees/ooda-cli-three. Binary is real ELF CLI. New shell per CRIT. Logs under /tmp/sk1_ooda_cli_three.
+Beats:
+  1. Run lsp_complete_smoke twice. Require completionProvider and &FsCap from the binary.
+  2. Ingest runme. Path-only must lack LAUNCH_EXEC_OK. --exec must print it.
+  3. Bench hello must print check+ms, never ooda bench: ok.
+
+## 0. Verdict
+
+PASS on all three ships. A revert of any ship fails the command that proved it.
+
+| ship | claim | status | command |
+| --- | --- | --- | --- |
+| 1 | initialize has completionProvider; &Fs yields &FsCap | PASS | `timeout 30 ./bin/ooda run scripts/lsp_complete_smoke.oo` |
+| 2 | --exec runs the pin (not test -e) | PASS | `OODA_FS_WRITEDIR=$PWD timeout 60 ./bin/ooda launch --exec runme` |
+| 3 | bench times a real check | PASS | `timeout 60 ./bin/ooda bench fixtures/hello.oo` |
+
+Binary: /home/jeryd/.grok/worktrees/ooda-cli-three/bin/ooda
+ELF 64-bit, 360392 bytes, 2026-08-17 19:14.
+sha256 1c51901daf7451d7163789026e4794947b1d2883227778d0e032fe730d8ca63f
+`./bin/ooda version` -> `ooda 0.201.0-beta (pure .oo CLI)`
+Worktree `oodac/oodac` absent. Did not rebuild. Did not copy bin/ooda onto oodac/oodac.
+
+Question: would this test still pass if we reverted the ship?
+If yes, it is not proof. FAIL SK1.
+These would fail on revert:
+  old lsp has no completionProvider
+  old --exec is test -e (no LAUNCH_EXEC_OK)
+  old bench prints ooda bench: ok
+
+Forbidden as sole proof: grep of cli/*.oo, strings-only on bin/ooda.
+
+## 1. Ship 1 — completion
+
+Leftover: initialize has no completionProvider. No textDocument/completion.
+&Fs at a real cursor does not yield &FsCap.
+
+Would still pass if the bug remained:
+  grep -q completionProvider cli/*.oo
+  (source can hold the catalog while bin/ooda lsp never serves it)
+
+CRIT-S1 — new shell each time, cwd worktree root:
+
+    timeout 30 ./bin/ooda run scripts/lsp_complete_smoke.oo
+
+  Run 1 2026-08-17T19:19:16-04:00  exit 0
+    stdout: lsp_complete_smoke: PASSED
+            OK
+  Run 2 2026-08-17T19:20:28-04:00  exit 0
+    stdout: lsp_complete_smoke: PASSED
+            OK
+
+The smoke drives `./bin/ooda lsp` with initialize plus completion at
+the F of the first `: &Fs` in fixtures/lsp_complete_probe.oo
+(line 11 character 16). Binary stdout
+.ooda-cache/ooda-tmp/lsp_complete_out.json:
+
+    "completionProvider":{"triggerCharacters":["&"]}
+    "isIncomplete":false
+    "label":"&FsCap"
+
+That JSON is from the CLI, not from a source grep.
+Old initialize advertised hover/symbols/definition only. No
+completionProvider. Revert fails the smoke.
+
+Supplement (not a substitute): hover add on the same binary.
+
+    timeout 10 ./bin/ooda lsp .ooda-cache/ooda-tmp/sk1_hov_req.json
+
+  Cursor fixtures/lsp_cursor.oo `add(1, 2)` -> line 12 character 12.
+  exit 0. contents value `fn add`. No `fn main`.
+  First-fn-only leftover would fail this drive.
+
+## 2. Ship 2 — launch --exec
+
+Leftover: --exec runs sh -c "test -e PATH; exit 0" and prints
+ooda launch: ok. fixtures/pm_launch_exec/runme.oo never runs.
+main of that pin prints LAUNCH_EXEC_OK.
+
+Would still pass if the bug remained:
+  ./bin/ooda launch --exec runme ; test $? -eq 0
+  (test -e succeeds because the CAS leaf exists)
+
+How SK1 fails that leftover: ingest, then require LAUNCH_EXEC_OK
+only on --exec. test -e cannot print LAUNCH_EXEC_OK.
+
+CRIT-S2 — new shell each time. Prior ingest. OODA_FS_WRITEDIR=$PWD.
+
+    export OODA_FS_WRITEDIR="$(pwd)"
+    ./bin/ooda ingest --from fixtures/pm_launch_exec
+
+  2026-08-17T19:20:28-04:00  exit 0
+    ooda ingest: installed runme cas=95a48b4d1875327343bbf8e29d6457c5a0eadc2c29f969917513226b76483ecd
+
+    ./bin/ooda launch runme
+
+  Run 1 and run 2, both exit 0:
+    ooda launch: ok /home/jeryd/.grok/worktrees/ooda-cli-three/.ooda_modules/cas/95a48b4d1875327343bbf8e29d6457c5a0eadc2c29f969917513226b76483ecd/runme.oo
+    LAUNCH_EXEC_OK absent (0 hits).
+
+    timeout 60 ./bin/ooda launch --exec runme
+
+  Run 1 2026-08-17T19:20:39-04:00  exit 0
+    LAUNCH_EXEC_OK
+    OK
+  Run 2 2026-08-17T19:20:49-04:00  exit 0
+    LAUNCH_EXEC_OK
+    OK
+
+The payload printed LAUNCH_EXEC_OK. The second OK is oodac run, not
+the old launch stub. Path-only never ran main. Revert to test -e
+exits 0 and never prints LAUNCH_EXEC_OK. That fails this CRIT.
+
+Supporting, not sufficient: `strings ./bin/ooda | grep -F 'test -e '`
+is empty. Behavior above is the proof.
+
+## 3. Ship 3 — bench
+
+Leftover: stub prints ooda bench: ok and returns 0 for any argv,
+including a missing file. No check. No ms.
+
+Would still pass if the bug remained:
+  ./bin/ooda bench fixtures/hello.oo ; test $? -eq 0
+  (stub also exits 0)
+
+CRIT-S3 — new shell each time:
+
+    timeout 60 ./bin/ooda bench fixtures/hello.oo
+
+  Run 1 2026-08-17T19:19:38-04:00  exit 0
+    OK
+    ooda bench: check fixtures/hello.oo 13ms
+  Run 2 2026-08-17T19:20:39-04:00  exit 0
+    OK
+    ooda bench: check fixtures/hello.oo 5ms
+
+  Has `ooda bench: check `. Has `ms`. Times 13 and 5 differ.
+  The first OK is the check child. It is not `ooda bench: ok`.
+  grep `ooda bench: ok` on both outs: 0 hits.
+
+Refuse (same binary, not a stub):
+
+    ./bin/ooda bench missing_no_such.oo   exit 2
+      ERRbenchunreadable file: missing_no_such.oo
+    ./bin/ooda bench                      exit 2
+      usage: ooda bench <file.oo> [--run]
+    neither prints ooda bench: ok
+
+Revert to the stub prints ooda bench: ok and exits 0 on hello and
+on a missing file. That fails this CRIT.
+
+Supporting, not sufficient: strings has no `ooda bench: ok`.
+
+## 4. Isolation
+
+  Wrote only this note.
+  Did not edit cli/, oodac/, runtime/, std/, scripts/, fixtures/.
+  Did not write /home/jeryd/Projects/openOODA/ooda.
+  Did not rebuild. Did not plant oodac/oodac.
+  Capture scripts and logs live under /tmp/sk1_ooda_cli_three only.
+
+Status: SK1 PASS. Ships 1, 2, and 3 proved on the live binary.
+
+C emit plus gcc remains the product path.

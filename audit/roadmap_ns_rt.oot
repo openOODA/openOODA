@@ -1,0 +1,136 @@
+# ROADMAP-NS-RT — NORTHSTAR 1.2 and 5.1 vs live chs_rt
+
+File: openOODA/audit/roadmap_ns_rt.oot
+Survey only. No product edit. No ROADMAP edit. C emit + gcc remains the product.
+
+Logline: This board compares NORTHSTAR 1.2 memory and concurrency and 5.1 backends to the live C runtime.
+Setup: Read NORTHSTAR.oot 1.2 and 5.1, SHIPPED.oot, SECURITY.oot, and ooda/runtime/chs_rt_*.c.
+Beats:
+  1. State the method and the production test.
+  2. Score each 1.2 memory and concurrency clause.
+  3. Score each 5.1 backend clause plus FFI isolation.
+  4. List recommended open rows. The list is empty.
+
+## 1. Method
+
+Production means the runtime must do the work so a native C-emit program is safe and usable today. That set is ARC free, capability fail-closed, and spawn.
+These items are not production this cycle: pause-free GC, undo-RAM, device GPU launch, SGX.
+Do not open oodac leftovers. Do not open library leftovers. Do not open moonshots.
+
+Proof root: `/home/jeryd/Projects/openOODA/ooda/runtime/`. Umbrella is `chs_rt.c`.
+
+## 2. NORTHSTAR 1.2 Memory and concurrency
+
+### 2.1 ARC
+NORTHSTAR clause: Automatic Reference Counting with deterministic reclaim when the last reference drops.
+Disk proof: `chs_rt.h` `ref_count` on `OoStrHeader` and `OoListHeader`. `oo_str_retain` / `oo_str_release` in `chs_rt_str.c`. Atomic list retain and release in `chs_rt_list.c`. Emit helpers in `chs_rt_emit_tmp.c`. ROADMAP pin `PURE_NO_ARC=0`.
+Production requirement? yes
+Recommend open row? no
+
+### 2.2 Pause-free GC
+NORTHSTAR clause: Pause-free garbage collection horizon.
+Disk proof: none. No collector symbol in `chs_rt_*.c`.
+Production requirement? no
+Recommend open row? no
+
+### 2.3 Zero-copy slice
+NORTHSTAR clause: Zero-copy slicing across buffer boundaries.
+Disk proof: `oo_str_slice` and `oo_byte_slice` in `chs_rt_str.c` allocate a new payload and copy bytes. Comments say not a borrow.
+Production requirement? no
+Recommend open row? no
+
+### 2.4 Actors
+NORTHSTAR clause: Actor concurrency with isolated heaps.
+Disk proof: `chs_rt_actor.c`. `oo_actor_spawn` starts a joinable pthread and a mailbox of 16 slots by 8 messages. Worker is `oo_actor_noop`. `oo_actor_restart` is product under ThreadCap. Heaps are not isolated.
+Production requirement? no
+Recommend open row? no
+
+### 2.5 Channels
+NORTHSTAR clause: Typed, bounded message-passing channels.
+Disk proof: `chs_rt_channel.c`. Bounded string queue (16 by 8). `oo_channel_new` / `send` / `recv` require ThreadCap. Recv is non-blocking. SECURITY.oot table: Real (M164).
+Production requirement? no
+Recommend open row? no
+
+### 2.6 Ghost-state transactional memory
+NORTHSTAR clause: Speculative execution buffers with rollback before commit.
+Disk proof: `oo_checkpoint` / `oo_rollback` in `chs_rt_arena.c` store up to 8 `long long` values. Not undo-RAM.
+Production requirement? no
+Recommend open row? no
+
+### 2.7 Landlock
+NORTHSTAR clause: not in 1.2. Live runtime jail under SysCap (SECURITY / SHIPPED).
+Disk proof: `chs_rt_landlock.c` `oo_landlock_restrict`. Empty allowlist fails closed. Needs `&SysCap`.
+Production requirement? yes
+Recommend open row? no
+
+### 2.8 rlimit
+NORTHSTAR clause: not in 1.2. POSIX quotas under SysCap (SHIPPED).
+Disk proof: `chs_rt_rlimit.c` `setrlimit` for AS, NOFILE, CPU. Zero quota fails closed.
+Production requirement? yes
+Recommend open row? no
+
+### 2.9 spawn / wait / kill
+NORTHSTAR clause: not in 1.2. Process lifecycle for a usable native program.
+Disk proof: `oo_sys_spawn` / `wait` / `kill` in `chs_rt_libfloor.c` (`fork` / `waitpid` / `kill`). `oo_child_filter_env` in `chs_rt_sys.c` keeps `OODA_` / `OO_` and sets `PATH`. SECURITY.oot: `&ProcessCap`.
+Production requirement? yes
+Recommend open row? no
+
+### 2.10 Arenas
+NORTHSTAR clause: not named in 1.2. Bump arenas are product in SHIPPED.
+Disk proof: `chs_rt_arena.c` `oo_arena_create` / `alloc` / `reset`. Token is ArenaCap or AllocCap. Fail-closed if forged.
+Production requirement? no
+Recommend open row? no
+
+## 3. NORTHSTAR 5.1 Backends and isolation
+
+### 3.1 Floor native C emit
+NORTHSTAR clause: Generate portable C that links `chs_rt` and compile with host gcc or clang.
+Disk proof: SHIPPED. Product path is emit-c then gcc. Runtime umbrella is `chs_rt.c`.
+Production requirement? yes
+Recommend open row? no
+
+### 3.2 LLVM emit
+NORTHSTAR clause: Direct LLVM IR.
+Disk proof: compiler path exists (SHIPPED). Not a runtime duty. Full gcc replacement is an oodac leftover.
+Production requirement? no
+Recommend open row? no
+
+### 3.3 WASM target
+NORTHSTAR clause: Sandboxed WebAssembly.
+Disk proof: `chs_rt_wasm.c` writes dummy WASM bytes. Compiler `emit-wasm` is SHIPPED. Not the native product path.
+Production requirement? no
+Recommend open row? no
+
+### 3.4 GpuCap and PTX
+NORTHSTAR clause: GPU / NPU kernels behind `GpuCap`.
+Disk proof: `oo_gpu_launch` in `chs_rt_libfloor.c` requires GpuCap. Empty or `noop` returns Ok. Device shader returns Err. `oo_emit_ptx` in `chs_rt_vision.c` writes `add.s64` PTX text. No device launch.
+Production requirement? yes for fail-closed GpuCap. no for device launch.
+Recommend open row? no
+
+### 3.5 Bare-metal freestanding
+NORTHSTAR clause: Minimal runtime for embedded and microkernels.
+Disk proof: `oo_bare_metal_init` in `chs_rt_vision.c` zeros a static 4096-byte page and returns canary `0x4D455441`. Hosted process. Not freestanding.
+Production requirement? no
+Recommend open row? no
+
+### 3.6 FFI isolation
+NORTHSTAR clause 6.1: External C calls need FfiCap and stay inside capability bounds.
+Disk proof: `chs_rt_ffi_sec.c` grants and requires FfiCap. `chs_rt_ffi.c` `oo_dlopen` needs `OODA_FFI_ALLOW_DLOPEN=1`, path allowdir or system lib dirs, signature check, nested refuse, registered handles. `oo_dlsym` / `oo_dlclose` use that table. No typed `ffi_call`.
+Production requirement? yes
+Recommend open row? no
+
+## 4. Seals that match SECURITY.oot
+
+These runtime seals are live and fail closed: ProcessCap spawn, SysCap Landlock and rlimit, ThreadCap channel and actor, AllocCap and ArenaCap arenas, GpuCap launch, FfiCap dlopen.
+Child env filter and `OODA_FS_WRITEDIR` are also live.
+
+## 5. Recommended open rows
+
+None.
+
+| Row | NORTHSTAR | Why |
+| --- | --- | --- |
+| (none) | — | Production floor is on disk. Horizon items stay residual. |
+
+Do not add pause-free GC, undo-RAM, isolated actor heaps, device GPU, SGX, LLVM gcc replacement, or library work to the open list this cycle.
+C emit + gcc remains the product.
