@@ -1,0 +1,223 @@
+# PLAN3 DOCS — honest ooda bench
+
+File: openOODA/audit/plan3_docs.oot
+Wave 0. Ship 3. Survey only. Do not implement. Do not edit the public site.
+
+Logline: Today ooda bench prints a false ok line. The target prints check FILE Nms from now_ms under TimeCap.
+
+Setup: Worktree cli/cmd_more.oo and cli/main.oo. Plan: audit/plan_cli_bench.oot. C emit plus gcc remains product.
+
+Beats:
+  1. Record the false success line on disk.
+  2. Name the honest print line and the TimeCap timer.
+  3. Name no-args, missing file, and check-fail cases that must not print ok.
+  4. Name optional --run after a passing check.
+  5. Name help, Academy, and docs that stay unchanged.
+
+## 1. Status
+
+  Command `ooda bench` is residual. The stub is a lie.
+  Status word: residual. This ship is open.
+
+  TimeCap is a capability token. The runtime grants wall-clock
+  access only when main takes `&TimeCap`. now_ms is the builtin
+  that reads that token and returns integer milliseconds.
+
+## 2. Today (false)
+
+  File: cli/cmd_more.oo function run_ooda_bench.
+  Signature: run_ooda_bench(fs: &FsCap, sys: &SysCap, args: List[String]).
+  No TimeCap. No now_ms. No compiler check. No run.
+
+  Both branches print the same line:
+    ooda bench: ok
+  Then the function returns. Exit is 0.
+
+  cli/main.oo calls run_ooda_bench with the full argv. args[0]
+  is the word bench. list_len(args) >= 1 is always true.
+  The function then tests path_exists(fs, "."). That is the
+  current directory. It is not the user file.
+  If "." is missing, the last line still prints ooda bench: ok.
+
+  So these all print ooda bench: ok and exit 0:
+    ooda bench
+    ooda bench --run
+    ooda bench missing.oo
+    ooda bench fixtures/hello.oo
+
+  The file path is never read. Typecheck does not run.
+  Wall time is not measured. --run does not run the file.
+
+  Academy header in cmd_more.oo is also false for this ship:
+    Logline says bench prints a success line.
+    Setup says the command is not residual exit 2.
+
+## 3. Help today (false)
+
+  cli/main.oo print_help has one leftover line:
+    ooda emit-health | errdigest | bench
+  It does not name a file. It does not name --run.
+  It groups bench with other stub floors.
+
+  AGENTS.oot product-command list does not name bench.
+  COOKBOOK.oot does not name bench.
+  README.oot does not name product ooda bench.
+  SHIPPED.oot and ROADMAP.oot do not name this command.
+  scripts/benchmark.oo is a char-at loop. It is not ooda bench.
+
+## 4. Target print line
+
+  After a real check of FILE, print exactly one check line:
+    ooda bench: check FILE Nms
+  Example from the plan:
+    ooda bench: check fixtures/hello.oo 12ms
+
+  Grammar:
+    1. Prefix: ooda bench: check
+    2. One space. Then FILE as the user path.
+    3. One space. Then N as a decimal integer. N >= 0.
+    4. Then the letters ms with no space.
+
+  N is wall time of the check phase. Take t0 = now_ms(time)
+  before the check. Take t1 = now_ms(time) after the check.
+  N is t1 - t0. If t1 < t0, print 0ms. Do not print a date.
+  Do not call date. Do not use a SysCap shell timer.
+
+  The line measures the compiler check. It is not a microbench
+  of user code. Do not claim loop-body speed unless --run runs.
+
+  Do not print ooda bench: ok after this ship.
+
+## 5. TimeCap
+
+  DE2 adds time: &TimeCap to cli/main.oo main.
+  DE2 passes that token into run_ooda_bench.
+  Name the parameter time. C emit already grants
+    long long time = oo_cap_grant_time();
+  in every main. RT must prove the seed compiler accepts
+    main(fs: &FsCap, sys: &SysCap, time: &TimeCap, args: List[String]).
+  If that signature fails typecheck, COORD stops ship 3.
+  Do not fall back to date. Do not patch oodac or chs_rt.
+
+## 6. No-args and missing file
+
+  These must not print ooda bench: ok. They must not print
+  a check FILE Nms line. Exit must not be 0.
+
+  No file (ooda bench, or only flags):
+    Print: ooda bench: missing file
+    Exit 2.
+    Same words as ooda check and ooda test.
+
+  FILE is absent on disk:
+    Print: ERR<TAB>bench<TAB>unreadable file: FILE
+    Exit 2.
+    Same form as ooda check.
+
+  ooda bench --run with no file is the no-file case.
+  Do not treat --run as a path.
+
+  args[0] is bench. The file is the first later token that
+  does not start with -.
+
+## 7. Check fail
+
+  Run the real compiler check. Same find_oodac path as
+  ooda check. Do not invent a second compiler.
+
+  If check fails:
+    Exit non-zero.
+    Print that check failed.
+    Do not print a run line.
+    Do not print a fake time for a run that did not start.
+    If the check did run, check-phase Nms may print.
+    Never print ooda bench: ok.
+
+## 8. Optional --run
+
+  Flag: --run. After a passing check only.
+
+  Second line:
+    ooda bench: run FILE Nms
+  Same grammar as the check line. N is now_ms delta for
+  the run phase. Two now_ms calls. No list growth.
+
+  If check fails, skip --run. No run line.
+  Hang budget on fixtures/hello.oo: 30 seconds when --run
+  emits and links.
+
+  Use the product run helper path. Do not exec the user
+  file with sh -c. Do not exec the bench target through a
+  new shell. SysCap may start oodac the same way ooda check
+  and ooda run already do.
+
+## 9. Constraint for DE1
+
+  host_run.oo is shared read-only.
+  run_oodac and run_oodac_check call process_exit.
+  If bench calls those helpers, it cannot print Nms after
+  the child ends. DE1 must start the same oodac check (and
+  optional run) so the Result comes back, then print, then
+  exit with that status. Do not edit host_run.oo.
+  Import find_compiler.oo if needed. It is read-only.
+
+## 10. Help target
+
+  Only this ship edits cli/main.oo.
+  main.oo is 254 lines. Limit is 256.
+  Replace the leftover group line. Keep other dispatch.
+
+  Required help text:
+    ooda bench <file.oo> [--run]
+
+  One extra println fits. If help cannot fit, DE2 splits
+  print_help into cli_help.oo. COORD records the split.
+
+  After the change, ooda help must name the real command.
+  It must not list bench as a bare floor next to emit-health.
+
+## 11. Academy on product files
+
+  After Wave 1, cmd_more.oo Logline must not say bench
+  prints a success line. Other stubs (em, migrate, install,
+  context-pack, emit-health, errdigest) stay. They are not
+  this ship. pack still writes the air-gap tree.
+
+  New scripts/bench_smoke.oo needs a 4-element Academy
+  header. Strictly <= 256 lines. No .md .py extra .sh.
+
+## 12. Docs this role does not edit
+
+  Public site openOODA.github.io. Owner keeps that page.
+  ROADMAP.oot is not truth for this stub.
+  SHIPPED.oot waits on skeptic pass.
+  AGENTS.oot, COOKBOOK.oot, README.oot: no Wave 0 edit.
+  Do not add a public guide page for bench.
+
+  Known external lock (out of ship 3 write set):
+    openOODA/qa/e2e_spine.oo wants
+    ./bin/ooda bench to print ooda bench: ok.
+  Do not keep the stub to satisfy that script.
+  QA owns that file later.
+
+## 13. Honest claim
+
+  ooda bench FILE times a real typecheck of FILE.
+  Default is check wall ms only.
+  --run adds a second timed product run after check pass.
+  That is still program start through the product run path.
+  It is not a loop microbench of user code.
+  scripts/benchmark.oo remains a different tool.
+
+## 14. Done when (docs view)
+
+  1. ooda bench fixtures/hello.oo prints
+     ooda bench: check fixtures/hello.oo Nms with N >= 0.
+  2. ooda bench with no file does not print ooda bench: ok.
+  3. Missing file does not print ooda bench: ok. Exit 2.
+  4. strings on bin/ooda has no ooda bench: ok.
+  5. Help names ooda bench <file.oo> [--run].
+  6. Optional --run after check pass prints a run Nms line.
+  7. Public site is unchanged.
+
+C emit plus gcc remains the product path.

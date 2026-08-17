@@ -1,0 +1,172 @@
+# PLAN3_INT — Combined bin/ooda bench
+
+File: openOODA/audit/plan3_int.oot
+Wave 4 INT. Combined tree. Own this note. Do not edit product.
+Do not edit oodac/, runtime/, std/, or the dirty parent.
+
+Logline: Combined bin/ooda prints check FILE Nms on hello, exits 2 on bad args, and never prints ooda bench: ok.
+Setup: Combined tree `/home/jeryd/.grok/worktrees/ooda-cli-three`. Drive `./bin/ooda`. Host is `./oodac_bin`. Dirty parent `/home/jeryd/Projects/openOODA/ooda` is read-only.
+Beats:
+  1. Name Combined bin/ooda and prove it is the product CLI.
+  2. Drive bench hello. Require `ooda bench: check FILE Nms`.
+  3. Drive no-file and missing file. Require exit 2 and no ok.
+
+## 0. Verdict
+
+PASS
+
+Combined `./bin/ooda bench fixtures/hello.oo` prints
+`ooda bench: check fixtures/hello.oo Nms` and exits 0.
+No file and a missing file print usage or ERR and exit 2.
+`ooda bench: ok` is absent from those drives, from `cli/`,
+from the C emit, and from Combined `bin/ooda` strings.
+
+This role did not edit product.
+
+## 1. Combined bin/ooda
+
+  Path: `/home/jeryd/.grok/worktrees/ooda-cli-three/bin/ooda`
+  Branch: `wip/cli-three`
+  Pin start: `64ef8bd`
+  sha256: `1c51901daf7451d7163789026e4794947b1d2883227778d0e032fe730d8ca63f`
+
+  Identity: `ooda 0.201.0-beta (pure .oo CLI)`.
+  Help names `ooda bench <file.oo> [--run]        # time oodac check`.
+
+  Rebuild that wrote this binary (already on disk):
+
+    cd /home/jeryd/.grok/worktrees/ooda-cli-three
+    OODAC_BIN=./oodac_bin bash bootstrap/oodac_pure_build cli/main.oo bin/ooda
+
+  Log: `/tmp/grok-goal-e3250e659225/implementer/cli_rebuild.log`
+  Host: `./oodac_bin` sha256
+    `783d8c6d2d8cc90f4b03479f3e49dbcea3eff46a2c7f65ad4eff273215471cda`
+  `nmods=52`. `unique_fns=281`. `OK_PURE_MULTI`. Exit 0.
+  `input_fp=15f41f10bfdf022e4b806e38d24c0803d9a534b687576354ec0dd92a37c0f458`
+  Seed is not the host. Seed still dies on `oo_fs_rmdir`.
+  Worktree `oodac/oodac` is absent. Parent `oodac/oodac` is not the host.
+
+  This role did not rebuild. Combined `bin/ooda` was already on disk.
+
+## 2. Hello prints check FILE Nms
+
+  Cwd: `/home/jeryd/.grok/worktrees/ooda-cli-three`
+  Command:
+
+    ./bin/ooda bench fixtures/hello.oo
+
+  Grammar: prefix `ooda bench: check`, then FILE, then N, then `ms`.
+  N is a decimal integer. N >= 0. Letters `ms` have no space.
+
+  Pass 1 (`bench_hello.log`):
+    `OK`
+    `ooda bench: check fixtures/hello.oo 5ms`
+    EXIT 0
+
+  Pass 2 (`bench_hello_run2.log`):
+    `OK`
+    `ooda bench: check fixtures/hello.oo 6ms`
+    EXIT 0
+
+  Smoke cache (same Combined binary, `scripts/bench_smoke.oo`):
+    `.ooda-cache/ooda-tmp/bench_smoke/hello.out`
+    `ooda bench: check fixtures/hello.oo 21ms`
+
+  Times 5, 6, and 21 differ. All parse as integer milliseconds >= 0.
+  Check child may print `OK`. That is the compiler. It is not
+  `ooda bench: ok`.
+
+  `./bin/ooda run ./scripts/bench_smoke.oo` prints
+  `bench_smoke: PASSED` and exits 0 (`bench_smoke.log`).
+
+## 3. Bad args exit 2
+
+  No file:
+
+    ./bin/ooda bench
+
+  stdout: `usage: ooda bench <file.oo> [--run]`
+  stderr: empty
+  EXIT_NOARGS: 2
+  No check line. No `ooda bench: ok`.
+
+  Missing file:
+
+    ./bin/ooda bench missing_no_such.oo
+
+  stdout: `ERR<TAB>bench<TAB>unreadable file: missing_no_such.oo`
+  stderr: empty
+  EXIT_MISS: 2
+  No check line. No `ooda bench: ok`.
+
+  Log: `/tmp/grok-goal-e3250e659225/implementer/bench_bad.log`
+  Combined smoke cache has the same two stdout lines
+  (`none.out`, `miss.out`).
+
+  Same refuse, same exit 2, same usage, no ok:
+
+    ./bin/ooda bench --run
+    ./bin/ooda bench --run --run
+
+  `--run` is a flag. It is not a path.
+
+  On disk (`cli/cmd_more.oo`) and in Combined C emit:
+
+    path == ""            -> usage; `oo_process_exit(2)`
+    file not on disk      -> ERR unreadable; `oo_process_exit(2)`
+
+  Check fail is exit 1. That is not a bad-arg case.
+
+## 4. No ooda bench: ok
+
+  Exact needle: `ooda bench: ok`.
+
+  Combined `cli/cmd_more.oo`: no match.
+  Combined `cli/main.oo`: no match.
+  Combined C emit of `cmd_more.oo`: no match.
+  Combined smoke cache hello / none / miss / fail: no match.
+  Combined `bin/ooda` strings (`strings_check.log`): no match.
+
+  Honest prints that remain:
+
+    `usage: ooda bench <file.oo> [--run]`
+    `ERR<TAB>bench<TAB>unreadable file: FILE`
+    `ooda bench: check failed FILE`
+    `ooda bench: check FILE Nms`
+    `ooda bench: run FILE Nms`
+
+  Dirty parent `/home/jeryd/Projects/openOODA/ooda/cli/cmd_more.oo`
+  still prints `ooda bench: ok` on both stub branches.
+  That tree is read-only. This role did not write it.
+
+## 5. Isolation
+
+  Combined porcelain stays the three-ship write set:
+
+    M  cli/cmd_more.oo cli/cmd_pm_launch.oo cli/lsp_reply.oo cli/main.oo
+    ?? cli/lsp_complete.oo
+    ?? fixtures/lsp_complete_probe.oo fixtures/pm_launch_exec/
+    ?? scripts/bench_smoke.oo scripts/lsp_complete_smoke.oo
+    ?? scripts/pm_launch_exec_smoke.oo
+
+  This role wrote only this note.
+  It did not write `cli/`, `scripts/`, `fixtures/`, `oodac/`,
+  `runtime/`, or `std/`.
+  It did not write `/home/jeryd/Projects/openOODA/ooda`.
+  It did not write the public site.
+  It did not copy `bin/ooda` onto `oodac/oodac`.
+  No new `.py`, `.md`, or `.sh`.
+
+## 6. What this role does not do
+
+  It does not keep the stub `ooda bench: ok`.
+  It does not merge.
+  It does not rebuild the compiler.
+  It does not use seed or parent `oodac/oodac` as host.
+  It does not edit product.
+
+Status: Wave 4 INT is PASS on Combined `bin/ooda`.
+Sample `ooda bench: check fixtures/hello.oo 5ms`.
+Bad args exit 2. No `ooda bench: ok`.
+
+C emit plus gcc remains the product path.

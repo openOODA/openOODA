@@ -1,0 +1,107 @@
+# PLAN3_MEM — two clocks, no list growth, 30s hello
+
+File: openOODA/audit/plan3_mem.oot
+Wave 3 ATTACK. Read only. Own this note. Do not edit the worktree product files. Do not edit the dirty parent.
+
+Logline: Bench takes two now_ms calls per timed phase, grows no list, and hangs closed at 30 seconds on hello.
+Setup: Worktree `/home/jeryd/.grok/worktrees/ooda-bench`. Proof files are `cli/cmd_more.oo` and `scripts/bench_smoke.oo`. Dirty parent `/home/jeryd/Projects/openOODA/ooda` is read-only.
+Beats:
+  1. Count now_ms around check and around optional run.
+  2. Prove run_ooda_bench never list_push or list_new.
+  3. Prove bench_smoke wraps hello in timeout 30.
+
+## 0. Verdict
+
+PASS
+
+Two `now_ms(time)` calls wrap the check child. Two more wrap `--run`.
+`run_ooda_bench` does not allocate or grow a list.
+`scripts/bench_smoke.oo` hangs closed on hello with `timeout 30`.
+
+## 1. Two now_ms per phase
+
+  File: `cli/cmd_more.oo` function `run_ooda_bench`.
+  Clock is `now_ms(time)` under `&TimeCap`. No `date`. No bash timer.
+
+  Check phase (always, after the file exists):
+
+    let t0: Int = now_ms(time);
+    let cr: Result[String, String] = sys_exec(... check ...);
+    let t1: Int = now_ms(time);
+
+  Run phase (only if `--run` and check passed):
+
+    let r0: Int = now_ms(time);
+    let rr: Result[String, String] = sys_exec(... run ...);
+    let r1: Int = now_ms(time);
+
+  `grep now_ms cli/cmd_more.oo` hits four calls: t0, t1, r0, r1.
+  N is `t1 - t0` or `r1 - r0`. If negative, 0.
+  No third clock in either phase. No `now_ms` in the arg walk.
+  No `now_ms` in `scripts/bench_smoke.oo`.
+
+## 2. No unbounded list growth
+
+  `run_ooda_bench` uses scalars and the inbound `args` list.
+
+    path, do_run, i, a, oodac, src_root, prefix, t0, cr, t1, ms, r0, rr, r1, rms
+
+  Arg walk:
+
+    let mut i: Int = 1;
+    while i < list_len(args) {
+        let a: String = list_get(args, i);
+        ...
+        i = i + 1;
+    }
+
+  The loop is bounded by `list_len(args)`. It only reads.
+  `grep` of `cli/cmd_more.oo` for `list_new` and `list_push`: no matches.
+  Bench does not copy argv into a new list. It does not append
+  timings. It does not grow a catalog.
+
+  Early exits (no file, missing file) return before any clock
+  and before any child. They also grow no list.
+
+  String concat for the `sys_exec` prefix is not a list.
+  Shared helpers `find_oodac` / `refuse_cli` / `find_src_root` /
+  `sq` are read-only. This role did not edit them.
+
+## 3. Hang budget 30s on hello
+
+  File: `scripts/bench_smoke.oo`.
+  Setup line: Hang budget is 30 seconds on hello.
+  Drive line:
+
+    timeout 30 ./bin/ooda bench fixtures/hello.oo
+
+  A hang or a check longer than 30 seconds is a fail.
+  That is the MEM budget. HARN matches it.
+
+  No-file and missing-file cases have no timeout. They must
+  refuse at once. `--run` is not in this smoke. emit+gcc is
+  not asserted here.
+
+## 4. Isolation
+
+  Worktree porcelain stays:
+
+    M cli/cmd_more.oo
+    M cli/main.oo
+    ?? scripts/bench_smoke.oo
+
+  MEM wrote only this audit note.
+  Did not write `/home/jeryd/Projects/openOODA/ooda`.
+  Did not write oodac/, runtime/, std/, or the public site.
+  Did not rebuild `bin/ooda`. Did not run the smoke.
+
+## 5. What this role does not do
+
+  It does not own check-fail or `--run` with no file (PV).
+  It does not own `sh -c` vs product helpers (SEC).
+  It does not rebuild or double-run (INT).
+  It does not keep the stub `ooda bench: ok`.
+
+Status: Wave 3 MEM attack is PASS. Ship 3 stays open for INT.
+
+C emit plus gcc remains the product path.

@@ -1,0 +1,81 @@
+# PLAN1 PV2 — Wave 3 attack add vs main hover
+
+File: openOODA/audit/plan1_pv2.oot
+Process only. Not product. Disk is the source.
+Ship 1. Product path is cli/lsp_*.oo. vscode starts bin/ooda lsp.
+Owner: PV2. Wave 3 ATTACK. Did not edit dirty parent.
+
+Logline: Hover and definition still name the identifier under the cursor. add is not main.
+Setup: Worktree /home/jeryd/.grok/worktrees/ooda-lsp-complete. Branch wip/lsp-complete. Dirty parent /home/jeryd/Projects/openOODA/ooda is read-only.
+Beats:
+  1. Diff hover and definition against HEAD.
+  2. Walk fixtures/lsp_cursor.oo at the add call.
+  3. Run fixtures/lsp_cursor_probe.oo. Refuse a first-fn-only hover.
+  4. Do not rewrite hover. Do not plant bin/ooda or oodac/oodac.
+
+## 1. Attack
+
+  Claim to kill: a builder rewrote hover to first-fn-only.
+  If hover always names the first `fn`, the lock must FAIL.
+  Fix allowed only then, and only the hover branch in cli/lsp_reply.oo.
+  Hover is not first-fn-only. No product edit.
+
+## 2. Builder diff
+
+  git diff -U0 cli/lsp_reply.oo against 64ef8bd:
+    header logline and beats
+    import "lsp_complete.oo"
+    initialize adds completionProvider trigger `&`
+    one new branch: textDocument/completion -> lsp_complete_result
+  Hover block sha256 prefix ab37a5c8e1434f6f. Same as HEAD.
+  Definition block sha256 prefix 3ee6418743443203. Same as HEAD.
+  cli/lsp_ident.oo, fixtures/lsp_cursor.oo, fixtures/lsp_cursor_probe.oo,
+  and scripts/lsp_cursor_smoke.oo have empty diffs.
+
+## 3. Cursor walk (add vs main)
+
+  fixtures/lsp_cursor.oo has two functions. First `fn` is main (line 11).
+  First `add(1, 2)` is the call in main. Offset 299. Line 12. Character 12.
+  Comments do not contain `add(1, 2)` or `fn add`.
+  lsp_ident_at at that offset is add. Not main. Not empty.
+  lsp_fn_pos(src, "add") is `fn add` at line 16 character 4.
+  First-fn-only hover would return markdown `fn main`.
+  Cursor hover must return markdown `fn add`.
+  Cursor definition must use `"line":16`. It must not use `"line":0`.
+
+## 4. Product hover path
+
+  textDocument/hover:
+    name = lsp_ident_at(src, lsp_src_offset(src, line, col))
+    empty name falls back to lsp_first_fn
+    if lsp_fn_pos finds the name, value is `fn ` plus the name
+  textDocument/definition:
+    want = lsp_ident_at at the same offset
+    range is lsp_fn_pos(want), else the first fn
+  First-fn is only the empty-ident fallback. Not the add call.
+
+## 5. Live lock
+
+  Official wrapper scripts/lsp_cursor_smoke.oo wants ./oodac/oodac
+  and ./bin/ooda. Both are absent after Wave 0. PV2 did not plant them.
+  INT rebuilds the CLI. Do not copy a CLI onto oodac/oodac.
+
+  Inner lock is fixtures/lsp_cursor_probe.oo. It imports cli/lsp_reply.oo
+  and calls lsp_build_reply on the add call. It fails if hover contains
+  `fn main` or lacks `fn add`. It fails if definition stays on line 0.
+
+  From the worktree root (scratch out of tree):
+    ./oodac_bin check fixtures/lsp_cursor_probe.oo
+      -> OK
+    OODA_SRC_ROOT=. OODAC_BIN=./oodac_bin \
+      ./oodac_bin run fixtures/lsp_cursor_probe.oo /tmp/pv2-lsp-cursor/probe
+      -> lsp_cursor_probe: PASSED
+  No *.tmp.c in the worktree. Parent not written.
+
+## 6. Result
+
+  PASS
+
+  Hover names add. Definition names add. Not first-fn-only.
+  Completion dispatch did not change the hover string.
+  Did not edit cli/lsp_reply.oo. Did not edit dirty parent.

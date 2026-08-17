@@ -1,0 +1,77 @@
+# PLAN2_DE1 — Wave 1 write: --exec runs the pinned .oo
+
+File: openOODA/audit/plan2_de1.oot
+Wave 1 write. Ship 2. Own only `cli/cmd_pm_launch.oo`.
+
+Logline: Delete the `test -e` lie. After the gate is ok, `--exec`
+runs the pinned `.oo` through `run_oodac_run`.
+
+Setup: Worktree `/home/jeryd/.grok/worktrees/ooda-launch-exec`.
+Did not edit dirty parent. Did not edit `host_run.oo`, `pm_launch.oo`,
+`main.oo`, `oodac/`, `runtime/`, `std/`, or `ooda/pm/`.
+
+Beats:
+  1. Confirm `test -e` is gone.
+  2. State how `--exec` starts the payload.
+  3. State what stays the same on gate fail and on path-only.
+
+## 0. File lock
+
+  Wrote: `cli/cmd_pm_launch.oo` (125 lines, was 121, cap 256).
+  Wrote this note.
+  No other product file.
+
+## 1. test -e is gone
+
+  The old `--exec` body was:
+
+    sys_exec(sys, "sh", "-c", "test -e " + sq(path) + "; exit 0")
+
+  That line is deleted.
+  The file has no `test -e`.
+  The file has no `sys_exec` and no `sq(` on the payload path.
+  Quote rules stay in `host_run.oo`.
+
+## 2. How --exec starts the payload
+
+  After `pm_launch_gate` returns ok (or `ok `):
+
+    1. Build `path = cas + "/" + leaf`.
+    2. If `--exec`:
+       - If `leaf` is empty, or `path` is empty, or `path` does
+         not end with `.oo`, call `launch_die("exec")`.
+         This refuses ELF, a directory, and an empty leaf.
+       - Build `rargs` as a one-item list: the payload path string.
+       - Call `run_oodac_run(fs, sys, rargs)`.
+       - That function `process_exit`s. Do not print
+         `ooda launch: ok` after it. Do not print `--json` ok.
+    3. If not `--exec`: keep the path print or the `--json` object.
+       Do not call `run_oodac_run`.
+
+  `run_oodac_run` is the same path as `ooda run <payload>`.
+  It finds oodac, quotes tokens, and starts `oodac run <path>`.
+  The child is the pinned `.oo`, not `test -e`.
+
+## 3. Gate fail
+
+  Gate fail still calls `launch_die` with the err tail.
+  Exit 2.
+  No child.
+  No `ooda launch: ok`.
+  The fail branch is unchanged.
+
+## 4. Header
+
+  Setup now says: `--exec` runs the pinned `.oo` after the gate.
+  Beat 3: after ok, `--exec` runs the pinned `.oo`.
+  Without `--exec`, print the path only.
+  Removed `may` and `transmutation`.
+
+## 5. Out of scope
+
+  No `host_run.oo` edit.
+  No `pm_launch.oo` edit.
+  No `main.oo` edit.
+  No fixture. No smoke. HARN owns those.
+
+C emit plus gcc remains product.

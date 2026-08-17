@@ -1,0 +1,130 @@
+# PLAN2_PV2 — Wave 3 attack: not .oo, no add, no sh bytes
+
+File: openOODA/audit/plan2_pv2.oot
+Wave 3 ATTACK. Ship 2. PV2.
+Worktree: /home/jeryd/.grok/worktrees/ooda-launch-exec
+Did not edit dirty parent /home/jeryd/Projects/openOODA/ooda.
+Did not edit worktree product. Wrote this note only.
+
+Logline: `--exec` refuses a payload that is not `.oo`, refuses
+without a prior add, and does not `sh` the CAS bytes.
+Setup: Read `cli/cmd_pm_launch.oo`. Rebuild CLI to `/tmp/pv2-ooda`
+with worktree `oodac_bin`. Drive planted CAS and one ingest.
+Beats:
+  1. Confirm the `--exec` path: `.oo` suffix then `run_oodac_run`.
+  2. Attack ELF, empty, directory, and a shell file.
+  3. Attack `--exec` with no lock. Double-run. Fail-closed.
+
+## 0. Verdict
+
+  PASS
+
+  `.oo` suffix check is on disk. After it, `--exec` calls only
+  `run_oodac_run`. `test -e` is gone. Payload bytes are not a
+  `sh -c` string. A missing lock dies `not installed`.
+
+## 1. --exec path on disk
+
+  File: `cli/cmd_pm_launch.oo` (125 lines).
+
+  Gate `pm_launch_gate` still runs first. Fail calls `launch_die`.
+  Exit 2. No child. Same for `--exec` and path-only.
+
+  After ok, lines 110 to 118:
+
+    if leaf == "" || path == "" || pn < 3
+       || str_slice(path, pn - 3, pn) != ".oo":
+        launch_die("exec")
+    rargs = [path]
+    run_oodac_run(fs, sys, rargs)
+    return
+
+  `body` is slurped only for `pm_cas_id`. No `println(body)`.
+  No `sys_exec`. No `sq(`. No `test -e`. No `sh -c`.
+  Quote and `sh -c` stay in `cli/host_run.oo` around `oodac run`
+  plus the path token. Not the CAS bytes.
+
+## 2. Drive
+
+  Worktree has no `bin/ooda`. PV2 rebuilt once:
+
+    OODAC_BIN=./oodac_bin \
+      bash bootstrap/oodac_pure_build cli/main.oo /tmp/pv2-ooda
+
+  That binary is the product CLI. `strings` has no `test -e `.
+  Parent `oodac/oodac` mtime stayed `2026-08-17 19:00:34`.
+  Rebuild wrote `/tmp` only. No worktree `.ooda_modules`.
+  No worktree `bin/ooda`.
+
+  Attacks ran from `/tmp/pv2-attack/ws` with
+  `OODA_FS_WRITEDIR` set to that dir. Double-run in a second
+  workspace `/tmp/pv2-attack/ws2`. Both: fails=0.
+
+## 3. W3-P7 no add
+
+  Clean dir. No lock. `./pv2-ooda launch --exec nosuchpkg`.
+
+  rc=2. `ERR\tpm\tnot installed`. `ooda launch: not installed`.
+  No `ooda launch: ok`. No `{"ok":true`. No `LAUNCH_EXEC_OK`.
+
+  `--exec` with no name: rc=2. `missing package name`.
+
+## 4. W3-P8 ELF and non-.oo bytes
+
+  Planted lock + CAS. Sha matched `sha256sum` of the leaf.
+  ELF was a real executable that prints `ATTACK_ELF_RAN`
+  if it is the program.
+
+  Leaf `payload` (no `.oo`): rc=2. `ooda launch: exec`.
+  `ATTACK_ELF_RAN` absent. No `oodac` lex line.
+
+  Leaf `evil.oo` (ELF magic, suffix ok): rc=1.
+  `ERR\tlex\tUnexpected character` at 1:1 (0x7f).
+  `ATTACK_ELF_RAN` absent. Child is `oodac run`, not the ELF.
+
+  Leaf `payload.sh` (`#!/bin/sh` / `ATTACK_SH_RAN`): rc=2.
+  `ooda launch: exec`. `ATTACK_SH_RAN` absent.
+
+  Product ingest of the same ELF as `payload` (no `.oo`):
+  ingest installed `elfpay`. Then `--exec elfpay`: rc=2.
+  `ooda launch: exec`. Bytes were not `sh`'d.
+
+## 5. W3-P9 empty
+
+  Empty file sha `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+
+  Leaf `empty.dat`: rc=2. `ooda launch: exec`.
+  Leaf `empty.oo`: rc=1. `ERR\tcheck\tempty`.
+  No ok. No mark. Length 0 did not run.
+
+## 6. W3-P10 directory
+
+  Leaf `payload` (dir): rc=2. `ooda launch: exec`.
+  Leaf `payload.oo` (dir): rc=1. `ERR\timport\tunreadable`.
+  Empty leaf (only `ingest_*.oo` in CAS): rc=2.
+  `ooda launch: exec`. Path is not `test -e` on the CAS dir.
+
+## 7. Fail-closed signs (both runs)
+
+  Every case: exit != 0. No `ooda launch: ok`. No `{"ok":true`.
+  No `LAUNCH_EXEC_OK`. No CAS body dump. No `ATTACK_*_RAN`.
+  Parent `oodac/oodac` mtime unchanged.
+
+  A `test -e` `--exec` would have exited 0 and printed
+  `ooda launch: ok` on ELF, empty, and dir. These runs did not.
+
+## 8. W3-P11 public hello
+
+  `/home/jeryd/Projects/openOODA/registry/hello/hello.oo`
+  still has `hello_ok` and no `main`. Not edited.
+  Launch does not wrap it in `sh`.
+
+## 9. Residual (not a fail)
+
+  Suffix is the launch refuse. ELF / empty / dir named `*.oo`
+  reach `run_oodac_run`. `oodac` then fails closed.
+  That matches the ship rule: `.oo` suffix, then
+  `run_oodac_run` only. No magic-byte check before the child.
+
+C emit plus gcc remains product.
+Stop.

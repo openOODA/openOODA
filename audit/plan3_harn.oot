@@ -1,0 +1,74 @@
+# PLAN3_HARN — ooda bench smoke
+
+File: openOODA/audit/plan3_harn.oot
+Wave 1 WRITE. Own scripts/bench_smoke.oo only. Drive ./bin/ooda. Do not grep source. Do not edit cli/. Do not edit the dirty parent.
+
+Logline: The bench smoke runs rebuilt ./bin/ooda and proves check milliseconds, a no-file refuse, and a missing-file refuse.
+Setup: Worktree `/home/jeryd/.grok/worktrees/ooda-bench`. Smoke path `scripts/bench_smoke.oo`. ProcessCap process_exec. Hang budget 30 seconds on hello.
+Beats:
+  1. Fail if ./bin/ooda is missing.
+  2. Drive hello and require check plus ms, exit 0, and no ok.
+  3. Drive no-file and a missing file: exit is not 0, and no ok.
+  4. Print bench_smoke: PASSED.
+
+## 1. File
+
+  Path: `/home/jeryd/.grok/worktrees/ooda-bench/scripts/bench_smoke.oo`
+  Academy header: title, logline, setup, five beats.
+  Line count: 54. Limit 256.
+  Caps: `pub fn main(p: &ProcessCap)`.
+  Exec: `process_exec` under ProcessCap. Same style as `scripts/cli_native_smoke.oo`.
+  Work dir: `.ooda-cache/ooda-tmp/bench_smoke`.
+  Does not grep `cli/cmd_more.oo` or `cli/main.oo`.
+  Does not grep source for `ooda bench: ok`.
+  Does not edit `cli/`. Does not edit the dirty parent.
+
+## 2. Assertions
+
+  Binary:
+    `test -x ./bin/ooda` must succeed.
+    Else print `FAIL no bin/ooda` and exit 1.
+
+  Hello (hang budget 30s):
+    `timeout 30 ./bin/ooda bench fixtures/hello.oo`
+    Exit 0.
+    Stdout contains `ooda bench: check `.
+    Stdout contains `ms`.
+    Combined stdout and stderr must not contain `ooda bench: ok`.
+
+  No file:
+    `./bin/ooda bench`
+    Exit is not 0.
+    Combined stdout and stderr must not contain `ooda bench: ok`.
+
+  Missing file:
+    `./bin/ooda bench missing_no_such.oo`
+    Exit is not 0.
+    Combined stdout and stderr must not contain `ooda bench: ok`.
+
+  End:
+    Print `bench_smoke: PASSED`.
+
+## 3. Hang budget
+
+  Hello runs under `timeout 30`.
+  A hang or a check that lasts more than 30 seconds is a fail.
+  That matches MEM: 30 seconds on hello.
+  `--run` is optional and is not asserted here.
+
+## 4. What this file does not do
+
+  It does not implement bench.
+  It does not rebuild `bin/ooda`.
+  It does not edit `cli/cmd_more.oo` or `cli/main.oo`.
+  It does not assert `--run` or a check-fail fixture. PV owns those.
+  It does not keep the stub to satisfy any old `ooda bench: ok` lock.
+
+## 5. Status
+
+  Wave 1 HARN write is done.
+  Worktree `bin/ooda` is absent at write time.
+  The smoke fails closed until INT rebuilds the CLI and DE1 replaces the stub.
+  Ship 3 stays open.
+
+C emit plus gcc remains the product path.
