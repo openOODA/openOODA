@@ -1,0 +1,185 @@
+// # Fix `encoding/text` emit-c Timeout (354 TIMEOUTs)
+//
+// Logline: Find the quadratic/loop bug in c_emit_walk + c_emit_skip that turns a 60-line std module into a 4,292-line C file and a 30s+ timeout, then ship a 1-file change that drops c_emit-c wall-time per file from 30s+ to under 5s, moving the 354-row ROADMAP §5 row from OPEN to GREEN-or-ERR.
+//
+// Setup: Entry point ooda/oodac/c_emit.oo:88 c_emit_stream_toks_at. Walker ooda/oodac/c_emit_walk.oo:114 c_emit_walk_items. Skip logic ooda/oodac/c_emit_skip.oo:158 c_emit_skip_braces. ROADMAP §5 row 2 (ROADMAP.oot:55) names the symptom: `timeout 30` emit-c of encoding/text floor (354 TIMEOUT). Master catalog: audit/green/master_blocked_catalog.oot:22 lists 193 timeouts; the 354 figure is from the most recent prove_prod pass on the door (audit/roadmap_ns_rollup.oot). Pin v0.204.0-beta. Lane: ooda/oodac/*.oo only. Std/ and runtime/ are off-limits (other agents own those).
+//
+// Beats:
+//   1. Goal + non-Goals.
+//   2. Reproduction: 5 TIMEOUT rows with file:line.
+//   3. Profiling: timing hooks in c_emit_walk_items + c_emit_skip_braces.
+//   4. Root-cause hypothesis: 3 candidates with file:line evidence.
+//   5. Proposed fix: one-file diff, 3 small changes, with before/after.
+//   6. Acceptance: 4 measurable gates.
+//   7. Risks: 3.
+//
+// Notes: Academy header (Logline, Setup, Beats, Notes). ASD-STE100. file:line cited for every claim. Pin v0.204.0-beta. This is a compiler-lane fix; std/ and runtime/ stay frozen while the change lands.
+
+// ## 1. Goal + non-Goals
+//
+// **Goal**: drop c_emit-c wall-time per file from 30s+ to under 5s for the encoding/text floor (354 rows) and any std/ module with the same shape. Re-classify the 354 rows from `TIMEOUT` to either `GREEN` (now passes prove) or `ERR` (compiler finds a real error fast instead of hanging).
+//
+// **Non-Goals**:
+// - Not rewriting c_emit_walk_items. The Phase A AST+tc refactor (audit/green/c_emit_refactor_phase_a.oot) is parser+tc only; this spec touches the walker hot path, not the AST shape.
+// - Not fixing the 193 catalog timeouts unrelated to walker (the `ec=134 malloc unaligned tcache` rows in audit/green/master_blocked_catalog.oot:69-73 are runtime, not emit-c).
+// - Not changing std/encoding/*.oo. They are all GREEN (audit/library_status_trunk_1.oot:70 for base64.oo). The fix lands in ooda/oodac/c_emit_walk.oo and ooda/oodac/c_emit_skip.oo.
+// - Not touching c_emit_struct.oo, c_emit_fn.oo, c_emit_call.oo, c_emit_let.oo. Hot path is the walker + skip.
+
+// ## 2. Reproduction: 5 TIMEOUT rows
+//
+// 5 rows pulled from `grep TIMEOUT audit/library_status_*.oot`. All are BLOCKED | TIMEOUT | timeout 45. The 354 figure in ROADMAP.oot:55 is a higher-count sweep that includes these + similar shapes elsewhere.
+//
+// | # | audit file:line | std module | shape |
+// |---|----------------|------------|-------|
+// | 1 | audit/library_status_support_1.oot:137 | ooda/std/sec/crypto/bgv.oo (60 lines) | shim re-export; imports 6 sibling files; 8 shim_marker_* fns each calling 1-2 names from those imports. Compiles to 4,292 lines of C — 71× source expansion. |
+// | 2 | audit/library_status_support_1.oot:145 | ooda/std/sec/crypto/blake3.oo (67 lines) | same shim shape; 3,414-line C output. |
+// | 3 | audit/library_status_support_1.oot:147 | ooda/std/sec/crypto/ckks.oo (66 lines) | same shim shape; 2,799-line C output. |
+// | 4 | audit/library_status_support_2.oot:32 | ooda/std/sec/crypto/sphincs.oo | RESIDUAL | TIMEOUT; hard-crypto leftover. |
+// | 5 | audit/library_status_support_2.oot:47 | ooda/std/sec/crypto/zksnark.oo (41 lines) | shim re-export, 7 sibling imports. |
+// | 6 | audit/library_status_support_2.oot:63 | ooda/std/sec/net/jwt.oo (122 lines) | small surface, many imports; same shape. |
+//
+// Smoking gun: bgv.oo is 60 source lines; the prior prove run left `bgv.oo.bin.tmp.c` on disk at 4,292 lines (166 KB). That is a 71× expansion ratio. The 30s timeout is the prove driver killing oodac mid-emit; the .tmp.c is partial output. The prove budget is 25-45s per audit/library_status_support_1.oot:137 "timeout 45". The shim pattern: 6 imports, 8 shim fns, each fn body is one call. The shim is short on tokens but high on cross-module lookup work.
+
+// ## 3. Profiling approach
+//
+// Add timing instrumentation to the walker without changing its control flow. Three hooks, all `println` to stderr, gated on `OODAC_PROFILE=1`.
+//
+// ```
+// 1. c_emit_walk_items (c_emit_walk.oo:114) — wrap the while loop:
+//      let t0 = clock_ms();
+//      iter = iter + 1;
+//      ... existing body ...
+//      if iter % 50 == 0 && getenv("OODAC_PROFILE") == "1" {
+//          println("PROF\twalk\tpos=" + pos.to_string() + "\titer=" + iter.to_string() + "\tms=" + (clock_ms()-t0).to_string());
+//      }
+//
+// 2. c_emit_skip_braces (c_emit_skip.oo:158) — count depth transitions:
+//      if getenv("OODAC_PROFILE") == "1" {
+//          let d = depth;       // sample depth each 100 tokens
+//          if p % 100 == 0 { println("PROF\tskip_braces\tp=" + p.to_string() + "\tdepth=" + d.to_string()); }
+//      }
+//
+// 3. c_env_get (c_emit_call.oo:44) — count lookups per fn body:
+//      if getenv("OODAC_PROFILE") == "1" {
+//          n_env_get = n_env_get + 1;
+//          if n_env_get % 200 == 0 { println("PROF\tenv_get\tcall=" + n_env_get.to_string()); }
+//      }
+// ```
+//
+// Run on `ooda install --emit-c --profile ooda/std/sec/crypto/bgv.oo`. Expect: PROF walk iter>500 within 200ms and PROF env_get>2000 within 500ms. The bgv.oo case should print PROF walk at least 20 times (iter=50,100,...,1000) before timeout; if PROF env_get is in the 4-figure range, hypothesis 1 is confirmed; if PROF skip_braces shows depth never reaching 0, hypothesis 2 is confirmed.
+
+// ## 4. Root-cause hypothesis (3 candidates, ranked)
+//
+// **Candidate A (most likely): c_env_get is a string scan, called O(n²) per fn body.**
+// Evidence: c_emit_call.oo:44, 185, 200 each call `c_env_get(env, key)`. The env is a `name=value;name=value;` string. A linear scan is O(|env|) per call. Each fn body may call c_env_get 10-30 times (param probing, ret-type probing, ptr-base probing, callee lookup). Each shim fn body in bgv.oo emits calls to bgv_* names; the env grows to 200+ chars as fns are walked; lookup becomes 200-char scan × 30 calls × 8 shim fns = 48,000 char-ops per TU. Multiplied by 8 shim fns and the 7-import surface, this is the 71× C expansion: the same struct typedefs and runtime decls are re-emitted per call site because the c_emit_call path cannot see the prior env's struct memo. c_emit_struct.oo:215-230 `c_emit_seen_ty` is local to one `c_emit_type_aliases` walk; it does not survive `c_emit_walk_items` between fns.
+//
+// **Candidate B (likely): c_skip_walk_noise is O(n) per call and is called from c_emit_walk_items for every non-item IDENT.**
+// Evidence: c_emit_walk.oo:189, 192. `c_skip_walk_noise` (c_emit_walk.oo:85-112) walks tokens until depth==0 and `c_walk_is_item` returns true. For every token where depth==0 and p!=pos, it calls `c_walk_is_item` (c_emit_walk.oo:62-83), which does `c_tokk` and possibly `c_tokt` — each a list_get + field_at on a TSV row. For a 1,000-token TU, each call to c_skip_walk_noise is ~1,000 ops; if the walker hits the IDENT branch 50 times per file, that's 50,000 ops on noise alone. The bgv.oo `OO_LIST_AMBIENT_QUOTA=2147483648` comment (line 14 of bgv.oo) hints at a runtime quota: maybe the c_emit lower hit a similar limit, but at compile time, not runtime.
+//
+// **Candidate C (possible): c_emit_skip_braces does not advance p on LBRACE.**
+// Evidence: c_emit_skip.oo:158-183. The LBRACE branch (line 169-171) does `depth = depth + 1` but no `p = p + 1`; it falls through to the `if k == "RBRACE"` check (false), then to the `else` branch (line 178-180) which does `p = p + 1`. So p does advance, but only by accident. If a future refactor moves the LBRACE branch into a separate `else if`, the loop will hang on the same LBRACE forever — and c_emit_walk_items:121-124 hang guard is `iter > n + 100`, which for bgv.oo is 160 iters; the 30s prove timeout fires first. The LBRACE branch is correct today but fragile.
+//
+// **Primary fix target: Candidate A.** c_env_get is the per-call hot path. Memoize the env into a `List<(key, val)>` that is built once per fn body and appended to as new entries are put. Lookup becomes O(1) amortized. c_env_put already creates a new string per put; the list version appends. The env stays a string for backward compat (other c_emit_*.oo read it as a string); we keep the string as a cache and add a parallel list for O(1) probe. If a key is in the list cache, return; else fall back to the string scan once and store.
+
+// ## 5. Proposed fix (3 changes, ~40 lines total)
+//
+// **Change 1 — c_emit_walk.oo:114: add a per-fn env cache.**
+//
+// Before:
+// ```
+// pub fn c_emit_walk_items(toks: List[String], n: Int, fn_env0: String, mode: String, meta_emit: Bool) -> String {
+//     let mut pos: Int = 0;
+//     let mut fn_env: String = fn_env0;
+// ```
+// After:
+// ```
+// pub fn c_emit_walk_items(toks: List[String], n: Int, fn_env0: String, mode: String, meta_emit: Bool) -> String {
+//     let mut pos: Int = 0;
+//     let mut fn_env: String = fn_env0;
+//     let mut env_cache_keys: List[String] = list_new();
+//     let mut env_cache_vals: List<String> = list_new();
+//     env_cache_keys = list_push(env_cache_keys, "__cname__main");
+//     env_cache_vals = list_push(env_cache_vals, c_mangle_fn_name("main", ""));
+// ```
+//
+// And at c_emit_walk.oo:148-149 (inside the KW_PUB / KW_FN branches where fn_env is updated):
+//
+// Before:
+// ```
+//     let fr: List<String> = c_emit_fn_mode(toks, pos, n, fn_env, mode);
+//     pos = parse_int(list_get(fr, 0));
+//     fn_env = list_get(fr, 1);
+// ```
+// After:
+// ```
+//     let fr: List<String> = c_emit_fn_mode(toks, pos, n, fn_env, mode);
+//     pos = parse_int(list_get(fr, 0));
+//     let new_env: String = list_get(fr, 1);
+//     if new_env != fn_env {
+//         let kv: List<String> = c_env_diff(fn_env, new_env);
+//         env_cache_keys = list_concat(env_cache_keys, list_get(kv, 0));
+//         env_cache_vals = list_concat(env_cache_vals, list_get(kv, 1));
+//     }
+//     fn_env = new_env;
+// ```
+//
+// `c_env_diff` (new, ~12 lines, lives in c_emit_helpers.oo) splits a `name=value;` string into two parallel lists by splitting on `;` then `=`. The cache is a write-once-per-key append.
+//
+// **Change 2 — c_emit_helpers.oo (or new c_emit_env_cache.oo): add c_env_get_cached.**
+//
+// Before (c_emit_call.oo:44):
+// ```
+//     return c_env_get(env, "__ptr__" + b) == "1";
+// ```
+// After:
+// ```
+//     let cached: String = c_env_cache_get(env_cache_keys, env_cache_vals, "__ptr__" + b);
+//     if cached != "" { return cached == "1"; }
+//     let v: String = c_env_get(env, "__ptr__" + b);
+//     c_env_cache_put(env_cache_keys, env_cache_vals, "__ptr__" + b, v);
+//     return v == "1";
+// ```
+//
+// `c_env_cache_get` is O(|keys|) linear scan; but |keys| is bounded by the number of *new* keys per fn body (typically 5-15), not the full env string (200+ chars). The cache only holds new keys; the env string carries all keys for backward compat. Net per-call cost drops from O(|env_string|) = O(200) to O(|new_keys|) = O(10).
+//
+// **Change 3 — c_emit_skip.oo:158-183: make LBRACE explicit and add an early-exit on EOF.**
+//
+// Before (c_emit_skip.oo:169-171):
+// ```
+//         if k == "LBRACE" {
+//             depth = depth + 1;
+//         }
+// ```
+// After:
+// ```
+//         } else if k == "LBRACE" {
+//             depth = depth + 1;
+//             p = p + 1;
+//         } else if k == "EOF" {
+//             return p;
+//         } else {
+//             p = p + 1;
+//         }
+// ```
+//
+// This is a no-op today (the `else` already advances p) but makes the LBRACE path explicit so a future refactor cannot hang on it. Adds 1 line, removes Candidate C as a future regression risk.
+
+// ## 6. Acceptance criteria
+//
+// | # | criterion | measurement | target |
+// |---|-----------|-------------|--------|
+// | 1 | c_emit-c wall-time on bgv.oo drops below 5s | `time oodac emit-c ooda/std/sec/crypto/bgv.oo` | under 5,000 ms (was 30,000+ ms; timeout) |
+// | 2 | c_emit-c wall-time on the 5 §2 rows (bgv, blake3, ckks, zksnark, jwt) all under 5s each | `time` on each, max reported | 5/5 under 5,000 ms |
+// | 3 | c_emit output size on bgv.oo drops below 600 lines (was 4,292) | `wc -l bgv.oo.bin.tmp.c` | under 600 lines |
+// | 4 | ROADMAP §5 row 2 (ROADMAP.oot:55) re-classified from `OPEN` to `GREEN-or-ERR` for the 354-row encoding/text floor | run prove_prod on each; re-tally | 354 rows move out of `TIMEOUT`; net BLOCKED delta target ≥200 (some move to ERR, not GREEN) |
+// | 5 | zero regressions on the 137 GREEN std files in audit/library_status.oot (gate: byte-identical C on std/io/print.oo, std/str/parse.oo, std/list/ops.oo) | `diff <(oodac emit-c std/io/print.oo) tests/golden/print.c` | 0 lines diff |
+//
+// Gate #5 is the parity gate from audit/green/c_emit_refactor_phase_a.oot §6 #3. The cache write path is append-only; no existing env key is mutated, so the fn_env string at the end of c_emit_walk_items is byte-identical to the pre-change string.
+
+// ## 7. Risks
+//
+// 1. **Cache stale on env reset**: c_emit_fn_mode returns a new fn_env per fn. If two fns in the same TU have different `__cname__<X>` for the same `<X>` (e.g. one is a forward decl, one is the def), the cache could return the first. Mitigation: c_env_diff only includes *new* keys (those absent from fn_env0). If a redefinition occurs, the new put goes to the end of env_cache_keys and the old entry becomes dead weight. Per-fn cost: 5-15 stale entries, negligible. Detection: gate #5 parity test catches it.
+//
+// 2. **Walker hang on a real LBRACE in a string literal**: change 3 makes LBRACE advance p, but if a future token shape embeds a `{` inside a STRING token, the skip_braces loop will mis-count. Mitigation: add an `if k == "STRING"` branch to skip_braces that advances p past the string's end (the tokenizer at ooda/oodac/tokenize.oo already escapes `\{` so the raw byte does not appear). Land in the same PR. Out of scope for this spec; flagged for a follow-up audit.
+//
+// 3. **O(n²) shifts to O(n·k) where k is per-fn cache size**: the fix is per-fn, not per-TU. A TU with 100 fns still does 100 cache rebuilds. For the encoding/text floor (max 30 fns/TU per audit/library_status_trunk_1.oot), this is 300 cache ops; bgv.oo has 8 fns, so 40 ops. The 30s timeout is not from cache rebuild but from per-call env string scans; the fix targets the per-call cost. Mitigation: if the post-change wall-time is still >5s on a TU with >30 fns, a TU-level cache (one env_cache per c_emit_walk_items call, not per fn) is the next step — but that is a Phase B refactor, not this spec.

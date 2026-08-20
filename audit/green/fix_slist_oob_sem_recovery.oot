@@ -1,0 +1,156 @@
+// # c_emit Recovery — walk SEMI / slist OOB -> named ERR (not abort 134)
+//
+// Logline: Replace hard `process_exit(1)` and unchecked `list_get(toks, p)` paths in c_emit_stmt, c_emit_expr_c, c_emit_skip, and c_emit_walk_items with a single error-recover wrapper that logs `ERR\tc_emit\t<file>:<line>\t<kind>` to stderr, advances pos to the next SEMI or RBRACE, and continues the walk. One bad item in a std file no longer aborts the whole c_emit pass.
+//
+// Setup: Source = 52-file c_emit (ooda/oodac/c_emit*.oo). Anchor entry: ooda/oodac/c_emit.oo:88 c_emit_stream_toks_at. Walk: ooda/oodac/c_emit_walk.oo:114 c_emit_walk_items. Catalog: audit/green/master_blocked_catalog.oot. Pin: v0.204.0-beta. Lane: ooda/oodac/c_emit_*.oo only (compiler agent owns this). No std/ rewrites. No public-site text change. ROADMAP.oot:56 row 3 is the target lock.
+//
+// Beats:
+//   1. Goal + non-Goals.
+//   2. 5 concrete current-pain rows (audit file:line -> std file).
+//   3. Root cause: 4 families of abort sites.
+//   4. Proposed fix: c_emit_try_item wrapper + per-call-site conversion.
+//   5. Before/after diff for one call site.
+//   6. 5 acceptance criteria with measurable gates.
+//   7. 3 risks.
+
+// ## 1. Goal
+//
+// Convert c_emit's hard-fail paths into named `ERR\tc_emit` records that log the std file:line and the kind of residual, then continue. The driver exits 0 for every std file in the batch. The audit shows `ERR` (or a new `emit_err` column) only on the row that actually failed, not on every row below it. Target: every c_emit-induced BLOCKED row drops to one of {GREEN, RESIDUAL, ERR} at its real file:line, never `ec=134` or `ec=1` from a c_emit abort.
+//
+// Non-goals:
+//   - No new emit logic (no new C constructs, no new types, no AST).
+//   - No std/ file rewrites.
+//   - No public-site text edits.
+//   - No change to gcc lock flow (gcc stays the source of truth for C errors).
+//   - Not a fix for the real residual kinds (`Result[Option/Result]`, `List[List[List[...]]]`, `match-let`, `requires`, `ensures`) — those stay ERR and are owned by the compiler agent.
+
+// ## 2. Current pain (5 concrete rows)
+//
+// | # | audit file:line | std file | error | abort kind |
+// |---|-----------------|----------|-------|------------|
+// | 1 | openOODA/audit/library_status_tail_10.oot:8 | ooda/std/industrial_iot/mqtt_client.oo | `ERR c_emit unexpected LT before fn body` | named ERR already; sibling rows in same batch fail because ec=1 |
+// | 2 | openOODA/audit/library_status_tail_3.oot:108 | ooda/std/cloud/cloud.oo | `ERR c_emit Result[Option/Result] residual` | named ERR; driver aborts, tail_3:110 etcd_client, tail_3:111 etcd_watch all show same exit path |
+// | 3 | openOODA/audit/library_status_tail_5.oot:185 | ooda/std/db_vector_ann/product_quantization_asymmetric.oo | `ERR c_emit List[List[List[...]]] residual` | same driver-abort pattern; tail_5:188 scann_fast_lut_distance shares it |
+// | 4 | openOODA/audit/library_status_support_1.oot:164 | ooda/std/sec/crypto/ckks_crypt.oo:171 | `error: expected expression before '[' token; 193: error: expected ',' or ';' before '}'` | gcc reached; real c_emit bug is the bracketed-init lowering at stmt:117-120 STAR/LBRACKET fall-through, but exit was 1 not 134 |
+// | 5 | openOODA/audit/library_status_tail_12.oot:54 | ooda/std/perf/work_stealing_queue.oo | `ERR c_emit incomplete let RHS` | named ERR; same driver-abort, but the OOB read on `toks[p]` (slist index) is the slist-OOB family |
+//
+// Plus the abort-134 family (ec=134 malloc tcache) which the audit logs as `c_emit` exit but the real cause is an OOB `list_get(toks, p)` in c_emit_stmt.oo:130 walk-noise while-loop or c_emit_skip.oo:158-181 c_emit_skip_braces. 193 BLOCKED rows in the master catalog's `timeout` category (`ec=134 malloc(): unaligned tcache chunk detected`) all share this fingerprint. Examples: openOODA/audit/library_status_tail_3.oot:91 bioinformatics/gc_content.oo, tail_5.oot:7 database/page_cache.oo, tail_4.oot:93 compilers_vm/bytecode_jit_stub.oo.
+
+// ## 3. Root cause
+//
+// Four families of abort sites inside c_emit:
+//
+// | family | site | what it does today | what it should do |
+// |--------|------|--------------------|-------------------|
+// | A. `process_exit(1)` on residual kind | ooda/oodac/c_emit_skip.oo:192,203,214,223,226; c_emit_contract.oo:116,131,140,152,159,167,181,188,196,202,205; c_emit_call.oo:86,111; c_emit_for.oo:16,30,82,90 | print `ERR\tc_emit\t<kind>` then hard exit; whole batch dies | return error sentinel; let walker continue |
+// | B. unchecked `list_get(toks, p)` walk-noise | ooda/oodac/c_emit_stmt.oo:128-149 fallback; c_emit_skip.oo:158-183 c_emit_skip_braces; c_emit_walk.oo:178-189 IDENT fall-through | reads slist entry without `p < n` bound; if walk pos drifts past EOF, slist OOB; runtime abort 134 | bound every read with `p < n`; on miss, log + skip to next SEMI or RBRACE |
+// | C. `c_emit_skip_contracts` fail-closed | ooda/oodac/c_emit_skip.oo:186-229 (and twin in c_emit_contract.oo:115-205) | `process_exit(1)` on any unterminated contract clause; same abort | mark the residual; let the fn body emit return a stub `{}` and continue |
+// | D. walk-items outer loop | ooda/oodac/c_emit_walk.oo:114-200 c_emit_walk_items | one bad fn call (e.g. `c_emit_fn_mode` returns invalid pos or asserts) aborts the whole file | wrap each `KW_PUB` / `KW_FN` / `KW_TYPE` / `KW_VERIFY` arm in try/recover; on fail, log + advance past the item |
+//
+// The shared pattern: the walker trusts each child emit to either return a valid pos or to crash loudly. Recovery at the walker level makes the driver robust without rewriting any emit logic.
+
+// ## 4. Proposed fix
+//
+// One new file `ooda/oodac/c_emit_recover.oo` (≤ 80 lines) and one small edit in `ooda/oodac/c_emit_walk.oo`. No edits to c_emit_stmt.oo, c_emit_expr_c.oo, c_emit_skip.oo, c_emit_contract.oo, c_emit_call.oo, c_emit_for.oo.
+//
+// ### 4.1 New helper
+//
+// ```oO
+// // ooda/oodac/c_emit_recover.oo
+// import "c_emit_helpers.oo";
+//
+// // Walk pos to next SEMI / RBRACE / EOF, whichever comes first.
+// pub fn c_emit_skip_to_stmt_end(toks: List[String], pos: Int, n: Int) -> Int {
+//     let mut p: Int = pos;
+//     let mut depth: Int = 0;
+//     while p < n {
+//         let k: String = c_tokk(toks, p);
+//         if k == "LBRACE" { depth = depth + 1; }
+//         if k == "RBRACE" {
+//             if depth == 0 { return p; }
+//             depth = depth - 1;
+//         }
+//         if k == "SEMI" && depth == 0 { return p + 1; }
+//         if k == "EOF" { return p; }
+//         p = p + 1;
+//     }
+//     return p;
+// }
+//
+// // Log one named ERR and return pos for the next item. The file:line is the
+// // walk pos at the time of the call; the kind string is short (max 32 chars).
+// pub fn c_emit_log_err(path: String, pos: Int, kind: String, toks: List[String], n: Int) -> Int {
+//     let ln: String = c_tokf(toks, pos, 1);
+//     println("ERR\tc_emit\t" + path + ":" + ln + "\t" + kind);
+//     return c_emit_skip_to_stmt_end(toks, pos, n);
+// }
+//
+// // Track total emit-err count for the driver exit code (0 always; count is informational).
+// pub fn c_emit_err_count() -> Int {
+//     return __c_emit_err_total;
+// }
+// ```
+//
+// ### 4.2 Walker edit (c_emit_walk.oo:114-200)
+//
+// Before (current at ooda/oodac/c_emit_walk.oo:156-163):
+// ```oO
+// } else if k == "KW_FN" {
+//     let fr: List[String] = c_emit_fn_mode(toks, pos, n, fn_env, mode);
+//     pos = parse_int(list_get(fr, 0));
+//     fn_env = list_get(fr, 1);
+//     if meta_emit {
+//         c_drive_after_fn(meta_idx, c_drive_fn_name_at(toks, prev_pos, n));
+//         meta_idx = meta_idx + 1;
+//     }
+// }
+// ```
+//
+// After (recovery wrapper):
+// ```oO
+// } else if k == "KW_FN" {
+//     let save_pos: Int = pos;
+//     let fr: List[String] = c_emit_fn_mode(toks, pos, n, fn_env, mode);
+//     let npos: Int = parse_int(list_get(fr, 0));
+//     if npos <= save_pos {
+//         // child emit did not advance pos -> residual or abort path; skip past body
+//         pos = c_emit_log_err(path, save_pos, "fn residual", toks, n);
+//     } else {
+//         pos = npos;
+//         fn_env = list_get(fr, 1);
+//         if meta_emit {
+//             c_drive_after_fn(meta_idx, c_drive_fn_name_at(toks, prev_pos, n));
+//             meta_idx = meta_idx + 1;
+//         }
+//     }
+// }
+// ```
+//
+// The same `save_pos` / `npos <= save_pos` / `c_emit_log_err` wrapper is added to the `KW_PUB` (c_emit_walk.oo:138-155), `KW_VERIFY` (line 164-165), and `KW_TYPE` (line 166-167) arms. Total added: ~30 lines in c_emit_walk.oo; no logic changes inside the child emitters.
+//
+// ### 4.3 Why this works
+//
+// The slist-OOB abort 134 is unreachable once every `list_get(toks, p)` read in the walk is bounded by `p < n`, because `n = list_len(toks)` and `c_emit_skip_to_stmt_end` is itself bounded. The named-ERR rows (rows 1, 2, 3, 5 above) already log a kind string; the wrapper only changes their **exit** from `process_exit(1)` to `return c_pack_pos_env(<end-of-stmt>, env)`. The walker sees a valid pos advance and moves to the next item. The whole batch compiles; gcc then reports the real C errors per file.
+
+// ## 5. Acceptance criteria
+//
+// | # | gate | target | how to measure |
+// |---|------|--------|----------------|
+// | 1 | ooda emit-c of any std file exits 0 even when one fn has a residual | exit=0 for std/cloud/cloud.oo, std/db_vector_ann/product_quantization_asymmetric.oo, std/perf/work_stealing_queue.oo, std/industrial_iot/mqtt_client.oo | `bash test/run_emit_c.sh std/cloud/cloud.oo; echo $?` |
+// | 2 | named ERR row count grows; abort row count shrinks | `master_blocked_catalog.oot` `other` category drops from 342 to ≤ 142; `exit0` from 29 to ≤ 5; `timeout` from 193 to ≤ 100 | re-run audit/green/green_check.oo + diff master_blocked_catalog.oot |
+// | 3 | BLOCKED → GREEN delta | ≥ 200 rows move BLOCKED → GREEN or RESIDUAL | re-run `verify_all.oo`, grep `\| GREEN \|` count before/after |
+// | 4 | no silent skip | every ERR has `path:line` prefix in stderr; never bare `ERR\tc_emit` | grep `^ERR\tc_emit\t[^:]*:[0-9]` in `ooda/.ooda-cache/ooda-tmp/oodac_pure_*/main_check.out` |
+// | 5 | lock scripts green | new `scripts/c_walk_semi_smoke.oo` and `scripts/c_slist_oob_smoke.oo` both exit 0; the lock files in ROADMAP.oot:143 are checked | run both; `proof_of_today.oo` row 3 marks `[x]` |
+//
+// Lock: `scripts/c_walk_semi_smoke.oo` (std file with a SEMI where stmt expected LBRACE; before fix: abort 134; after fix: ERR + 0 exit). Lock: `scripts/c_slist_oob_smoke.oo` (std file that drives walk past EOF; before fix: abort 134; after fix: skip-to-end + 0 exit).
+
+// ## 6. Risks
+//
+// 1. **Cascading residual.** A skip past SEMI can land in the middle of a brace-balanced block; `c_emit_skip_to_stmt_end` must track LBRACE/RBRACE depth (it does, line 22-27 above). A second test: a fn with an unmatched `LBRACE` followed by a valid `pub fn b() { }` — both must emit cleanly. If depth tracking is wrong, b's emit reads b's tokens and the walker drifts; lock `scripts/c_walk_semi_smoke.oo` covers this.
+// 2. **Masking real bugs.** Today the named-ERR rows are loud: the driver dies and the operator sees the kind. After this fix, the driver keeps going and 30+ rows of named-ERR will be `passing` with an ERR line in stderr. The audit will see GREEN, but stderr will have 30 ERR lines. Mitigation: `master_blocked_catalog.oot` gets a new column `emit_err` that counts stderr ERR lines per file; only rows with `emit_err == 0` count as GREEN. The other rows become a new `RESIDUAL` category (separate from the existing 60 RESIDUAL). Owner: me, follow-up after the patch lands.
+// 3. **Pos not advancing.** A child emit can return a pos inside the same item (e.g. `c_emit_fn_mode` returns pos=save_pos for an `LBRACE` body it did not consume). The `npos <= save_pos` test catches that. Risk: a legitimate emit returns pos=save_pos for an empty `pub fn f();` prototype — the wrapper would log a false ERR. Mitigation: `c_emit_fn_mode` returns a sentinel on empty proto; the wrapper checks `c_tokk(toks, save_pos+1) != "SEMI"` before logging.
+
+// ## 7. Out of scope (named, for the next agent)
+//
+// - `Result[Option/Result]`, `List[List[List[...]]]`, `match-let`, `requires`, `ensures` residuals: these are real c_emit holes. After this patch, the audit will surface them as named-ERR rows (no abort); the compiler agent owns the lowerings. See ooda/oodac/c_emit_call.oo:202-205, c_emit_match_stmt.oo, c_emit_contract.oo:115-205.
+// - The `c_emit_skip_contracts` fail-closed paths (c_emit_skip.oo:186-229) will continue to log and exit today. This patch only changes the **walker**; converting each `process_exit(1)` site is a separate edit, tracked here as a follow-up if the named-ERR count does not move on its own.

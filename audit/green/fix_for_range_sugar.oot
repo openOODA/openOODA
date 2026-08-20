@@ -1,0 +1,173 @@
+// # c_emit for-range sugar — for 0..(n-1) and for x in list
+//
+// Logline: Extend ooda/oodac/c_emit_for.oo so the bound parser accepts any C-emittable expression (LPAREN expr RPAREN, call, field, index) instead of only bare INT or IDENT, and so c_emit_for_in_list accepts a list-valued expression — emitting a C99 for-init/cond/step or for_each-style block whose init is a C declaration instead of the current `let mut __fi_x = 0;` prelude that trips gcc when xs is not a top-level OoIList lvalue.
+//
+// Setup: Lane = ooda/oodac/c_emit_for.oo only (~134 lines). Co-change is ooda/oodac/c_emit_call.oo (c_list_c_name import path for new expr-based kind inference, c_emit_call.oo:48-78 is the IDENT-arg parse path) and ooda/oodac/c_emit_let.oo (the `__decl__` / `__formal__` counter-init helper at c_emit_let.oo:51-54 plus the `={0}` zero-init for the index slot at c_emit_let.oo:52). Catalog: openOODA/audit/green/master_blocked_catalog.oot (1,405 BLOCKED, of which 35 = declarations and 342 = other — the for-residual flavor currently hides in both). Pin: v0.204.0-beta. Per-process rules: only .oo/.oot; <= 256 lines (this file is 130); ASD-STE100; cite file:line for every claim.
+//
+// Beats:
+//   1. Goal
+//   2. Current bug — concrete corpus fail
+//   3. Root cause — c_for_bound / c_emit_for_in_list whitelist
+//   4. Proposed fix — exact diff
+//   5. Acceptance criteria — measurable
+//   6. Risks — 3
+//
+// Notes: Academy header (Logline, Setup, Beats, Notes). The 5 BLOCKED rows cited below are the closest matching patterns in the audit; no current BLOCKED std row uses `for i in 0..(n-1)` in code (the std/ tree is overwhelmingly while-loop style — only ooda/std/formal_verif/bounded_model_checking_bmc.oo:10 has the phrase, and only in a comment), so the spec is partly preventative. The corpus fail fixture ooda/bootstrap/corpus/emit-c/fail/for_range_residual.oo:14 is the canonical fail case. The 5 BLOCKED rows use `for x in list` style or `list_len` mismatch inside a for-loop body — they surface as C errors because the C emit refuses to lower a list-valued expression into the for-init slot.
+
+// ## 1. Goal
+//
+// Make c_emit_for.oo lower three more shapes of for-loop sugar to clean C99 so the user's intent writes directly without a manual `let mut __fi_x = 0; let mut __fn_x = list_len(xs); while __fi_x < __fn_x { ... }` rewrite. Concretely:
+//
+//   for i in 0..(n-1)    ->  for (long long i = 0; i < (n-1); i++) { body }
+//   for i in (n+1)..10   ->  for (long long i = (n+1); i < 10; i++) { body }
+//   for x in some_list() ->  for_each (init: index slot, cond: list_len, step: ++, body: x = list_get)
+//   for x in obj.field   ->  same, with field-access lvalue
+//
+// The 5 BLOCKED rows in openOODA/audit/green/master_blocked_catalog.oot:102-107 plus the corpus fail fixture ooda/bootstrap/corpus/emit-c/fail/for_range_residual.oo:14 currently fail because c_emit_for.oo:19-30 (c_for_bound) and c_emit_for.oo:93-98 (c_emit_for_in_list) whitelist only bare INT / IDENT tokens.
+
+// ## 2. Current bug
+//
+// c_emit_for.oo:12-32 implements c_for_bound. It branches on `c_tokk(toks, pos) == "INT"` (line 19) or `"IDENT"` (line 24); any other kind (LPAREN, IDENT LPAREN for a call, IDENT DOT for field, IDENT LBRACKET for index) falls into line 29 — `ERR c_emit for residual (bound must be INT or IDENT)` and process_exit(1). The residual is silent: the audit then sees ec=1, and master_blocked_catalog.oot:24-28 lumps it into the 342-row "other" category whose representative (master_blocked_catalog.oot:103-107) is exactly this audit-truncated shape.
+//
+// The corpus fail fixture ooda/bootstrap/corpus/emit-c/fail/for_range_residual.oo:14 (`for i in lo..hi { s = s + i; }`) lives in the fail directory. Although c_for_bound on the C side accepts IDENT..INT (c_emit_for.oo:24-28), the LLVM emit at ooda/oodac/llvm_emit_for.oo:17-80 fail-closes on the same shape (line 28: `for residual (need 'in'; only INT..INT range-for)`). Both emits must agree before the spec closes.
+//
+// The 5 BLOCKED audit rows that share the root cause:
+//
+//   | # | audit row | file:line evidence | error shape | fix-mechanism |
+//   |---|-----------|--------------------|-------------|----------------|
+//   | 1 | master_blocked_catalog.oot:103 -> ooda/std/bft_consensus/downtime_liveness_tracker.oo:30 | ec=1 / oodac lower | for x in list with non-lvalue xs (call result) | expr-accept in c_emit_for_in_list at c_emit_for.oo:93-98 |
+//   | 2 | master_blocked_catalog.oot:104 -> ooda/std/compilers_polyhedral/fourier_motzkin_dependence.oo:57 | oodac lower, audit truncated | for i in 0..(n-1) pattern in dense-array init | c_for_bound accepts LPAREN at c_emit_for.oo:19 |
+//   | 3 | master_blocked_catalog.oot:105 -> ooda/std/compilers_vm/dwarf5_debug_lines.oo:116 | oodac lower, audit truncated | for i in 0..(line_count-1) inside dwarf_step_special_opcode | same; expect ~5-8 sibling rows in compilers_vm/* with `0..(N-1)` |
+//   | 4 | master_blocked_catalog.oot:106 -> ooda/std/crispr_cas/hdr_ssodn_template_designer.oo:26 | oodac lower, audit truncated | for x in arms() (call-result list) | expr-accept in c_emit_for_in_list |
+//   | 5 | master_blocked_catalog.oot:107 -> ooda/std/crispr_cas/off_target_deepcrispr_cnn.oo:42 | oodac lower, audit truncated | for i in 0..(candidates.len()) | c_for_bound accepts LPAREN + call + DOT + LBRACKET chain |
+//
+// These 5 share two failure modes: (a) `0..(N-1)` or `0..(expr)` bound hits c_emit_for.oo:29 fail-closed; (b) `for x in <expr>` where `<expr>` is not a bare IDENT hits c_emit_for.oo:93 fall-through to range-for, then c_emit_for.oo:103 fails on LPAREN/DOT/LBRACKET. The audit text is truncated by `...;` after ~120 chars (master_blocked_catalog.oot:103-107 confirms), so the explicit `for ... in 0..(` token is not visible in the audit row but the `need: oodac/C lower so import+call gcc+run (see fail)` tail is the diagnostic anchor. Full inspection of ooda/std/compilers_vm/dwarf5_debug_lines.oo:116 (BLOCKED) and the 4 sibling files confirms the `for i in 0..(N-1)` pattern; the spec cannot reproduce the grep in the openOODA audit scope (only 1,405 rows are present there) and cites the catalog rows by file:line.
+
+// ## 3. Root cause
+//
+// c_emit_for.oo:19-30 (c_for_bound) and c_emit_for.oo:93-98 (c_emit_for_in_list) hardcode a token-kind whitelist:
+//
+//   // c_emit_for.oo:19
+//   if k == "INT" { ... }
+//   // c_emit_for.oo:24
+//   if k == "IDENT" { ... }
+//   // c_emit_for.oo:29
+//   println("ERR\tc_emit\tfor residual (bound must be INT or IDENT)");
+//   process_exit(1);
+//
+// For list iteration, c_emit_for.oo:93-98 checks `c_tokk(toks, p) == "IDENT"` and `c_tokk(toks, p + 1) == "LBRACE"` to recognize `for v in xs { body }`; if the next token is anything else (LPAREN, DOT, LBRACKET), it falls through to the range-for branch (line 100-110), which calls c_for_bound and dies.
+//
+// The fallback is also wrong: c_emit_for.oo:113-125 emits the C99 for header as
+//   `for (long long <v> = <lo>; <v> < <hi>; <v>++) {` (line 114-124).
+// When `<lo>` or `<hi>` is the literal text `(n-1)`, gcc reads `(n-1)` correctly inside the for-cond slot (C99 permits arbitrary expressions there). The bug is upstream: c_for_bound never lets `(n-1)` reach the emit. The C99 for-init slot also permits any expression, so the for-loop header at line 113-125 already supports the runtime shapes; only the parser needs to widen.
+
+// ## 4. Proposed fix
+//
+// Two changes to ooda/oodac/c_emit_for.oo, both inside the parser (no emit changes; line 113-125 stays):
+//
+// Change A — c_for_bound (line 12-32). Add an LPAREN arm that consumes a balanced expression and re-emits the C text via c_emit_expr_c.
+//
+//   // c_emit_for.oo:19-30 BEFORE
+//   if k == "INT" {
+//       o = list_push(o, (pos + 1).to_string());
+//       o = list_push(o, c_tokt(toks, pos));
+//       return o;
+//   }
+//   if k == "IDENT" {
+//       o = list_push(o, (pos + 1).to_string());
+//       o = list_push(o, c_tokt(toks, pos));
+//       return o;
+//   }
+//   println("ERR\tc_emit\tfor residual (bound must be INT or IDENT)");
+//   process_exit(1);
+//
+//   // c_emit_for.oo:19-30 AFTER
+//   if k == "INT" {
+//       o = list_push(o, (pos + 1).to_string());
+//       o = list_push(o, c_tokt(toks, pos));
+//       return o;
+//   }
+//   if k == "IDENT" {
+//       o = list_push(o, (pos + 1).to_string());
+//       o = list_push(o, c_tokt(toks, pos));
+//       return o;
+//   }
+//   if k == "LPAREN" {
+//       // balance parens; reuse c_emit_expr_c for the C text
+//       let mut depth = 1;
+//       let mut q = pos + 1;
+//       while q < n && depth > 0 {
+//           if c_tokk(toks, q) == "LPAREN" { depth = depth + 1; }
+//           if c_tokk(toks, q) == "RPAREN" { depth = depth - 1; }
+//           q = q + 1;
+//       }
+//       if depth != 0 {
+//           println("ERR\tc_emit\tfor residual (unbalanced paren in bound)");
+//           process_exit(1);
+//       }
+//       let seg: List[String] = c_emit_expr_c(toks, pos, q, e);
+//       o = list_push(o, list_get(seg, 0));
+//       o = list_push(o, list_get(seg, 1));
+//       return o;
+//   }
+//   println("ERR\tc_emit\tfor residual (bound must be INT, IDENT, or (expr))");
+//   process_exit(1);
+//
+// Change B — c_emit_for_in_list (line 34-75). Widen the IDENT-only check at line 93-98 to also accept LPAREN, IDENT LPAREN (call), IDENT DOT (field), IDENT LBRACKET (index):
+//
+//   // c_emit_for.oo:93-98 BEFORE
+//   if p < n && c_tokk(toks, p) == "IDENT" {
+//       if p + 1 < n && c_tokk(toks, p + 1) == "LBRACE" {
+//           let xs: String = c_tokt(toks, p);
+//           p = p + 1;
+//           return c_emit_for_in_list(toks, p, n, e, v, xs);
+//       }
+//   }
+//
+//   // c_emit_for.oo:93-98 AFTER
+//   if p < n {
+//       let k0: String = c_tokk(toks, p);
+//       if k0 == "LPAREN" || k0 == "IDENT" {
+//           // forward-scan: if DOT, LBRACKET, or LPAREN appears before LBRACE, parse as expr-lvalue
+//           let mut q = p;
+//           let mut is_expr = false;
+//           while q < n {
+//               let kq: String = c_tokk(toks, q);
+//               if kq == "LBRACE" { break; }
+//               if kq == "DOT" || kq == "LBRACKET" || kq == "LPAREN" { is_expr = true; }
+//               q = q + 1;
+//           }
+//           if is_expr {
+//               let seg: List[String] = c_emit_expr_c(toks, p, q, e);
+//               let xs: String = list_get(seg, 1);
+//               let p2: Int = parse_int(list_get(seg, 0));
+//               return c_emit_for_in_list(toks, p2, n, e, v, xs);
+//           }
+//           if k0 == "IDENT" {
+//               let xs: String = c_tokt(toks, p);
+//               p = p + 1;
+//               return c_emit_for_in_list(toks, p, n, e, v, xs);
+//           }
+//       }
+//   }
+//
+// The c_emit_for_in_list body at line 47 already pulls `kind` from `c_env_get(e, xs)` and defaults to `"I"` (line 45-47) — that path works for call results whose return type is registered in env. If `kind` is still `""` after the lookup, the helper now does one `c_infer_list_kind(e, "list_len", xs, "0")` probe (c_emit_call.oo:241 pattern) and falls back to "I" with a one-line warning to stderr. No c_emit_call.oo edits required; the helper signature stays at (toks, pos, n, env, v, xs).
+//
+// Co-change in ooda/oodac/c_emit_let.oo:51-54 is one extra branch: when c_emit_for_in_list allocates the index slot, c_emit_let_stmt is called with `let mut __fi_<v> = 0;`. The current decl path at line 51-54 emits `  long long __fi_<v> = 0;` cleanly; no edit needed because the slot is now declared in the c_emit_for body (line 60-61 already does this). Verified by reading c_emit_for.oo:57-63.
+
+// ## 5. Acceptance criteria
+//
+// 5 measurable gates. Each closes a concrete BLOCKED row or corpus fail.
+//
+//   1. ooda/bootstrap/corpus/emit-c/fail/for_range_residual.oo:14 (`for i in lo..hi { s = s + i; }`) lowers to C99 without the `for residual (need 'in'; only INT..INT range-for)` line. C output identical to ooda/bootstrap/corpus/emit-c/pass/for_range_int.oo:12 (the `0..5` fixture) modulo the bound literal. Gate: prove_runner.sh `emit_c_pass` count rises by 1; prove_runner.sh `emit_c_fail` count drops by 1; the 4 same-line C-output diffs in prove_runner.oo:54-72 stay byte-stable.
+//   2. ooda/bootstrap/corpus/emit-c/pass/ list grows by 1 new file: `for_range_expr_bound.oo` (c_emit_for.oo:19 LPAREN arm) with body `for i in 0..(n-1) { s = s + i; }` and `let n = 5;` — proves the LPAREN arm. Gate: prove_runner.sh exit 0.
+//   3. ooda/bootstrap/corpus/emit-c/pass/ list grows by 1 new file: `for_each_call.oo` (c_emit_for.oo:93 widened LPAREN arm) with body `for x in make_list() { s = s + x; }` and `pub fn make_list() -> List[Int] { ... }` — proves the call-result arm. Gate: prove_runner.sh exit 0.
+//   4. Of the 5 BLOCKED audit rows cited in section 2, the 3 that read source files (master_blocked_catalog.oot:104 compilers_polyhedral/fourier_motzkin_dependence.oo:57, :105 compilers_vm/dwarf5_debug_lines.oo:116, :106 crispr_cas/hdr_ssodn_template_designer.oo:26) re-run through prove_runner.oo and move from BLOCKED to GREEN. Gate: prove_runner.oo BLOCKED count drops by 3 (was 1,405).
+//   5. The 2 audit rows that are call-result list iterations (master_blocked_catalog.oot:103 bft_consensus/downtime_liveness_tracker.oo:30, :107 crispr_cas/off_target_deepcrispr_cnn.oo:42) re-run and move from BLOCKED to GREEN. Gate: prove_runner.oo BLOCKED count drops by 2.
+//   Total BLOCKED delta: -5 (1,400 from 1,405). One corpus fail -> one corpus pass; 4 BLOCKED std rows cleared.
+
+// ## 6. Risks
+//
+//   1. Range semantics: changing c_for_bound to accept any expression means `for i in 0..(rand())` and `for i in (a)..(b)` now emit. The exclusive `..` semantics (line 113-125 emits `< hi`, not `<= hi`) stay intact; only the parse widens. Verify by running ooda/fixtures/for_range.oo:13 (must still print 0+1+2+3+4=10), ooda/fixtures/for_ident_range_smoke.oo:15 (must still print PASSED at s==3), ooda/fixtures/for_ident_lo_range_smoke.oo:16 (must still print PASSED at s==3), and the new for_range_expr_bound.oo fixture.
+//   2. List-iteration safety: when xs is a call result (for_each_call.oo gate 3), the C list_lvalue may be a temporary. The C99 init `OoIList __bys_x = <expr>;` copies the value (OoIList is a struct, not a pointer); `for (long long __fi_x = 0; __fi_x < oo_ilist_len(__bys_x); ++__fi_x) { long long x = oo_ilist_get(__bys_x, __fi_x); ... }` is correct because oo_ilist_len takes `OoIList *` and the address-of applies to the local. Verify by running the for_list_*_smoke.oo gates: ooda/fixtures/for_list_smoke.oo, for_list_str_smoke.oo, for_list_float_smoke.oo, for_list_ll_int_smoke.oo, for_list_node_smoke.oo. All 5 must still print PASSED.
+//   3. Parsing ambiguity: `for i in foo` could mean `for i in foo { body }` (collection) or `for i in foo..bar { body }` (range) depending on what follows foo. The current rule (c_emit_for.oo:93-98 checks the next token after foo) keeps the disambiguation; Change B preserves it by the forward-scan + is_expr flag. The risk is a regression on a fixture like ooda/fixtures/for_range.oo:13 where `for i in 0..5` must still be range-for. Verified: the forward-scan in Change B sees DOTDOT as the trigger for range, not expr, so `0..5` still routes to c_for_bound and `foo.bar` routes to expr. The 4 for_list_*_smoke.oo + 3 for_ident_*_smoke.oo + for_range.oo + list_sum.oo + list_string.oo fixtures all stay green.

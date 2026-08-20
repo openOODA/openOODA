@@ -1,0 +1,189 @@
+// # Fix Spec — Result[List[Name]] → OoResL_Name emit
+//
+// Logline: Make `Result[List[Name], E]` emit a valid `OoResL_Name` C struct in ooda/oodac/c_emit_result_ty.oo, then land the smoke fixture and re-pin the fail-closed lock, so ROADMAP.oot:94 can flip `[ ]` to `[x]` without touching the 5 row-categories that must stay fail-closed (Result[Option], Result[Int, Bool], Result[List[List[List]]], Result[Option[...]]).
+//
+// Setup: oodac pinned at v0.205.0-beta (ROADMAP.oot:75). Catalog = audit/green/master_blocked_catalog.oot (1,405 BLOCKED total; 4 result_cell, 29 exit0). Test anchor = ooda/fixtures/result_ll_name_fail.oo (currently emits `OoResL_Name`; ROADMAP.oot:90 marks it `[x] fail-closed`, but the lock is broken today — see §2). Type-layer source: ooda/oodac/ty.oo (190 lines, 11 type constructors, written 2026-08-19). Active lane is ooda/oodac/ + audit/green/ only. The user prompt placed this fix in c_emit_call_ty.oo, but the actual Result-to-C mapping lives in c_emit_result_ty.oo:12-92 `c_result_c_ty`; c_emit_call_ty.oo:5-101 holds only call-name classifications (`c_is_res_s_call`, `c_is_res_v_call`, ...). Citing both for transparency.
+//
+// Beats:
+//   1. Goal + non-Goals (which rows must stay fail-closed).
+//   2. Current bug: trace the fixture, locate the real code, name the lock drift.
+//   3. Proposed fix: 1-line enable in c_emit_result_ty.oo, smoke fixture, lock reset.
+//   4. New mapping table (full Result[X, _] → C struct name, with kind-letter code).
+//   5. Acceptance: 6 measurable checks, 5+ BLOCKED-row cites, 1 fixture gate.
+//   6. Risks: 3 named, with mitigations.
+
+// ## 1. Goal
+//
+// Make `Result[List[Name], E]` for any user `Name` struct emit as `OoResL_Name { int ok; OoL_Name val; OoStr err; }` and run through gcc without modification. Land the smoke fixture `scripts/result_ll_name_smoke.oo` that gcc+runs and prints a stable value, so ROADMAP.oot:94 flips to `[x]`.
+//
+// Non-Goals (must keep fail-closed; c_emit_result_ty.oo:82-90, 47-49):
+//   - `Result[Option[T], E]` → `ERR c_emit Result[Option|Result] residual` (c_emit_result_ty.oo:86-90).
+//   - `Result[Int, Bool]` and `Result[_, _]` where E is not `String` → `ERR c_emit` (c_emit_result_ty.oo:46-49 + ROADMAP.oot:112 lock).
+//   - `Result[List[List[List[T]]], E]` → `ERR c_emit` (c_emit_list_ty.oo:75-78).
+//   - `Result[List[List[T]], E]` → still `OoResLL_*` (c_emit_result_ty.oo not involved; c_emit_list_ty.oo:80).
+
+// ## 2. Current bug
+//
+// The current code path ALREADY emits `OoResL_Name` for `Result[List[Name], E]`. The bug is **lock drift**, not emit drift.
+//
+// Evidence (ooda/oodac/oodac at v0.205.0-beta):
+//
+//   - c_emit_result_ty.oo:78-81 (the live path):
+//     ```
+//     if lk != "" && lk != "List" {
+//         c_emit_res_list_ty(lk);
+//         return "OoResL_" + lk;
+//     }
+//     ```
+//     For `List[Name]`, `c_peek_list_elem` (c_emit_skip.oo:31-58) returns `"Name"` (not `I`/`S`/`F`/`LF`); the branch at c_emit_result_ty.oo:78-81 fires and emits `OoResL_Name`.
+//
+//   - c_emit_olist.oo:69-79 (the typedef that backs it):
+//     ```
+//     // Result[List[Name]] → payload, OoL_Name, plus OoResL_Name (once).
+//     pub fn c_emit_res_list_ty(name: String) { ... }
+//     ```
+//
+//   - Live emit of ooda/fixtures/result_ll_name_fail.oo (the ROADMAP.oot:90 lock) at HEAD:
+//     - exit=0 (no `ERR c_emit`).
+//     - output contains: `typedef struct { int ok; OoL_Name val; OoStr err; } OoResL_Name;` (ooda/oodac/oodac, just run).
+//     - output contains: `OoResL_Name r = 16__f();` and `OoResL_Name __ret_val = ((OoResL_Name){1, xs, oo_str_lit("")});`.
+//     - therefore the fixture no longer fail-closes. The ROADMAP.oot:90 lock is BROKEN.
+//     - but the ROADMAP.oot:94 smoke (`scripts/result_ll_name_smoke.oo`) does not exist yet:
+//       $ find ooda/scripts -name "result_ll_name*"  → (no file).
+//
+// The user's prompt stated the bug is in c_emit_call_ty.oo:5-101 and the symptom is "current mapping produces `OoResLI`". That is INCORRECT for the current source: c_emit_call_ty.oo holds only `c_is_*_call` name classifications, and `c_peek_list_elem` + `c_result_c_ty` already return `OoResL_Name` for `List[Name]`. The real gap is the missing smoke fixture, not a wrong struct name.
+//
+// Concrete BLOCKED rows in the audit siblings that match the "Result/List" pattern (file:line + 1-line error):
+//
+//   1. openOODA/audit/library_status_support_1.oot:25 — std/crypto/ecdsa.oo | BLOCKED | "no callable API without pointer field or Result unwrap" (result_cell).
+//   2. openOODA/audit/library_status_support_1.oot:46 — std/crypto/x25519.oo | BLOCKED | "no callable API without pointer field or Result unwrap" (result_cell).
+//   3. openOODA/audit/library_status_tail_8.oot:25 — std/formal_verif/contract_pre_post_condition.oo | BLOCKED | "no callable API without pointer field or Result unwrap" (result_cell).
+//   4. openOODA/audit/library_status_tail_9.oot:154 — std/gui/chat.oo | BLOCKED | "no callable API without pointer field or Result unwrap" (result_cell).
+//   5. openOODA/audit/library_status_tail_3.oot:108 — std/cloud/cloud.oo | BLOCKED | "ERR c_emit Result[Option/Result]" (exit0) — sibling category, not this fix.
+//   6. openOODA/audit/library_status_tail_4.oot:221 — std/database/index_hash.oo:99 | BLOCKED | "'OoRes_HashBucket' has no member named 'is_none'" (missing_type) — uses `Result[HashBucket, _]`, not List[Name], but a related Result cell unwrap hole.
+//
+// result_cell = 4 rows total (master_blocked_catalog.oot:25-27); these are the only 4 BLOCKED rows in the master catalog that the c_emit layer can attribute to a "Result/Option cell" hole, and they will NOT be unblocked by emitting `OoResL_Name`. See §5 for what this fix actually moves.
+
+// ## 3. Proposed fix
+//
+// Three changes, all in scope. Net diff: 1-line patch in c_emit_result_ty.oo (no-op, keeps the live path) + 1 new smoke fixture + 1 lock file move.
+//
+// ### 3.1 c_emit_result_ty.oo:78-81 — no change required, but pin it
+//
+// The current branch is correct. Add a comment pin so future refactors don't accidentally delete it. Diff:
+//
+//   // before
+//   if lk != "" && lk != "List" {
+//       c_emit_res_list_ty(lk);
+//       return "OoResL_" + lk;
+//   }
+//
+//   // after
+//   // ROADMAP.oot:94 — Result[List[Name]] emit IS OoResL_Name. Do not collapse into the residual branch.
+//   if lk != "" && lk != "List" {
+//       c_emit_res_list_ty(lk);
+//       return "OoResL_" + lk;
+//   }
+//
+// Rationale: the change is a 1-line comment to mark the path as a pinned `[]` row. Zero behaviour change. The compiler lane is already mid-refactor (ty.oo just landed); a future AST walker must not coalesce this branch with the residual `ERR c_emit` at line 82-85.
+//
+// ### 3.2 New fixture — ooda/scripts/result_ll_name_smoke.oo
+//
+// Mirror ooda/fixtures/result_ll_name_fail.oo (already on disk, 19 lines) but make it pass end-to-end. Required body:
+//
+// ```
+// type Name = struct { n: String }
+//
+// pub fn mk() -> Result[List[Name], String] {
+//     let xs: List[Name] = list_new();
+//     let one: Name = Name { n: oo_str_lit("a") };
+//     xs = oo_l_Name_push(xs, one);
+//     return Ok(xs);
+// }
+//
+// pub fn main() {
+//     let r: Result[List[Name], String] = mk();
+//     oo_print_str(oo_str_lit("ok"));
+//     oo_println();
+// }
+// ```
+//
+// Gate: `oodac emit-c ooda/scripts/result_ll_name_smoke.oo | gcc -x c - -o /tmp/rll && /tmp/rll` exits 0 and stdout is `ok\n`.
+//
+// ### 3.3 Lock reset
+//
+// Today, ooda/fixtures/result_ll_name_fail.oo emits successfully, so ROADMAP.oot:90's "[x] fail-closes" is a stale lock. Two options, pick one (owner decides):
+//   a. Delete ooda/fixtures/result_ll_name_fail.oo and update ROADMAP.oot:90 to `[ ]` (the original fail-closed gate is no longer reachable code).
+//   b. Keep the fixture but rewrite it to a construct that actually fail-closes — e.g. add `Result[List[Name], Bool]` (E is not String) — so the lock tests the residual branch at c_emit_result_ty.oo:46-49.
+//
+// Recommended: option (b), 1-line fixture edit. Preserves the lock semantics, retargets at a real residual path, costs ~5 lines of fixture change.
+
+// ## 4. New mapping table (full Result[X, _] → C struct name)
+//
+// Source = c_emit_result_ty.oo:30-92, with the new pin. Kind codes (I/S/F/LF/LL_*) are from c_emit_list_ty.oo:14-31 + c_emit_skip.oo:31-58.
+//
+// | Oo Result type            | Inner IDENT | C struct                | Code path (file:line)                |
+// |---------------------------|-------------|-------------------------|--------------------------------------|
+// | `Result[Void, _]`         | `Void`      | `OoResV`                | c_emit_result_ty.oo:31-33            |
+// | `Result[String, _]`       | `String`    | `OoResS`                | c_emit_result_ty.oo:34-36            |
+// | `Result[Int, _]`          | `Int`       | `OoResI` (default)      | c_emit_result_ty.oo:37,53            |
+// | `Result[Int, Int]`        | `Int`       | `OoResII`               | c_emit_result_ty.oo:38-40            |
+// | `Result[Bool, _]`         | `Bool`      | `OoResB`                | c_emit_result_ty.oo:55-57            |
+// | `Result[Float, _]`        | `Float`/`f64` | `OoResF`              | c_emit_result_ty.oo:58-63            |
+// | `Result[List[Int], _]`    | `List[Int]`  | `OoResLI`              | c_emit_result_ty.oo:64-68            |
+// | `Result[List[String], _]` | `List[String]` | `OoResLS`            | c_emit_result_ty.oo:69-71            |
+// | `Result[List[Float], _]`  | `List[Float]` (kind LF) | `OoResLF` | c_emit_result_ty.oo:72-77    |
+// | **`Result[List[Name], _]`** | **`List[Name]` (kind Name)** | **`OoResL_Name`** | **c_emit_result_ty.oo:78-81 (PINNED)** |
+// | `Result[List[List[T]], _]`| `List[List[T]]` (kind `LL_I`/`LL_S`/`LL_F`/`LL_Name`) | `OoResLL_*` | c_emit_result_ty.oo not reached; c_emit_fn.oo:72 + c_emit_list_ty.oo:80 |
+// | `Result[Option[...], _]`  | `Option[...]` | **ERR c_emit**        | c_emit_result_ty.oo:86-90 (kept)     |
+// | `Result[Result[...], _]`  | `Result[...]` | **ERR c_emit**        | c_emit_result_ty.oo:86-90 (kept)     |
+// | `Result[List[List[List[T]]], _]` | `List[List[List[T]]]` | **ERR c_emit** | c_emit_list_ty.oo:75-78 (kept) |
+// | `Result[_, Bool]`         | E = `Bool`  | **ERR c_emit**          | c_emit_result_ty.oo:46-49 (kept)     |
+// | `Result[Int, Int, ...]` w/ 3+ args | n/a | **ERR c_emit** (residual) | c_emit_result_ty.oo residual paths |
+// | `Result[Foo]` w/ unknown Foo | `Foo` (user) | `OoRes_Foo`         | c_emit_result_ty.oo:91 (NOT List)    |
+//
+// Key-letter convention (mirrors c_emit_list_ty.oo:14-31, c_emit_result_ty.oo:201-246):
+//   I = Int scalar, S = String, F = Float (also LF for List[Float]), L_ = list-of-Named, LL_ = list-of-list. R_ prefix for Result/Option kind letter is computed by c_result_ret_kind (c_emit_result_ty.oo:201-246) and used downstream for `__ret__` env binding.
+
+// ## 5. Acceptance criteria
+//
+// 6 measurable checks, all gated by existing infra:
+//
+//   1. `oodac emit-c ooda/scripts/result_ll_name_smoke.oo` writes `typedef struct { int ok; OoL_<Name> val; OoStr err; } OoResL_<Name>;` for every `List[Name]` in the source (grep -c).
+//   2. `oodac emit-c ... | gcc -x c - -o /tmp/rll && /tmp/rll` exits 0; stdout ends with `ok\n` (cmp -s).
+//   3. `oodac emit-c ooda/fixtures/result_ll_name_fail.oo` (after the §3.3 option-(b) rewrite) still prints `ERR\tc_emit` and exits 1 (the fail-closed lock is preserved at the residual path).
+//   4. `oodac emit-c` of all 5 in-master result_cell audit rows still ERR (ecdsa.oo, x25519.oo, contract_pre_post_condition.oo, chat.oo, plus the tail of master_blocked_catalog.oot:25-27). Gate: no false-positive GREEN from this fix.
+//   5. `oodac emit-c ooda/std/sec/crypto/hsm_pkcs.oo` (a real-world List[Name] user) still emits `OoResL_KeyHandle` (no regression). This is the only direct BLOCKED-→-GREEN movement in scope; hsm_pkcs.oo is BLOCKED at library_status_support_1.oot:206 for a *different* reason ('HsmSession has no member session_handle'), so this fix will not move it. **Real GREEN delta from this spec: 0** (see Risks §6.1).
+//   6. After §3.3 lock reset, ROADMAP.oot:90 row text still scans as a real fail-closed lock (grep on the fixture), and ROADMAP.oot:94 row flips `[ ]` → `[x]`.
+//
+// BLOCKED-→-GREEN delta estimate: **0 audit rows** directly. Rationale: every file in the audit that uses `Result[List[Name], _]` is BLOCKED for a different cause (unknown type `BgvEncoder` / `PgPacket` etc., prove-driver timeout, struct-field missing, dot/arrow on pointer). The emit-side hole is closed; the audit-row movement depends on lane-separated work (library side, prove side, struct-field side). What this fix DOES move:
+//   - ROADMAP.oot:94 `[ ]` → `[x]`. (1 row, 1 file added.)
+//   - ROADMAP.oot:230 sub-bullet: "Result[List[Name]] fail-closed" → "Result[List[Name]] emitted as OoResL_Name and gcc+runs".
+//   - 0 audit siblings.
+
+// ## 6. Risks
+//
+// 3 risks, in priority order:
+//
+// 1. **Audit-row movement is zero, but ROADMAP-row movement is +1.** If the lane is scoped strictly by "BLOCKED rows moved", this spec looks like no-op. Mitigate by stating upfront (this file, §5) that the user-visible win is ROADMAP.oot:94 + a green smoke fixture, not audit siblings. The 4 result_cell rows in master_blocked_catalog.oot:25-27 stay BLOCKED for reasons that need library-lane work (struct field definitions, prove-driver shims), not emit work. Owner: confirm "fix spec" means ROADMAP-row win, not catalog-row win, before allocating the slot.
+//
+// 2. **Lock drift already happened.** ROADMAP.oot:90 claims result_ll_name_fail.oo fail-closes, but HEAD emits successfully (executed 2026-08-19). The §3.3 option-(b) rewrite fixes this; option-(a) deletion does too, but loses the "this is a residual lock" signal. Mitigate by writing a one-line "fail-lock is now: ooda/fixtures/result_e_bool_fail_smoke.oo plus ooda/fixtures/result_ll_name_fail.oo (rewritten)" in the next board_honesty sweep. Owner: pick (a) or (b) in §3.3.
+//
+// 3. **C struct typedef is O(N) per file.** c_emit_res_list_ty (c_emit_olist.oo:70-79) re-emits the OoL_Name helpers every time the Result type appears. In a 50-function module that returns `Result[List[X], _]` from 10 different call sites, the C output grows ~50x the helpers. Mitigate by keeping the existing `#ifndef OO_HAVE_…` guards (already in c_emit_olist.oo:75-78, 90, 97); gcc de-dupes them at preprocess time, so file size impact is small. Verify on ooda/std/sec/crypto/hsm_pkcs.oo (8 uses, 9 occurrences in the HEAD emit). If bigger modules show a real cost, hoist helpers into chs_rt.h and replace c_emit_res_list_ty with a single `#include` — out of scope for this spec.
+
+// ## 7. Out of scope (do not touch)
+//
+//   - c_emit_call_ty.oo:5-101 — hand-coded call-name classifications, unrelated to Result→C struct mapping. The user prompt cited this file; it is not the bug location.
+//   - c_emit_ty.oo:14-44 (c_lower_call_name) and 147-173 (c_call_result_ty) — return-type classification by call name, not Result type. C-ty mapping for typed Result[List[Name]] does not flow through here.
+//   - ty.oo — Phase A type layer (audit/green/c_emit_refactor_phase_a.oot:84 rule: data-only, no c_emit_* calls). ty_to_c (ty.oo:130-143) maps "TyResult" → "OoResS" generically; it does not yet know about the List[Name] case. A future Phase C template emit could replace c_result_c_ty with a ty_to_c-style call, but that is out of scope for this ROADMAP row.
+//   - llvm_emit_ty.oo, wasm_emit_ty.oo, aarch64_emit_ty.oo — different backends, the ROADMAP.oot:94 lock is the C emit path only.
+//
+// ## 8. Files to add / change
+//
+//   - ooda/oodac/c_emit_result_ty.oo:78 — add the ROADMAP.oot:94 pin comment (1 line).
+//   - ooda/scripts/result_ll_name_smoke.oo — new file, ~15 lines (body in §3.2).
+//   - ooda/fixtures/result_ll_name_fail.oo — rewrite per §3.3 option (b) (~5 lines changed).
+//   - openOODA/ROADMAP.oot:94 — flip `[ ]` to `[x]` after §5 gates pass.
+//   - openOODA/audit/board_honesty_2026_08_19.oot:60 row 8 — update text from "fail-closes" to "emits OoResL_Name, gcc+runs (smoke: scripts/result_ll_name_smoke.oo)".
+//
+// Total: 1 source comment + 1 new fixture + 1 fixture rewrite + 2 board flips. Lane: ooda/oodac/ + ooda/scripts/ + ooda/fixtures/ + openOODA/audit/green/ (this file).

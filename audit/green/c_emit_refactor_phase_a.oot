@@ -1,0 +1,106 @@
+// # c_emit Phase A — AST + Type-check Refactor
+//
+// Logline: Front-load c_emit with a typed AST + type-checker that runs after tokenize and reports 593 of 1,208 c_emit-induced BLOCKED rows as tc errors at the same file:line, while keeping c_emit byte-identical on green std/ files. Zero c_emit_*.oo logic changes; one missing import is patched (out of scope, called out in §7 risk 2).
+//
+// Setup: 52-file c_emit (ooda/oodac/c_emit*.oo, 9,361 lines) runs unchanged. Adds ooda/oodac/ast.oo (~400), ooda/oodac/ty.oo (~600), ooda/oodac/tc_drive.oo (~150). Test anchors: ooda/std/test/test_ast_parse.oo (100+), ooda/std/test/test_tc_expr.oo (~80), ooda/std/test/test_c_emit_parity.oo (3 known-green). Catalog: audit/green/master_blocked_catalog.oot (1,405 BLOCKED). Pin: v0.204.0-beta. Lane: ooda/oodac/*.oo only. Prior design (full 3-phase): audit/green/c_emit_refactor_design.oot.
+//
+// Beats:
+//   1. Goal + non-Goals.
+//   2. 7 concrete current-pain bugs (file:line).
+//   3. 10 AST node kinds.
+//   4. Type-check pass: verify / defer.
+//   5. Migration: AST threads alongside c_emit.
+//   6. 5 acceptance criteria.
+//   7. 5 risks.
+//
+// Notes: Academy header (Logline, Setup, Beats, Notes). Phase A is parser + tc only. Phase B (name-res + per-program dedup) and Phase C (template emit) are NOT in this spec. Per-process rules: only `.oo`/`.oot`; ≤ 256 lines (this file is 106); ASD-STE100; cite file:line for every claim.
+
+// ## 1. Goal
+//
+// Build a typed AST + type-checker that runs immediately after `tokenize_lines` and before `c_emit_stream_toks_at`. C output is byte-identical on green std/ files (gate: `test_c_emit_parity.oo` 0-line diff on `std/io/print.oo`, `std/str/parse.oo`, `std/list/ops.oo`). 593 of 1,208 c_emit-induced BLOCKED rows (per audit/green/c_emit_refactor_design.oot:22-32) become type errors at the same file:line. No c_emit_*.oo logic is rewritten; no std/ file is rewritten. Phase A is parser + tc only. Phase B (name-res + per-program dedup) and Phase C (template emit) are out of scope; their scope is in the parent design doc.
+
+// ## 2. Current pain (7 concrete bugs)
+//
+// | # | file:line | symptom | root cause |
+// |---|-----------|---------|------------|
+// | 1 | ooda/oodac/c_emit_fn.oo:31 | mangled C names like `12__lex_scan_pack` use the line number as the file-prefix | `c_tokf(toks, pos, 1)` reads field 1 of the TSV token row. token_fmt.oo:25,42,60 encode 4 fields kind\|line\|col\|text, so field 1 is the **line number**, not a path. The mangler at ooda/oodac/c_emit_mangle.oo:30-34 strips `.oo`; combined, the prefix is "12" (line 12), not "lex_". |
+// | 2 | ooda/oodac/c_emit.oo:152 (build evidence: ooda/.ooda-cache/ooda-tmp/oodac_pure_*/main_check.out `ERR type Type error at 155:27: undefined variable 'c_skip_pub_type_def'`) | `c_skip_pub_type_def` called but undefined; type check fails on every pub type alias | `c_skip_pub_type_def` is defined in ooda/oodac/c_emit_pub_type.oo:12 and is the only emitter for the `pub type X = struct {..}` pre-pass. The call site at c_emit.oo:152 does not `import "c_emit_pub_type.oo"`. Build is fail-closed. |
+// | 3 | ooda/oodac/c_emit_let.oo:51-54 | `let x: String = if c {a} else {b};` emits `OoStr x = {0};` — null-pointer bomb on free; gcc warns on `{0}` for non-trivial types | The if-expression branch unconditionally emits `= {0}` as the temp initializer regardless of `lty`. The check on line 51 only guards the formal/decl path; for annotated non-trivial types (OoStr, OoIList, OoRes_*) `{0}` is wrong. No type-aware zero-init. |
+// | 4 | ooda/oodac/c_emit_struct.oo:104-110 + :215-230 | typedef union duplicate emission: two .oo files with `pub type Box = struct { .. }` re-emit `typedef struct Box { .. } Box;`; gcc errors with `error: conflicting types` | Per-file `#ifndef OO_TY_<name>` (line 104) only protects within one .oo file. The recently-added `c_emit_seen_ty` / `c_emit_mark_ty` (lines 215-230) is an O(n²) string-set guard local to one `c_emit_type_aliases` walk; it does not survive `once` mode across two .oo files. |
+// | 5 | ooda/oodac/c_emit_lower.oo:113 ↔ ooda/oodac/c_emit_fn.oo:36-37 | call-site mangling lookup `c_env_get(env, "__cname__" + t)` returns "" for some calls; emits bare IDENT, link fails with `undefined reference` | The put side at c_emit_fn.oo:36-37 only fires inside the fn body. Forward references (e.g. `pub fn a() { b(); }` where `b` is defined later in the same file) and cross-file references do not propagate `__cname__<b>` into `a`'s env. The pre-pass at c_emit.oo:144-197 populates `fn_env` for the program but not per-fn `env`. |
+// | 6 | ooda/oodac/c_emit_call.oo:192-205 | `.is_ok`/`.is_err`/`.unwrap` lowering hard-codes the `OoRes_` struct shape; misses `OoResV` (no-payload Ok) for void Result; emits `(recv.acc+ok) ? oo_str_lit("") : oo_print_str(...)` which calls `oo_println` on every unwrap even in green tests | Lines 192-205 are 14 lines of `if mname == "is_ok"` / `is_err` / `unwrap` with hard-coded ternary. `c_env_get(env, recv)` is probed for "V" but never for "S" vs "I" (a string `Result` vs int `Result`); both use the same template. The hard-coded `oo_println` after `oo_print_str` is intentional (side-effect debug) but is the wrong default for non-debug builds. |
+// | 7 | ooda/oodac/c_emit.oo:144-197 | pre-pass duplicates the fn body scan and the type-alias scan; O(n²); diverges when a fn has nested `fn` (e.g. closures) — emits 2× prototype lines | The pre-pass at :144-197 hand-walks `KW_PUB`/`KW_FN` to populate `__fr__<name>`. `c_emit_walk_items` (c_emit_walk.oo) re-walks the same items. Both call `c_emit_skip_braces` independently. No shared AST means the two walks drift on nested fns. |
+
+// ## 3. AST node kinds (10)
+//
+// 10 top-level node kinds, exhaustive over what c_emit_fn.oo, c_emit_let.oo, c_emit_call.oo, c_emit_struct.oo currently consume:
+//
+// | node | one-line | source-side analogue |
+// |------|----------|----------------------|
+// | `AstFile(items)` | root; one per .oo source file | ooda/oodac/c_emit.oo:79 c_emit_stream_toks_at |
+// | `AstItem` | sum: `AstImport(path) \| AstType(name, fields) \| AstFn(name, params, ret, contracts, body) \| AstTrait(name, methods) \| AstImpl(trait, ty, methods) \| AstVerify(expr)` | c_emit.oo:88 c_emit_stream_toks_at, c_emit_walk.oo, c_emit_struct.oo |
+// | `AstParam(name, ty)` | one fn parameter; `ty` may be `&T`, `&mut T`, or owned | ooda/oodac/c_emit_fn.oo:51-95 param loop |
+// | `AstBlock(stmts, expr?)` | brace-delimited list of stmts, optionally with trailing expression (`EBlock`) | c_emit_fn.oo:197 c_emit_block call |
+// | `AstStmt` | sum: `SLet(name, ty?, rhs) \| SLetMut \| SAssign(lhs, rhs) \| SExpr(expr) \| SWhile(cond, body) \| SFor(...) \| SReturn(expr?) \| SBreak \| SContinue \| SEmpty` | c_emit_let.oo:46-90, c_emit_for.oo, c_emit_match_stmt.oo |
+// | `AstExpr` | sum: `ELitInt \| ELitFloat \| ELitStr \| ELitBool \| EVar(name) \| EBinop(op, l, r) \| EUnop(op, x) \| ECall(callee, args) \| EMethod(recv, name, args) \| EField(recv, name) \| EArrow(recv, name) \| EIndex(base, idx) \| EStructLit(name, fields) \| EIf(cond, then, else?) \| EMatch(scrut, arms) \| EClosure(params, body)` | c_emit_lower.oo:12-256, c_emit_call.oo:33-228, c_emit_call_ty.oo:5-101 |
+// | `AstTy` | sum: `TyInt \| TyFloat \| TyBool \| TyStr \| TyUnit \| TyList(elem) \| TyResult(ok, err) \| TyName(n) \| TyCap(n) \| TyRef(n) \| TyRefMut(n)` | ooda/oodac/c_emit_struct.oo:15-43 c_struct_field_c_ty, c_emit_ty.oo:14-44 |
+// | `AstField(name, ty)` | one struct field | c_emit_struct.oo:46-113 |
+// | `AstBinop` / `AstUnop` | enums of C operators with precedence | c_emit_ops.oo, c_emit_ops_str.oo |
+// | `AstResolved` | wrapper carrying per-AstExpr resolved type + struct name + fn name (filled by tc pass) | new — no source analogue |
+
+// ## 4. Type-check pass
+//
+// Runs once per .oo file, between `tokenize_lines` (ooda/oodac/c_emit.oo:79) and `c_emit_stream_toks_at` (c_emit.oo:88). Returns `(ast, errors: List<TcError>)` where `TcError = { file, line, col, kind, msg }`.
+//
+// **Verifies (in this order)**:
+//
+// 1. **struct field access** — `recv.field` and `recv->field` resolved against the struct's `AstField` list. Closes 35-row `declarations` category (c_emit_call.oo:33-45 `c_recv_is_ptr` paren-stripped __ptr__ probe is replaced).
+// 2. **method dispatch** — `recv.method(args)` typed by `(recv_ty, mname)` table: `(TyList(t), "len", [])` → TyInt; `(TyResult(_,_), "is_ok", [])` → TyBool; `(TyResult(_,_), "unwrap", [])` → recv_ty. Closes 4-row `result_cell` and 110-row `dot_arrow`. (Replaces c_emit_call.oo:181-205 hand-coded `.is_ok`/`.is_err`/`.unwrap` ternary.)
+// 3. **call signature** — `f(args)` types each `arg` against the fn's `param_ty`; emits TcError on arity / type mismatch. Closes 19-row `other lower` (c_emit_call.oo:47-140). (Replaces c_emit_call_ty.oo:5-101 four 100+-line if-lists.)
+// 4. **assignability** — `let x: T = rhs;` and `x = rhs;` require `typeof(rhs) <: T`. Closes 137-row `incompatible`. (Replaces c_emit_let.oo:162-187 RHS-prefix char_at probes.)
+// 5. **return type** — `return expr;` requires `typeof(expr) == fn.ret_ty` (or coercible for Int↔Float). Catches missing `return` paths in non-void fns.
+// 6. **Result cell** — `.unwrap` on `TyResult(T, E)` returns `T`; `.is_ok` on `TyResult` returns TyBool. (Replaces c_emit_call.oo:192-205.)
+//
+// **Leaves for later (Phase B / C)**:
+//
+// - cross-file name resolution (Phase B; c_emit_struct.oo:85-93 + c_emit_fn.oo:220-222 per-file #ifndef dedup).
+// - template emit (Phase C; c_emit_let.oo:51-54 `= {0}` zero-init becomes type-aware).
+// - generics beyond `List[T]` (not in current 1,208 error set; out of scope per audit/green/c_emit_refactor_design.oot:236).
+// - lifetime / borrow / `&mut` (current c_emit treats all AMP as long long at c_emit_fn.oo:64-68; tc is non-blocking — just records `ty = TyRef(n)`).
+
+// ## 5. Migration path (how AST feeds the existing c_emit)
+//
+// The AST threads through c_emit without rewriting any c_emit_*.oo in Phase A.
+//
+// ```
+//   tokenize_lines(src) ──> ast_parse(toks) ──> tc_check(ast) ──> c_emit_stream_toks_at(src, toks, mode, path)
+//                                                          │
+//                                                          └── emits TcError list to stderr (file:line:col:kind:msg)
+// ```
+//
+// Concretely:
+//
+// 1. **Parse side**: new `ast_parse(toks)` in ooda/oodac/ast.oo walks tokens once, returns `AstFile`. Replaces the per-pass brace-skip + ret-ty pre-pass in c_emit.oo:144-197. Braces, params, and body are now a single AST; nested fns no longer need two walks (closes bug 7 in §2).
+// 2. **TC side**: new `tc_check(ast)` in ooda/oodac/ty.oo walks AstFile. Each `TcError` is `(file, line, col, kind, msg)`. Sorted by (line, col). Reported once per file via `println("TC\t" + file + ":" + line + ":" + col + "\t" + kind + "\t" + msg);`. C emit is **not** aborted — c_emit still runs and still emits the same (possibly broken) C; the tc error is a separate diagnostic regressed on independently.
+// 3. **c_emit unchanged**: c_emit_stream_toks_at still calls tokenize_lines, walks `KW_PUB`/`KW_FN`, and emits C. The AST is observable from a side channel (parse + tc run; results written to a sibling `tc_out/<file>.tc.json` only when `ooda install --tc-keep` is set, default is stderr-only). This keeps the gate "c_emit byte-identical on std/io/print.oo" achievable.
+// 4. **Bug 2 prerequisite**: the missing `import "c_emit_pub_type.oo"` at c_emit.oo:152 is a 1-line patch. Phase A does **not** modify c_emit.oo logic, but a build-green patch is required to even run the new tc_check on a clean tree. See risk 2 in §7.
+
+// ## 6. Acceptance criteria
+//
+// | # | criterion | measurement | target |
+// |---|-----------|-------------|--------|
+// | 1 | `test_ast_parse.oo` parity on 100+ golden token streams | ooda/std/test/test_ast_parse.oo passes 100% | 100% |
+// | 2 | `test_tc_expr.oo` parity — one test per tc rule (~80 rules) | ooda/std/test/test_tc_expr.oo passes | 80/80 |
+// | 3 | c_emit byte-identical C output on 3 known-green std/ files: `ooda/std/io/print.oo`, `ooda/std/str/parse.oo`, `ooda/std/list/ops.oo` | ooda/std/test/test_c_emit_parity.oo runs c_emit_stream_toks_at on each, diffs against `tests/golden/<file>.c`. Diff = 0 lines. | 0 lines diff |
+// | 4 | tc runs on every std/ file in audit/green/master_blocked_catalog.oot's 1,405-row list | new flag `ooda install --tc` invokes `tc_check` on all 4,476 std files; stderr TC-error count is non-zero AND non-stderr parse-error count is 0 | 4,476 files; 0 parse errors; ≥593 TC errors (the 593 figure is from audit/green/c_emit_refactor_design.oot:202) |
+// | 5 | the 5 §2 bugs (1, 3, 4, 5, 6) each surface a `TcError` at the cited file:line when the offending construct appears in a test fixture; bug 2 surfaces as a build error pre-AST and is fixed by a 1-line import (see risk 2) | for each of bugs 1, 3, 4, 5, 6, a `tests/fixtures/bug_<n>.oo` exists with the bad pattern, `tc_check` reports the bug at the cited line | 5/5 |
+
+// ## 7. Risks
+//
+// | # | risk | impact | mitigation |
+// |---|------|--------|------------|
+// | 1 | Pratt parser (parse_expr_bp) precedence differs from current c_emit_primary_c ladder on 1-2 constructs (e.g. `Result` binop, `as` cast, ternary `?:`) | 100+ tc errors on green files; gate #3 fails | ooda/std/test/test_ast_parse_parity.oo diffs the AST on 50 known-green std/ files; any diff is a parser bug. Per-rule min-precedence table; explicit test for each binop. |
+// | 2 | The missing `import "c_emit_pub_type.oo"` at c_emit.oo:152 (bug 2 in §2) trips the type checker at build time even when c_emit.oo:152 is patched — and the build must be green BEFORE tc_check is wired in, else the tree won't even parse | build red, gate #1 fails | fix the import in c_emit.oo FIRST (1-line `import "c_emit_pub_type.oo";` at the top, alongside c_emit_walk.oo and c_emit_sum.oo which are already imported at c_emit.oo:12-13). That patch is **not** a c_emit logic change; it's a missing import. Land it in the same PR as ast.oo, not in Phase B. |
+// | 3 | The new `tc_out/<file>.tc.json` side-channel writes 4,476 files of new IO on every `ooda install --tc-keep` (default: stderr-only, no file IO) | build time +20% (estimated) on `--tc-keep`; no impact on default | default to stderr-only. `--tc-keep` is opt-in for audit/green/prove_runner.oo only; that runner deletes the dir after collection. |
+// | 4 | 50+ free names currently special-cased in c_emit_call_ty.oo:5-101 (c_is_res_s_call, c_is_slist_call, c_is_i64_call, c_is_str_call — each a 100-line if-list) must each get a tc rule or the c_emit output diverges | silent test_c_emit_parity.oo regressions on std/sys/exec.oo, std/net/oo_*.oo | ooda/std/test/test_tc_call_known_free_names.oo enumerates every name in c_emit_call_ty.oo and asserts tc_check reports no error. c_emit_call_ty.oo stays as a sanity reference (read-only) for Phase A; it is deleted in Phase C. |
+// | 5 | tc_check reports errors that point to the same file:line as c_emit C errors, but with different `kind` strings — audit/green/master_blocked_catalog.oot categorizes by C error kind, not tc kind | rows that move from C-error to tc-error are mis-counted as "still BLOCKED" if the catalog only looks at gcc output | add a `tc_errors` column to master_blocked_catalog.oot; in audit/green/green_check.oo, count a row "closed by tc" if either (a) gcc no longer errors or (b) tc reports an error at the same file:line. Phase A acceptance: 593 rows move to "closed by tc" with the catalog updated. |

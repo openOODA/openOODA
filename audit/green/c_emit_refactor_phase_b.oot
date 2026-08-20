@@ -1,0 +1,113 @@
+// # c_emit Refactor Phase B — Name Resolution + Global State
+//
+// Logline: Replace the per-file `fn_env: String` global with a typed ResolvedProgram keyed by (module, decl_name) so cross-module references resolve once, duplicate `pub fn X` collapses to one C fn, and Phase C's template emit can look up names in O(1) instead of scanning a semicolon-encoded blob.
+//
+// Setup: Phase A delivered `ast.oo` (AstItem/AstTy/AstExpr/AstStmt per c_emit_refactor_design.oot:78-94) and `ty.oo` (TyEnv + tc_expr/stmt/fn per c_emit_refactor_design.oot:96-113). c_emit still runs and produces identical C output. This spec adds: `resolve.oo` (~250 LOC) holding the Resolver, `c_program.oo` (~200 LOC) holding EmitProgram, and edits to `c_emit.oo:222-249` so `once`/`once_noarc` modes wire through them. Lane = ooda/oodac/*.oo. No std/ changes.
+//
+// Beats:
+//   1. Replace per-file fn_env concatenation with a per-build ResolvedProgram.
+//   2. Walk the AstProgram once; collect one entry per top-level decl.
+//   3. Validate every cross-module reference (EVar/EFn/TyName) against the resolved set.
+//   4. Lower resolves to (module, mangled_c_name) for every name emit sees.
+//   5. EmitProgram holds typedefs, fn_protos, fn_bodies, cap_grants, imports_h.
+//   6. Per-file #ifndef guards (c_emit_struct.oo:85-93, c_emit_fn.oo:220-222) deleted.
+//
+// Notes: This is a design doc, no source edits. Phase A is specced separately; Phase C (templates) is specced separately. Every concrete claim cites file:line from the current ooda/oodac/ tree. Cross-references the parent design at c_emit_refactor_design.oot:115-130.
+
+// ## 1. Goal
+//
+// Phase B gives c_emit a name-resolution pass that walks the Phase A AST once per build, resolves every identifier (local, imported, free) to its declaration site, and exposes the result as a typed `ResolvedProgram`. The pass deletes the imperative `fn_env: String` global (rooted at c_emit.oo:104, threaded through c_emit_fn.oo:30-37, c_emit_walk.oo:229-238, and refreshed at c_emit_walk.oo:134) and replaces it with a per-build `EmitProgram` whose maps have no semicolon-encoding, no linear scan, and no topmost-`{;`-frame parsing rule. After Phase B, two .oo files that both `pub fn vec3_new` collapse to one C fn `vec3_new` (per master_blocked_catalog.oot:34,36,37), every cross-module TyName and free name has a single resolved target, and Phase C's lower_* can read name → (module, c_name, ty) in O(1).
+
+// ## 2. Current pain — concrete bugs name resolution would fix
+//
+// | # | bug | evidence | symptom | rows in catalog |
+// |---|-----|----------|---------|-----------------|
+// | 1 | `pub fn X` in two .oo files compiles to two C fns both named `X`; the second `#include` order wins, or gcc errors | c_emit_fn.oo:220-222 emits per-fn `#ifndef OO_FN_<cname>` only; c_emit_struct.oo:85-93 same for typedef; mangler at c_emit_mangle.oo:30-34 only strips `.oo` extension then concatenates `<base>__<name>` (basename collision across dirs is silent) | `redefinition of 'vec3_new'`, `redefinition of 'safety_fault_new'` | redef = 38 (master_blocked_catalog.oot:18,34,36,37) |
+// | 2 | `fn_env: String` global is threaded as a parameter through every c_emit_* function and re-parsed on every call (semicolon-`{;`-frame encoding) | root: c_emit.oo:104; copy: c_emit_fn.oo:34-37 (`let mut env = fn_env; let mut out_fn = fn_env;`); refresh on LINEFILE: c_emit_walk.oo:134; threaded through c_emit_walk_items at c_emit.oo:229,235,238,245 | impure, untestable, hidden coupling; per-fn double env_put at c_emit_fn.oo:33-34 | every C output is order-dependent |
+// | 3 | c_env_get / c_env_put are O(n) linear scans over a semicolon-`{;`-encoded string, with last-wins matching and a "topmost frame" rule for puts | c_emit_env.oo:14-49 (c_env_get scan), :55-108 (c_env_put topmost-frame replace), :113-159 (c_env_put_last); all re-parse the string on every call | O(n²) per file, fragile to encoding bugs; any key containing `=` or `;` is unsafe (c_emit.oo:106-108 already filters path strings to avoid that) | indirect: contributes to 560 "other lower" rows (master_blocked_catalog.oot:31) |
+// | 4 | No validation that an imported name exists. Missing imports or typos fail at C-compile time, not at resolve time | c_emit_struct.oo:50 silent skip on bad IDENT; no pass walks `KW_IMPORT` lines and confirms each name resolves; c_emit_lower.oo:97-256 IDENT dispatch just looks names up in fn_env as a flat string | "unknown type name", "implicit declaration" surface as 311 `missing_type` C errors; resolve cannot pre-flight | missing_type = 311 (master_blocked_catalog.oot:19) |
+// | 5 | Call-site mangling lookup is per-file, not global. The just-added `__cname__<name>` lookup at c_emit_lower.oo:113 sees only the current file's fn_env, so an imported fn mangled in another file emits as the unmangled source name at the call site | c_emit_lower.oo:113 `let mangled: String = c_env_get(env, "__cname__" + t);` then `:114` `(if mangled != "" { mangled } else { t })` — `else` branch is the unmangled source name, which may collide with another module's mangled fn | cross-module call resolves to wrong C name; linker fixups miss; or duplicate C symbols at link | contributes to 137 `incompatible` and 35 `declarations` (master_blocked_catalog.oot:22,27) |
+// | 6 | Per-file cname map is rebuilt on every file; no dedup across the program. Two files both set `__cname__vec3_new` to two different mangled names | c_emit_fn.oo:36-37 writes `__cname__<fn>` keyed on the local fn; no program-level index | resolve phase cannot enumerate "all fns in the program" | pre-reqs Phase C (templates need a single fn table) |
+
+// ## 3. Phase B scope
+//
+// **Builds**: Resolver (resolve.oo, ~250 LOC) walking Phase A's AstProgram into ResolvedProgram; EmitProgram (c_program.oo, ~200 LOC) holding typedefs/fn_protos/fn_bodies/cap_grants/imports_h; one resolution pass per build, called from c_emit.oo:222-249 `once` and `once_noarc` modes; deletion of per-file `#ifndef OO_TY_<name>` (c_emit_struct.oo:85-93, 89-92) and `#ifndef OO_FN_<cname>` (c_emit_fn.oo:220-222); c_mangle_fn_name reduced to a residual for multi-TU only.
+//
+// **Does not build**: Lower-to-C (Phase C). Multi-TU builds (single-TU only; mangler kept residual). Path-A decoy scheme (c_emit_meta.oo:116-152 unchanged). SECRET/print guards (c_emit_secret*.oo stay orthogonal). New modes — the existing 8-mode ladder at c_emit.oo:89 stays.
+//
+// **Non-goals**: changing C output bytes for known-green files (gate in §6); adding a real module system (Phase A's `AstImport` is the unit; we still load files in lexicographic order); type-checking beyond what Phase A's TyEnv already provides; performance work beyond replacing O(n²) string scans with O(1) map lookups.
+
+// ## 4. Name resolution algorithm (7 steps)
+//
+// 1. **Collect**. Walk every AstItem in program order. For each `AstImport(path)`, schedule a recursive resolve of `path`; for each `AstType(name, fields)`, `AstFn(name, params, ret, body)`, `AstTrait`, `AstImpl`, record a `Decl { module, kind, source_loc, ty, mangled_c_name }` in `ResolvedProgram.decls`. Mangle: `c_mangle_fn_name(name, module.path)` for fns (c_emit_mangle.oo:13-51, now a typed function, not a string). One pass; O(items) for collection. No per-file state; the program is the unit.
+//
+// 2. **Bind scopes**. For each AstFn body, walk the AstBlock opening a new scope per `{`. For each `SLet(name, ty, rhs)`, add `Binding { name, decl = Local(idx), ty, scope_depth }` to a stack. Pop on `}`. `TyName(n)` and `EVar(n)` and `ECall(n, _)` carry a `Resolved { target: Binding | Decl, c_name, ty }` after step 4. Phase A's TyEnv already has the type; Phase B adds the target + c_name. Local lookup is LIFO (linear over current scope, O(scope_size) per name; we accept that — typical scopes are <32 bindings).
+//
+// 3. **Link imports**. For every `AstImport(path)`, the import target is resolved to its Decl by the module path. Unresolved imports fail with `ResolverError::UnresolvedImport(module, path, name, source_loc)` — the first 311 missing_type rows from master_blocked_catalog.oot:19 become resolve errors, not C errors. `pub fn` and `pub type` are the export boundary; non-pub items resolve only within their own module.
+//
+// 4. **Resolve references**. For each `EVar(n)`, `ECall(n, _)`, `TyName(n)`, `TRef(n)`, `TyRefMut(n)`, `TyCap(n)`: search innermost scope outward, then module decls, then imports. First match wins. If no match: `ResolverError::UnresolvedName(scope, n, source_loc)`. On match, attach `Resolved { target, c_name = target.mangled_c_name, ty }` to the AST node. This is the single point that replaces the per-call c_env_get at c_emit_lower.oo:113, c_emit_call.oo, c_emit_let.oo, etc.
+//
+// 5. **Build EmitProgram**. From the resolved AST, populate `EmitProgram` (defined in c_program.oo, c_emit_refactor_design.oot:122-126). Fns: one entry per unique (module, name) in `fn_protos` and `fn_bodies` (de-dup closes the 38 redef rows). Typedefs: one entry per unique type name in `typedefs`. Imports: collected into `imports_h` (the `#include "foo.h"` set). Cap grants: extracted from `pub fn` signatures into `cap_grants`. Free names (`println`, `list_get`, `oo_str_lit`, etc.) are recorded as `Decl { kind = FreeName, c_name = source name }` so Phase C's templates look them up uniformly.
+//
+// 6. **Validate**. Pre-emit checks: no duplicate C names in `fn_protos` (defensive; the dedup should have caught them); every `ECall` c_name appears in `fn_protos` or `FreeName`; every `TyName` appears in `typedefs` or `FreeName`; every `TRef/TyRefMut/TyCap` resolves to a real decl. Any failure is a `ResolverError` with file:line — fail closed before c_emit runs.
+//
+// 7. **Hand off**. c_emit.oo:222-249 calls `resolve(toks, n)` once at the top of `once` and `once_noarc`; the resulting `ResolvedProgram` is passed to c_emit_walk_items at c_emit.oo:229,235,238,245 in place of `fn_env`. c_emit_fn.oo:34-37 stops reading `fn_env`; per-fn state is derived from the resolved AST. c_emit_lower.oo:113 reads `c_name` from the AST node, not from c_env_get.
+
+// ## 5. Global state model — what replaces fn_env
+//
+// **Per-build (was: per-file fn_env)**. `ResolvedProgram` is created once at the top of `c_emit_stream_toks_at` (c_emit.oo:88) and threaded down. It is the only state shared across files. The shape (c_emit_refactor_design.oot:122-126):
+//
+// | field | type | replaces | notes |
+// |-------|------|----------|-------|
+// | items | `List<AstItem>` | (no replacement) | Phase A's AST, unchanged |
+// | decls | `Map<DeclKey, Decl>` | c_emit_walk.oo's ad-hoc walks | key = (module, name); one entry per top-level decl |
+// | scopes | `List<Scope>` | c_emit_env.oo's `{;`-frames | stack of typed maps; per-fn |
+// | typedefs | `Map<String, String>` | c_emit_struct.oo:85-93 #ifndef | one entry per unique type; C text in value |
+// | fn_protos | `Map<String, String>` | c_emit_fn.oo:220-222 #ifndef | one entry per unique fn; C proto in value |
+// | fn_bodies | `List<String>` | scattered println()s | one entry per unique fn; C body in value |
+// | cap_grants | `List<String>` | c_emit_fn.oo:41 mcap string | extracted once at resolve time |
+// | imports_h | `Set<String>` | (new) | the `#include` set, populated from AstImport |
+// | free_names | `Map<String, String>` | c_emit_call.oo:115-235 specials | name → C name; 50+ entries from c_emit_call_ty.oo:5-101 |
+// | errors | `List<ResolverError>` | (new) | fail closed; non-empty → process_exit(1) |
+//
+// **Per-fn (was: c_emit_fn.oo:34-37 env/out_fn)**. `EmitContext { decls, scopes, res: &mut EmitProgram, tmp: Int, indent: Int }`. No string env. Scope push/pop is a typed stack op, not a string concat. `c_env_put` / `c_env_get` (c_emit_env.oo:14-49, 55-108) are deleted.
+//
+// **Cross-module flow**. Imports are loaded recursively in step 1; every imported name has a Decl in `decls` by step 3. Steps 4-5 walk the merged program. The c_emit_walk.oo:134 `__file__` refresh becomes `res.decls.insert(__file__, src_path)` on the first LINEFILE token — the AST carries the file path, no separate env. The order of c_emit_walk.oo:229,235,238,245 is preserved (one resolve, three emit passes), but the parameter is `ResolvedProgram`, not `String`.
+//
+// **Free names**. The 50+ free names currently special-cased in c_emit_call.oo:115-235 (Ok/Err/Some/None, meta_epoch, meta_mix, meta_is_path_a, meta_decoy_touch, process_exit, read_file, write_file, path_exists, list_new/list_push/list_get/list_len/list_set, oo_str_lit, etc.) move to `ResolvedProgram.free_names` as a `Map<String, String>`. Phase C's templates look them up by name. New free names are added by editing one map literal, not by adding branches to a 160-line dispatch (c_emit_lower.oo:97-256).
+
+// ## 6. Migration path
+//
+// Phase B builds on Phase A without breaking it. Three commits, each behind a flag:
+//
+// 1. **Add resolve.oo + c_program.oo, behind `--resolve` flag**. Phase A still runs; c_emit still reads fn_env; nothing observes ResolvedProgram. test_resolve_smoke.oo: a 10-line Ooda file resolves to a ResolvedProgram with the expected decls. ~250 LOC.
+//
+// 2. **Wire c_emit.oo:222-249 to call resolve, pass ResolvedProgram down**. c_emit_fn.oo:34-37 reads from ResolvedProgram.scopes, not from `fn_env`. c_emit_walk.oo:134 writes to ResolvedProgram.decls. fn_env is still computed (for backward compat) but unused. test_resolve_parity.oo: c_emit output byte-identical to pre-Phase-B on 3 known-green std/ files (std/io/print.oo, std/str/parse.oo, std/list/ops.oo). Gate: parity 100%.
+//
+// 3. **Delete per-file #ifndef**. Remove c_emit_struct.oo:85-93 and c_emit_fn.oo:220-222; c_emit_struct.oo:89-92 (Result typedef). ResolvedProgram's `typedefs`/`fn_protos` dedup is now the only source of truth. test_resolve_redef.oo: two .oo files both `pub fn vec3_new` → one C fn `vec3_new`, no `redefinition` gcc error. Gate: 38 → 0 redef (master_blocked_catalog.oot:18).
+//
+// After step 3, c_emit_env.oo:14-159 is dead; delete the file. c_emit_mangle.oo:13-51 keeps a stub for multi-TU builds. c_emit_walk.oo:229-245's three calls still happen but pass `&res`, not `fn_env`.
+//
+// Build remains green between commits. Phase A's tc errors and the existing C errors are unaffected. Phase C can begin once step 3 lands.
+
+// ## 7. Acceptance criteria
+//
+// 1. **Re-def collapses to zero**. master_blocked_catalog.oot:18 (`redef = 38`) becomes 0. Gate: test_resolve_redef.oo — two .oo files both `pub fn vec3_new` produce exactly one C fn `vec3_new`; gcc emits no `redefinition` error. Audit: rerun prove_runner.oo on std/nerf_3dgs/, std/robot/, std/safety/ — zero redef rows.
+//
+// 2. **Cross-module references resolve pre-emit**. master_blocked_catalog.oot:19 (`missing_type = 311`) drops by ≥200 (target: all 311 become `ResolverError::UnresolvedName` with file:line, not C errors). Gate: test_resolve_cross_module.oo — std/io/print.oo importing std/str/parse.oo and std/list/ops.oo; resolve produces one ResolvedProgram with `imports_h` listing both .h files; every ECall/TyName has a `Resolved` target.
+//
+// 3. **fn_env deleted from source**. `grep "fn_env"` on ooda/oodac/*.oo returns 0 matches (currently: c_emit.oo:104, c_emit_fn.oo:34-37, c_emit_walk.oo:134, c_emit.oo:229-245, plus 6 more per `grep -l fn_env ooda/oodac/`). c_emit_env.oo is deleted. c_emit_struct.oo:85-93 and c_emit_fn.oo:220-222 deleted. Gate: source grep clean; c_emit output byte-identical to pre-Phase-B on 3 known-green std/ files.
+//
+// 4. **Call-site mangling is global**. The `__cname__<name>` per-file map at c_emit_fn.oo:36-37 is gone; c_emit_lower.oo:113 reads from the AST node's `Resolved.c_name`, which is the program-wide unique C name. Gate: test_resolve_mangle.oo — two .oo files each `pub fn vec3_new`; both call sites in a third file resolve to the same C name; gcc links once.
+//
+// 5. **C output parity on known-green files**. c_emit output is byte-identical to pre-Phase-B on std/io/print.oo, std/str/parse.oo, std/list/ops.oo. Gate: prove_runner.oo diff = 0. Phase A's gate (test_tc_expr parity 100%) is a precondition.
+
+// ## 8. Risks
+//
+// | # | risk | impact | mitigation |
+// |---|------|--------|------------|
+// | 1 | **Pratt parse order vs. current token-order**: Phase A's parse_expr_bp precedence may differ from c_emit_primary_c's current ladder on 1-2 constructs; resolve sees a different AST than the old walker assumed | resolve misses scope boundaries; bindings attach to wrong nodes | parse_expr_bp_diff.oo (per c_emit_refactor_design.oot:230): diff AST on 50 known-green std/ files; pre-Phase-B baseline stored in audit/green/parse_baseline/ |
+// | 2 | **Free-name table drift**: c_emit_call.oo:115-235 has 50+ free names hard-coded; ResolvedProgram.free_names is a one-time move; a missed entry silently emits the wrong C name | c_emit output diverges; Phase C's templates look up a name not in the map | keep c_emit_call_ty.oo:5-101 as a sanity reference for one release; test_resolve_known_free_names.oo enumerates every name in c_is_res_s_call / c_is_slist_call / c_is_i64_call / c_is_str_call / c_emit_lower.oo:115-149 and asserts each resolves |
+// | 3 | **char-prefix heuristics in c_emit_let.oo:162-187 and c_emit_let_ext.oo:14-50**: these inspect token text to bind types like `Token`; Phase B's resolver does not know about them | missing_type regressions on Token-bearing let-binds | Phase A adds a `tc_struct_lit_name` rule (per c_emit_refactor_design.oot:217-218); Phase B's resolve step 4 reads from the typed AST, not from token text, so the heuristic disappears naturally |
+// | 4 | **Path-A metamorphic decoys** (c_emit_meta.oo:116-152, 4-style ladder) emit at body time; Phase B's EmitProgram is a single per-build structure and the decoys need to live somewhere | decoys missing or duplicated | ResolvedProgram carries a `decoys: List<DecoySpec>` field; c_emit_meta_drive reads from it (c_emit_meta_drive.oo currently reads fn_env); diff two product builds (decoy on/off) to confirm parity |
+// | 5 | **c_mangle_fn_name basename collision**: two .oo files with the same basename in different directories (e.g. `std/foo/vec3.oo` and `std/bar/vec3.oo`) currently mangle to `vec__vec3_new` and `vec__vec3_new` — same string. The mangler has no module-path input | linker duplicate symbol after Phase B dedup; the dedup assumes mangled names are unique | Phase B's mangle takes the full module path, not just the basename; basename collision is a different file (collision check on `(module, fn_name)`, not on mangled C name). Add test_resolve_mangle_collision.oo |

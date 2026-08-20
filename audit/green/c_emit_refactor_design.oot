@@ -1,0 +1,281 @@
+// # c_emit Refactor Design — AST + Type-check + Name-resolution + Templates
+//
+// Logline: Replace 52 files / 9,361 lines of imperative C-string concat with a typed-AST pipeline; target <200 BLOCKED std rows from 1,405.
+//
+// Setup: catalog = audit/green/master_blocked_catalog.oot (1,405 BLOCKED). Lane = ooda/oodac/*.oo refactor. Design only; zero source edits.
+//
+// Beats:
+//   1. State the 1,208-of-1,405 problem.
+//   2. Map the 52-file c_emit; cite file:line bugs.
+//   3. Propose 3 phases (AST+tc, name-res, templates).
+//   4. Per-phase deliverables (create/delete/test).
+//   5. Risk, migration, effort.
+
+// ## 1. Problem
+//
+// master_blocked_catalog.oot:123-127 totals 1,405 BLOCKED. C-error
+// categories trace exclusively to ooda/oodac/c_emit*.oo:
+//
+//   dot_arrow    110  -> c_recv_is_ptr (c_emit_call.oo:33-45) misclassifies
+//                         paren-stripped __ptr__ recv.
+//   missing_type 311  -> c_emit_one_type_alias (c_emit_struct.oo:46-113)
+//                         loses decl when a dependent file emits first.
+//   incompatible 137  -> c_emit_let_untyped_ty (c_emit_let_ext.oo:14-50)
+//                         infers via char_at probes (chars 0,2,3,4,7).
+//   redef         38  -> c_emit_struct.oo:85-93 + c_emit_fn.oo:220-222
+//                         per-file #ifndef OO_TY_/OO_FN_.
+//   init_temps    13  -> c_emit_let.oo:244 + c_emit_deref.oo:25 no `{0}`.
+//   declarations  35  -> c_emit_lower.oo:97-256 / c_emit_call.oo:47-140
+//                         miss an LBRACKET or RPAREN.
+//   result_cell    4  -> c_emit_result.oo:177-235 char_at probes.
+//   other lower  560  -> c_emit_let.oo:162-187 RHS-prefix heuristic + 193
+//                         timeout (oodac emit-c > 25s on bloated lower).
+//                     --- sum: 1,208 of 1,208.
+//
+// Each row is a 1-line `if mode == ...` or a new branch in a 6-table
+// switch. The current shape (string-concat, re-tokenized every pass, no
+// semantic phase) makes every fix a one-off. We need a structural
+// refactor to get from 1,208 c_emit-error rows to <200.
+
+// ## 2. Current architecture (52 files, 9,361 lines)
+//
+// | file (lines) | role | key bug evidence |
+// |--------------|------|------------------|
+// | c_emit.oo (251) | drive/mode | :89 8-string mode list; :144-197 fn-ret pre-pass; :222-249 once/all/once_noarc ladder |
+// | c_emit_fn.oo (256) | fn proto+body | :33-34 double env_put; :105-127 ret_ty→env 9-case; :220-222 per-fn #ifndef |
+// | c_emit_struct.oo (236) | type-alias | :50 silent skip on bad IDENT; :53 O(n²) string set; :85-93 per-type #ifndef |
+// | c_emit_mangle.oo (51) | name mangle | :30-34 only strips `.oo`; :39-49 paranoid '/'→'_' |
+// | c_emit_call.oo (251) | args+method+index | :47-140 5-cell pack; :84-87/:109-112 two-cell contract ×2 |
+// | c_emit_call_ty.oo (140) | call→C ty tables | :5-101 four 100+-line if-lists (c_is_res_s_call etc) |
+// | c_emit_lower.oo (256) | primary lower | :97-256 160-line IDENT dispatch; :242-247 inline `call?` |
+// | c_emit_ty.oo (173) | ty+list-c-name | :14-44 11 hard renames; :46-144 5×5 ladder; :147-172 7-tier c_call_result_ty |
+// | c_emit_deref.oo (46) | expr stmt | :12-42 double `c_emit_expr_c` for EQ re-parse; :31 __asgn__ side-channel |
+// | c_emit_let.oo (255) | let bind | :12-254 single mega-fn; :89-148 4-level nested if; :162-187 RHS-prefix chars 0,2,3,4,7 |
+// | c_emit_let_ext.oo (250) | untyped infer | :14-50 char_at numeric-literal probes + 6-table switch |
+// | c_emit_list_ty.oo (144) | list kinds | :14-31 5 hardcoded leafs; :76 process_exit on List[List[List]] |
+// | c_emit_preamble.oo (191) | C preamble | :12-191 180 println lines, hand-typed runtime decls |
+// | c_emit_match_let.oo (256) | match-let | :19-256 second mega-fn with its own env ladder |
+// | c_emit_arc.oo (197) | scope release | :12-14 env concat `{;`; :24-42 char_at loop over env string |
+// | c_emit_walk.oo (200) | top-level walk | :13-60 c_skip_type_decl duplicates c_emit_type_aliases walker |
+// | c_emit_meta.oo (160) | metamorphic | :116-152 4-style if-ladder; :84-101 5-string mode list |
+// | c_emit_result.oo (249) | Result unwrap | :177-235 char_at probes for OoResI vs OoResS |
+//
+// 34 more c_emit_*.oo files repeat these patterns (arc_2, args, contract,
+// ident, libfloor, ops, secret*, skip*, stmt, sum, sys, verify, env, for,
+// helpers, netio, olist, print, temps, ty_ext, max_cycles, meta_drive).
+// Common shape: each fn takes `toks: List<String>, pos, n, env: String`,
+// inspects token kinds, appends C text via `println("  " + ... + ";");`,
+// returns a 2-cell or 5-cell pack. Mode is String compared by `==`. Types
+// are C strings. No AST, no real type, no resolution; every decision is
+// text-shape. That is the source of every bug above.
+
+// ## 3. Proposed architecture (3 phases)
+//
+// ### Phase A — AST + type-check (no emit change)
+//
+// AST (one variant per Ooda construct):
+//
+//   pub type AstItem = AstImport(String) | AstType(String, List<AstField>)
+//     | AstFn(String, List<AstParam>, Option<AstTy>, AstBlock)
+//     | AstTrait(...) | AstImpl(...) | AstVerify(AstExpr);
+//   pub type AstTy = TyInt|TyFloat|TyBool|TyStr|TyUnit|TyList(AstTy)
+//     | TyResult(AstTy, AstTy) | TyName(String) | TyCap(String)
+//     | TyRef(String) | TyRefMut(String);
+//   pub type AstExpr = ELitInt(Int)|ELitStr(String)|ELitBool(Bool)|EVar(String)
+//     | EBinop(Binop, AstExpr, AstExpr) | EUnop(Unop, AstExpr)
+//     | ECall(AstExpr, List<AstExpr>) | EMethod(AstExpr, String, List<AstExpr>)
+//     | EField(AstExpr, String)        // dot — receiver must be value
+//     | EArrow(AstExpr, String)        // arrow — receiver must be ptr
+//     | EIndex(AstExpr, AstExpr) | EStruct(String, List<(String, AstExpr)>)
+//     | EMatch(...) | EIf(...) | EBlock(...) | EClosure(...);
+//   pub type AstStmt = SLet(String, Option<AstTy>, AstExpr) | SLetMut(...)
+//     | SAssign(AstExpr, AstExpr) | SExpr(AstExpr) | SWhile(...)
+//     | SReturn(Option<AstExpr>) | SEmpty;
+//
+// Parser (Pratt, ~400 lines): parse_items, parse_ty, parse_expr_bp.
+// Type-check (~600 lines; catches 593 of 1,208 rows pre-emit) — TyEnv
+// holds scopes + ret; tc_expr / tc_stmt / tc_fn are mutually recursive.
+// Example rules (each ~5 lines; exhaustive, no string-compare):
+//
+//   tc_field(recv_ty, field) = match recv_ty {
+//     TyName(n) | TyRef(n) | TyRefMut(n) => struct_field_ty(n, field),
+//     _ => err(EFieldOnNonStruct) };            // closes 35 declarations
+//   tc_method_call(recv_ty, mname, args) = match (recv_ty, mname) {
+//     (TyName("Vec3"), "add", [a, b]) if same(a, b) => a,
+//     (TyList(t), "len", []) => TyInt,           // 110 dot_arrow collapse
+//     (TyResult(_,_), "is_ok", []) => TyBool,
+//     (TyResult(_,_), "unwrap", []) => recv_ty,
+//     _ => err(EMethodNotFound) };
+//   tc_assign(lhs, rhs) = if lhs == rhs { ok } else { err }; // 137
+//
+// Runs once after parse; reports (file, line, col, kind). Also populates
+// AstResolved (EField carries struct name; ECall carries fn name) so the
+// emitter no longer has to text-search for `(`.
+//
+// ### Phase B — name resolution + global state
+//
+// Today each .oo file's emit writes `#ifndef OO_TY_<name>` / `#endif`
+// (c_emit_struct.oo:85-93) and `#ifndef OO_FN_<name>` / `#endif`
+// (c_emit_fn.oo:220-222). Two .oo files defining `vec3_new` collide —
+// 38-row `redef` category. Replace with one EmitProgram per build:
+//
+//   pub type EmitProgram = { items: List<AstItem>,
+//     typedefs: Map<String, String>, fn_protos: Map<String, String>,
+//     fn_bodies: List<String>, cap_grants: List<String>,
+//     imports_h: Set<String> };
+//
+// Resolve pass walks AstProgram once, populates maps. Each typedef/fn is
+// emitted exactly once. The per-file `#ifndef` goes away. `c_mangle_fn_name`
+// (c_emit_mangle.oo:13-51) is no-op for non-main; mangler kept as residual
+// for multi-TU.
+//
+// ### Phase C — template-based emit
+//
+// Replace `println("  " + lty + " " + name + " = " + rhs + ";");` with a
+// template literal with named holes:
+//
+//   pub type Ctx = { indent: Int, env: TyEnv, res: &mut EmitProgram, tmp: Int };
+//   pub fn emit_let(ctx: &mut Ctx, s: SLet) -> Unit {
+//     if ctx.env.lookup_decl(s.name) { return emit_assign(ctx, s.name, s.rhs); }
+//     let lty = lower_ty(ctx, s.ty_or_infer(s.rhs));
+//     let rhs = lower_expr(ctx, s.rhs);
+//     ctx.res.fn_bodies.push(format("{indent}{lty} {name} = {rhs};", ...));
+//     ctx.env.declare(s.name, lty);
+//   }
+//
+// Example templates (one line each, named holes):
+//
+//   let:    "  {ty} {name} = {rhs};"
+//   if:     "  if ({cond}) {"
+//   while:  "  while ({cond}) {"
+//   call:   "{callee}({args})"
+//   method: "{recv}->{mname}({args})"   // or "." if recv is value
+//   fn:     "{ret_ty} {cname}({params}) {"
+//   struct: "typedef struct {cname} {{ {fields} }} {cname};"
+//   ret:    "  return {expr};"
+//   assign: "  {lhs} = {rhs};"
+//   index:  "oo_{kind}_get({base}, {idx})"
+//
+// Each `lower_*` takes an AstExpr and returns a C string. The 5-cell pack
+// in c_emit_call.oo:47-140 collapses (lower_expr is recursive). The
+// 160-line IDENT dispatch in c_emit_lower.oo:97-256 becomes a match over
+// AstExpr kind (8 arms). The 5×5 c_list_c_name ladder in c_emit_ty.oo:46-144
+// becomes a 5×5 Map literal. The 100+ if-statements in c_emit_call_ty.oo:5-101
+// become one set literal. The 4-style ladder in c_emit_meta.oo:116-152
+// becomes 4 named constants + one format call. The AST is shared with
+// `bc_emit` and `wasm_emit` for free.
+//
+// New file split (replaces 52 files, 9,361 lines): ast.oo ~400, ty.oo
+// ~600, resolve.oo ~250, c_template.oo ~150, c_lower_expr.oo ~400,
+// c_lower_stmt.oo ~300, c_lower_ty.oo ~200, c_lower_item.oo ~300,
+// c_preamble.oo ~200, c_program.oo ~200, c_arc.oo ~150. Total ~3,150
+// lines (1/3 of 9,361).
+
+// ## 4. Per-phase deliverables
+//
+// Phase A: CREATE ooda/oodac/ast.oo (parse_expr_bp, parse_ty, parse_item),
+//   ooda/oodac/ty.oo (tc_expr, tc_stmt, tc_fn, TyEnv), ooda/oodac/tc_drive.oo,
+//   ooda/std/test/test_ast_parse.oo (100+ tests), ooda/std/test/test_tc_expr.oo
+//   (~80 tests, one per rule). DELETE: nothing — c_emit still runs; 1,208
+//   rows move from C errors to type errors at the same file:line. TEST:
+//   test_tc_expr parity 100%; ~1,208 → ~200 C + ~1,000 tc errors.
+//
+// Phase B: CREATE ooda/oodac/resolve.oo, ooda/oodac/c_program.oo
+//   (EmitProgram; one per build). DELETE c_emit_struct.oo:85-93 (per-file
+//   OO_TY_ #ifndef), c_emit_fn.oo:220-222 (per-fn OO_FN_ #ifndef),
+//   c_emit_struct.oo:215-230 c_emit_seen_ty / c_emit_mark_ty (O(n²) string
+//   set → Map<String, ()>), c_emit_mangle.oo (residual for multi-TU only).
+//   TEST: test_resolve_redef.oo: two .oo files both export `vec3_new` →
+//   one C fn `vec3_new`, no `redefinition` gcc error. 38 → 0.
+//
+// Phase C: CREATE ooda/oodac/c_template.oo (format, named holes, indent),
+//   c_lower_expr.oo (match over AstExpr), c_lower_stmt.oo (match over
+//   AstStmt), c_lower_ty.oo (Ty → C name), c_lower_item.oo (AstItem → C
+//   text). DELETE c_emit_call.oo, c_emit_call_ty.oo, c_emit_lower.oo:97-256,
+//   c_emit_ty.oo:46-144, c_emit_let.oo, c_emit_let_ext.oo + _crt.oo,
+//   c_emit_match_let.oo, c_emit_deref.oo:12-42, c_emit_meta.oo:116-152,
+//   c_emit_preamble.oo:12-191 (see specific line ranges in §3). TEST:
+//   test_c_emit_template.oo (golden per C construct: let, fn, struct, while,
+//   if, match, call, method, arrow, field, index, struct-lit). Diff
+//   against current c_emit output for std/io/print.oo. Any diff = bug.
+//
+// Cross-phase: library_status.oot <200 BLOCKED. A: tc errors catch 593 of
+// 1,208. B: 38 → 0. C: 13 → 0 init_temps (templates zero-init), 35 → 0
+// declarations (tc rejects), 110 → 0 dot_arrow (tc rejects EArrow on
+// value; lower_expr on EArrow always emits `->`). 4 result_cell + 19
+// other close as a side-effect of lower_expr being exhaustive.
+
+// ## 5. Risk assessment
+//
+// LOSE: (a) 50+ free names special-cased in c_emit_call.oo:115-235 move
+// to a table; any name we miss silently disappears. Mitigation: keep
+// c_emit_call_ty.oo as a sanity reference; Phase A test
+// test_tc_call_known_free_names.oo enumerates every name in
+// c_is_res_s_call / c_is_slist_call / c_is_i64_call / c_is_str_call and
+// asserts it still type-checks. (b) Char-prefix heuristics in
+// c_emit_let.oo:165-187 + c_emit_let_ext.oo:14-50 catch "Token" prefix
+// to bind as Token; Phase A must add a tc_struct_lit_name rule (reuse
+// c_struct_lit_ty_name at c_emit_struct.oo:160-212). (c) path-A
+// metamorphic decoys (c_emit_meta.oo) emit at bodies time; Phase B
+// moves them to EmitProgram-level, respecting the 64-decoy cap and
+// 4-style pattern. Diff two product builds (decoy on/off) to confirm.
+//
+// GAIN: 593 type errors caught pre-emit. 38 redef (per-program dedup).
+// 13 init_temps (templates zero-init). 35 declarations (tc rejects).
+// 110 dot_arrow (EField/Arrow structural). One C output regardless of
+// source order. bc_emit and wasm_emit get the same AST for free.
+//
+// WILD RISKS: (a) Pratt parser (parse_expr_bp) precedence may differ
+// from current c_emit_primary_c ladder on 1-2 constructs. Mitigation:
+// parse_expr_bp_diff.oo diffs AST on 50 known-green std/ files. (b) The
+// `extra_binds` hack (check_drive.oo:31) carries imported fn names as a
+// string; Phase A moves this into TyEnv via a `tc_import` pass.
+//
+// OUT OF SCOPE: multi-TU builds (c_mangle_fn_name stays residual; new
+// c_program.oo is single-TU); path-A decoy scheme (R1, 4-style table
+// preserved); SECRET/print guards (c_emit_secret*.oo stay orthogonal).
+
+// ## 6. Migration strategy (incremental)
+//
+// Each phase is independently shippable. The build remains green between
+// phases because we keep c_emit running while we add the new layer.
+//
+// Phase A (parser changes only, emit-c unchanged). Add ast.oo + ty.oo as
+// a new check pass after parse. C output is identical; 1,208 → 1,208 (no
+// rows close, but every c_emit bug is now a type error too — measure
+// parity). Gate: test_tc_expr parity 100%; c_emit byte-identical on
+// std/io/print.oo, std/str/parse.oo, std/list/ops.oo.
+//
+// Phase B (replace per-file #ifndef with global state). Add c_program.oo
+// and wire it into once/once_noarc mode path. c_emit still runs but uses
+// EmitProgram's dedup table. 38 → 0 redef. 1,170 remaining are C errors.
+// Gate: test_resolve_redef.oo passes; two .oo files with `pub fn
+// vec3_new` produce one C fn `vec3_new`.
+//
+// Phase C (template emit). Add c_template.oo, c_lower_*.oo. Wire
+// c_program.oo to call them. Old c_emit_*.oo remain for one release as
+// reference diff. 1,170 → <200. Gate: golden-file diff on the 3
+// known-green = 0. c_emit_*.oo can be deleted.
+//
+// Each phase is a single PR with its own gate. We can stop after Phase B
+// if pressure is real: 38 rows closing is real, and the AST is available
+// for bc_emit / wasm_emit to share.
+
+// ## 7. Effort estimate
+//
+// | phase | days | gate | rows closed |
+// |-------|------|------|-------------|
+// | A | 3-4 | test_tc_expr 100%; c_emit byte-identical on 3 known-green | 593 (now tc errors) |
+// | B | 1-2 | test_resolve_redef passes | 38 → 0 |
+// | C | 3-4 | golden diff = 0; library_status <200 | 110 + 35 + 13 + 4 + 19 → 0 |
+// | total | 7-10 | library_status.oot < 200 BLOCKED | < 200 of 1,405 |
+//
+// A: d1-2 AstItem/Ty/Expr/Stmt + parse_expr_bp; d2-3 ty.oo + tc_expr/
+// stmt/fn; d3-4 tc_drive.oo + tests + parity. C: d1 c_template +
+// c_lower_ty.oo (5×5 → map); d2 c_lower_expr.oo + c_lower_stmt.oo;
+// d3 c_lower_item.oo + preamble rewrite; d4 golden diff + delete 11
+// files + prove across 22 audit siblings.
+//
+// Conservative target after Phase A alone: <500 BLOCKED (593 tc errors
+// caught, but c_emit still emits the same garbage). Below 200 is the
+// acceptance target.
