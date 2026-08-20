@@ -1,0 +1,223 @@
+# WIN-CHS_RT-SHIM-PLAN — Phase 0 follow-up, sub-agent P
+
+File: openOODA/audit/win_chs_rt_shim_plan.oot line.
+Date: 2026-08-19. Lane: read-only shim plan. Owner: ooda/runtime/ owner. Cross-ref: openOODA/audit/win_chs_rt_posix_audit.oot (B), openOODA/audit/win_chs_rt_audit_2nd.oot (J), openOODA/audit/win_compiler_plan.oot.
+Scope: turn B+J's audit into a step-by-step shim plan for the runtime owner. No code change here; this is a build script for the runtime owner.
+
+## 0. Method and inputs
+
+- Read B's audit (154 lines, 95 POSIX surfaces, 86 direct Windows eq, 11 redesign rows).
+- Read J's audit (137 lines, ~225 line-level call sites, 3 material misses vs B).
+- Read chs_rt.c umbrella (40 #include of chs_rt_*.c, 1 straggler chs_rt_list_set.c). Umbrella at chs_rt.c:2-41.
+- Read chs_rt.h (chs_rt.h:63-92 declares oo_str_lit, oo_str_concat, oo_str_eq, oo_str_release — the four symbols the orchestrator's first link missed). The umbrella provides them.
+- Grep every chs_rt_*.c for `#include` lines. The full POSIX header set is at the end of this file in §A.1.
+- Read oodac/oodac/main.oo:170-184 (the bash-ism is line 178).
+- POSIX header grep across all 41 chs_rt_*.c files.
+
+## 1. Shim order
+
+Three phases, sequential. Each phase has a hard gate (compile, link, run). Do not skip a phase.
+
+- Phase A — header stubs. Goal: every chs_rt_*.c compiles under mingw. Gate: gcc accepts the umbrella TU without a "fatal error: sys/...: No such file or directory".
+- Phase B — function shims. Goal: every POSIX/Linux symbol the chs_rt umbrella calls is satisfied at link. Gate: gcc produces the .exe; no "undefined reference".
+- Phase C — behavior shims. Goal: the 11 redesign surfaces return a correct Windows value, not a stub. Gate: hello.oo prints, Landlock returns ENOSYS, /proc reads via GetCommandLineA, setrlimit maps to Job Object.
+
+Order rule: do A completely, then B completely, then C. Mixing them keeps the error chain noisy.
+
+Blocker severity:
+- Phase A errors are compile errors that block ALL of chs_rt. Top priority.
+- Phase B errors are link errors that block the .exe. Second priority.
+- Phase C is runtime correctness. Third. hello.oo will print with Phase C missing — but it will not sandbox.
+
+## 2. Phase A — header stubs
+
+New file: `ooda/runtime/chs_rt_win32.h` (or `chs_rt_posix_shim.h`). The runtime owner picks the name. The header is included by the umbrella chs_rt.c (at the top, after chs_rt.h) BEFORE any chs_rt_*.c #include. So every chs_rt_*.c sees the stubs.
+
+Stubs to provide, in include order. LoC counts are approximate C lines of stub code.
+
+| stub header | provides | calls covered | LoC | link flag |
+|-------------|----------|---------------|-----|-----------|
+| `sys/wait.h` | `WIFEXITED`, `WEXITSTATUS`, `WIFSIGNALED`, `WTERMSIG` as macros that read a Windows exit code word. No `pid_t` wait, just the macros. | chs_rt_sys.c:4, chs_rt_ffi_sec.c:12 | ~15 | none |
+| `sys/prctl.h` | empty stub (no `prctl` on Win32). | chs_rt_landlock.c:3 | ~6 | none |
+| `sys/syscall.h` | empty stub. | chs_rt_landlock.c:4 | ~6 | none |
+| `sys/random.h` | declares `getentropy(buf, n)`, defined in Phase B shim. | chs_rt_meta.c:7, chs_rt_alloc.c:9, chs_rt_ffi_sec.c:15, chs_rt_time_rand.c:7 | ~10 | -lbcrypt |
+| `dlfcn.h` | declares `dlopen`, `dlclose`, `dlsym`, `dlerror`, `RTLD_LAZY`, `RTLD_NOW`, `RTLD_GLOBAL`. Defined in Phase B. | chs_rt_ffi.c:5, chs_rt_ffi_sec.c:8 | ~25 | -lkernel32 |
+| `strings.h` | mingw already has it (declares `bcmp`, `bcopy`, `bzero`). `explicit_bzero` is missing. Add macro. | chs_rt_crypto.c:4 | ~3 | none |
+| `pthread.h` | mingw-w64 winpthreads provides it. Add `-lpthread` to link. | chs_rt_str_intern.c:4, chs_rt_list.c:2, chs_rt_ffi.c:7, chs_rt_channel.c:5, chs_rt_meta.c:5, chs_rt_alloc.c:6, chs_rt_actor.c:6, chs_rt_time_rand.c:5, chs_rt_ffi_sec.c:10, chs_rt_thread.c:4, chs_rt_libfloor.c:5 | 0 | -lpthread (winpthread) |
+| `netdb.h`, `arpa/inet.h`, `netinet/in.h`, `sys/socket.h`, `sys/stat.h`, `sys/types.h`, `unistd.h`, `fcntl.h`, `dirent.h`, `errno.h`, `stdio.h`, `stdlib.h`, `string.h`, `time.h`, `limits.h`, `ctype.h`, `math.h`, `stdint.h` | mingw provides all of these. | many | 0 | none |
+
+Total Phase A LoC: ~65 lines of header + 0 link flag for most, 3 link flags (-lbcrypt, -lkernel32, -lpthread). 4 inline shim functions defined elsewhere in Phase B.
+
+## 3. Phase B — function shims
+
+New file: `ooda/runtime/chs_rt_win32.c`. Included by the umbrella at chs_rt.c, after chs_rt_win32.h, before chs_rt_*.c. Each shim is a thin inline or extern "C" function. Many call sites share one shim.
+
+Top 12 shim functions, by call-site count.
+
+| shim function | windows api | file:line (first 3 sites) | shim LoC | link flag |
+|---------------|-------------|---------------------------|----------|-----------|
+| `getentropy(buf, n)` | `BCryptGenRandom` (CNG, no CRT) | chs_rt_libfloor.c:18,22; chs_rt_alloc.c:26,30; chs_rt_meta.c:19,23; chs_rt_caps.c:22,27; chs_rt_time_rand.c:19,23; chs_rt_ffi_sec.c:26,30; oo_hide.c:38,41 | 12 | -lbcrypt |
+| `getpid()` | `GetCurrentProcessId()` | chs_rt_libfloor.c, chs_rt_alloc.c, chs_rt_meta.c, chs_rt_caps.c, chs_rt_time_rand.c, chs_rt_ffi_sec.c, oo_hide.c | 3 | -lkernel32 |
+| `pthread_create/join/mutex_* / cond_*` | `CreateThread` / `WaitForSingleObject` / `CRITICAL_SECTION` / `SRWLOCK` / `CONDITION_VARIABLE` | chs_rt_thread.c:57,92; chs_rt_actor.c:71,72,74; chs_rt_channel.c:63-135; chs_rt_list.c:7,16,28; chs_rt_str_intern.c:44-86; chs_rt_alloc.c:15,44,88; chs_rt_ffi.c:122-126; chs_rt_libfloor.c:35,42,160,162,165 | 80 | -lpthread (winpthread) |
+| `pthread_once` | `InitOnceExecuteOnce` | chs_rt_libfloor.c:35, chs_rt_ffi_sec.c:42, chs_rt_alloc.c:15, chs_rt_caps.c:61, chs_rt_meta.c:10, chs_rt_time_rand.c:10, chs_rt_list.c:8 | 12 | -lkernel32 |
+| `usleep(us)` | `Sleep(ms)` | chs_rt_thread.c:14, chs_rt_actor.c:27 | 4 | -lkernel32 |
+| `realpath(p, res)` | `GetFullPathNameA` (or `_fullpath`) | chs_rt_fs.c:32,34,36,42; chs_rt_ffi.c:103; chs_rt_ffi_sec.c:69,70 | 8 | -lkernel32 |
+| `open / openat / close / fdopen / unlink / rmdir / mkdir / link / symlink / access / opendir / readdir / closedir / stat / fopen / fseek / ftell / fread / fwrite / fclose` | `CreateFileA` / `CloseHandle` / `_fdopen` / `DeleteFileA` / `RemoveDirectoryA` / `CreateDirectoryA` / `CreateHardLinkA` / `CreateSymbolicLinkA` / `GetFileAttributesA` / `FindFirstFileA` / `FindNextFileA` / `FindClose` / `GetFileAttributesExA` / C stdio (no shim) | chs_rt_fs.c:43-185, chs_rt_ffi_sec.c:106-120, chs_rt_vision.c:209-229, chs_rt_xlang.c:53-54 | 120 | -lkernel32 (none for stdio) |
+| `getaddrinfo / freeaddrinfo / socket / bind / listen / connect / setsockopt / htonl / htons / read / write / close` (on TCP) | `getaddrinfo` / `freeaddrinfo` / `WSASocketA` / `bind` / `listen` / `connect` / `setsockopt` / `htonl` / `htons` / `recv` / `send` / `closesocket` | chs_rt_netfloor.c:76-243, chs_rt_fetch.c:70-110, chs_rt_tls.c:33-42, chs_rt_dns.c:30-83 | 30 | -lws2_32 |
+| `dlopen / dlclose / dlsym / dlerror` | `LoadLibraryExA` / `FreeLibrary` / `GetProcAddress` / `GetLastError` + `FormatMessageA` | chs_rt_ffi.c:124-187 | 35 | -lkernel32 |
+| `clock_gettime(CLOCK_MONOTONIC, &ts)` | `QueryPerformanceCounter` | chs_rt_fs.c:119, chs_rt_time_rand.c:72 | 8 | -lkernel32 |
+| `nanosleep(req, rem)` | `Sleep(ms)` | chs_rt_time_rand.c:81 | 4 | -lkernel32 |
+| `fork / execvp / execl / execlp / waitpid / kill / _exit` | `CreateProcessA` + `WaitForSingleObject` + `GetExitCodeProcess` + `TerminateProcess` + `_exit` (CRT) | chs_rt_sys.c:127-139, chs_rt_ffi_sec.c:123-131, chs_rt_libfloor.c:81-121 | 70 | -lkernel32, -ladvapi32 (for PATH search) |
+| `setenv / getenv / clearenv / environ` | `_putenv` / `getenv` (CRT) / walk `GetEnvironmentStrings` + `SetEnvironmentVariable` | chs_rt_sys.c:18-56 | 25 | -lkernel32 |
+| `inet_ntop / WIFEXITED / WEXITSTATUS / WIFSIGNALED / WTERMSIG` | Winsock `InetNtopA` / Phase A macros on a Windows status word | chs_rt_dns.c, chs_rt_sys.c, chs_rt_ffi_sec.c, chs_rt_libfloor.c | 6 | -lws2_32, none |
+| `explicit_bzero` | `SecureZeroMemory` | chs_rt_crypto.c:10 | 2 | -lkernel32 |
+| `__attribute__((constructor))` (in oo_hide.c:62) | mingw-w64 GCC supports it. No shim. | oo_hide.c:62 | 0 | none |
+| `__thread int` (in chs_rt_ffi.c:15) | mingw-w64 supports `__declspec(thread)`. Alias via macro. | chs_rt_ffi.c:15 | 2 | none |
+| `usleep`, `nanosleep`, `Sleep` (already on Win32) | native on Windows | many | 0 | -lkernel32 |
+
+Total Phase B LoC: ~420 lines of C. This is a one-time shim, not per-call-site; ~225 call sites reuse it.
+
+## 4. Phase C — behavior shims
+
+The 11 redesign surfaces from B §4 (confirmed count by J: 11, not 9 — B's §5 was a typo). Each is a behavior change, not a link fix.
+
+| surface | file:line | linux | windows | shim behavior | runtime note |
+|---------|-----------|-------|---------|---------------|--------------|
+| Landlock | chs_rt_landlock.c:79,150,156,191,207,211 | `__NR_landlock_create_rule`, `prctl(PR_SET_NO_NEW_PRIVS)` | `CreateJobObject` + `AssignProcessToJobObject` + restricted token + NTFS DACL | Shim returns `-1` with `ENOSYS` for v1. Job Object + restricted token is a Phase 4 item. hello.oo does not call Landlock. | stub OK for hello.oo |
+| `open(path, O_PATH\|O_DIRECTORY\|O_CLOEXEC)` | chs_rt_landlock.c:150 | Linux flag | `CreateFileA` with `FILE_FLAG_BACKUP_SEMANTICS` | Direct shim. | works |
+| `setrlimit(RLIMIT_AS, &rl)` | chs_rt_rlimit.c:17 | Linux | `SetProcessWorkingSetSize` or `JOB_OBJECT_LIMIT_PROCESS_MEMORY` | Map bytes → Job Object. | memory cap OK |
+| `setrlimit(RLIMIT_NOFILE, &rl)` | chs_rt_rlimit.c:31 | Linux | no equivalent | Return `0` (success) and print stderr note "fd cap ignored on Windows". | degrade to no-op |
+| `setrlimit(RLIMIT_CPU, &rl)` | chs_rt_rlimit.c:45 | Linux | `JOB_OBJECT_CPU_RATE_CONTROL` (percent) | Convert seconds → percent of one core. | CPU cap OK |
+| `open("/dev/null", O_RDWR)` + `dup2` | chs_rt_ffi_sec.c:115-120 | Linux | `CreateFileA("NUL", ...)` + `SetStdHandle` + `CloseHandle` | Direct shim. | works |
+| `execlp("minisign", ...)` | chs_rt_ffi_sec.c:123 | Linux PATH search | shim walks PATH; `CreateProcessA` | Direct shim. | works if minisign.exe in PATH |
+| `fopen("/proc/self/cmdline", "rb")` | chs_rt_sys.c:158, chs_rt_wasm.c:161 | Linux | `GetCommandLineA` + `CommandLineToArgvW` | Direct shim. hello.oo does not call this. | works |
+| `fopen("/dev/tty", "r")` | chs_rt_hitl.c:42 | Linux | `CreateFileA("CONIN$", ...)` | Direct shim. | works |
+| `clearenv` | chs_rt_sys.c:46 | Linux | walk `GetEnvironmentStrings` + `SetEnvironmentVariable` | Direct shim. | works |
+| `system("gcc -flto ...")` | chs_rt_xlang.c:80 | Linux | `system` is CRT; emit "gcc.exe" instead of "gcc" | Narrow shim. hello.oo does not call this. | works if gcc.exe in PATH |
+| `oo_sys_epoll_create` / `oo_sys_inotify_init` / `oo_sys_prctl` (residuals) | chs_rt_libfloor.c:129,137,144 | Linux | return residual `Err` (already sealed behind SysCap) | Keep current. | works |
+
+hello.oo does NOT touch Landlock, setrlimit, FFI-sec, hitl, or wasm. So Phase C for hello.oo is a stub-on-ENOSYS. Production Phase C is a follow-on after the link is green.
+
+## 5. Minimum-viable shim (hello.oo → Windows .exe)
+
+hello.oo is a print. Its emit (214 lines of C) calls `oo_str_lit`, `oo_str_concat`, `oo_print`, etc. The chs_rt umbrella is `#include`'d as ONE TU, so every chs_rt_*.c is compiled in. So the link must satisfy ALL of chs_rt's external symbols, even those hello.oo does not call. But the runtime does not need to be CORRECT, only LINK.
+
+Minimum-viable = Phase A (all header stubs) + Phase B (all 12 shim functions) + Phase C stubbed to ENOSYS for the 11 redesigns. Total: ~485 LoC of new C, plus 0 LoC of edits to existing chs_rt_*.c (the shim is in a new file, included by the umbrella).
+
+Predicted line count of the shim layer:
+- chs_rt_win32.h: ~65 lines
+- chs_rt_win32.c: ~420 lines
+- 2 new lines in chs_rt.c (one `#include "chs_rt_win32.h"` after chs_rt.h, one `#include "chs_rt_win32.c"` at the end of the include block)
+- 0 edits to chs_rt_*.c (the call sites are untouched; the shim layer is opaque to them)
+
+Total new code: ~487 lines. Below the 256-line cap per file. Split chs_rt_win32.c into chs_rt_win32_io.c, chs_rt_win32_proc.c, chs_rt_win32_sync.c if a single file gets too long.
+
+## 6. Predicted error chain
+
+Order gcc reports errors as the shim is added. Each step assumes the previous shim is in place.
+
+1. `chs_rt_sys.c:4: fatal error: sys/wait.h: No such file or directory` (observed).
+2. After Phase A: `chs_rt_sys.c:127: warning: implicit declaration of fork; chs_rt_sys.c:127: error: incompatible types for fork on Windows` — the stub has fork, but no `pid_t`. Fix: include the `pid_t` typedef in chs_rt_win32.h.
+3. `chs_rt_landlock.c:3: fatal error: sys/prctl.h: No such file or directory`.
+4. `chs_rt_landlock.c:4: fatal error: sys/syscall.h: No such file or directory`.
+5. `chs_rt_meta.c:7: fatal error: sys/random.h: No such file or directory` (chs_rt_alloc.c:9, chs_rt_ffi_sec.c:15, chs_rt_time_rand.c:7 same).
+6. `chs_rt_ffi.c:5: fatal error: dlfcn.h: No such file or directory` (chs_rt_ffi_sec.c:8 same).
+7. `chs_rt_crypto.c:4: warning: implicit declaration of explicit_bzero`. Fix: macro to SecureZeroMemory in strings.h shim.
+8. After Phase A is fully in: link begins. First undefined: `pthread_create`, `pthread_join`, `pthread_mutex_init`. Fix: add Phase B pthread shim. Link `-lpthread`.
+9. Next: `getentropy` (8+ call sites). Fix: Phase B shim with BCryptGenRandom. Link `-lbcrypt`.
+10. Next: `getpid` (7 files). Fix: GetCurrentProcessId. Link `-lkernel32`.
+11. Next: `fork`, `execvp`, `waitpid`, `WIFEXITED` etc. Fix: CreateProcessA + WaitForSingleObject + GetExitCodeProcess.
+12. Next: `socket`, `bind`, `connect`, `getaddrinfo`. Fix: Winsock. Link `-lws2_32`.
+13. Next: `dlopen`, `dlclose`, `dlsym`, `dlerror`. Fix: LoadLibrary. Link `-lkernel32`.
+14. Next: `usleep`, `nanosleep`, `realpath`, `opendir`, `mkdir`, etc. Fix: Phase B I/O shim.
+15. Link succeeds. .exe produced. hello.oo + chs_rt + mingw = Windows PE/COFF binary.
+
+Note: pthread link order matters on Windows. `-lpthread` must come AFTER the chs_rt objects, not before, or winpthreads symbols are unresolved. (Linux gcc is more forgiving; mingw is not.)
+
+## 7. Test surface for the runtime owner
+
+The runtime owner cannot run the .exe on this Linux host. Available checks, in order of strength.
+
+1. **Compile gate**: `x86_64-w64-mingw32-gcc -c chs_rt.c -o chs_rt.o` exits 0 with no errors. This is the Phase A lock.
+2. **Link gate**: `x86_64-w64-mingw32-gcc emit.c chs_rt.o -o hello.exe -lws2_32 -lbcrypt -lkernel32 -ladvapi32 -lpthread` exits 0. This is the Phase B lock.
+3. **PE/COFF magic**: `file hello.exe` reports `PE32+ executable (console) x86-64, for MS Windows`. (Run on the Linux host; `file` reads PE magic from any byte position.)
+4. **Determinism**: `x86_64-w64-mingw32-gcc` with the same inputs in two runs produces a byte-identical hello.exe. Per ROADMAP §4.3.2. Lock: SHA-256 of two runs match.
+5. **Windows API symbol check**: `x86_64-w64-mingw32-objdump -t hello.exe | grep -E "CreateFile|LoadLibrary|WSASocket|BCryptGenRandom"` shows the expected Windows APIs are referenced.
+6. **No Linux-POSIX symbol leak**: `x86_64-w64-mingw32-objdump -t hello.exe | grep -E "\b(fork|waitpid|dlopen|pthread_create)\b"` returns nothing. If a Linux-POSIX symbol is still in the .exe, the shim did not cover a call site.
+7. **PE import table**: `x86_64-w64-mingw32-objdump -p hello.exe | grep "DLL Name"` lists KERNEL32.dll, WS2_32.dll, BCRYPT.dll, ADVAPI32.dll. No MSVCRT.dll version skew surprise.
+8. **Transitive .oo test**: `oodac emit-c fixtures/thread.oo` (if it exists) also links. This catches pthread shim bugs that hello.oo (single-threaded) hides.
+
+The shim cannot be functionally tested on this host. The closest is (5) and (6) — symbol inspection. The runtime owner should NOT claim "the shim runs on Windows" until someone with a Windows host (or Wine) runs the .exe.
+
+## 8. Linker flags
+
+Full gcc command for the cross-compile. Tested pieces; predicted for the rest.
+
+```bash
+x86_64-w64-mingw32-gcc \
+  -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 \
+  -static \
+  -O2 -fno-strict-aliasing \
+  -I ooda/runtime \
+  -c ooda/runtime/chs_rt.c -o chs_rt.o
+x86_64-w64-mingw32-gcc \
+  -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 \
+  -static -O2 \
+  -I ooda/runtime \
+  -c ooda/fixtures/hello.emit.c -o hello.emit.o
+x86_64-w64-mingw32-gcc \
+  -o hello.exe \
+  hello.emit.o chs_rt.o \
+  -lws2_32 -lbcrypt -lkernel32 -ladvapi32 -lpthread \
+  -static
+```
+
+Flag rationale:
+- `-D_WIN32_WINNT=0x0A00` — Windows 10. Schannel APIs, `InitOnceExecuteOnce`, `CONDITION_VARIABLE`, Job Object CPU rate control all need >= 0x0602; 0x0A00 picks the safe line.
+- `-static` — single-file .exe, no DLL search path issues. mingw provides a static CRT (libgcc, libstdc++). MSVCRT linked static or dynamic; static is simpler for the smoke test.
+- `-lws2_32` — Winsock. Required for any `socket`/`getaddrinfo` call. Even if hello.oo does not call it, the umbrella TU has chs_rt_netfloor.c, chs_rt_fetch.c, chs_rt_tls.c, chs_rt_dns.c — they DO. Link is mandatory.
+- `-lbcrypt` — `BCryptGenRandom`, `BCryptOpenAlgorithmProvider`. Required by getentropy shim.
+- `-lkernel32` — Job Objects, LoadLibrary, GetProcAddress, CreateFile, etc. Almost everything.
+- `-ladvapi32` — `GetEnvironmentStrings`, `SetEnvironmentVariable`, restricted token (Landlock future). Needed for clearenv shim.
+- `-lpthread` — mingw-w64 winpthreads. Required for pthread shim. Order: AFTER the .o files (mingw link-order requirement).
+- `-static` on the link line: makes the .exe self-contained. Drop this if a smaller .exe is wanted (then MSVCRT.dll and libgcc_s_seh-1.dll must be on the Windows host).
+
+The bash-ism in oodac/oodac/main.oo:178 is the cap-require check (`for sym in oo_cap_require_*; do nm ... | grep -wq ...`). It calls `nm` and `grep` and is shell-only. On a Windows host, this check needs:
+- A Windows `nm` (mingw provides `x86_64-w64-mingw32-nm` for the host's cross build, but the Windows-native oodac needs a different tool — `llvm-nm` from the LLVM-windows install, or `dumpbin /symbols` from MSVC). This is a compiler lane item (Phase 3), not a runtime item. Out of scope here.
+
+## 9. What was not checked
+
+- **Wine smoke test**: the runtime owner cannot run hello.exe on this host. The acceptance of "the shim works" rests on the symbol checks in §7 (5)-(7). A real Windows host (or `wine hello.exe`) is the only end-to-end test.
+- **Schannel on Windows**: chs_rt_tls.c:99-112 uses OpenSSL. On Windows, the simplest path is to keep OpenSSL via `libssl-3.dll` (ship alongside the .exe or link static with `-lssl -lcrypto -lws2_32 -lcrypt32`). The shim as planned does NOT touch this; TLS will not work until Phase 2b. Out of scope for hello.oo.
+- **CRITICAL_SECTION vs SRWLOCK**: chs_rt_channel.c uses pthread_cond_t (signal only, no wait). The shim maps `pthread_cond_signal` to `WakeConditionVariable`. Recursive mutex (`PTHREAD_MUTEX_RECURSIVE`) is used; CRITICAL_SECTION supports it natively. Not checked: whether any chs_rt_*.c uses `pthread_cond_timedwait` — J's audit says no.
+- **`_fdopen` and `open_osfhandle`**: chs_rt_fs.c:81 uses `fdopen`. mingw has `_fdopen` and `_open_osfhandle`. The shim needs a thin wrapper to map POSIX fd to a Windows HANDLE before `_fdopen`. Not in the Phase B table above; add 5 lines.
+- **Job Object restricted token for Landlock**: the Phase 4 redesign. The minimum-viable shim returns ENOSYS. The real Landlock-equivalent is out of scope for hello.oo.
+- **Symbol exports on MSVCRT static vs dynamic**: not tested. If `-static` is dropped, MSVCRT.dll must be on the host.
+- **`__attribute__((constructor))` and `__thread`**: portable under mingw-w64 GCC. Not build-tested on this host. If the toolchain later changes to MSVC, these break. Out of scope (mingw is the chosen toolchain per `audit/win_toolchain_survey.oot`).
+- **chs_rt_host.c** under `OODA_WITH_HOST_FFI`: extern `ooda_host_*` symbols. The host staticlib provides them. Not in the shim's scope; the host lane owns it.
+- **`oo_holo.c`, `oo_sha256.c`, `chs_rt_math.c`, `chs_rt_hash.c`, `chs_rt_str*.c`**: grepped. No POSIX-only headers beyond `<stdlib.h>`, `<string.h>`, `<stdint.h>`, `<stdio.h>`, `<time.h>`, `<limits.h>`, `<math.h>`, `<ctype.h>`. C stdlib on mingw. No shim needed.
+- **`setjmp` / `longjmp` / `sigaction` / `sigprocmask`**: not used in any chs_rt_*.c. Confirmed.
+- **`memfd_create` / `seccomp` / `eventfd` / `timerfd` / `signalfd` / `mmap` / `mprotect` / `msync` / `getrandom`**: not used. Confirmed.
+- **Direct `syscall()` calls**: four, all in chs_rt_landlock.c (Landlock __NR_*). Phase A stub of `sys/syscall.h` returns -1; the four syscall() call sites return ENOSYS at runtime. hello.oo does not exercise this.
+- **The chs_rt umbrella as a single TU**: works for the existing gcc command line, but `-flto` may behave differently. Not tested. If `-flto` is added, the runtime owner should re-check that the shim is still included.
+- **`oodac/oodac/main.oo:178` cap-require bash-ism**: out of scope (compiler lane). Noted; not fixed.
+- **Predicted LoC count of 487 lines**: rough. The runtime owner should refine as they write each shim. The shim is 1 file (or 3 if split); do not pre-split before measuring.
+
+## A.1. Full POSIX header set across chs_rt_*.c
+
+From a grep of all 41 chs_rt_*.c. mingw provides some; the table classifies.
+
+- mingw HAS: `errno.h`, `stdio.h`, `stdlib.h`, `string.h`, `time.h`, `stdint.h`, `limits.h`, `ctype.h`, `math.h`, `strings.h`, `pthread.h` (winpthreads), `unistd.h` (partial), `fcntl.h` (partial), `dirent.h` (partial), `sys/stat.h`, `sys/types.h`, `sys/socket.h`, `netdb.h`, `arpa/inet.h`, `netinet/in.h`.
+- mingw LACKS — must be stubbed in Phase A: `sys/wait.h`, `sys/prctl.h`, `sys/syscall.h`, `sys/random.h`, `dlfcn.h`.
+- C stdlib (no shim): `stddef.h`, `stdbool.h`, `stdarg.h`, `assert.h`.
+
+Files per missing header:
+- `sys/wait.h`: chs_rt_sys.c:4, chs_rt_ffi_sec.c:12.
+- `sys/prctl.h`: chs_rt_landlock.c:3.
+- `sys/syscall.h`: chs_rt_landlock.c:4.
+- `sys/random.h`: chs_rt_meta.c:7, chs_rt_alloc.c:9, chs_rt_ffi_sec.c:15, chs_rt_time_rand.c:7 (chs_rt_libfloor.c:7 is already behind `__linux__ || __APPLE__` guard at line 6).
+- `dlfcn.h`: chs_rt_ffi.c:5, chs_rt_ffi_sec.c:8.
+
+## A.2. The four link errors the orchestrator saw
+
+Per win_compiler_plan.oot line 49: `oo_str_lit`, `oo_str_concat`, `oo_str_eq`, `oo_str_release` were undefined. These are declared in chs_rt.h:63, 64, 87, 58 and defined in chs_rt_str.c. The umbrella chs_rt.c includes chs_rt_str.c. The undefined references are in the EMITTED 214-line C file, not in the umbrella. The orchestrator's test used a stub-replacement of chs_rt that DID NOT include the umbrella — that's why the symbols were unresolved. The real shim layer (Phase A + Phase B) keeps the umbrella intact, and these four symbols resolve. Confirmed: no action needed; this is a test-script bug in the orchestrator's stub, not a runtime gap.

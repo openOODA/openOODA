@@ -1,0 +1,59 @@
+# LLVM Phalanx — 12-role assignment for phases 1–3
+
+File: openOODA/audit/plan_llvm_phalanx.oot
+COORD assignment. C emit + gcc remains the product path. Do not overwrite oodac/oodac.
+Pin: v0.205.0-beta. Lane: LLVM emit only.
+
+## 1. Observe
+
+  Cold `check fixtures/hello.oo` on an LLVM-linked oodac failed because
+  `llvm_emit_expr` lowered `match` expressions to `%OoStr zeroinitializer`.
+  `load_source_with_imports` uses `let src = match read_file { Ok(s) => s, ... }`.
+  Empty src prints `ERR check empty`. Stamp-walk still worked (no match expr).
+
+## 2. Roles and disjoint files
+
+| Role | Job | Owns |
+| :--- | :--- | :--- |
+| COORD | Assign, rebuild side ELF, rollup | audit/plan_llvm_phalanx.oot, scratch logs |
+| DE1 | Match-expression emit | oodac/llvm_emit_match_expr.oo, llvm_emit_expr.oo |
+| DE2 | Call/method leftovers | oodac/llvm_emit_method.oo, llvm_fntab.oo |
+| RT | C ABI vs LLVM preamble | audit/plan_llvm_rt.oot (runtime write only if ABI is wrong) |
+| PV1 | Hostile mutate hello | scripts/open68_pv1_hostile.oo |
+| PV2 | Planted g_ must not be required | scripts/open68_pv2_plant.oo |
+| SEC | Shim/cap audit | audit/plan_llvm_sec.oot |
+| MEM | ARC on match/check | audit/plan_llvm_mem.oot |
+| INT | Run smokes and C path | scratch logs only |
+| HARN | Phase 1–3 smokes | scripts/open68_cold_hello_smoke.oo, open68_main_check_smoke.oo, open68_cmds_floor_smoke.oo, open68_match_expr_smoke.oo |
+| HYG | Line lock <=256 | report only unless a file exceeds 256 |
+| DOCS | Boards after INT proof | SHIPPED.oot, ROADMAP.oot leftover rows |
+
+Do not edit `c_emit*.oo`. Do not copy `bin/ooda` onto `oodac/oodac`.
+Shared `main.oo` / `cli_emit.oo` stay COORD-serialized (no edit this cycle).
+
+## 3. Proofs
+
+  Side ELF: `.ooda-cache/ooda-tmp/oodac_llvm`
+  Phase 1: `scripts/open68_cold_hello_smoke.oo` PASSED (twice)
+  Phase 2: `scripts/open68_main_check_smoke.oo` PASSED (check main fail-closed ERR)
+  Phase 3: `scripts/open68_cmds_floor_smoke.oo` PASSED (twice)
+  Emit lock: `scripts/open68_match_expr_smoke.oo` PASSED (hello/bad)
+  PV1/PV2: `scripts/open68_pv1_hostile.oo`, `scripts/open68_pv2_plant.oo` PASSED
+  Product C: `oodac/oodac check fixtures/hello.oo` prints OK
+
+## 4. Role results
+
+  COORD: assignment, isolated rebuild, observe.log, this rollup
+  DE1: match-expr emit + unique slots (`llvm_emit_match_expr.oo`)
+  DE2: method/fntab leftovers; COORD added fntab declare skip
+  RT: `audit/plan_llvm_rt.oot` — no runtime C write
+  PV1: hostile mutate smoke
+  PV2: planted-listing refuse smoke
+  SEC: `audit/plan_llvm_sec.oot` — no cap re-grant, no ret i32 1
+  MEM: `audit/plan_llvm_mem.oot` — match payload ARC residual
+  INT: side ELF + smokes + C path
+  HARN: four open68 smokes
+  HYG: `audit/plan_llvm_hyg.oot` — new files <=256
+  DOCS: `audit/plan_llvm_docs.oot` draft; COORD applied proved SHIPPED/ROADMAP rows
+
+Do not sell Production LLVM as the everyday path.

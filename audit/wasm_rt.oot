@@ -1,0 +1,187 @@
+# WASM-RT — dummy 02 00 0b, fd_write, no ovf clear
+
+File: openOODA/audit/wasm_rt.oot
+RT lane. Contract: audit/wasm_phalanx.oot. RULES 1.6 fail safely.
+Own this note. Did not edit C. Did not rebuild.
+
+Logline: A function with no print still emits dummy 02 00 0b; set_fn_print still plants WASI fd_write; emit_n does not clear ovf at entry.
+Setup: Static read of ooda/runtime/chs_rt_wasm.c and chs_rt_wasm_print.c.
+Beats:
+  1. State the three confirmations.
+  2. Quote the dummy body when no print is set.
+  3. Show set_fn_print still plants WASI fd_write.
+  4. Show emit_n start does not assign ovf = 0.
+  5. Name residual. Do not patch C.
+
+emit_n is `oo_wasm_emit_n`. ovf is `oo_wasm_ovf`.
+set_fn_print is `oo_wasm_set_fn_print`.
+Dummy `end` is the three-byte code body `02 00 0b`.
+
+## 0. Verdict
+
+no runtime change required
+
+Confirm:
+  1. Dummy body when no print is set: `02 00 0b`. Yes.
+  2. set_fn_print still plants WASI fd_write. Yes. Present.
+  3. emit_n does not set `oo_wasm_ovf = 0` at entry. Yes.
+     ovf-clear-at-entry: no.
+
+The three facts stay on disk. No C patch.
+
+Status: done for the RT seal.
+
+## 1. Files on disk
+
+  ooda/runtime/chs_rt_wasm.c         211 lines
+  ooda/runtime/chs_rt_wasm_print.c   239 lines
+  Both stay under 256.
+
+  Frozen names in chs_rt.h:
+    oo_wasm_write_empty_module
+    oo_wasm_write_source_module
+    oo_wasm_note_fn
+    oo_wasm_set_fn_print
+
+  write_source_module clamps n then calls emit_n.
+  It does not clear ovf.
+
+## 2. Dummy body is still 02 00 0b
+
+Code section walk in emit_n (print.c):
+
+  for each function i:
+    if base and plen[i] is set:
+      emit_print_body
+    else:
+      oo_wasm_u8(pay, &psz, 2);
+      oo_wasm_u8(pay, &psz, 0);
+      oo_wasm_u8(pay, &psz, 0x0b);
+
+Dummy opcode quote: `02 00 0b`.
+
+Meaning of those three bytes:
+
+  `02`  body size 2 (LEB)
+  `00`  zero local groups
+  `0b`  `end`
+
+When no print is set, plen[i] is 0 for every i.
+base stays 0. Every function takes the else arm.
+The body is dummy `02 00 0b`.
+
+When some functions have a print and some do not,
+the functions with plen 0 still take the else arm.
+Those bodies stay dummy `02 00 0b`.
+
+Phalanx: a name with no print keeps dummy `end`.
+That contract still holds.
+
+## 3. set_fn_print still plants WASI fd_write
+
+set_fn_print (print.c) does not write the module.
+It binds the literal, then emit_n writes the import
+and the call body.
+
+Bind path:
+
+  1. If name_n > 0, bind_print on the last note_fn.
+  2. Else store pending. note_fn later binds the last name.
+  3. If emit runs first, emit_n binds pending to main
+     if that name exists, else to function 0.
+
+bind_print copies the bytes into the shared pbuf.
+It adds a trailing newline if the last byte is not LF.
+It sets plen[fi]. That marks a print body.
+
+emit_n then sets base = 1 when any plen[i] is set.
+
+When base is 1, emit_n writes import section id 2:
+
+  module name: `wasi_snapshot_preview1` (22 bytes)
+  field name:  `fd_write` (8 bytes)
+  kind 0 (func), type index 1
+
+Type section then uses ty1:
+
+  type 0: `() -> ()`
+  type 1: `(i32 i32 i32 i32) -> i32`
+
+That is the WASI fd_write type. fd is 1 (stdout).
+
+emit_print_body then writes:
+
+  store iov at DATA+off and len at DATA+4
+  i32.const 1, 0, 1, 8
+  `call 0` (import index 0 is fd_write)
+  drop
+  end
+
+Export indexes add base, so import 0 stays fd_write.
+
+fd_write: present.
+
+No import section when every plen[i] is 0.
+Phalanx: add WASI import only when at least one
+print body exists. That still holds.
+
+## 4. emit_n does not clear ovf at entry
+
+Function: static void oo_wasm_emit_n(unsigned int n)
+print.c.
+
+First actions:
+
+  1. Declare pay[24000], mod[28000], and locals.
+  2. Clamp n to 1 .. FN_CAP.
+  3. If a pending print exists, bind it (may set ovf = 1).
+  4. Scan names for main and any print body.
+  5. If ovf, emit_tiny and return.
+
+There is no `oo_wasm_ovf = 0` in those steps.
+There is no `oo_wasm_ovf = 0` later in emit_n either.
+
+The first ovf use in emit_n is a read:
+
+  if (oo_wasm_ovf) {
+    oo_wasm_emit_tiny();
+    return;
+  }
+
+hv (`00 61 73 6d ...`) is copied only after this check.
+
+ovf-clear-at-entry: no.
+
+The only `oo_wasm_ovf = 0` in the two files is
+emit_print_body. That function saves ovf, zeros it
+while it builds a 64-byte scratch body, then restores
+the saved value on success. That is not emit_n entry.
+
+wasm.c leb / raw / u8 only set ovf to 1.
+They never assign 0.
+
+If ovf is set, emit_tiny writes:
+
+  fputs("ERR\twasm\tbuf\n", stdout);
+
+That is not a canned `\0asm` module.
+
+## 5. Residual (no C edit this turn)
+
+  Dummy `02 00 0b` stays for a function with no print.
+  emit_tiny is a stale name for ERR text.
+  FN_CAP 4096 still does not fit pay 24000 or mod 28000.
+  note_fn walks until NUL or 63. It does not use name.len.
+  A browser host is residual. C emit plus gcc stays the
+  everyday path.
+
+## 6. Not this lane
+
+  DE1 / DE2 own emit-wasm and wasm_fn_println_lit.
+  MEM owns wasm_buf_smoke.oo.
+  INT / HARN own print-lit wasmtime proof.
+  Do not rewrite chs_rt.c. Do not add a second include.
+
+RT write set this turn:
+  openOODA/audit/wasm_rt.oot
+  C files: none

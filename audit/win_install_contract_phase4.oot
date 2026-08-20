@@ -1,0 +1,140 @@
+# WIN-INSTALL-CONTRACT-PHASE4 — Phase 4 contract + open questions
+
+File: openOODA/audit/win_install_contract_phase4.oot
+Sibling 2 of 3 from win_install_contract.oot. See:
+- win_install_contract.oot — §0-3, active install path audit
+- win_install_contract_map.oot — §4-6, POSIX->Windows compat map
+
+Date: 2026-08-19. Lane owner: cli (Windows variant is cli territory).
+This file holds the Phase 4 minimum + maximum contract, the open questions
+for the cli owner, and the bottom line.
+
+## 7. Phase 4 minimum contract
+
+The cli owner must produce `install_win.oo` (or `install.oo` + a Win branch)
+that, given `OODA_FS_WRITEDIR` + `OODA_CHECKOUT`, produces:
+
+1. `%OODA_FS_WRITEDIR%\AppData\Local\openooda\bin\ooda.exe` copied from
+   `%OODA_CHECKOUT%\bin\ooda.exe`.
+2. `%OODA_FS_WRITEDIR%\AppData\Local\openooda\bin\oodac.exe` copied from
+   `%OODA_CHECKOUT%\oodac\oodac.exe`.
+3. `%OODA_FS_WRITEDIR%\AppData\Local\openooda\data\std\` from
+   `%OODA_CHECKOUT%\std` (recursive).
+4. `%OODA_FS_WRITEDIR%\AppData\Local\openooda\data\runtime\` from
+   `%OODA_CHECKOUT%\runtime` (recursive).
+5. `%OODA_FS_WRITEDIR%\AppData\Local\openooda\data\oodac\oodac.exe` (copy
+   of the compiler, kept under data so the data dir is self-contained for
+   emit+gcc).
+6. `%OODA_FS_WRITEDIR%\AppData\Roaming\openooda\env.bat` (or `.ps1`) that
+   sets `OODA_HOME`, `OODA_BIN`, `OODA_STD`, `OODA_CONFIG`, `OODA_CACHE`,
+   `OODA_SRC_ROOT`, and prepends `%OODA_BIN%` to `PATH`.
+7. `%OODA_FS_WRITEDIR%\AppData\Local\openooda\data\share\INSTALL_RECEIPT.txt`
+   with the same fields as `install_xdg.oo:110`.
+8. Exit `0` on success, non-zero on missing input. The `ooda install`
+   command in `cli/cmd_more.oo:51-66` is the dispatch.
+
+**Required env at install time:**
+- `OODA_FS_WRITEDIR` - defaults to `%USERPROFILE%` if unset (POSIX requires
+  it set; Windows can default).
+- `OODA_CHECKOUT` - required, no default.
+- (Optional, residual-overridable) `OODA_HOME`, `OODA_BIN`, `OODA_CONFIG`,
+  `OODA_CACHE`, `OODA_STD`, `OODA_VERSION`.
+
+**Shell flavor:** cmd.exe is the lowest common denominator. PowerShell
+covers the gap (Test-Path, Copy-Item, Expand-Archive). The install should
+use the same `process_exec` capability the runtime already exposes, and
+should not require Git-Bash, MSYS, or WSL for the *checkout* path. The
+*first-machine* path (no `ooda` yet) is a separate problem and Phase 4 is
+not blocked on it - that is the bootstrap story, owned elsewhere.
+
+**Minimum function set to mirror:** the two functions in `install_xdg.oo`
+(`home_or`, `install_xdg`) plus `main` in `install.oo`. Banner and ink from
+`install_art.oo` are cosmetic; ship a no-ink variant or reuse the same
+`printf '\033[..m'` strings on Windows Terminal with VT enabled.
+
+## 8. Phase 4 maximum contract
+
+If the cli owner also wants parity with the residual "full installer"
+story (`README.oot:7` claims `install/install.oo` does download + place +
+config + verify), then additionally mirror:
+
+- `chapters_a.oo::chapter0_preface` (capability contract printout).
+- `chapters_a.oo::chapter1_who_we_are` (product blurb).
+- `chapters_a.oo::chapter2_layout_story` (print the `Layout` table).
+- `chapters_a.oo::chapter3_download_and_unpack` - needs `http_download`
+  (ps `Invoke-WebRequest` or `curl.exe`) and `extract_tar_gz` (bsdtar).
+  This is the path that fetches a release tarball; it is **not** the
+  active path today, but README.oot describes it.
+- `chapters_b.oo::chapter4_place_files` - needs `mkdir_p`, `copy_file`,
+  `chmod_exec`, `path_exists`, `write_file` capability. If the runtime
+  already provides these cross-platform, this is a free port.
+- `chapters_b.oo::chapter5_config_and_path` - writes `env` file. The
+  existing string is bash-flavored (`export ...`); a Windows port must
+  rewrite for `.bat` or `.ps1`.
+- `chapters_b.oo::chapter6_verify` - `sys_exec(bin, "--version")`. Needs
+  `cmd /c <bin>.exe --version` plumbing.
+- `chapters_b.oo::chapter7_what_you_have` and `chapter8_next_steps` -
+  print-only.
+- `layout.oo::resolve_layout` and `env_or` - needed by the chapters. The
+  Windows port of `resolve_layout` must read `USERPROFILE`/`LOCALAPPDATA`/
+  `APPDATA` instead of `HOME`/`XDG_*`. The `arch` field is hardcoded
+  `linux-x86_64` (`layout.oo:63`); a Windows port must hardcode
+  `windows-x86_64` (or detect).
+- `util.oo::must_read`, `err_str`, `fail_install` - print-only, no shell.
+
+**Optional / skip-able on Windows:**
+- The `oo` alias copy at `install_xdg.oo:64-66` - Windows would need
+  `oo.bat` shim; the cli doesn't appear to install `oo` on POSIX either
+  in the cli-dispatched path. Skip.
+- The `hello.oo` fixture copy at `install_xdg.oo:98-102` - already
+  best-effort on POSIX; mirror as best-effort.
+- The receipt hardcoded pin at `install_xdg.oo:110` - read BOOTSTRAP_PIN
+  on both paths.
+
+## 9. What was not checked
+
+- **`cli/main.oo` dispatch table.** I read `cli/cmd_more.oo:51-66` but
+  did not trace the full `ooda install` command through `cli/main.oo`.
+  If the cli routes `install` through a different handler on Windows,
+  the dispatch in section 7.8 needs revision.
+- **`scripts/install_dress_rehearsal.oo`.** I grep-confirmed it copies
+  `install/install.oo` into a stage dir
+  (`scripts/install_dress_rehearsal.oo:209`) but did not read the full
+  file. The dress rehearsal is a POSIX test scaffold; a Windows
+  equivalent may not be needed for Phase 4.
+- **`scripts/release.sh` and `scripts/bootstrap_no_cargo.sh`.** These
+  are the first-machine bootstrap and the release packager. The
+  Windows analog is out of scope for the install-lane contract but
+  blocks any `chapter3_download_and_unpack` maximum contract.
+- **The `process_exec` capability's Windows behavior.** The install
+  code assumes `process_exec(p, "mkdir -p ...")` returns a `Result`. I
+  did not read the runtime to confirm `process_exec` on Windows quotes
+  paths or maps `mkdir -p`. If it doesn't, the cli owner must add a
+  `path_join` + quoting helper before any shell command.
+- **`write_file` Windows fail-closed semantics.** POSIX `write_file`
+  refuses paths outside `OODA_FS_WRITEDIR`. The Windows analog must
+  refuse paths outside the prefix *after* resolving `..` and symlinks;
+  I did not check the runtime.
+- **The `audit/win_compiler_plan.oot` Phase 4 details.** I assumed the
+  orchestrator's framing - "Windows variant of install/install.oo" -
+  matches the file I read. If the plan names a different file
+  (`install_win.oo`? `install_xdg_win.oo`?), sections 7-8 need a rename.
+- **Whether the install passes the smoke on Windows.** The smoke uses
+  `test -x` and POSIX paths (`scripts/install_xdg_smoke.oo:25-26,35-37`).
+  A Windows smoke is a separate deliverable, not Phase 4 minimum.
+
+## 10. Bottom line for the cli owner
+
+The cli owner **can ignore this audit** if they are content to scope
+Phase 4 as "checkout-driven install only" - the active path is 45 + 118
+lines, plus art, and the contract above is sufficient to write
+`install_win.oo` from a cold read.
+
+The cli owner **would be blocked on this audit** if they want the
+download path on Windows, because `chapter3_download_and_unpack` is
+residual and the audit cannot answer "does the runtime's
+`http_download` work on WinHTTP" without reading the runtime. That
+work is out of lane.
+
+Recommended: ship minimum first, then port `chapters_a.oo::chapter3`
++ `chapters_b.oo::chapter4-6` as a Phase 4+ follow-up.

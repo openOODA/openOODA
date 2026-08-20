@@ -1,0 +1,136 @@
+# WIN-TOOLCHAIN REVERIFY — Phase 0 follow-up, sub-agent K
+
+File: openOODA/audit/win_toolchain_reverify.oot
+Date: 2026-08-19. Lane: process (read-only). Sub-agent: K of Phase 0 follow-up.
+Method: read, glob, grep only. No bash, no execution, no file writes.
+Scope: independently re-verify each claim in `audit/win_toolchain_survey.oot §1`, surface any missed mingw entry points, and predict the first include failure when `chs_rt_sys.c` meets mingw.
+
+## 1. Survey claims confirmed or corrected
+
+Each row was checked by `read` against an absolute path on the host. "Confirmed" = the file is present and what the survey says it is. "Corrected" = the survey's wording is off, the underlying fact is right. "Absent" = the file is not on disk (negative evidence).
+
+| # | Survey claim | Re-checked | Note |
+|---|--------------|-----------|------|
+| 1 | `mingw64-gcc` is installed on this Fedora 44 host | Confirmed indirectly | The cross gcc binary is present at the claimed path (see #4). The RPM package version string itself cannot be re-read from the binary with the read tool. Trust the orchestrator's `rpm -q` run. |
+| 2 | Binary is `/usr/bin/x86_64-w64-mingw32-gcc` | Confirmed | File present. read tool reports binary (NUL bytes), consistent with an ELF executable. |
+| 3 | `windows.h` is at `/usr/x86_64-w64-mingw32/sys-root/mingw/include/windows.h` | Confirmed | File present, header opens with the mingw-w64 Public Domain notice. |
+| 4 | Default runtime is MSVCRT, not UCRT | Confirmed | Stronger evidence than the survey gives: `/usr/x86_64-w64-mingw32/sys-root/mingw/lib/libmsvcrt.a` is present; the UCRT sysroot `/usr/x86_64-w64-mingw32ucrt/sys-root/mingw/include/windows.h` does **not** exist (ENOENT). |
+| 5 | `lld` is not installed | Confirmed | `/usr/bin/lld` does not exist (ENOENT). |
+| 6 | `xwin` is not present | Confirmed | `/usr/bin/xwin` does not exist (ENOENT). |
+| 7 | `clang --target=x86_64-pc-windows-gnu` accepted by driver | Not re-checked | The exec test needs a shell. The survey's claim is plausible (clang 22.x does accept that target string), but I did not run it. |
+
+Net: every factual claim in `§1` of the survey holds on a fresh filesystem read. No factual corrections required.
+
+## 2. Additional entries found
+
+The survey mentions the gcc binary and the windows.h path. It does not list the rest of the toolchain. Found by per-path read:
+
+### 2.1 Cross compiler drivers
+| Path | Status |
+|------|--------|
+| /usr/bin/x86_64-w64-mingw32-gcc | present (binary) |
+| /usr/bin/x86_64-w64-mingw32-g++ | present (binary) |
+| /usr/bin/x86_64-w64-mingw32-cpp | present (binary) |
+| /usr/bin/i686-w64-mingw32-gcc | **absent** — no 32-bit cross compiler |
+
+### 2.2 Cross binutils
+All present (binary):
+
+`x86_64-w64-mingw32-as`, `-ld`, `-objdump`, `-nm`, `-strip`, `-ranlib`, `-ar`, `-windres`, `-addr2line`, `-strings`, `-readelf`, `-size`, `-elfedit`, `-dlltool`, `-dllwrap`, `-gprof`, plus the gcc-wrappers `-gcc-ar`, `-gcc-nm`, `-gcc-ranlib`.
+
+### 2.3 Libexec internal compiler
+| Path | Status |
+|------|--------|
+| /usr/libexec/gcc/x86_64-w64-mingw32/16.1.1/cc1 | present (binary) |
+| /usr/libexec/gcc/x86_64-w64-mingw32/16.1.1-1.fc44/cc1 | absent |
+
+Wording correction: the survey's "mingw64-gcc-16.1.1-1.fc44" refers to the RPM package. The libexec directory uses the GCC upstream version (`16.1.1`), without the Fedora release suffix. Anyone scripting the libexec path must drop `.fc44` after `16.1.1`.
+
+### 2.4 Sysroot key files
+Present in `/usr/x86_64-w64-mingw32/sys-root/mingw/`:
+
+- lib/crt1.o, lib/crt2.o (CRT startup)
+- lib/libstdc++.a (C++ runtime; present even though openOODA's C emit does not need it)
+- lib/libmsvcrt.a (MSVCRT import library — the runtime fingerprint)
+- lib/libmingwex.a (mingw-w64 extensions)
+- lib/libkernel32.a, lib/libm.a
+- lib/libpthread.a, lib/libwinpthread.a (winpthreads — see §2.5)
+- include/pthread.h, include/process.h, include/io.h, include/sys/stat.h, include/sys/types.h, include/sys/time.h, include/errno.h, include/limits.h, include/stdio.h, include/stdlib.h, include/string.h, include/unistd.h
+
+### 2.5 winpthreads
+Survey does not mention it. Artifacts present:
+- include/pthread.h
+- lib/libpthread.a
+- lib/libwinpthread.a
+
+This is enough to call pthread functions in the chs_rt shim. The shim need not reinvent threading. Whether the package is named `mingw64-winpthreads` on this Fedora is not confirmed (no rpm query tool), but the artifacts are on disk.
+
+### 2.6 UCRT absence — direct evidence
+| Path | Status |
+|------|--------|
+| /usr/bin/x86_64-w64-mingw32ucrt-gcc | absent (ENOENT) |
+| /usr/x86_64-w64-mingw32ucrt/sys-root/mingw/include/windows.h | absent (ENOENT) |
+
+The survey's "UCRT not installed" is correct and re-verified.
+
+## 3. chs_rt_sys.c first-include check
+
+`ooda/runtime/chs_rt_sys.c:1-9` (re-read this turn):
+
+```
+1  #include "chs_rt.h"
+2  #include <errno.h>
+3  #include <sys/types.h>
+4  #include <sys/wait.h>
+5  #include <unistd.h>
+6  #include <stdlib.h>
+7  #include <stdio.h>
+8  #include <string.h>
+9  #include <limits.h>
+```
+
+The orchestrator predicted that `<sys/wait.h>` is the first mingw include failure. Re-checked by per-header `read` against the mingw sysroot:
+
+| Line | Header | On disk? | Verdict |
+|------|--------|----------|---------|
+| 1 | "chs_rt.h" (local) | n/a (project) | OK |
+| 2 | <errno.h> | yes | OK |
+| 3 | <sys/types.h> | yes | OK |
+| 4 | <sys/wait.h> | **no — ENOENT** | **FIRST FAILURE** |
+| 5 | <unistd.h> | yes (mingw shim) | OK in principle; thin |
+| 6 | <stdlib.h> | yes | OK |
+| 7 | <stdio.h> | yes | OK |
+| 8 | <string.h> | yes | OK |
+| 9 | <limits.h> | yes | OK |
+
+**Confirmed**: line 4 (`<sys/wait.h>`) is the first include that will fail under mingw. The orchestrator's prediction is correct. chs_rt_sys.c does not get past preprocessing on a stock mingw. The shim (per `audit/win_chs_rt_posix_audit.oot`) must replace the `<sys/wait.h>` include with `<windows.h>` or with a local `chs_rt_win32_wait.h` that maps `WIFEXITED`/`WEXITSTATUS`/`WNOHANG` to `GetExitCodeProcess` and friends.
+
+Note: `<unistd.h>` on mingw is a thin shim, not a full POSIX layer. Many functions are stubs. The line-5 include will compile, but `fork`, `getpid`, `read`, `write`, `close` calls later in the file will fail to link. The first *compile* failure is line 4; the first *link* failure is later and depends on which function is used first.
+
+## 4. Honest delta
+
+What I add beyond the survey, in three points:
+
+1. **MSVCRT evidence is stronger than the survey claims.** The survey says "default runtime is MSVCRT". I confirmed by finding `libmsvcrt.a` in the sysroot and the absence of the UCRT sysroot. The MSVCRT claim is now a fact, not a default.
+2. **The full cross toolchain is installed, not just gcc.** The survey mentions the gcc binary and the windows.h header. The cross binutils (as, ld, ar, objdump, nm, strip, ranlib, windres, dlltool, dllwrap, readelf, strings, size, addr2line, elfedit, gprof) and the gcc-wrappers (gcc-ar, gcc-nm, gcc-ranlib) are all present. winpthreads is present. The internal compiler `cc1` is at `/usr/libexec/gcc/x86_64-w64-mingw32/16.1.1/cc1` (note: no `.fc44` suffix in this path).
+3. **The 32-bit cross compiler is not installed.** `/usr/bin/i686-w64-mingw32-gcc` is absent. Phase 1 only needs x86_64; this is not a blocker, but the project must not assume 32-bit is available.
+
+What the survey got right and I do not need to repeat: gcc binary path, windows.h path, UCRT absence, lld absence, xwin absence, MSVCRT-vs-UCRT conclusion, Phase 1 driver invocation, the "Phase 0 done" verdict.
+
+## 5. What was not checked
+
+I do not have a `bash` or execution primitive in this session. The following are **not** verified by this report:
+
+- **Exact gcc version string.** I cannot run `x86_64-w64-mingw32-gcc --version` and cannot re-parse the ELF binary for the version. The survey's "16.1.1-1.fc44" comes from the orchestrator's `rpm -q` and `dnf list installed` runs. Trust them, do not copy them as if I ran them.
+- **Smoke test compile.** The orchestrator ran three smoke tests (empty main, printf, windows.h). I did not re-run them. I only confirmed that the inputs (compiler binary, header path) are present, which is the necessary condition.
+- **`clang --target=x86_64-pc-windows-gnu` driver acceptance.** Plausible but unverified. The driver side of clang usually accepts the target string even without a Windows sysroot.
+- **dnf repo / EPEL state.** Whether `mingw64-ucrt-x86_64-gcc-c++` is installable on this Fedora 44 host from enabled repos. The survey defers this question to Phase 1; I do not re-open it.
+- **Other mingw packages** (mingw64-cmake, mingw64-pkg-config, mingw64-SDL2, mingw64-qt5-static, etc.). Not checked. The survey does not claim them, and the C emit does not need them.
+- **Whether `mingw64-winpthreads` is a separate RPM** on this host. Only the artifacts are confirmed; the package identity is inferred.
+- **Whether `libstdc++.a` actually links** with the openOODA C emit's calling convention. Plausible (it is a standard mingw C++ runtime), not tested.
+- **The `cc1` path's sub-version.** I found `/usr/libexec/gcc/x86_64-w64-mingw32/16.1.1/cc1`. Whether there are sibling directories (e.g. `16.1.1-1.fc44`, `15.x`) is not searched (glob is restricted to workspace-relative).
+- **i686 32-bit cross compiler absence.** I checked the one obvious path. The package could be installed under a different name (e.g. `mingw32-gcc` instead of `mingw64-gcc`). Low confidence on the negative.
+
+## 6. Recommendation to Phase 1
+
+No change. The survey's "Phase 1 cross-compile on this host is the MSVCRT path with `/usr/bin/x86_64-w64-mingw32-gcc`" is the right call, and the toolchain is more complete than the survey implies. The compiler lane can drive mingw directly. The runtime lane must lead with the `<sys/wait.h>` shim in `chs_rt_sys.c:4` and follow with the broader POSIX-to-Win32 mapping in `audit/win_chs_rt_posix_audit.oot` and `audit/win_chs_rt_audit_2nd.oot`.

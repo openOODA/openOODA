@@ -1,0 +1,254 @@
+// # QA lane .sh handoff — 168 unauthorized scripts to remove or convert
+//
+// Logline: 168 .sh files under qa/ and tree-sitter/ violate RULES 1.13
+// (RULES.oot:75-91) and are invisible to dinner_lint.oo:21. One durable
+// path per pattern, not per file. QA lane owns the work; this file is
+// the durable record. Pin: v0.205.0-beta. No board edits until INT proof.
+//
+// Setup: 2026-08-19 repair pass. dinner_lint.oo enforces the .sh ban
+// only inside `find openOODA ooda docs openOODA.github.io` (line 21,
+// 24, 28). qa/ and tree-sitter/ are out of that scope, so the .sh
+// files escape linting. RULES 1.13 itself names QA runners and test
+// harnesses as .oo (RULES.oot:77), so the files are in the product
+// tree by law even though the linter cannot see them.
+//
+// Beats:
+//   1. Inventory: 168 .sh files in 6 patterns.
+//   2. Per-pattern evidence with file:line.
+//   3. Three options per pattern, with one recommended.
+//   4. Acceptance test: RULES 1.13 satisfied; dinner_lint scope fixed.
+
+// =====================================================================
+// 1. INVENTORY
+// =====================================================================
+//
+// | # | Pattern                                | Count | Path                              |
+// | 1 | e2e_harness_common.sh                  |     1 | qa/e2e/e2e_harness_common.sh      |
+// | 2 | e2e_assertions.sh                      |     1 | qa/e2e/e2e_assertions.sh          |
+// | 3 | Tier 1-4 master runners                |   ~12 | qa/e2e/0{1,2,3,4}_*/0?_tier*.sh   |
+// | 4 | Tier 1-4 individual test scripts       |   152 | qa/e2e/0{1,2,3,4}_*/t{1,2,3,4}_* |
+// | 5 | Security hide-rail                     |     1 | qa/tests_security/meta_path_a_*.sh|
+// | 6 | tree-sitter grammar probe              |     1 | tree-sitter/grammar_smoke.sh      |
+// |   | TOTAL                                  |   168 | verified by `find` below          |
+//   find qa -name '*.sh'           -> 167
+//   find tree-sitter -name '*.sh'  ->   1
+//                              TOTAL -> 168
+//
+// dinner_lint.oo:21 scope is `find openOODA ooda docs openOODA.github.io`,
+// so all 168 files are invisible to the linter. RULES 1.13
+// (RULES.oot:75-91) still names them as product. Both get fixed.
+
+// =====================================================================
+// 2. RULES 1.13 AND THE PRODUCT-TREE QUESTION
+// =====================================================================
+//
+// RULES.oot:77 is the controlling line:
+//
+//   "All code, tools, proofs, fixers, test harnesses, QA runners,
+//    and scripts are .oo files. Run them with ./bin/ooda or oodac."
+//
+// RULES.oot:81 forbids .sh outright (one exception:
+// ../ooda/bootstrap/oodac_pure_build). The qa/ tree holds QA
+// runners, test harnesses, and scripts. By RULES 1.13's own
+// definition, the .sh files are in the product tree. dinner_lint's
+// narrow scope is a separate linter bug. Both are repaired here.
+
+// =====================================================================
+// 3. PER-PATTERN EVIDENCE
+// =====================================================================
+//
+// ---- Pattern 1: qa/e2e/e2e_harness_common.sh (192 lines) ----
+//
+// Line 1-5: bash + `set -euo pipefail` banner. Line 10-25: OODA_BIN
+// resolver (readlink, realpath, command -v). Line 27-52: OODAC_BIN
+// resolver, same chain. Line 58-69: E2E_SESSION_TMP with cleanup
+// trap on EXIT. Line 75-79: counters (PASS, FAIL, RESIDUAL, TOTAL).
+// Line 84-117: run_e2e_test (mktemp, bash $script, rc routing).
+// Line 122-155: run_e2e_cmd_dual (target vs baseline regex).
+// Line 158-186: legacy assert_exit_code, assert_output_regex,
+// assert_file_exists. Line 191: `source .../e2e_assertions.sh`.
+// Parent library; every per-tier script sources it.
+//
+// ---- Pattern 2: qa/e2e/e2e_assertions.sh (195 lines) ----
+//
+// Line 10-32: e2e_assert_exit_code. Line 37-62: e2e_assert_stdout_match.
+// Line 67-91: e2e_assert_stderr_match. Line 96-126: e2e_assert_json_valid
+// (jq or python3 -m json.tool). Line 131-158: e2e_assert_c_emit_contains
+// (oodac emit-c + grep). Line 163-195: e2e_assert_no_gcc_spawn
+// (shadow gcc, PATH hijack). Imported by e2e_harness_common.sh:191.
+//
+// ---- Pattern 3: tier master runners (4 files) ----
+//
+// qa/e2e/01_tier1_feature_coverage/01_tier1_coverage.sh
+// qa/e2e/02_tier2_boundary_corner/                (master absent or 01_tier2_*)
+// qa/e2e/03_tier3_pairwise_combinations/01_tier3_pairwise.sh
+// qa/e2e/04_tier4_real_world_scenarios/01_tier4_workloads.sh
+// Sample (qa/e2e/03_tier3_pairwise_combinations/01_tier3_pairwise.sh:1-18):
+// sources harness, loops `for tscript in $SCRIPT_DIR/t3_*.sh; do bash; done`.
+// Pure orchestrator.
+//
+// ---- Pattern 4: tier 1-4 individual test scripts (~152 files) ----
+//
+// Sample (qa/e2e/01_tier1_feature_coverage/t1_f01_01_outline_plaintext_basic.sh:1-19):
+//   #!/usr/bin/env bash
+//   set -euo pipefail
+//   SCRIPT_DIR=...; source e2e_harness_common.sh
+//   FIXTURE=$E2E_TEST_SCRATCH/test_fn.oo
+//   cat << 'EOF' > "$FIXTURE"
+//   pub fn main() { }
+//   pub fn add(a: Int, b: Int) -> Int { return a + b }
+//   EOF
+//   run_e2e_cmd_dual "T1-F01-01" 0 "fn main" "" "$OODA_BIN" outline "$FIXTURE"
+//
+// Uniform shape: source harness, write fixture (heredoc or copy
+// from $OODA_SRC_ROOT/.../real_world/), run_e2e_cmd_dual.
+//
+// Spreads:
+//   t1_f01_* (outline), t1_f02_* (reflect), t1_f03_* (python-free),
+//   t1_f04_* (refcount), t1_f05_* (scope-drop), t1_f06_* (fuzz),
+//   t1_f08_* (wasm), t1_f10_* (llvm), t1_f13_* (jit vm).
+//   t2_f01_*..t2_f02_* (boundary: empty, syntax error, unreadable,
+//     large file, special chars).
+//   t3_01..09 (pairwise: reflect+raii, wasm+scope-drop, llvm+ast,
+//     jit+contract, contract+scope, python-free+wasm, etc).
+//   t4_01..07 (real-world: web router, wasm matrix, crypto wallet,
+//     llvm pipeline, refactoring bot, cross-compiler, self-host).
+//
+// ---- Pattern 5: qa/tests_security/meta_path_a_hide_rail.sh (86 lines) ----
+//
+// Line 5-9: ROOT/OODA/OODAC/SCR setup.
+// Line 25-27: `oodac emit-c $ON >meta_on.c 2>meta_on.err`.
+// Line 28-33: `grep -c 'static void __oo_meta_decoy_' meta_on.c`.
+// Line 51-61: same emit, assert zero decoys for off fixture.
+// Line 63-79: shell to `ooda/scripts/oo_hide_smoke.sh` (another .sh).
+// Line 82-85: exit 1 on any bad.
+//
+// Asserts compiler emit invariants (decoy on/off), not runtime smoke.
+// Same .oo port pattern: process_exec oodac, fs_write fixture,
+// str_contains on the C output.
+//
+// ---- Pattern 6: tree-sitter/grammar_smoke.sh (16 lines) ----
+//
+// Line 1: `#!/usr/bin/env bash`.
+// Line 3: `set -euo pipefail`.
+// Line 6: `node parse_probe.js corpus/valid.oo corpus/invalid.oo`.
+// Line 7-10: `grep -q 'parse_rd' parse_probe.js` (must NOT match).
+// Line 11-15: `command -v npx` probe (informational).
+//
+// Tests a third-party Node tool (tree-sitter), not OODA product.
+// tree-sitter/ is an external grammar directory. RULES 1.13
+// (RULES.oot:75-91) is directory-blind, so the file still violates
+// it. But the fix is a move, not a port.
+
+// =====================================================================
+// 4. THREE OPTIONS PER PATTERN
+// =====================================================================
+//
+// (a) CONVERT to .oo. Source stays at qa/e2e/.../*.oo.
+//     Runtime: process_exec("ooda", ...) for the binary.
+//     Fixture: fs_write($E2E_TEST_SCRATCH/file.oo, heredoc).
+//     Assertion: str_contains(grep) via .oo string ops.
+//     Harness exports become .oo pub fns in ooda/scripts/*_harness.oo
+//     (or qa/e2e/*_harness.oo). Each test imports the harness.
+//     Cost: ~1500 lines of .oo port, mechanically translated.
+//
+// (b) MOVE to a non-product path: .scripts/e2e/*.sh (top-level,
+//     dotfile-prefix; default find ignores it), or scripts/e2e/*.sh
+//     (top-level; explicit allow-list), or qa/.scripts/*.sh.
+//     All need a RULES 1.13 amendment in WORKFLOW.oot naming the
+//     .sh sub-tree. RULES.oot is immutable (RULES.oot:3).
+//     Cost: a RULES amendment + mv + new top-level path.
+//
+// (c) DOCUMENT EXEMPTION per file. WORKFLOW.oot §X lists each .sh
+//     with a one-line justification. dinner_lint gets a per-path
+//     allow-list mirroring `! -name 'oodac_pure_build'` on
+//     dinner_lint.oo:21.
+//     Cost: a 168-row inventory table in WORKFLOW.oot. Maintenance
+//     sink; silently admits new violations.
+
+// =====================================================================
+// 5. RECOMMENDED OPTION PER PATTERN
+// =====================================================================
+//
+// | Pattern | Rec  | Why                                                     |
+// | 1 (harness_common)        | (a) | Counters, mktemp, grep map to .oo primitives.       |
+// | 2 (assertions)            | (a) | Six pure helpers; shadow-gcc = fs_write + PATH via   |
+// |                           |     | process_exec env.                                     |
+// | 3 (tier master runners)   | (a) | Loop-and-bash; .oo port is a list walked with        |
+// |                           |     | sys_exec per item.                                    |
+// | 4 (tier 1-4 individuals)  | (a) | Mechanical 1:1 port; 15-40 lines each.              |
+// | 5 (meta_path_a_hide_rail) | (a) | emit-c + grep + assert. oo_hide_smoke.sh on line 63 |
+// |                           |     | becomes process_exec ooda/scripts/oo_hide_smoke.oo.  |
+// | 6 (tree-sitter grammar)   | (b) | Tests a Node tool, not product. Move to              |
+// |                           |     | tree-sitter/.scripts/grammar_smoke.sh beside         |
+// |                           |     | parse_probe.js. One-line WORKFLOW.oot entry.         |
+//
+// All (a) conversions land under ooda/scripts/qa_*.oo, matching
+// RULES.oot:89 ("ooda/scripts/*.oo — pure .oo proofs, smokes,
+// fixers, and tools"). dinner_lint.oo:21 already covers ooda/.
+//
+// (c) is rejected as the default: 168 rows is a maintenance sink.
+// (c) may apply in narrow future cases (e.g., a bash-only POSIX
+// toolchain shim), with one WORKFLOW.oot row each.
+
+// =====================================================================
+// 6. DINNER_LINT SCOPE FIX (DEPENDENCY)
+// =====================================================================
+//
+// dinner_lint.oo:21 and dinner_lint.oo:24 currently use:
+//
+//   find openOODA ooda docs openOODA.github.io
+//
+// qa/ is missing. Add qa/ to the find target on those two lines.
+// dinner_lint.oo:28 already lists `qa` in the header-check loop,
+// so only the file-extension and line-limit checks need qa/ added.
+// After the fix, any new .sh under qa/ fails closed on the next
+// dinner_lint run.
+
+// =====================================================================
+// 7. ACCEPTANCE TEST
+// =====================================================================
+//
+// 1. RULES 1.13 satisfied.
+//    a. find qa -name '*.sh'           returns 0 lines.
+//    b. find tree-sitter -name '*.sh'  returns 0 lines.
+//    c. openOODA/scripts/dinner_lint.oo exit 0.
+//
+// 2. dinner_lint scope widened.
+//    a. openOODA/scripts/dinner_lint.oo:21 and :24 list `qa`.
+//    b. Re-run dinner_lint.oo: still exit 0 with new scope.
+//
+// 3. Harness parity.
+//    a. ooda/scripts/qa_e2e_harness.oo   exists; exports the same
+//       six helpers + three legacy helpers as e2e_harness_common.sh
+//       and e2e_assertions.sh.
+//    b. ooda/scripts/qa_tier{1,2,3,4}_runner.oo exist; reproduce
+//       the 4 master runners.
+//    c. ooda/scripts/qa_tier{1,2,3,4}_*.oo exist; one per individual
+//       t?_* script, totaling ~152.
+//    d. ooda/scripts/qa_meta_path_a_hide_rail.oo exists; reproduces
+//       qa/tests_security/meta_path_a_hide_rail.sh.
+//
+// 4. (b) move path kept honest.
+//    a. tree-sitter/.scripts/grammar_smoke.sh  is the single .sh.
+//    b. openOODA/WORKFLOW.oot has a one-line entry naming
+//       `tree-sitter/.scripts/` as a third-party smoke allow-list.
+//
+// 5. INT proof.
+//    a. ooda ooda/scripts/qa_tier1_runner.oo                exit 0.
+//    b. ooda ooda/scripts/qa_tier2_runner.oo                exit 0.
+//    c. ooda ooda/scripts/qa_tier3_runner.oo                exit 0.
+//    d. ooda ooda/scripts/qa_tier4_runner.oo                exit 0.
+//    e. ooda ooda/scripts/qa_meta_path_a_hide_rail.oo       exit 0.
+//    f. tree-sitter/.scripts/grammar_smoke.sh              exit 0.
+//    g. openOODA/scripts/dinner_lint.oo                    exit 0.
+//
+// 6. Rollback.
+//    a. Each .oo port is in its own file; `git checkout HEAD -- <oo>`
+//       reverts one file without touching siblings.
+//    b. The dinner_lint.oo:21 / :24 scope change is one edit per
+//       line; revertable in a single commit.
+//
+// residual: this handoff names a port job, not new product code.
+// Compiler, library, and C-runtime lanes stay untouched. No board
+// edits until §7 acceptance passes.

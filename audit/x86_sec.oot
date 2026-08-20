@@ -1,0 +1,256 @@
+// # X86-SEC — hostile fold, leftover println, and secret-sink refusal audit
+//
+// Logline: emit-x86 of fixtures/x86_fold_hostile.oo, x86_leftover_ident.oo, and any secret-tainted println must ERR with x86_emit and not emit a successful _start that omitted the extra print or leaked the secret.
+//
+// Setup: cwd is ooda/. Host is x86_64. x86_emit_stream runs check_secret_println_sinks before any match or harvest arm. .oo file law, 256-line cap, and C emit + gcc are off-limits.
+//
+// Beats:
+//   1. Static read of x86_emit.oo to confirm the secret check runs first.
+//   2. Confirm the two adversarial smokes exist on disk and what each locks.
+//   3. State the x86_secret_smoke.oo gap; SEC is partial.
+//   4. Hostile-proof: hello.oo fold is RBRACE-tight, but a second println must ERR.
+//   5. Leftover-ident: let message = greet(...); println(message) folds to a call and must ERR.
+//   6. Secret taint: a //secret println must process_exit before any emit.
+
+// ## 0. Verdict
+//
+// hostile-plus-print: PASS (smoke exists, asserts ERR + no _start)
+// leftover-ident:     PASS (smoke exists, asserts ERR + no _start)
+// secret-sink refusal: UNPROVEN (x86_secret_smoke.oo is not on disk)
+//
+// No CRIT. No HIGH. Did not edit product .oo or fixtures. Did not rebuild oodac.
+
+// ## 1. Secret check runs before any match or harvest arm
+//
+// File: ooda/oodac/x86_emit.oo
+//
+//   1:  // # Emit Linux x86_64 AT&T assembly
+//   ...
+//   8:  //   1. Tokenize and refuse secret sinks.
+//  16:  import "c_emit_secret_check.oo";
+//  25:  pub fn x86_emit_stream(src: String) {
+//  30:      let toks: List[String] = tokenize_lines(src);
+//  31:      check_secret_println_sinks(src, toks);
+//  32:      let fold: String = x86_fold_hello(src);
+//
+// The .oo header beat 1 (line 8) is "Tokenize and refuse secret
+// sinks.". Line 16 imports the host C-emit secret check; line 31
+// calls it. The call sits BEFORE the fold on line 32, the match
+// arms on lines 39-58, and the harvest on line 59. A secret-tainted
+// println must process_exit from check_secret_println_sinks before
+// any .s is written.
+//
+// c_emit_secret_check.oo is owned by C; x86_emit.oo is on the
+// forbidden list for C lane edits, so SEC only audits that the
+// call is wired and runs first.
+
+// ## 2. Two adversarial smokes on disk (hostile + leftover)
+//
+// File: ooda/scripts/x86_hostile_leftover_smoke.oo
+//
+//   1:  // # emit-x86 leftover-plus-print honesty lock
+//   ...
+//   3:  // Logline: emit-x86 of fixtures/x86_fold_hostile.oo prints ERR x86_emit and does not emit a silent omit.
+//  32:      let src = root + "/fixtures/x86_fold_hostile.oo";
+//  37:      if process_exec(p, oodac + " emit-x86 " + src + " > " + sfile + " 2>" + serr).is_ok() {
+//  38:          if expect_clean(p, "grep -q _start " + sfile).is_ok() {
+//  39:              fail("successful .s omitted leftover println");
+//  40:          }
+//  41:      }
+//  42:      if expect_clean(p, "grep -qE 'ERR' " + sfile + " " + serr).is_err() { fail("no ERR"); }
+//  43:      if expect_clean(p, "grep -q x86_emit " + sfile + " " + serr).is_err() { fail("no x86_emit"); }
+//  44:      if expect_clean(p, "! grep -q _start " + sfile).is_err() { fail("silent omit .s"); }
+//
+// Latches the hostile case: emit-x86 must ERR, must mention
+// x86_emit, and must NOT emit a _start .s that quietly dropped the
+// extra print.
+//
+// File: ooda/scripts/x86_leftover_ident_smoke.oo
+//
+//   1:  // # emit-x86 leftover ident honesty lock
+//   ...
+//   3:  // Logline: emit-x86 of fixtures/x86_leftover_ident.oo prints ERR x86_emit and does not emit a silent omit.
+//  32:      let src = root + "/fixtures/x86_leftover_ident.oo";
+//  37:      if process_exec(p, oodac + " emit-x86 " + src + " > " + sfile + " 2>" + serr).is_ok() {
+//  38:          if expect_clean(p, "grep -q _start " + sfile).is_ok() {
+//  39:              fail("successful .s omitted leftover println");
+//  40:          }
+//  41:      }
+//  42:      if expect_clean(p, "grep -qE 'ERR' " + sfile + " " + serr).is_err() { fail("no ERR"); }
+//  43:      if expect_clean(p, "grep -q x86_emit " + sfile + " " + serr).is_err() { fail("no x86_emit"); }
+//  44:      if expect_clean(p, "! grep -q _start " + sfile).is_err() { fail("silent omit .s"); }
+//
+// Latches the let-bind case: even when bind_names is populated, a
+// println(<ident-that-is-a-call>) must ERR. The phalanx §0 disk-now
+// file x86_phalanx.oot line 13 names "let/mut" as harvested, so the
+// lock is targeted at the real failure mode the harvest must not
+// silently absorb.
+//
+// Fixture presence (verified at audit time, not run):
+//   ooda/fixtures/x86_fold_hostile.oo     present
+//   ooda/fixtures/x86_leftover_ident.oo  present
+
+// ## 3. SEC smoke gap: x86_secret_smoke.oo does not exist
+//
+// x86_phalanx.oot lines 99-100:
+//
+//    99:  SEC   ooda/scripts/x86_secret_smoke.oo
+//   100:        openOODA/audit/x86_sec.oot
+//
+// The x86_phalanx contract names x86_secret_smoke.oo as the SEC
+// smoke. On disk, that file is NOT present:
+//
+//   $ ls ooda/scripts/x86_secret_smoke.oo
+//   ls: cannot access '...': No such file or directory
+//
+// x86_emit.oo line 31 calls check_secret_println_sinks on every
+// emit. A secret-tainted println that lands in a fold arm, a match
+// arm, or the harvest will exit before any .s. But no smoke asserts
+// this for the x86 lane. A silent regression in
+// check_secret_println_sinks would not be caught by any x86 smoke
+// until the C lane caught it.
+//
+// Status: x86_secret_smoke.oo is OPEN. The contract says it should
+// own a fixture like fixtures/x86_secret_print.oo whose top
+// declares //secret on a string and whose body is println(<that>).
+// emit-x86 must process_exit on ERR before any .s lines.
+
+// ## 4. Hostile-proof on disk (fold shape, RBRACE-tight)
+//
+// x86_phalanx.oot §10 handoff line 187:
+//   "Do not loosen hello fold RBRACE-tight shape."
+//
+// File: ooda/oodac/x86_emit_fold.oo
+//
+//  177:  pub fn x86_fold_hello(src: String) -> String {
+//  ...
+//  183:      let parts: List[String] = x86_greet_parts(toks, n);
+//  184:      if list_len(parts) < 2 {
+//  185:          return "";
+//  186:      }
+//  187:      let arg: String = x86_main_greet_arg(toks, n);
+//  191:      return list_get(parts, 0) + arg + list_get(parts, 1);
+//  192:  }
+//
+// x86_greet_parts (x86_emit_fold.oo:67-110) requires:
+//   - greet fn found
+//   - return STRING PLUS IDENT PLUS STRING where IDENT is the param
+//     name at lines 88-98
+//   - RBRACE closes the fn body at lines 99-104
+//
+// x86_main_greet_arg (x86_emit_fold.oo:112-175) requires:
+//   - main fn found
+//   - let IDENT = greet(STRING) at lines 122-147
+//   - println(IDENT) at lines 155-166
+//   - RBRACE closes main at lines 167-173
+//
+// Any extra println in main before or after this block is not in
+// the matched token window, so the fold returns "". emit-x86 then
+// falls through to the harvest in x86_emit.oo:59. The harvest's
+// leftover_unresolved flag is set when an unresolved println is
+// seen, and x86_emit_walk.oo:205-208 prints
+// "ERR\tx86_emit\tleftover println(ident)" and process_exit(1).
+// That is the hostile lock.
+
+// ## 5. Leftover-ident path on disk
+//
+// File: ooda/oodac/x86_emit_walk.oo
+//
+//  201:      if !saw_main {
+//  202:          println("ERR\tx86_emit\tresidual: need fn main");
+//  203:          process_exit(1);
+//  204:      }
+//  205:      if leftover_unresolved {
+//  206:          println("ERR\tx86_emit\tleftover println(ident)");
+//  207:          process_exit(1);
+//  208:      }
+//
+// leftover_unresolved is set on lines 28-30 (KW_WHILE / KW_FOR),
+// 102, 119, 129, 136, 140, 147, 158, 161, 176, 179, 192 (mix,
+// alu, call, and ident misses).
+//
+// The let-bind + println case from x86_leftover_ident_smoke.oo
+// lands in the println(IDENT) branch (x86_emit_walk.oo:163-181).
+// mix_try runs and fails. alu_try runs and fails. The trailing
+// RPAREN check on line 171 fires, x86_bind_idx on int_names
+// misses, leftover_unresolved becomes true, ERR prints,
+// process_exit(1).
+
+// ## 6. Secret taint path on disk (not yet smoke-locked)
+//
+// File: ooda/oodac/c_emit_secret_check.oo
+//
+//  17:  pub fn check_secret_println_sinks(src: String, toks: List[String]) {
+//  18:      let mut env: String = c_parse_secret_env(src);
+//  20:      env = c_secret_mark_returning_fns(src, toks, env);
+//  21:      if env == "" {
+//  22:          return;
+//  ...
+//  66:          if k == "IDENT" {
+//  67:              let id: String = c_tokt(toks, i);
+//  69:              let sid: String = c_secret_resolve_alias(env, id);
+//  70:              if sid == "println" || sid == "eprintln" {
+//  ...
+//  99:                  c_secret_refuse_sink_resolved(env, sid, full_path);
+//
+// Lines 70 and 99 are the trap: a taint that resolves to println
+// walks each IDENT arg, builds the dot path, and calls
+// c_secret_refuse_sink_resolved. c_emit_secret_check.oo is not in
+// the x86 SEC ownership set, but the call site at x86_emit.oo:31
+// is. SEC needs a smoke that:
+//   - takes a fixture whose top marks a string as //secret
+//   - has main do println(<that>)
+//   - runs oodac emit-x86 on it
+//   - asserts ERR on stdout or stderr
+//   - asserts no _start line in .s
+// The fixture and the smoke do not exist.
+
+// ## 7. What SEC owns to close the role
+//
+// File: ooda/scripts/x86_secret_smoke.oo (missing)
+//
+// SEC is the AUDIT lane. The fixture and smoke body belong to the
+// builder who can write to ooda/scripts and ooda/fixtures. SEC's
+// job is to keep this contract visible until x86_secret_smoke.oo
+// is on disk and green.
+//
+// Suggested smoke shape (read-only; SEC does not write it):
+//   - import std/scenario, std/sh
+//   - cwd ooda/, host x86_64
+//   - emit-x86 fixtures/x86_secret_print.oo > sfile 2> serr
+//   - require ERR on stdout or stderr
+//   - require x86_emit on stdout or stderr
+//   - require ! grep -q _start sfile
+//
+// Suggested fixture shape (read-only):
+//   - top line: //secret on a STRING
+//   - main does println(<that STRING>)
+
+// ## 8. Status table
+//
+//   role item                          on disk                        status
+//   ------------------------------     ---------------------------   -------
+//   x86_secret_smoke.oo                absent (gap)                   [ ] open
+//   x86_hostile_leftover_smoke.oo      ooda/scripts/                  [x] done
+//   x86_leftover_ident_smoke.oo        ooda/scripts/                  [x] done
+//   fixtures/x86_fold_hostile.oo       ooda/fixtures/                 [x] done
+//   fixtures/x86_leftover_ident.oo     ooda/fixtures/                 [x] done
+//   check_secret_println_sinks call    x86_emit.oo:31                 [x] done
+//   secret check runs before fold      x86_emit.oo:31 -> :32          [x] done
+//   secret check runs before match     x86_emit.oo:31 -> :39,:44,:49,:54 [x] done
+//   secret check runs before harvest   x86_emit.oo:31 -> :59          [x] done
+//   hostile ERR + no _start assertion  x86_hostile_leftover_smoke.oo:42-44  [x] done
+//   leftover-ident ERR + no _start     x86_leftover_ident_smoke.oo:42-44    [x] done
+//   secret-taint smoke                 absent                         [ ] open
+
+// ## 9. Isolation
+//
+// SEC wrote only: openOODA/audit/x86_sec.oot
+//
+// Did not edit oodac, runtime, fixtures, or smokes.
+// Did not rebuild oodac. Did not copy bin/ooda onto oodac/oodac.
+// Did not invent a smoke body or a fixture body. Both gaps are
+// recorded honestly in §3, §6, and §8.
+//
+// Status: SEC is PARTIAL. Hostile and leftover are PASS. Secret
+// taint is UNPROVEN until x86_secret_smoke.oo lands.

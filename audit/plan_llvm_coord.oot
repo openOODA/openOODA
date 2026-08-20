@@ -1,0 +1,141 @@
+# LLVM-COORD — Assignment, isolation, INT results
+
+File: openOODA/audit/plan_llvm_coord.oot
+COORD rollup template. This file does not implement emit.
+C emit + gcc remains the product path. Do not overwrite oodac/oodac.
+Pin: v0.205.0-beta. Lane: LLVM emit only.
+Contract: audit/plan_llvm_phalanx.oot
+
+Logline: Twelve roles each own one job and disjoint write paths. INT fills the results table after the smokes run.
+Setup: Product compiler is ooda/oodac/oodac. Side ELF is .ooda-cache/ooda-tmp/oodac_llvm. Shared main.oo and cli_emit.oo stay unedited.
+Beats:
+  1. Restate the observe fact from the phalanx contract.
+  2. Assign one job and disjoint files to each of the twelve roles.
+  3. Leave the INT results table blank.
+  4. Name the run order, the refuse set, and residual facts.
+
+## 1. Observe
+
+  Cold `check fixtures/hello.oo` on an LLVM-linked oodac printed
+  `ERR	check	empty` because `llvm_emit_expr` lowered `match`
+  expressions to `%OoStr zeroinitializer`.
+  `load_expand` does `let src = match read_file { Ok(s) => s, ... }`.
+  Empty src hits `check_drive` and prints that line.
+  Stamp-walk of a valid listing still worked (no match expr).
+
+## 2. Roles (one job, disjoint files)
+
+| Role | Job | Owns |
+| :--- | :--- | :--- |
+| DE1 | Lower match expr to extractvalue and phi | oodac/llvm_emit_match_expr.oo, oodac/llvm_emit_expr.oo |
+| DE2 | Close call and method leftovers | oodac/llvm_emit_method.oo, oodac/llvm_fntab.oo |
+| RT | Compare C ABI to LLVM preamble | audit/plan_llvm_rt.oot |
+| PV1 | Hostile-mutate hello; refuse stale OK | scripts/open68_pv1_hostile.oo |
+| PV2 | Prove a planted g_ listing is not required | scripts/open68_pv2_plant.oo |
+| SEC | Audit shim and capability grants | audit/plan_llvm_sec.oot |
+| MEM | Audit ARC on match and check | audit/plan_llvm_mem.oot |
+| INT | Run smokes and the C path | .ooda-cache/ooda-tmp/int_llvm/ |
+| HARN | Own phase 1–3 and match-expr smokes | scripts/open68_cold_hello_smoke.oo, scripts/open68_main_check_smoke.oo, scripts/open68_cmds_floor_smoke.oo, scripts/open68_match_expr_smoke.oo |
+| HYG | Line lock <=256; report unless over | audit/plan_llvm_hyg.oot |
+| DOCS | Boards after INT proof | audit/plan_llvm_docs.oot |
+| COORD | Assign, rebuild side ELF, rollup | audit/plan_llvm_coord.oot, audit/plan_llvm_phalanx.oot, .ooda-cache/ooda-tmp/coord_llvm_rebuild.log |
+
+  RT extra, only if the ABI note proves a mismatch: `oodac/llvm_emit_preamble.oo`
+  or LLVM decls in `runtime/chs_rt.h`. Not both roles. Not `c_emit*.oo`.
+  HYG extra, only if a write-set file exceeds 256 and COORD names that file.
+  DOCS extra, only after every INT verdict is PASS: leftover rows in
+  `SHIPPED.oot` and `ROADMAP.oot`. Do not write those boards in this turn.
+  INT fills only the blank cells in section 6 of this file (COORD-serialized).
+
+## 3. Collision check
+
+  Method: extract every write path from section 2.
+  Compare role to role. A shared path is a collision.
+
+  Result: no two roles share a write path. Status: done.
+
+  Slice notes (still one owner each):
+    COORD rebuild log is not the INT log directory.
+    SEC reads `oodac/llvm_link_shim.oo`. SEC does not edit it.
+    MEM reads match and check emit. MEM does not edit DE1 or DE2 files.
+    HARN does not own the PV scripts.
+    `oodac/main.oo` and `oodac/cli_emit.oo` have no owner this cycle.
+
+## 4. Forbidden
+
+  No `.py` `.sh` `.md` `.js`.
+  No `c_emit*.oo`. No `wasm_emit*.oo`. No `x86_emit.oo`.
+  No lex, parse, check, or tc writes.
+  Do not copy `bin/ooda` onto `oodac/oodac`.
+  Do not overwrite `oodac/oodac` with the side ELF.
+  Do not retire C emit + gcc.
+  Do not plant `.ooda-cache/check/g_*` to make a check print `OK`.
+  Do not edit `SHIPPED.oot` or `ROADMAP.oot` before INT proof.
+
+## 5. Order
+
+  Do not race two side-ELF rebuilds.
+
+  1. DE1 match emit. `emit-llvm` of `fixtures/open68_match_expr.oo`
+     must write `extractvalue` and `phi`, not a `KW_MATCH` zeroinitializer stub.
+  2. DE2 method and fntab leftovers. No variadic `(...)` declare.
+  3. RT ABI note. Runtime or preamble write only if ABI is wrong.
+  4. COORD rebuild `.ooda-cache/ooda-tmp/oodac_llvm`.
+     Log: `.ooda-cache/ooda-tmp/coord_llvm_rebuild.log`.
+  5. HARN keep the four named smokes honest.
+  6. PV1 hostile mutate. PV2 planted-`g_` refuse.
+  7. SEC shim note. MEM ARC note.
+  8. INT run section 6 commands from `ooda/` and fill the table.
+     Double-run the four HARN smokes.
+  9. HYG line lock on the write set.
+  10. DOCS boards only if section 6 is all PASS.
+
+## 6. Results (INT fills)
+
+  Drive the HARN and PV scripts with product `./oodac/oodac run`.
+  The check target is the side ELF, not `oodac/oodac`.
+  Hang budget: 60s hello, 240s main. Verdict is PASS, FAIL, or MISSING.
+  Leave exit, mark, and verdict blank until the live run.
+
+| # | proof | command | exit | mark | verdict |
+| ---: | :--- | :--- | ---: | :--- | :--- |
+| 1 | side ELF exists | `test -x .ooda-cache/ooda-tmp/oodac_llvm` |  |  |  |
+| 2 | phase 1 cold hello | `scripts/open68_cold_hello_smoke.oo` |  |  |  |
+| 3 | phase 2 check main | `scripts/open68_main_check_smoke.oo` |  |  |  |
+| 4 | phase 3 cmds floor | `scripts/open68_cmds_floor_smoke.oo` |  |  |  |
+| 5 | emit lock match | `scripts/open68_match_expr_smoke.oo` |  |  |  |
+| 6 | C path check hello | `./oodac/oodac check fixtures/hello.oo` |  |  |  |
+| 7 | C path emit-c hello | `./oodac/oodac emit-c fixtures/hello.oo` |  |  |  |
+| 8 | PV1 hostile mutate | `scripts/open68_pv1_hostile.oo` |  |  |  |
+| 9 | PV2 planted g_ | `scripts/open68_pv2_plant.oo` |  |  |  |
+| 10 | double-run phase 1 | `scripts/open68_cold_hello_smoke.oo` |  |  |  |
+| 11 | double-run phase 2 | `scripts/open68_main_check_smoke.oo` |  |  |  |
+| 12 | double-run phase 3 | `scripts/open68_cmds_floor_smoke.oo` |  |  |  |
+| 13 | double-run match | `scripts/open68_match_expr_smoke.oo` |  |  |  |
+
+  Logs: `.ooda-cache/ooda-tmp/int_llvm/`. Do not write product files.
+
+## 7. Residual
+
+  These facts stay residual. They are not this lane.
+
+  - LLVM-linked oodac as the gcc replacement. C path stays product.
+  - Clang link of full oodac. Lock: `scripts/open68_llvm_lock.oo`.
+  - Call or block match expressions. IDENT or STRING arms only.
+  - Warm stamp-walk of a valid listing is already product.
+
+## 8. Isolation
+
+  Topology: 12-role phalanx (fan-out).
+  Files: disjoint. WORKFLOW section 2 holds by path, not by tree.
+  Solo: no. The contract named twelve roles.
+  COORD wrote only this file this turn.
+  COORD did not edit `SHIPPED.oot`, `ROADMAP.oot`, or product code.
+  COORD does not implement emit.
+
+## 9. Next
+
+  Wait for DE1 and DE2 writes. Then rebuild the side ELF.
+  INT does not fill section 6 until that ELF exists.
+  Do not claim hello-check PASS with a planted `g_` listing.
+  Do not copy `bin/ooda` onto `oodac/oodac`.

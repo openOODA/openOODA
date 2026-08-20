@@ -1,0 +1,250 @@
+// # SWARM STATE — 2026-08-19 snapshot
+// Logline: durable record of which agent owns which lane on the openOODA
+//   project as of 2026-08-19, with file:line evidence and a next-action
+//   per lane. C emit + gcc remains the product path.
+// Setup: Phase 0 inventory (audit/win_swarm_inventory.oot) was taken
+//   before the repair pass. This file is the post-dispatch state
+//   that anchors 20 sub-agents. No bash was run; no file outside
+//   audit/ was edited. Counts of audit/ files are taken from the
+//   survey note carried in the user dispatch, not from a glob.
+//   Read alongside: audit/win_swarm_inventory.oot (older), and the
+//   three compiler phalanx rollups: audit/wasm_phalanx.oot,
+//   audit/plan_llvm_phalanx.oot, audit/x86_phalanx.oot.
+//   Library ground truth: audit/library_status.oot (door + 22
+//   siblings).
+// Beats:
+//   §1  Lane-by-lane ownership and recent activity
+//   §2  Cross-lane dependencies
+//   §3  In-flight risks where the swarm state shows bugs/dead-ends
+//   §4  Recommendation per lane
+//   §5  Evidence index
+
+## §1. Lane-by-lane ownership
+
+  Six lanes, six owners. Three ACTIVE, one RECENT, one QUIET, plus
+  this process lane spawned today.
+
+  | Lane     | Owner   | Status  | Recent activity (evidence)                          | Active work                          | Parked               |
+  |----------|---------|---------|-----------------------------------------------------|--------------------------------------|----------------------|
+  | compiler | agy +   | ACTIVE  | WASM loop-6 detectors named:                        | WASM loop-6 phalanx                  | Windows emit         |
+  |          | co-agent|         | wasm_emit_eleven.oo, wasm_emit_ifpgt.oo,            | x86 Cycle B harvest                  | (no emit_windows.oo) |
+  |          |         |         | wasm_emit_ifplte.oo, wasm_emit_ifnotne.oo,          | LLVM Phase 1-3 smokes                |                      |
+  |          |         |         | wasm_emit_ifpgte.oo                                 | (match expr cold bug)                |                      |
+  |          |         |         | (audit/win_swarm_inventory.oot:16-20)               | (audit/wasm_phalanx.oot:1)           |                      |
+  |          |         |         | x86 Cycle A proved:                                 |                                      |                      |
+  |          |         |         | 12-role assignment, greet fold on disk              |                                      |                      |
+  |          |         |         | (audit/x86_phalanx.oot:1, 11-30)                    |                                      |                      |
+  |          |         |         | LLVM: match expr cold bug, Phase 1-3 PASSED         |                                      |                      |
+  |          |         |         | (audit/plan_llvm_phalanx.oot:9-10, 37-41)           |                                      |                      |
+  | runtime  | co-agent| ACTIVE  | WASM runtime: chs_rt_wasm.c, chs_rt_wasm_print.c    | chs_rt_wasm_print.c body (WASI      | chs_rt_win32_*.c     |
+  |          |         |         | (audit/win_swarm_inventory.oot:33-39)               | fd_write per WASI import)            | (Windows shims)      |
+  |          |         |         | 1 of 4 .c files in runtime is WASM-side             | (audit/wasm_phalanx.oot:25-30)       | (win_chs_rt_posix_   |
+  |          |         |         | (survey note in dispatch)                           | Landlock + rlimit shims still POSIX  | audit.oot names)     |
+  |          |         |         |                                                     | (audit/win_swarm_inventory.oot:41)   |                      |
+  | library  | agy     | ACTIVE  | M172 sandbox split:                                 | M172 sandbox split                   | None                 |
+  |          |         |         | ooda/std/sec/sys/audit_engine.oo,                   | Landlock policy surface tied to      |                      |
+  |          |         |         | ooda/std/sec/sys/landlock_engine.oo                 | runtime Landlock file                |                      |
+  |          |         |         | (audit/win_swarm_inventory.oot:50-58)               | (audit/win_swarm_inventory.oot:58)   |                      |
+  |          |         |         | Door: 4476 rows, 2844 GREEN, 1572 BLOCKED,          |                                      |                      |
+  |          |         |         | 60 RESIDUAL, 0 UNCHECKED                            |                                      |                      |
+  |          |         |         | (audit/library_status.oot:7)                        |                                      |                      |
+  | cli      | co-agent| RECENT  | wip/cli-three worktree shipped:                     | None visible from this session        | Windows install      |
+  |          |         |         | ooda/cli/cmd_pm_launch.oo, pm_extract_proof.oo,      | (audit/win_swarm_inventory.oot:73-   | variant              |
+  |          |         |         | pm_launch.oo, cmd_pm_search.oo, cmd_pm_add.oo        |  75)                                 | (win_compiler_plan.oot|
+  |          |         |         | (audit/win_swarm_inventory.oot:65-71)               |                                      |  Phase 4)            |
+  | install  | none    | QUIET   | install_xdg.oo is the active path;                  | None                                 | install_win.oo       |
+  |          | named   |         | BOOTSTRAP_PIN pinned to v0.205.0-beta               |                                      | (no Windows variant  |
+  |          |         |         | (audit/win_swarm_inventory.oot:84-90)               |                                      |  on disk)            |
+  | process  | this    | ACTIVE  | 20 sub-agents dispatched for the 2026-08-19          | repair-pass rollup in audit/         | n/a                  |
+  |          | session |         | repair pass (user dispatch)                         |                                      |                      |
+  |          |         |         | Pre-existing tool: audit/scripts/proof_of_today.oo  |                                      |                      |
+
+  Compiler lane has overlapping owners (agy + a co-agent). That is
+  the highest-risk lane. Three emits are open at once: WASM loop-6,
+  x86 Cycle B harvest, LLVM match-expr repair. The compiler tree
+  has one product binary oodac/oodac; foreign C/LLVM rebuilds
+  overwrite it. (audit/x86_phalanx.oot:26-30)
+
+  CLI and install lanes are quiet. The install lane has no current
+  diff and no owner for install_win.oo. (audit/win_swarm_inventory.oot:92)
+  The CLI lane has no in-flight diff visible from this session.
+  (audit/win_swarm_inventory.oot:75)
+
+## §2. Cross-lane dependencies
+
+  Library → compiler (forward dep, no work this cycle)
+    Library needs new emit features: import+call gcc, pub fn simple
+    args, emit-c heap/abort and slist OOB, c_emit unexpected
+    SEMI/RBRACE, Result[List[T]] and nested Result/Option.
+    (audit/library_status.oot:13-19)
+    These are blocked on emit-c, which the compiler lane owns. The
+    library cannot advance them unilaterally.
+
+  Runtime → compiler (lockstep)
+    The runtime owner is on WASM runtime (chs_rt_wasm.c,
+    chs_rt_wasm_print.c). The compiler is on the WASM emit loop-6
+    phalanx. They are coupled: the compiler emits a WASI import
+    (wasi_snapshot_preview1 / fd_write) and the runtime supplies the
+    body. (audit/wasm_phalanx.oot:29-30)
+    RT role file: chs_rt_wasm_print.c, prototype in
+    c_emit_preamble.oo. (audit/wasm_phalanx.oot:46-50)
+    If WASM emit loop-6 closes, runtime can move to chs_rt_win32_*.c.
+    That move is blocked on the compiler closing loop-6.
+
+  Library → runtime (tied to Landlock)
+    Landlock is named as a real Linux jail on the runtime side
+    (chs_rt_landlock.c) and as the policy surface on the std side
+    (sec/sys/landlock_engine.oo).
+    (audit/win_swarm_inventory.oot:39, 50-58)
+    A change to runtime Landlock forces a std policy review, and
+    vice versa. The M172 split is sandbox plumbing, not
+    Windows-bound. (audit/win_swarm_inventory.oot:60)
+
+  CLI → compiler (read-only product path)
+    CLI consumes the compiler as a black box. `ooda launch`,
+    `ooda add`, `ooda search` are product paths.
+    (audit/win_swarm_inventory.oot:71)
+    CLI smokes the wasm, x86, and llvm lanes but does not own
+    emits. (audit/win_swarm_inventory.oot:73-75)
+
+  Install → CLI, compiler, runtime (Phase 4 Windows only)
+    install_win.oo is the only Windows file plan names in install/.
+    It depends on the compiler tree having a Windows emit, the
+    runtime having chs_rt_win32_*.c, and the CLI adding a Windows
+    install path. (audit/win_compiler_plan.oot section 1 Phase 4,
+    per audit/win_swarm_inventory.oot:77, 90-94)
+    install_win.oo is parked; the install lane is QUIET.
+
+  Process → all other lanes (today)
+    This session is the lane that produces 19 sibling .oot files
+    in audit/ (one per other sub-agent). It does not own compiler,
+    runtime, library, cli, or install code. Read-only evidence
+    lane.
+
+## §3. In-flight risks
+
+  R1. LLVM INT proof table blank.
+      Phase 1-3 smokes PASSED (open68_cold_hello_smoke.oo,
+      open68_main_check_smoke.oo, open68_cmds_floor_smoke.oo,
+      open68_match_expr_smoke.oo).
+      (audit/plan_llvm_phalanx.oot:37-41)
+      The INT proof table is blank in the rollup. INT owns smokes
+      and C path. (audit/plan_llvm_phalanx.oot:27, 41-42)
+      Risk: SHIPPED.oot rows that cite LLVM proof are claims, not
+      evidence, until INT writes the table.
+
+  R2. x86 INT proof also blank; 8 of 12 x86 role files missing.
+      x86_phalanx.oot lists 12 roles (DE1, DE2, RT, PV1, PV2, SEC,
+      MEM, INT, HARN, HYG, DOCS, COORD).
+      (audit/x86_phalanx.oot:91-115)
+      Survey reports only 4 audit/ files exist for x86; the other
+      8 are untracked. x86_int.oot is one of the missing.
+      (audit/x86_phalanx.oot:103-104)
+      Risk: Cycle B harvest is on disk but not proved. Next five
+      items named in handoff (SysV %rdx, mut locals, while loops,
+      Int one-arg + decimal write, runtime concat overflow) are
+      unproved. (audit/x86_phalanx.oot:190-192)
+
+  R3. WASM INT proof depends on emit-wasm rebuild.
+      wasm_phalanx.oot section 5 requires `./oodac/oodac emit-wasm
+      fixtures/wasm_print_hi.oo > /tmp/hi.wasm`.
+      (audit/wasm_phalanx.oot:83-85)
+      "Rebuild only if you own oodac/*.oo or runtime and you must
+      run emit." Three rebuilds racing is forbidden.
+      (audit/wasm_phalanx.oot:86-87)
+      Risk: a process-lane audit agent has no emit rights. INT
+      evidence must come from the compiler owner.
+
+  R4. Library BLOCKED top row: import+call gcc.
+      "import+call gcc (dot vs arrow, Result cells, decls)" is the
+      first BLOCKED need. (audit/library_status.oot:14)
+      1572 BLOCKED files out of 4476. (audit/library_status.oot:7)
+      Risk: BLOCKED cannot shrink without compiler emit-c
+      improvements. Library cert is far from done.
+
+  R5. Runtime has no Windows shim owner.
+      Landlock and rlimit are the two POSIX-isms named for Windows
+      port. (audit/win_swarm_inventory.oot:41)
+      chs_rt_win32_*.c does not exist. The runtime owner is on
+      WASM today. (audit/win_swarm_inventory.oot:43)
+      Risk: Windows lane Phase 2 cannot start until the runtime
+      owner names a Windows sub-lane.
+
+  R6. Compiler tree has overlapping owners.
+      agy is on libraries and oodac (ooda/oodac/ + ooda/std/).
+      (user dispatch, 2026-08-19)
+      A co-agent is on WASM loop-6, x86 Cycle B, and LLVM match
+      repair. Both edit oodac/*.oo. (audit/x86_phalanx.oot:31,
+      86-87)
+      Risk: oodac/oodac is the shared product binary. A foreign
+      rebuild overwrites it. The x86 overlay pin is the only
+      mitigation on disk. (audit/x86_phalanx.oot:26-30)
+
+  R7. CLI and install lanes are unowned.
+      No current diff is visible. (audit/win_swarm_inventory.oot:75,
+      92)
+      install_win.oo and any Windows CLI variant are parked.
+      Risk: Windows lane Phase 4 has no agent.
+
+## §4. Recommendation per lane
+
+  compiler
+    Sequence: close WASM loop-6 phalanx first, then x86 Cycle B
+    prove, then LLVM INT fill. (audit/win_swarm_inventory.oot:115-118;
+    audit/x86_phalanx.oot:55)
+    Today: the compiler owner is on three emits at once. Pick one
+    to finish. WASM loop-6 is the only one with a frozen API
+    (audit/wasm_phalanx.oot:17-30); close that and the runtime
+    can move off WASM lockstep.
+
+  runtime
+    After compiler closes WASM loop-6, start chs_rt_win32_*.c
+    shims. (audit/win_swarm_inventory.oot:118-120)
+    Landlock and rlimit are the two POSIX-isms named. Do not
+    start until the compiler names a Windows emit.
+
+  library
+    Continue M172 split. Landlock policy surface ties to runtime
+    Landlock. (audit/win_swarm_inventory.oot:58)
+    BLOCKED top rows (import+call gcc, pub fn simple args) are
+    blocked on compiler emit-c. Surface the BLOCKED counts but
+    do not promise a shrink. (audit/library_status.oot:13-19)
+
+  cli
+    Quiet. No current diff. (audit/win_swarm_inventory.oot:75)
+    If a Windows CLI variant is needed, it can start today; the
+    CLI tree is the smallest Windows touch.
+    (audit/win_swarm_inventory.oot:77)
+
+  install
+    Quiet. install_xdg.oo is the active path.
+    (audit/win_swarm_inventory.oot:90)
+    install_win.oo can start now; the install lane has no
+    in-flight diff. (audit/win_swarm_inventory.oot:94)
+
+  process (this lane)
+    Produce the 19 sibling audit/ .oot files. Cite file:line for
+    every claim. Do not edit any code file. Do not run shell.
+
+## §5. Evidence index
+
+  Source files read for this snapshot:
+    openOODA/audit/win_swarm_inventory.oot  (older survey)
+    openOODA/audit/wasm_phalanx.oot         (loop-6 phalanx)
+    openOODA/audit/plan_llvm_phalanx.oot    (phases 1-3)
+    openOODA/audit/x86_phalanx.oot          (Cycles A-D)
+    openOODA/audit/library_status.oot       (door + 22 siblings)
+
+  Counts of audit/ files for each compiler lane were carried in
+  the user dispatch (2026-08-19), not re-counted in this session.
+  The user dispatch named: 12 wasm_*.oot files, 10
+  plan_llvm_*.oot files, 1 x86_phalanx.oot untracked; 8 of 12
+  x86 role files missing; LLVM INT proof table blank; 14
+  wasm_*.oot files; chs_rt_wasm.c is 1 of 4 .c files; 25
+  library_status files modified in the working tree; 22
+  siblings + door with 4476 rows.
+
+  This file does not boot oodac/oodac. It does not run shell. It
+  does not edit any file outside audit/. No git status was read
+  from the main project tree (audit/win_swarm_inventory.oot:6-7,
+  130-134).

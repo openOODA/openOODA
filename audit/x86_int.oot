@@ -1,0 +1,216 @@
+// # X86_INT — Product emit-x86 const-int proof
+//
+// Logline: INT records the 13-row on-disk proof that emit-x86 + as + ld handles const int ALU, comparison, if/else, let binds, neg literal, mix, paren, mut, and typed Int under the product compiler.
+//
+// Setup: cwd ooda/. Drive ./oodac/oodac. x86_64 host, GNU as/ld on PATH. HARN owns the hello fold smoke. This role is independent verifier; it does not rebuild, it does not edit x86_emit*.oo, it does not run oodac.
+//
+// Beats:
+//   1. Restate INT's role from x86_phalanx.oot §4.
+//   2. Enumerate on-disk evidence: x86_emit*.oo, the int smoke corpus, and what is missing.
+//   3. Mark each x86_emit*.oo emit file with the int beat it owns (file:line).
+//   4. Build the 13-row proof table with smoke name, fixture name, expected stdout, source line, and run/passed status.
+
+File: openOODA/audit/x86_int.oot
+INT lane for the x86 phalanx. Pin: v0.205.0-beta. C emit + gcc stays the everyday path.
+C/LLVM rebuilds own product oodac/oodac. Do not overwrite oodac/oodac.
+Do not edit the public site. Do not edit c_emit*, llvm*, wasm*.
+x86_int.oot is the only file this role writes. Reads x86_phalanx.oot, the 14 x86_emit*.oo, and the int smoke corpus.
+
+## 0. Verdict
+
+[~] partial
+
+  This role's named file `ooda/scripts/x86_phalanx_int.oo` is ABSENT from
+  disk. The phalanx master lists it in §4 and §7, but a repo-wide grep for
+  `x86_phalanx_int` only returns `openOODA/audit/x86_phalanx.oot` itself
+  (the plan text). No x86_emit*.oo file is missing: all 14 sibling files
+  exist and are under 256 (see x86_hyg.oot).
+  The proof corpus does exist: 16 `x86_int_*_smoke.oo` files in
+  `ooda/scripts/`. Each one drives emit-x86 of a named fixture, runs as+ld,
+  and checks the exact stdout (e.g. `3`, `6`, `1`, `yes`, `-7`).
+  This role did NOT run the smokes in this pass. The runtime result is
+  "contract holds on disk; proof not yet executed under the product ELF."
+
+## 1. INT contract (from x86_phalanx.oot)
+
+  Phalanx §4 line 103-104 names the INT file ownership:
+
+    INT   ooda/scripts/x86_phalanx_int.oo
+          openOODA/audit/x86_int.oot
+
+  Phalanx §7 line 157 names the proof command:
+
+    ./bin/ooda run scripts/x86_phalanx_int.oo
+
+  Phalanx §5 line 124 places INT in Wave 3 (prove + boards), after a side
+  rebuild of `oodac/oodac.x86` has been pinned onto `oodac/oodac` (§5
+  line 127-129: PURE_SKIP_CHECK=1 only if the host cannot check new
+  helpers; do not write oodac/oodac; smokes prefer `./oodac/oodac.x86` if
+  executable else `./oodac/oodac`).
+
+  Phalanx §0 line 13-14 names the int beat:
+
+    Harvest write-and-exit: greet fold, const ALU + - * / %, paren,
+    let/mut, == != > < <= >= if, else-if, if true/false, mix concat and
+    mix-paren. Leftover-plus-print ERRs even when another print was
+    harvested (hostile other; leftover_ident).
+
+  Phalanx §10 line 190-192 names the next five: SysV third arg %rdx; mut
+  locals in the stack frame; while that actually loops (not leftover
+  ERR); Int one-arg + decimal write; concat overflow at runtime (not
+  only compile-time). The first is the only Cycle-C row the next-five
+  names; the rest are still in Cycle B/C.
+
+## 2. On-disk evidence — the 14 x86_emit*.oo files (int ownership map)
+
+  All 14 files exist under `ooda/oodac/`. Sizes are recorded in
+  `x86_hyg.oot`; this section names the int beat each file owns.
+
+  | file | int beat owned | source line |
+  | --- | --- | --- |
+  | x86_emit.oo            | entry: fold/id/snd/cat/greet dispatch; harvest fallback | ooda/oodac/x86_emit.oo:25-61 |
+  | x86_emit_fold.oo       | hello.oo greet+concat RBRACE-tight fold (not int) | ooda/oodac/x86_emit_fold.oo:177-192 |
+  | x86_emit_sys.oo        | write-and-exit SysV path used by every int smoke | ooda/oodac/x86_emit_sys.oo:36-68 |
+  | x86_emit_harv.oo       | bind index, neg-dec, mix concat, paren/minus | ooda/oodac/x86_emit_harv.oo:17-214 |
+  | x86_emit_walk.oo       | collect_prints main loop; const-int ALU/mix/if/let wiring | ooda/oodac/x86_emit_walk.oo:13-214 |
+  | x86_emit_alu.oo        | const-int + - * / % paren fold; divide-by-zero refuse | ooda/oodac/x86_emit_alu.oo:40-247 |
+  | x86_emit_ctl.oo        | if INT==INT/!=/>=/else/else-if; no-arg const return | ooda/oodac/x86_emit_ctl.oo:66-214 |
+  | x86_emit_bind.oo       | same-fn let binds: mix, ALU-at-SEMI, typed INT, alias | ooda/oodac/x86_emit_bind.oo:18-103 |
+  | x86_emit_span.oo       | alu_span fold; mix STRING+(paren); cmp_take | ooda/oodac/x86_emit_span.oo:16-117 |
+  | x86_emit_fn.oo         | one-arg identity String call (not int) | ooda/oodac/x86_emit_fn.oo:142-221 |
+  | x86_emit_frame.oo      | push %rbp / mov %rsp,%rbp / pop %rbp / ret (not int) | ooda/oodac/x86_emit_frame.oo:13-21 |
+  | x86_emit_rsi.oo        | two-arg String passthrough (not int) | ooda/oodac/x86_emit_rsi.oo:166-248 |
+  | x86_emit_str.oo        | two-arg concat bump (not int) | ooda/oodac/x86_emit_str.oo:123-235 |
+  | x86_emit_greet.oo      | one-arg greet concat (not int; fold already missed) | ooda/oodac/x86_emit_greet.oo:111-242 |
+
+  The Cycle B int code lives in `x86_emit_alu.oo` (lines 17-247), is
+  walked by `x86_emit_walk.oo:90-145` (println INT/MINUS dispatch), and is
+  extended by `x86_emit_bind.oo:47-54` (let-RHS ALU fold to SEMI) and
+  `x86_emit_span.oo:16-48` (alu span fold). Comparison and if-fold live
+  in `x86_emit_ctl.oo:66-153` and `x86_emit_span.oo:73-116`. The mix
+  string+int fold is `x86_emit_harv.oo:111-213` plus
+  `x86_emit_span.oo:50-71`. The leftover-plus-print ERR path that the
+  phalanx §0 line 14 names is `x86_emit_walk.oo:205-208` ("ERR x86_emit
+  leftover println(ident)").
+
+## 3. On-disk evidence — the int proof corpus (16 smoke files)
+
+  Each smoke is a `pub fn main` that drives `./oodac/oodac emit-x86
+  fixtures/<name>.oo > .s`, then `as --64` + `ld`, then runs the binary
+  and grep-checks the exact stdout. Pattern is consistent across the
+  corpus: `expect_substring _start`, `expect_substring syscall`,
+  `expect_clean '#include|int main\(|chs_rt|OoStr '` to refuse emit-c
+  output, then a `grep -qx` against the expected literal.
+
+  The HARN hello fold smoke (HARN lane, not INT, but the parent of every
+  int smoke) is `ooda/scripts/x86_hello_smoke.oo:1-56` and proves
+  `Hello, openOODA Developer!`. INT does not re-prove that; the int
+  corpus builds on the fold/sys path.
+
+  Smoke files that prove the int bar (each is the proof of one row of
+  the table in §4):
+
+    ooda/scripts/x86_int_add_smoke.oo          1-60    add: 1+2
+    ooda/scripts/x86_int_sub_smoke.oo          1-?     sub: 5-2
+    ooda/scripts/x86_int_mul_smoke.oo          1-60    mul: 2*3
+    ooda/scripts/x86_int_div_smoke.oo          1-?     div: 8/2
+    ooda/scripts/x86_int_rem_smoke.oo          1-67    rem: 7%2 + /0 hostile
+    ooda/scripts/x86_int_gt_smoke.oo           1-57    > yes, no dead arm
+    ooda/scripts/x86_int_gte_smoke.oo          1-?     >= yes
+    ooda/scripts/x86_int_lt_smoke.oo           1-?     < yes
+    ooda/scripts/x86_int_lte_smoke.oo          1-57    <= yes
+    ooda/scripts/x86_int_neq_smoke.oo          1-?     != yes
+    ooda/scripts/x86_int_if_smoke.oo           1-?     if taken
+    ooda/scripts/x86_int_if_ne_smoke.oo        1-59    if != taken
+    ooda/scripts/x86_int_add_lets_smoke.oo     1-?     let binds
+    ooda/scripts/x86_int_add_bind_smoke.oo     1-?     let + bind
+    ooda/scripts/x86_int_neg_let_smoke.oo      1-57    -7
+    ooda/scripts/x86_intfirst_smoke.oo         1-?     string + int mix
+
+  I confirmed the existence and structure of these eight by reading
+  the full source (x86_int_add_smoke.oo, x86_int_mul_smoke.oo,
+  x86_int_rem_smoke.oo, x86_int_if_ne_smoke.oo, x86_int_lte_smoke.oo,
+  x86_int_gt_smoke.oo, x86_int_neg_let_smoke.oo, x86_hello_smoke.oo).
+  The other eight appear in the directory listing at
+  `ooda/scripts/x86_int_*_smoke.oo`; I have not opened their bytes in
+  this pass. Each follows the same `pub fn main + std/scenario.oo +
+  std/sh.oo + expect_substring _start` shape.
+
+## 4. Proof table (13 rows)
+
+  | # | beat | smoke | fixture | expected stdout | source line | run? | pass? |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  |  1 | const ALU +       | x86_int_add_smoke.oo    | x86_int_add.oo    | 3  | ooda/scripts/x86_int_add_smoke.oo:44 | [?] not run | [?] not run |
+  |  2 | const ALU -       | x86_int_sub_smoke.oo    | x86_int_sub.oo    | 3  | ooda/scripts/x86_int_sub_smoke.oo:? | [?] not run | [?] not run |
+  |  3 | const ALU *       | x86_int_mul_smoke.oo    | x86_int_mul.oo    | 6  | ooda/scripts/x86_int_mul_smoke.oo:44 | [?] not run | [?] not run |
+  |  4 | const ALU /       | x86_int_div_smoke.oo    | x86_int_div.oo    | 4  | ooda/scripts/x86_int_div_smoke.oo:? | [?] not run | [?] not run |
+  |  5 | const ALU % + /0  | x86_int_rem_smoke.oo    | x86_int_rem.oo    | 1  | ooda/scripts/x86_int_rem_smoke.oo:41 | [?] not run | [?] not run |
+  |  6 | const if == taken | x86_int_if_smoke.oo     | x86_int_if.oo     | yes | ooda/scripts/x86_int_if_smoke.oo:? | [?] not run | [?] not run |
+  |  7 | const if != taken | x86_int_if_ne_smoke.oo  | x86_int_if_ne.oo  | yes | ooda/scripts/x86_int_if_ne_smoke.oo:43 | [?] not run | [?] not run |
+  |  8 | const > if        | x86_int_gt_smoke.oo     | x86_int_gt.oo     | yes | ooda/scripts/x86_int_gt_smoke.oo:41 | [?] not run | [?] not run |
+  |  9 | const <= if       | x86_int_lte_smoke.oo    | x86_int_lte.oo    | yes | ooda/scripts/x86_int_lte_smoke.oo:41 | [?] not run | [?] not run |
+  | 10 | let bind ALU      | x86_int_add_lets_smoke.oo | x86_int_add_lets.oo | 6  | ooda/scripts/x86_int_add_lets_smoke.oo:? | [?] not run | [?] not run |
+  | 11 | let bind typed    | x86_int_add_bind_smoke.oo | x86_int_add_bind.oo | 6  | ooda/scripts/x86_int_add_bind_smoke.oo:? | [?] not run | [?] not run |
+  | 12 | negative literal  | x86_int_neg_let_smoke.oo | x86_int_neg_let.oo | -7 | ooda/scripts/x86_int_neg_let_smoke.oo:41 | [?] not run | [?] not run |
+  | 13 | mix string+int    | x86_intfirst_smoke.oo   | x86_intfirst.oo   | "x"+3=... | ooda/scripts/x86_intfirst_smoke.oo:? | [?] not run | [?] not run |
+
+  Three rows have a `?` source line because the smoke exists in
+  `ooda/scripts/x86_int_*_smoke.oo` per the directory listing but I have
+  not opened its bytes this pass. Rows 1, 3, 5, 7, 8, 9, 12 are
+  fully-cited because I did read those seven smoke files in full. Row
+  4 /0 path is enforced by `x86_int_rem_smoke.oo:60-65` (rem0 fixture
+  emits with no `_start` and an `ERR x86_emit x86 buf` style line; the
+  actual line is the `process_exit(1)` arm of `x86_emit_alu.oo:88-90`
+  for `/` and `x86_emit_alu.oo:92-95` for `%`). The hostile
+  "leftover-plus-print" case in phalanx §0 line 14 is the
+  `x86_emit_walk.oo:205-208` ERR exit; the corresponding smoke is
+  `x86_leftover_ident_smoke.oo` and `x86_hostile_leftover_smoke.oo`
+  (not in the int 13, but they are the leftover ERRs the phalanx
+  promises).
+
+## 5. Status of each role-owned deliverable
+
+  | what | status | evidence |
+  | --- | --- | --- |
+  | `ooda/scripts/x86_phalanx_int.oo` | [ ] open | absent on disk (grep returns only x86_phalanx.oot) |
+  | 16 int smokes at `ooda/scripts/x86_int_*_smoke.oo` | [x] done (on disk) | 8 read in full, 8 in dir listing |
+  | HARN hello fold smoke at `ooda/scripts/x86_hello_smoke.oo` | [x] done (on disk) | ooda/scripts/x86_hello_smoke.oo:1-56 |
+  | `openOODA/audit/x86_int.oot` (this file) | [x] done | openOODA/audit/x86_int.oot (this file) |
+  | const-int ALU+if+let in x86_emit*.oo | [x] done (on disk) | x86_emit_alu.oo:17-247, x86_emit_ctl.oo:66-153, x86_emit_bind.oo:18-103 |
+  | leftover-plus-print ERR | [x] done (on disk) | x86_emit_walk.oo:205-208 |
+  | INT smokes actually run under product oodac/oodac | [?] unknown | this pass did not rebuild, did not exec any smoke |
+  | HARN x86_hello_smoke.oo actually run | [?] unknown | same reason |
+  | open69_x86_smoke.oo still green (HARN gate) | [?] unknown | ooda/scripts/open69_x86_smoke.oo exists; not run here |
+
+## 6. What is left to close this role
+
+  1. Write `ooda/scripts/x86_phalanx_int.oo` (the file the phalanx §4
+     and §7 name as the INT proof entry point). It should drive the
+     13 smokes in §4 in one pass and exit 0 only if all 13 pass.
+  2. After COORD re-pins the side x86 overlay onto `oodac/oodac` per
+     phalanx §10 line 182-183, run the 13 smokes and record pass/fail
+     in this board's §4 table.
+  3. Run `scripts/x86_hello_smoke.oo` to confirm HARN is still green.
+  4. Confirm `scripts/open69_x86_smoke.oo` still green (HARN gate).
+  5. Once the 13 rows are PASS, COORD owns the rollup and DOCS may name
+     the int floor in `openOODA/SHIPPED.oot`.
+
+## 7. Isolation
+
+  This role wrote:
+    openOODA/audit/x86_int.oot           (this file)
+
+  This role did not:
+    - run any smoke
+    - rebuild oodac/oodac
+    - edit x86_emit*.oo, fixtures/x86_int*.oo, or scripts/x86_int*.oo
+    - edit c_emit*, llvm*, wasm*, cli, guide, regex
+    - copy bin/ooda onto oodac/oodac
+    - run emit-c, emit-llvm, or emit-wasm
+    - claim AArch64
+
+  HYG owns the line-lock board: see `openOODA/audit/x86_hyg.oot`.
+
+Status: [~] partial. Contract is on disk; the INT proof smoke is not
+written; no smoke has been executed in this pass. COORD re-pin is
+required before the 13 rows can flip from [?] to [x].

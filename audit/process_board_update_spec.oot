@@ -1,0 +1,243 @@
+// # PROCESS BOARD UPDATE SPEC — 2026-08-19 repair pass
+// Logline: durable spec for the two edits the 2026-08-19 repair pass
+//   makes to the 9 canonical process boards, with exact insertion text,
+//   exact line numbers, and a concrete rollback for each change.
+// Setup: source boards are openOODA/START.oot and openOODA/WORKFLOW.oot.
+//   No board file is edited by this spec; the spec is the durable change
+//   record. The 256-line cap (FORMAT.oot:91) is a hard law. Library
+//   ground truth: audit/library_status.oot. Swarm ground truth:
+//   audit/swarm_state_2026_08_19.oot. Author is one of 19 sub-agents
+//   writing .oot specs in audit/ on 2026-08-19.
+// Beats:
+//   §1  Scope and preconditions
+//   §2  Change 1 — START.oot: in-flight state pointer
+//   §3  Change 2 — WORKFLOW.oot: line-cap watch + pointer
+//   §4  Risk note: WORKFLOW.oot is at 246 of 256 lines
+//   §5  Acceptance test
+//   §6  Evidence index
+
+## §1. Scope and preconditions
+
+  Two boards are touched. Two are not. The remaining 7 boards are
+  out of scope for this repair pass; do not edit them as a side effect.
+
+  In scope:
+    openOODA/START.oot     (currently 92 lines, +6 lines planned)
+    openOODA/WORKFLOW.oot  (currently 246 lines, +3 lines planned)
+
+  Out of scope (must not be edited by this spec or its executor):
+    openOODA/RULES.oot
+    openOODA/NORTHSTAR.oot
+    openOODA/MOONSHOTS.oot
+    openOODA/ROADMAP.oot
+    openOODA/SHIPPED.oot
+    openOODA/FORMAT.oot
+    openOODA/SECURITY.oot
+
+  Preconditions verified before writing this spec:
+    a. wc -l START.oot = 92 (per dispatch, confirmed at audit run time)
+    b. wc -l WORKFLOW.oot = 246 (per dispatch, confirmed at audit run time)
+    c. wc -l FORMAT.oot = 148 (per dispatch, confirmed at audit run time)
+    d. audit/swarm_state_2026_08_19.oot exists on disk (14861 bytes)
+       and is the canonical swarm snapshot for the day.
+    e. audit/session_rollup_2026_08_19.oot is being written in parallel
+       by another sub-agent; this spec points to its filename but does
+       not gate on its presence.
+
+## §2. Change 1 — START.oot: in-flight state pointer
+
+  Goal: leave a one-line breadcrumb on the agent entry gate so a future
+  agent reading START.oot (the very first board per START.oot:25) can
+  find the durable record of the 2026-08-19 in-flight work without
+  globbing audit/.
+
+  Current state of START.oot (read 2026-08-19):
+    Total lines: 92
+    Last 5 lines (START.oot:88-92):
+      88  No goal and axiom means no product edit.
+      89
+      90  Decide at most 5 work items per turn. Prefer one clear ship.
+      91  Then run WORKFLOW.oot (write map, then OODA tempo). Respect
+         lane ownership in ROADMAP.oot.
+      92    Residual ROADMAP tracks are not this week's work unless the
+         owner named the row.
+    Layout: 5 top-level sections (## 0..## 4). The 9-board index lives
+    in §1 (START.oot:25-33). Reading priority lives in §3 (START.oot:62).
+    Pre-modification gate lives in §4 (START.oot:82-92).
+    No section number 5 exists; the slot is free.
+
+  Proposed addition (insert after START.oot:92, becomes lines 93-98):
+
+    ## 5. In-Flight State Pointer (2026-08-19)
+
+      Active repair pass:
+        audit/process_board_update_spec.oot — durable spec for board edits
+        audit/swarm_state_2026_08_19.oot   — lane ownership snapshot
+        audit/session_rollup_2026_08_19.oot — turn-level rollup
+
+  Why:
+    §1 already names 9 boards. A future agent reading START.oot cold
+    should also see the active audit/ anchors, not have to glob them.
+    The pointer names three durable files so the entry gate does not
+    go stale when this session ends.
+
+  Rollback (one command, reverts exactly):
+    Open START.oot. Delete lines 93-98 (the new section 5). Save.
+    The file returns to 92 lines, identical to its pre-edit content.
+
+  Line budget after the change:
+    92 + 6 = 98 lines. Cap is 256. Headroom: 158 lines. Safe.
+
+## §3. Change 2 — WORKFLOW.oot: line-cap watch + pointer
+
+  Goal: (a) document that WORKFLOW.oot is at 246 of 256 lines so future
+  edits treat it as 1-2 line patches, and (b) add a one-line pointer
+  to the audit/ spec that records the 2026-08-19 in-flight work.
+
+  Current state of WORKFLOW.oot (read 2026-08-19):
+    Total lines: 246
+    Last 5 lines (WORKFLOW.oot:242-246):
+      242  9. Never copy CLI onto compiler. Identity is `grep -a` only.
+          No Cargo. No ELF transmutation.
+      243
+      244  Also see:
+      245    - `openOODA/RULES.oot` — Core repository laws and pure .oo
+          standards
+      246    - `openOODA/SECURITY.oot` — Permission token taxonomy and
+          capability matrix
+    Layout: 6 top-level sections (## 0..## 5). Section 5 is "Bug Lore"
+    (WORKFLOW.oot:222). The "Also see:" tail block is at WORKFLOW.oot:243-248
+    in spirit, but only 3 reference lines (244-246) plus the heading.
+
+  Proposed addition (insert after WORKFLOW.oot:246, becomes lines 247-249):
+
+    Line-cap watch: 246 of 256 lines. Treat future edits as 1-2 line
+    patches. Past 250, split into door + companion (mirror the
+    audit/library_status.oot pattern).
+    Active repair pass pointer: see audit/process_board_update_spec.oot
+    for the 2026-08-19 in-flight sub-agent state.
+
+  Why:
+    (a) WORKFLOW.oot has only 10 lines of headroom. Without a watch
+    note, a future agent could add 11 lines, fail FORMAT.oot:91, and
+    not realize why. The note names the cap and the safety valve.
+    (b) The pointer matches the START.oot pointer so a future agent
+    who reads WORKFLOW.oot (the second board per START.oot:69) can find
+    the same audit/ anchors without globbing.
+
+  Rollback (one command, reverts exactly):
+    Open WORKFLOW.oot. Delete lines 247-249 (the new tail block).
+    Save. The file returns to 246 lines, identical to its pre-edit
+    content.
+
+  Line budget after the change:
+    246 + 3 = 249 lines. Cap is 256. Headroom: 7 lines. Safe but tight.
+    If any concurrent edit lands on the same day, the 7-line headroom
+    may be consumed. See §4.
+
+## §4. Risk note: WORKFLOW.oot is at 246 of 256 lines
+
+  The 256-line cap is law (FORMAT.oot:91, RULES 1.7). WORKFLOW.oot is
+  at 246 lines today. After the change in §3, it sits at 249 — 7 lines
+  under cap.
+
+  Risk:
+    Any other 2026-08-19 edit that adds 8 or more lines to WORKFLOW.oot
+    will violate the cap. The two most likely offenders are:
+      i.  Another sub-agent adding its own pointer (5+ lines).
+      ii. A future agent merging process-board conventions that the
+          current spec does not anticipate.
+
+  Mitigation already in place:
+    The line-cap watch note (§3) names the cap and the 1-2 line patch
+    rule, so any agent reading the file post-edit sees the constraint.
+
+  Safety valve (the library_status pattern):
+    If a future edit must add more than the 7-line headroom allows,
+    split WORKFLOW.oot into a door and a companion. The pattern is
+    already proven:
+      audit/library_status.oot        — 44 lines, door with one-line
+                                         pointer to 22 siblings
+      audit/library_status_tail_*.oot — 17 sibling files, each holds
+                                         a section of the data
+    Concretely, the split would be:
+      openOODA/WORKFLOW.oot             — §0..§2 (write map, tempo,
+                                          swarm). Door only.
+      openOODA/WORKFLOW_lore.oot        — §3..§5 (hostile probing,
+                                          tokenomics, bug lore).
+                                          Companion.
+    After the split, WORKFLOW.oot lands at roughly 180 lines and the
+    companion at roughly 90 lines, both well under cap. The door keeps
+    a one-line pointer to the companion, matching the library_status
+    pattern.
+
+  Why not split today:
+    This repair pass only adds 3 lines. Splitting now is a refactor
+    outside the scope of the 2026-08-19 ask and risks unrelated board
+    drift. Split when the cap actually bites, not preemptively.
+
+## §5. Acceptance test
+
+  After both edits are applied, the following must hold:
+
+    1. wc -l openOODA/START.oot = 98       (was 92, +6)
+    2. wc -l openOODA/WORKFLOW.oot = 249   (was 246, +3)
+    3. Both files <= 256 lines             (FORMAT.oot:91)
+    4. START.oot §5 exists, lines 93-98, and reads verbatim as the
+       "Proposed addition" block in §2 of this spec.
+    5. WORKFLOW.oot lines 247-249 exist, and read verbatim as the
+       "Proposed addition" block in §3 of this spec.
+    6. openOODA/scripts/dinner_lint.oo passes with no new violations
+       (it already enforces 256-line cap, forbidden extensions, and
+       Academy headers per FORMAT.oot:144-148).
+    7. No other board file is touched (md5sum of the other 7 boards
+       is unchanged).
+    8. The audit/ siblings (audit/library_status.oot, audit/swarm_state_
+       2026_08_19.oot, audit/session_rollup_2026_08_19.oot) are not
+       modified by this edit.
+
+  Owner of acceptance run: the human operator. The spec author does
+  not run dinner_lint; the spec author only writes the durable change
+  record and trusts the executor to run the lock.
+
+## §6. Evidence index
+
+  Source files read before writing this spec:
+    openOODA/START.oot          92 lines   (agent entry gate, §0..§4)
+    openOODA/WORKFLOW.oot       246 lines  (write map, tempo, swarm,
+                                            probing, lore)
+    openOODA/FORMAT.oot         148 lines  (Academy format, line cap
+                                            at §2.2 line 91)
+    audit/library_status.oot    44 lines   (door + 22 sibling pattern;
+                                            reference for the §4 safety
+                                            valve)
+    audit/swarm_state_2026_08_19.oot
+                                191+ lines (lane ownership snapshot,
+                                            confirms process lane is
+                                            active)
+
+  Cited file:line claims (all verified at spec-write time):
+    START.oot:25-33    — list of the 9 canonical boards
+    START.oot:69       — WORKFLOW.oot section 0 is in the "Always"
+                          reading set
+    START.oot:82-92    — pre-modification gate (section 4)
+    START.oot:88-92    — last 5 lines of START.oot today
+    WORKFLOW.oot:222   — section 5 "Bug Lore" heading
+    WORKFLOW.oot:241-246 — last 6 lines of WORKFLOW.oot today
+                         (numbered item 9, blank, "Also see:", 3
+                         references)
+    FORMAT.oot:91      — line cap rule: "Strictly <= 256 lines per
+                          `.oot` document. Split oversized documents
+                          into companion boards or `rfcs/`."
+    FORMAT.oot:144-148 — dinner_lint enforcement summary
+
+  Files that do not yet exist at spec-write time:
+    audit/session_rollup_2026_08_19.oot
+                         — pointed to by both new board pointers, but
+                           written in parallel by another sub-agent.
+                           The pointer is a filename reference, not a
+                           runtime dependency.
+
+  Out-of-scope files (must not be edited by the executor of this spec):
+    openOODA/RULES.oot, NORTHSTAR.oot, MOONSHOTS.oot, ROADMAP.oot,
+    SHIPPED.oot, FORMAT.oot, SECURITY.oot — see §1.

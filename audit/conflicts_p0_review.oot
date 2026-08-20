@@ -1,0 +1,79 @@
+# CONFLICTS.oot P0 REVIEW — Honesty-now conflicts vs current boards
+
+File: openOODA/audit/conflicts_p0_review.oot
+Date: 2026-08-19. Source: `openOODA.github.io/research/CONFLICTS.oot` (16 conflicts, P0..P3 priority).
+Scope: Only the 4 P0 "honesty now" conflicts. Each is mapped to current ROADMAP §5 Open rows and to the public site text.
+
+## 1. P0 conflict list (from CONFLICTS.oot line 220)
+
+C4  — NORTHSTAR "JIT ooda run" vs product native Backend-C run
+C7  — "0ms GC" claim vs residual leak-safe free in product
+C8  — Cryptographic / biometric caps vs process-local magic tokens
+C9  — Pure self-host (5.1 / 5.1a) vs C runtime TCB and host gcc
+
+The CONFLICTS doc's rationale: "Stop false claims; cheap doc/ROADMAP discipline."
+
+## 2. Per-conflict status today
+
+### C4 — JIT vs Backend-C run
+
+| Aspect | State |
+| :--- | :--- |
+| NORTHSTAR | §4.1.1 promises a dev bytecode VM. |
+| SHIPPED | "Bytecode is interpreter smokes, not product run." |
+| ROADMAP | §4.4: "Standalone x86_64 `emit-x86` is product (OPEN-69)." §6 Residual: "Bytecode VM is residual. A browser host is residual." |
+| Site | Limits.oot §5: "emit-c is the everyday emit. ... LLVM as a gcc replacement is residual. Extra emits have named hello locks. They are not the everyday path." |
+| Verdict | **Closed.** Every surface says the same thing. The 4.1.1 paper remains as north-star; the bytecode VM is research, not product. |
+
+### C7 — 0ms GC vs leak-safe residual
+
+| Aspect | State |
+| :--- | :--- |
+| NORTHSTAR | §3.7 claims 0ms GC via ARC/RAII. |
+| SHIPPED | "ARC is product. Pause-free GC and undo-RAM stay later." |
+| ROADMAP | §4.2: "Memory: `PURE_NO_ARC=0`. Memory is freed when the last reference drops." §6 Residual: "Pause-free GC and undo-RAM stay later." |
+| Site | Limits.oot §6: "Values drop when the last reference goes away. There is no tracing pause. The last handle frees the object." No "0ms GC" claim. |
+| Verdict | **Closed at the docs level; the slogan survives.** NORTHSTAR §3.7 still says "0ms GC" in the title. The honest formulation is "deterministic ARC, no STW." If you want this fully closed, soften NORTHSTAR §3.7's title. |
+
+### C8 — Crypto caps vs magic tokens
+
+| Aspect | State |
+| :--- | :--- |
+| NORTHSTAR | §4.5 promises SECRET taint + unforgeable tokens. |
+| SHIPPED | "Missing token and `process_exec` sink refuse — done. Full IFC is a moonshot." |
+| ROADMAP | §6 Residual: "Full general symbolic SMT is residual. ... Full IFC is a moonshot." |
+| Site | guide/Safety.oot §8: SECRET annotation, sink refusal. No claim of cryptographic unforgeability. |
+| Verdict | **Mostly closed.** Boards are honest: tokens are process-local, full IFC is moonshot. The threat-model gap (a hostile binary can forge tokens) is named in CONFLICTS.oot but not on the site. If you want this fully closed, add a one-line note to Safety.oot §1: "Tokens are process-local. A hostile binary inside the process can forge them; the OS sandbox is the real boundary." |
+
+### C9 — Pure self-host vs C runtime TCB
+
+| Aspect | State |
+| :--- | :--- |
+| NORTHSTAR | §5.1 "100% self-hosted ecosystem." |
+| SHIPPED | "C emit + gcc remains the everyday path. ... The compiler, the driver, the package tools, and the tests are `.oo`. The C you see is emit plus the small `chs_rt` runtime." |
+| ROADMAP | §4.4: "C emit + `chs_rt` + gcc is the product path. ... Named emit+gcc+run set: `scripts/ci_open_run.oo`." |
+| Site | Limits.oot §11: "The compiler, the driver, the package tools, and the tests are `.oo`. The C you see is emit plus the small `chs_rt` runtime." |
+| Verdict | **Closed.** The boards and the site all say the same thing: the `.oo` source is pure, the bootstrap (seed + gcc + chs_rt) is the TCB. |
+
+## 3. Summary
+
+| Conflict | Site text | Board text | NORTHSTAR text | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| C4 (JIT) | honest | honest | aspirational | closed |
+| C7 (0ms GC) | honest | honest | slogan survives | 90% closed |
+| C8 (magic tokens) | mostly honest | honest | aspirational | 80% closed |
+| C9 (TCB) | honest | honest | aspirational | closed |
+
+## 4. What is NOT a P0 conflict (but worth knowing)
+
+- C1 (metamorphic vs deterministic) — site says "Measured isolate hashes the payload... not a hardware enclave. The file on disk stays the same so a rebuild can match." Boards agree. Closed.
+- C2 (ARC vs temporal) — site says nothing about temporal memory; NORTHSTAR.oot and CONFLICTS.oot have it. Site is silent, not wrong. No public overclaim.
+- C3 (caps vs FFI) — site mentions `import_c` and `lto_xlang_link` as product (Options.oot §4, Safety.oot §9), but does not say the FFI boundary is sealed. Boards correctly say `&UnsafeFFICap` is not yet enforced. Honest enough; could be tighter.
+
+## 5. Recommended actions
+
+1. **Soften NORTHSTAR §3.7 title** from "0ms GC" to something like "Deterministic ARC and RAII lifetimes (no STW GC)" — closes the slogan-vs-truth gap on the C7 conflict.
+2. **Add one sentence to Safety.oot §1** about threat model: tokens are process-local, OS sandbox is the real boundary — closes the C8 gap at the public level.
+3. **No change needed** for C4 or C9; current text is honest.
+
+These are all single-sentence edits, no compiler touching.

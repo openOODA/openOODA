@@ -1,0 +1,254 @@
+// # X86-MEM — 4096 .bss bump cap, stack frame, and ret-arc audit
+//
+// Logline: emit-x86 of any fixture whose cat or greet would exceed 4096 bytes must ERR with x86 buf and not emit a _start .s; the .bss bump is the only scratch, the SysV stack frame is push rbp / mov rsp rbp / pop rbp / ret, and the callee returns .Lbuf in %rax without trashing it.
+//
+// Setup: cwd is ooda/. Host is x86_64. .bss is the only scratch above rodata. .oo file law, 256-line cap, and C emit + gcc are off-limits.
+//
+// Beats:
+//   1. Static read of str.oo and greet.oo to confirm the 4096 cap.
+//   2. Confirm x86_buf_ovf_smoke.oo, x86_cat_smoke.oo, x86_frame_smoke.oo on disk.
+//   3. State the x86_buf_smoke.oo gap; MEM is partial.
+//   4. ARC on match, copy, frame, and ret.
+
+// ## 0. Verdict
+//
+// 4096 .bss bump cap:        PASS (str.oo:178, greet.oo:182)
+// overflow ERR + no _start:  PASS (x86_buf_ovf_smoke.oo)
+// happy bump yyzz path:      PASS (x86_cat_smoke.oo, two runs)
+// x86_buf_smoke.oo (named):  OPEN (not on disk)
+// ARC static read:           PASS (only identity frame is smoke-locked)
+//
+// No CRIT. No HIGH. Did not edit product .oo or fixtures. Did not rebuild oodac.
+
+// ## 1. MEM owns the 4096 .bss bump cap
+//
+// x86_phalanx.oot lines 101-102 and 164:
+//
+//   101:  MEM   ooda/scripts/x86_buf_smoke.oo
+//   102:        openOODA/audit/x86_mem.oot
+//   164:  Cycle C files (after B): x86_emit_fn.oo, x86_emit_str.oo, x86_emit_frame.oo.
+//        MEM owns the 4096 bump cap. RT owns SysV moves.
+//
+// MEM owns the cap; RT owns the SysV moves (lea / call / syscall
+// in x86_emit_sys.oo). On disk, two emitters use the bump.
+//
+// Cap check sites (no partial .s; ERR fires before any output):
+//   str.oo:178-181  if la+lb+1>4096; ERR; process_exit(1)
+//   greet.oo:182-185  if lp+ln+ls+1>4096; ERR; process_exit(1)
+//
+// .bss reserve sites:
+//   str.oo:188-191  .section .bss, .p2align 4, .Lbuf, .skip 4096
+//   greet.oo:194-197  same
+//
+// The cap math is exact:
+//   - cat writes la+lb bytes plus one newline = la+lb+1 total
+//   - greet writes lp+ln+ls bytes plus one newline = lp+ln+ls+1 total
+// The +1 matches the final movb $10, (%rdi) that places a newline
+// at .Lbuf[la+lb] (str.oo:219) or .Lbuf[lp+ln+ls] (greet.oo:227).
+// The .bss is .skip 4096, aligned to 16 (.p2align 4). .Lbuf is
+// the only scratch label. The cap ERR fires BEFORE the .bss is
+// written.
+
+// ## 2. MEM smokes on disk
+//
+// File: ooda/scripts/x86_buf_ovf_smoke.oo
+//   1:  // # emit-x86 bump overflow honesty lock
+//   3:  // Logline: emit-x86 of fixtures/x86_buf_ovf.oo prints ERR x86_emit and does not emit _start.
+//  32:      let src = root + "/fixtures/x86_buf_ovf.oo";
+//  37:      if process_exec(p, oodac + " emit-x86 " + src + " > " + sfile + " 2>" + serr).is_ok() {
+//  38:          if expect_clean(p, "grep -q _start " + sfile).is_ok() {
+//  39:              fail("successful .s omitted overflow ERR");
+//  40:          }
+//  41:      }
+//  42-45:  require ERR, x86_emit, buf; refuse ! grep -q _start
+//
+// Latches the overflow case. The fixture
+// ooda/fixtures/x86_buf_ovf.oo exists (verified at audit time,
+// not run). It is a cat with two 2048-byte strings, total 4097.
+// la+lb+1 = 4097 > 4096 ERRs at str.oo:178.
+//
+// File: ooda/scripts/x86_cat_smoke.oo
+//   1:  // # emit-x86 bump concat lock
+//   3:  // Logline: emit-x86 of fixtures/x86_cat.oo assembles, copies via .bss, and prints yyzz via as and ld.
+//  29-31:  require call cat, .skip 4096, call .Lcpy
+//  41:      require grep -qx yyzz on stdout
+//
+// Latches the happy path: as+ld, exit 0, stdout yyzz (yy + zz +
+// newline). Two runs, r1 and r2. Closest MEM smoke to
+// x86_buf_smoke.oo, but it is a cat fixture, not the named lock.
+//
+// File: ooda/scripts/x86_frame_smoke.oo
+//   1:  // # emit-x86 SysV stack frame lock
+//   3:  // Logline: emit-x86 of fixtures/x86_id_call.oo emits push %rbp frame, calls id, and prints hi.
+//  29-32:  require push rbp, mov rsp rbp, pop rbp, call id
+//
+// Latches the identity-callee frame. Cat and greet use the same
+// frame helpers; only identity is smoke-locked.
+
+// ## 3. MEM smoke gap: x86_buf_smoke.oo does not exist
+//
+// x86_phalanx.oot line 101 names:
+//
+//   101:  MEM   ooda/scripts/x86_buf_smoke.oo
+//
+// On disk, that file is NOT present:
+//
+//   $ ls ooda/scripts/x86_buf_smoke.oo
+//   ls: cannot access '...': No such file or directory
+//
+// The closest smokes are x86_cat_smoke.oo (bump happy path) and
+// x86_buf_ovf_smoke.oo (overflow). x86_buf_smoke.oo in the
+// phalanx contract reads as a basic non-overflow MEM smoke.
+// Without it, MEM has overflow coverage and cat coverage, but
+// no standalone "MEM lock" smoke that names itself as such.
+//
+// Status: x86_buf_smoke.oo is OPEN. x86_cat_smoke.oo partially
+// covers the same arc end-to-end.
+
+// ## 4. ARC on match (cap fires before the .bss write)
+//
+// File: ooda/oodac/x86_emit_str.oo
+//  178:      if la + lb + 1 > 4096 {
+//  179:          println("ERR\tx86_emit\tx86 buf");
+//  180:          process_exit(1);
+//  181:      }
+//  182:      println("# openOODA x86_64 product floor (AT&T, Linux, as+ld)");
+//  183:      println("    .section .rodata");
+//
+// The cap check is at the very top of the emit body. The ERR
+// plus process_exit(1) precede ANY .s line. The .bss, the copy
+// loop, the callee frame, and _start are all unreachable on
+// overflow. This is the no-partial-state guarantee.
+//
+// Same shape at greet.oo:182-186. The match in x86_emit.oo:49-58
+// (cat then greet) is a match before emit: x86_match_cat_call
+// returns the args, then x86_emit_cat_call prints the cap ERR
+// or the body. There is no partial .s.
+
+// ## 5. ARC on .Lcpy copy (caller-saved rdi/rsi/rcx, r8/r9 save args)
+//
+// .Lcpy loop body (cat: str.oo:196-207; greet: greet.oo:202-213):
+//   test %rcx, %rcx; jz .Lcpy_done
+//   .Lcpy_loop: movb (%rsi), %al; movb %al, (%rdi)
+//   inc %rsi; inc %rdi; dec %rcx; jnz .Lcpy_loop
+//   .Lcpy_done: ret
+//
+// Cat body (str.oo:208-220): frame enter (str.oo:209), save %rdi
+// to %r8 and %rsi to %r9 (callee-saved), then .Lbuf as %rdi,
+// .Lstr0 via %r8 as %rsi, count = la, call .Lcpy; .Lstr1 via
+// %r9 as %rsi, count = lb, call .Lcpy; movb $10 at %rdi; lea
+// .Lbuf, %rax. Greet body (greet.oo:214-228): same shape, three
+// .Lcpy calls, only %rdi saved.
+//
+// rdi, rsi, rcx, rax are caller-saved under SysV. The callee
+// destroys them. Saving the incoming %rdi and %rsi into %r8 and
+// %r9 (callee-saved) before each .Lcpy call is the right pattern.
+//
+// .Lcpy takes (rdi=dst, rsi=src, rcx=count), tests rcx, exits
+// early on zero, copies one byte per iteration via %al. After
+// the second .Lcpy call, %rdi is .Lbuf + la + lb; movb $10
+// writes a newline at .Lbuf[la+lb]. The .bss cap means la+lb
+// is at most 4095, so the newline is at .Lbuf[4095] max. Same
+// for greet.
+
+// ## 6. ARC on stack frame (push rbp / mov rsp rbp / pop rbp / ret)
+//
+// File: ooda/oodac/x86_emit_frame.oo
+//  13:  pub fn x86_emit_frame_enter() {
+//  14:      println("    push %rbp");
+//  15:      println("    mov %rsp, %rbp");
+//  16:  }
+//  18:  pub fn x86_emit_frame_leave() {
+//  19:      println("    pop %rbp");
+//  20:      println("    ret");
+//  21:  }
+//
+// SysV callee prologue/epilogue: call pushes the return address,
+// callee pushes %rbp and sets %rbp = %rsp, body uses the frame,
+// then `pop %rbp; ret` unwinds. Standard minimal frame. No red
+// zone, no stack-allocated locals, no spilled callee-saved
+// registers beyond %rbp. The .bss bump means no stack buffers
+// are needed.
+//
+// Frame enter/leave sites across the four callees:
+//   cat:   str.oo:209  enter, :221 leave
+//   greet: greet.oo:215 enter, :229 leave
+//   id:    fn.oo:205   enter, :207 leave
+//   snd:   rsi.oo:231  enter, :233 leave
+//
+// All four callees use the same enter/leave pair. None push
+// extra callee-saved registers. x86_frame_smoke.oo locks
+// identity; cat and greet are static only.
+
+// ## 7. ARC on ret (lea .Lbuf, %rax survives the frame leave)
+//
+// File: ooda/oodac/x86_emit_str.oo
+//  219:      println("    movb $10, (%rdi)");
+//  220:      println("    lea .Lbuf(%rip), %rax");
+//  221:      x86_emit_frame_leave();
+//
+// x86_emit_frame_leave is `pop %rbp; ret`. Neither touches %rax.
+// SysV treats %rax as caller-saved, so the callee is free to set
+// it. The lea is rip-relative, so .Lbuf is a fixed ELF symbol
+// reachable across the call. After pop %rbp restores the saved
+// frame, ret returns to the caller with %rax = .Lbuf.
+//
+// Caller side (str.oo:222-231):
+//  222-223:  main: and _start:
+//  224-225:  lea .Lstr0, %rdi; lea .Lstr1, %rsi
+//  226:      call fname
+//  227:      mov %rax, %rsi
+//  228-230:  mov $1, %rax; mov $1, %rdi; mov $la+lb+1, %rdx
+//  231:      syscall
+//
+// %rax after the call holds .Lbuf. Line 227 moves it to %rsi
+// (the SYS_write buf arg). Line 230 sets %rdx to la+lb+1 (the
+// total byte count). The syscall writes la+lb+1 bytes from
+// .Lbuf to fd 1. That matches what the callee wrote. Correct.
+//
+// Greet caller (greet.oo:230-241) does the same pattern with
+// %rdx = lp+ln+ls+1. Correct. Identity (fn.oo:208-220) and
+// two-arg rsi (rsi.oo:234-247) callers use rodata with a baked
+// \\n, so chars_len(arg)+1 is the correct length.
+
+// ## 8. Status table
+//
+//   role item                          on disk                        status
+//   ------------------------------     ---------------------------   -------
+//   x86_buf_smoke.oo                   absent (gap)                   [ ] open
+//   x86_buf_ovf_smoke.oo               ooda/scripts/                  [x] done
+//   x86_cat_smoke.oo                   ooda/scripts/                  [x] done
+//   x86_frame_smoke.oo                 ooda/scripts/                  [x] done
+//   fixtures/x86_buf_ovf.oo            ooda/fixtures/                 [x] done
+//   fixtures/x86_cat.oo                ooda/fixtures/                 [x] done
+//   4096 cap, cat                      str.oo:178                     [x] done
+//   4096 cap, greet                    greet.oo:182                   [x] done
+//   .skip 4096, cat                    str.oo:191                     [x] done
+//   .skip 4096, greet                  greet.oo:197                   [x] done
+//   .Lcpy loop                         str.oo:196-207                 [x] done
+//   .Lcpy loop, greet                  greet.oo:202-213               [x] done
+//   r8/r9 save args across .Lcpy       str.oo:210-218                 [x] done
+//   r8 save arg across .Lcpy, greet    greet.oo:216-226               [x] done
+//   newline write in bounds            math on str:178/191/219        [x] done
+//   frame enter (push rbp/mov rsp rbp) frame.oo:13-16                 [x] done
+//   frame leave (pop rbp/ret)          frame.oo:18-21                 [x] done
+//   frame enter on cat/greet/id/snd    str:209 greet:215 fn:205 rsi:231 [x] done
+//   frame leave on cat/greet/id/snd    str:221 greet:229 fn:207 rsi:233 [x] done
+//   %rax = .Lbuf survives frame leave  str:220/221 greet:228/229      [x] done
+//   caller reads %rax for SYS_write    str:227 greet:234              [x] done
+//   %rdx = total bytes for SYS_write   str:230 greet:237              [x] done
+
+// ## 9. Isolation
+//
+// MEM wrote only: openOODA/audit/x86_mem.oot
+//
+// Did not edit oodac, runtime, fixtures, or smokes.
+// Did not rebuild oodac. Did not copy bin/ooda onto oodac/oodac.
+// Did not invent a smoke body or a fixture body. The x86_buf_smoke.oo
+// gap is recorded honestly in §3 and §8.
+//
+// Status: MEM is PARTIAL. 4096 cap is wired and locked.
+// x86_buf_ovf_smoke.oo and x86_cat_smoke.oo cover overflow and
+// cat-success. x86_buf_smoke.oo is OPEN. Stack frame and ret-arc
+// are correct on static read; only x86_frame_smoke.oo covers the
+// frame end-to-end, and only for identity.

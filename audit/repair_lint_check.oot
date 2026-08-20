@@ -1,0 +1,139 @@
+// # REPAIR LINT CHECK — verification of 2026-08-19 19-sub-agent repair pass
+//
+// Logline: Independent read-only verification of the 23 audit files the repair pass produced and the 6 prior-session fixes it touched. All file:line claims are evidence-backed. No file outside this one was edited.
+//
+// Setup: Run from /home/jeryd/Projects/openOODA/openOODA. Two scripts: scripts/dinner_lint.oo.bin (forbidden extensions + line cap + Academy header) and scripts/check_board.oo.bin (audit/ size budget). 23 file inventory built with `wc -l`; Academy 4-marker presence checked with `grep -c '^// <marker>:'`. Source-file spot-checks resolved against the real on-disk tree.
+//
+// Beats:
+//   1. Tool exit-code table (dinner_lint, check_board).
+//   2. Per-file inventory: existence + line count + audit/ violation flag.
+//   3. Academy 4-marker check (// #, // Logline:, // Setup:, // Beats:).
+//   4. Prior-session fix verification (4 plan_llvm pins, cross_ref §0, shipped_size typo).
+//   5. Source-file spot-check (3 files, 9 citations, 0 fabrications).
+//   6. Findings + verdict.
+
+// ## 1. Tool exit codes
+
+// | Script | Exit | audit/ violations | Note |
+// |---|---|---|---|
+// | scripts/dinner_lint.oo.bin | 1 | 0 | 351 violations all in ooda/std/ and openOODA.github.io/scripts/. None in audit/. Output filtered with `grep -E 'audit/' /tmp/dinner_lint_full.txt` returned 0 rows. |
+// | scripts/check_board.oo.bin  | 0 | 0 | "audit/ total: 158  oversized: 0" on its own size report (check_board.oo.bin line emits). |
+
+// ## 2. File inventory (23 new files; orchestrator intro said 24 — off-by-one to flag)
+
+// | # | File | Lines | <=256 | Size source |
+// |---|---|---:|---|---|
+// | 1  | audit/wasm_index.oot              | 197 | OK | wc -l |
+// | 2  | audit/wasm_wave_assignment.oot    | 255 | OK | wc -l |
+// | 3  | audit/wasm_deps_graph.oot         | 241 | OK | wc -l |
+// | 4  | audit/x86_pv1.oot                 | 191 | OK | wc -l |
+// | 5  | audit/x86_pv2.oot                 | 230 | OK | wc -l |
+// | 6  | audit/x86_sec.oot                 | 256 | OK (at cap) | wc -l |
+// | 7  | audit/x86_mem.oot                 | 254 | OK | wc -l |
+// | 8  | audit/x86_int.oot                 | 216 | OK | wc -l |
+// | 9  | audit/x86_hyg.oot                 | 207 | OK | wc -l |
+// | 10 | audit/x86_docs.oot                | 255 | OK | wc -l |
+// | 11 | audit/x86_coord.oot               | 249 | OK | wc -l |
+// | 12 | audit/handoff_compiler_repair.oot | 255 | OK | wc -l |
+// | 13 | audit/handoff_library_split.oot   | 200 | OK | wc -l |
+// | 14 | audit/handoff_publicsite_sh.oot   | 243 | OK | wc -l |
+// | 15 | audit/handoff_qa_sh_oot.oot       | 254 | OK | wc -l |
+// | 16 | audit/process_board_update_spec.oot | 243 | OK | wc -l |
+// | 17 | audit/audit_curator_actions.oot   | 141 | OK | wc -l |
+// | 18 | audit/swarm_state_2026_08_19.oot  | 250 | OK | wc -l |
+// | 19 | audit/session_rollup_2026_08_19.oot | 200 | OK | wc -l |
+// | 20 | audit/board_honesty_2026_08_19.oot | 191 | OK | wc -l |
+// | 21 | audit/hyg_drift_2026_08_19.oot    | 156 | OK | wc -l |
+// | 22 | audit/windows_lane_anchor.oot     | 160 | OK | wc -l |
+// | 23 | audit/dinner_lint_out_of_lane.oot | 237 | OK | wc -l |
+
+// Note: orchestrator intro stated "24 new .oot spec files" but the numbered list delivered has 23 items. The 23 items above all exist on disk; the 24th claim is not corroborated by the list. Severity: LOW (count inconsistency, not a missing file).
+
+// ## 3. dinner_lint and check_board findings for audit/
+
+// dinner_lint output was 30K+ bytes; filtering for "audit/" produced zero rows (verified with `grep -E "audit/" /tmp/dinner_lint_full.txt` -> empty). The 351 violations dinner_lint reports are all under ooda/std/ (oversized .oo and missing Academy header on .oo files) plus 2 .sh files in openOODA.github.io/scripts/. None of the new 23 audit/.oot files appear in any FAIL row.
+
+// check_board.oo.bin reports "audit/ total: 158  oversized: 0" (158 = prior ~135 + 23 new). 0 audit/ files exceed 256 lines per check_board's own audit. The largest new file is x86_sec.oot at exactly 256 (boundary, not over).
+
+// ## 4. Academy 4-marker check
+
+// Required markers: `// #` (title), `// Logline:`, `// Setup:`, `// Beats:`. Counted with `grep -c '^// <marker>:'` per file. T column = matches of `^// #` (some files have extra `// #` section headers in body; T>=1 satisfies the header requirement).
+
+// | File | T | L | S | B | Verdict |
+// |---|---:|---:|---:|---:|---|
+// | audit_curator_actions.oot         | 1 | 1 | 1 | 1 | PASS — minor: line 3 is literally `// # Title` (the word "Title"), not the actual title. The 4 markers are present, but the title is placeholder. Real title appears on line 1 as `# AUDIT CURATOR ACTIONS — 2026-08-19 repair pass` (single `#`, not Academy style). |
+// | board_honesty_2026_08_19.oot      | 1 | 1 | 1 | 1 | PASS |
+// | dinner_lint_out_of_lane.oot       | 1 | 1 | 1 | 1 | PASS |
+// | handoff_compiler_repair.oot       | 1 | 1 | 1 | 1 | PASS |
+// | handoff_library_split.oot         | 8 | 1 | 1 | 1 | PASS — extra `// #` are body section headers. |
+// | handoff_publicsite_sh.oot         | 1 | 1 | 1 | 1 | PASS |
+// | handoff_qa_sh_oot.oot             | 1 | 1 | 1 | 1 | PASS |
+// | hyg_drift_2026_08_19.oot          | 1 | 1 | 1 | 1 | PASS |
+// | process_board_update_spec.oot     | 1 | 1 | 1 | 1 | PASS |
+// | session_rollup_2026_08_19.oot     | 1 | 1 | 1 | 1 | PASS |
+// | swarm_state_2026_08_19.oot        | 1 | 1 | 1 | 1 | PASS |
+// | wasm_deps_graph.oot               | 1 | 1 | 1 | 1 | PASS |
+// | wasm_index.oot                    | 1 | 1 | 1 | 1 | PASS |
+// | wasm_wave_assignment.oot          | 1 | 1 | 1 | 1 | PASS |
+// | windows_lane_anchor.oot           | 1 | 1 | 1 | 1 | PASS |
+// | x86_coord.oot                     | 1 | 1 | 1 | 1 | PASS |
+// | x86_docs.oot                      | 1 | 1 | 1 | 1 | PASS |
+// | x86_hyg.oot                       | 1 | 1 | 1 | 1 | PASS |
+// | x86_int.oot                       | 1 | 1 | 1 | 1 | PASS |
+// | x86_mem.oot                       | 11| 1 | 1 | 1 | PASS — extra `// #` are body section headers. |
+// | x86_pv1.oot                       | 1 | 1 | 1 | 1 | PASS |
+// | x86_pv2.oot                       | 1 | 1 | 1 | 1 | PASS |
+// | x86_sec.oot                       | 11| 1 | 1 | 1 | PASS — extra `// #` are body section headers. |
+
+// ## 5. Prior-session fixes verification
+
+// | File | Required change | Actual state | Pass |
+// |---|---|---|---|
+// | audit/plan_llvm_phalanx.oot | pin v0.203 -> v0.205.0-beta | line 5: `Pin: v0.205.0-beta. Lane: LLVM emit only.` | YES |
+// | audit/plan_llvm_coord.oot  | pin v0.203 -> v0.205.0-beta | line 6: `Pin: v0.205.0-beta. Lane: LLVM emit only.` | YES |
+// | audit/plan_llvm_int.oot    | pin v0.203 -> v0.205.0-beta | line 5: `Pin: v0.205.0-beta. Lane: LLVM emit only. COORD owns the gcc side rebuild.` | YES |
+// | audit/plan_llvm_mem.oot    | pin v0.203 -> v0.205.0-beta | line 4: `MEM note only. C emit + gcc remains the product path. Pin: v0.205.0-beta.` | YES |
+// | audit/cross_ref_audit.oot  | §0 updated to match new SHIPPED.oot | line 6-11: `## 0. Update 2026-08-19 (post-SHIPPED split)` — cites 97-line SHIPPED, 135 unique .oo refs, 22 library_status siblings (1+3+2+17), all under 256 | YES |
+// | audit/shipped_size_audit.oot | typo flagged | TYPO on line 3 (NOT line 2 as stated by orchestrator; line 2 is blank): `File: openOODA/audit/shipped_size_oot` — path is missing the `_audit` suffix. See §6. | NO |
+
+// ## 6. Flagged typo with proposed fix
+
+// File: openOODA/audit/shipped_size_audit.oot
+// Line 3 (current):
+//   File: openOODA/audit/shipped_size_oot
+// Proposed fix (replace line 3 with):
+//   File: openOODA/audit/shipped_size_audit.oot
+// Rationale: the file's own name is shipped_size_audit.oot (verified with `ls -la`). The typo makes the self-referential "File:" line in the audit point to a path that does not exist. Severity: LOW (cosmetic, not load-bearing — rest of the audit references the file correctly at line 8 via backtick reference).
+// Note: orchestrator said the typo was on "line 2". The actual location is line 3. Line 2 is blank. Reporting the precise line.
+
+// ## 7. Source-file spot-check (no fabrications)
+
+// Verified each cited path against the on-disk tree under /home/jeryd/Projects/openOODA/.
+
+// | Spot | File:line of citation | Cited | Real path | Exists | Lines |
+// |---|---|---|---|---|---|
+// | handoff_compiler_repair.oot:28  | x86_emit.oo              | ooda/oodac/x86_emit.oo            | YES | 61  |
+// | handoff_compiler_repair.oot:58  | llvm_emit_method.oo      | ooda/oodac/llvm_emit_method.oo    | YES | 175 |
+// | handoff_compiler_repair.oot:100 | plan_llvm_mem.oot        | openOODA/audit/plan_llvm_mem.oot  | YES | 134 |
+// | handoff_library_split.oot:21    | btree_disk_ops.oo        | ooda/std/database/btree_disk_ops.oo | YES | 395 |
+// | handoff_library_split.oot:21    | protein_translation.oo   | ooda/std/bioinformatics/protein_translation.oo | YES | 380 |
+// | handoff_library_split.oot:21    | dispatch_worker.oo       | ooda/std/swarm/dispatch_worker.oo | YES | 323 |
+// | handoff_library_split.oot:15    | FORMAT.oot               | openOODA/FORMAT.oot               | YES | 148 |
+// | wasm_deps_graph.oot:30          | wasm_emit.oo             | ooda/oodac/wasm_emit.oo           | YES | 66  |
+// | wasm_deps_graph.oot:226         | wasm_emit_pick_if.oo     | ooda/oodac/wasm_emit_pick_if.oo   | YES | 121 |
+
+// All 9 cited source files resolve to real on-disk files. 0 fabrications. File sizes also line up with the narrative (e.g. btree_disk_ops.oo = 395 matches the 395 cited in handoff_library_split.oot:21 and 35; protein_translation.oo = 380 matches line 21 and 77; dispatch_worker.oo = 323 matches line 21).
+
+// ## 8. Findings (severity-ordered)
+
+// 1. (LOW, BLOCKING-FOR-HONESTY) audit/shipped_size_audit.oot:3 — typo `File: openOODA/audit/shipped_size_oot` should be `File: openOODA/audit/shipped_size_audit.oot`. Orchestrator also mis-located the typo (said line 2, actual is line 3). Fix is one sed; see §6.
+// 2. (LOW) audit/audit_curator_actions.oot:3 — Academy title line is literally `// # Title` (the word "Title") rather than the actual title `// # AUDIT CURATOR ACTIONS — 2026-08-19 repair pass`. The 4-marker check passes mechanically, but the title is placeholder. The real title sits on line 1 with a single `#` (markdown style, not Academy). Either change line 3 to `// # AUDIT CURATOR ACTIONS — 2026-08-19 repair pass` or remove the Academy-style title on line 3 and convert line 1 to Academy style.
+// 3. (LOW) Orchestrator said the repair pass produced "24 new .oot spec files" but the numbered list delivered to this verifier has 23 items. All 23 are real; the 24th claim is uncorroborated. Either the count in the intro is off-by-one, or one file is missing from the list. No missing file was found on disk in the audit/ directory by name match; this is a count-claim issue, not a missing-file issue.
+// 4. (INFO) audit_curator_actions.oot:141 and x86_sec.oot:256 are at or near the 256-line cap. x86_sec.oot is exactly at the cap (legal). audit_curator_actions.oot has 115 lines of headroom. No action needed.
+// 5. (INFO) dinner_lint exits 1 (351 violations) but 0 are in audit/. The 351 are all in ooda/std/ (oversize + missing Academy) and openOODA.github.io/scripts/ (2 .sh files). The repair pass correctly stayed in its lane (process, not product) — none of the new 23 audit/.oot files introduced dinner_lint violations.
+
+// ## 9. Verdict
+
+// PARTIAL.
+// Reason: 22 of 23 files are clean. shipped_size_audit.oot:3 has a real typo that the orchestrator asked this verifier to flag with proposed fix text. The fix is in §6 and is a one-line sed. No other blocking issues. Source citations verified. Headers verified. 0 audit/ violations in dinner_lint. 0 audit/ oversize in check_board. The 24-vs-23 count mismatch is a separate LOW concern noted in §8 item 3.
+// Unblocked after one-line typo fix to shipped_size_audit.oot:3 (proposed in §6).

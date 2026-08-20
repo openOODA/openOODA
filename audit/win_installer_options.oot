@@ -1,0 +1,134 @@
+# WIN-INSTALLER OPTIONS — Phase 0 research, sub-agent D
+
+File: openOODA/audit/win_installer_options.oot
+Date: 2026-08-19. Phase: 0 (read-only survey). Lane: tooling research, not compiler.
+Scope: pick a single-file Windows installer for the openOODA toolchain (`ooda.exe`, `oodac.exe`, `chs_rt.exe`, the `std\` tree, a `PATH` entry, and `OODA_*` env variables). User is developer-facing. Project is pure-`.oo`, no GUI, single binary per tool. Bias: small, scriptable, no Microsoft tax.
+
+## 0. Method
+
+Surveyed MSIX, MSI via WiX, NSIS, and plain zip. Each gets a build-cost, install-surface, uninstall, auto-update, trust-story, CLI-toolchain, and verdict treatment. Web sources used for any non-common claim. No installer was produced for openOODA; this is a survey, not a build.
+
+## 1. MSIX
+
+Build cost. Host tool dep: `makeappx.exe` plus a code-sign cert. Output: a single signed `.msix` or `.msixbundle`. Linux buildable via the WinApp CLI. No compressor overhead.
+
+Install surface. Files land under `%ProgramFiles%\WindowsApps\<PackageFamilyName>\` and are read-only at runtime. The user cannot pick an install directory. PATH is the killer issue: MSIX packages cannot edit the user or system `PATH` registry keys. The only system-wide hook is `AppExecutionAlias`, a per-package manifest entry that the OS resolves after `PATH` lookup and can point only at a single executable. PSF `EnvVarFixup` only sets variables inside the container. Writes to `%USERPROFILE%\AppData` are virtualized into a per-user, per-package hive at `%LocalAppData%\Packages\<PFN>\LocalCache\Local\VFS\` unless the package opts out via `FilesystemWriteVirtualization=disabled`. The install directory is read-only at runtime; binaries cannot self-update in place.
+
+Uninstall. Trivial: `Remove-AppxPackage` or the modern Settings app. Fully clean, including the virtualized AppData.
+
+Auto-update. Built in. An `.appinstaller` file declares an update URL, version, and the App Installer re-checks on a cadence. Microsoft Store auto-update is free.
+
+Trust story. Via the Microsoft Store, Microsoft re-signs the package; users see no SmartScreen warning. Outside the Store, the publisher signs the `.msix` with an OV or EV cert; SmartScreen shows a warning until reputation builds.
+
+CLI gotchas. PATH is not editable; AppExecutionAlias is a band-aid and requires one manifest entry per binary. `ooda` plus `oodac` plus `chs_rt` is three manifest entries. Install path is `%ProgramFiles%\WindowsApps\<PFN>\`, which fights the plan's `%LOCALAPPDATA%\openooda\bin\ooda.exe`. `OODA_FS_WRITEDIR` defaults would have to be re-tuned because the VFS virtualizes `AppData` writes. Sandbox-capability mismatch: openOODA is a developer toolchain, not a UWP-style sandboxed app. The container is in the way.
+
+Verdict. Strong auto-update and clean uninstall. Hard wrong on install path, PATH, and AppData writes. Poor fit for a non-sandboxed CLI toolchain.
+
+## 2. MSI via WiX
+
+Build cost. Host tool dep: WiX 6.x on Windows. WiX source is MS-RL. Starting with v6.0 (April 2025), the WiX binaries ship under an EULA with an Open Source Maintenance Fee: $10/month small, $40 medium, $60 large, charged to revenue-generating organizations above $10k/year. Hobbyists and pre-revenue projects pay nothing. WiX 5.x and earlier stay free. Output: a `.msi` of about the payload size plus 100-300 KB of metadata. Burn bundles are a few hundred KB bigger.
+
+Install surface. Files land under `INSTALLDIR`, default `%ProgramFiles(x86)%\openooda\` for 32-bit or `%ProgramFiles%\openooda\` for 64-bit. The MSI `Environment` table or `WixUtilExtension` writes to `HKLM\SYSTEM\...\Environment` for system PATH, or `HKCU\Environment` for user PATH, with `[~]` (literal) or `[%]` (expand) markers. The user picks the install path through the wizard.
+
+Uninstall. Native. The entry appears in Settings > Apps > Installed apps and `arp` from `cmd`. Windows Installer handles ref-counting, repair, and patch sequencing. The MSI rolls back on failed install. The PATH entry is removed on uninstall.
+
+Auto-update. None built into MSI. Ship a new MSI; or write a Squirrel-style updater; or push through Group Policy.
+
+Trust story. Authenticode-sign the `.msi` and Burn bundle with `signtool.exe` and a SHA-256 timestamp. SmartScreen reputation builds over download volume. GPO-friendly: domain admins assign the MSI silently, and Windows Installer handles upgrade sequencing for free.
+
+CLI gotchas. WiX is XML-heavy. A 5-tool CLI toolchain install with PATH manipulation is a few hundred lines of `*.wxs`. WiX 6.x has the OSMF; budget the line if the project ever becomes a revenue org. PATH via the `Environment` table needs care: `[%PATH%]` expanding inside a custom action is one of the classic MSI footguns. Most testing requires a real Windows host or VM; the format is not friendly to cross-build verification on Linux.
+
+Verdict. Strongest enterprise story. Native to Windows. PATH and uninstall are first-class. Heaviest build cost and worst Linux ergonomics of the four.
+
+## 3. NSIS
+
+Build cost. Host tool dep: NSIS 3.12 (April 2026). Zero per-use fee. Runs natively on Linux through Wine. Overhead: 34 KB on top of compressed payload with default options, or about 5 KB more without the Modern UI. The script is plain text and lives in the openOODA repo. Output: a single signed `openooda-setup.exe`.
+
+Install surface. Files land under `$INSTDIR`, default `$PROGRAMFILES\openooda`. The user picks the install path through the wizard. PATH is set with the `EnvVarUpdate.nsh` macro, the `EnVar_plug-in`, or a direct registry write to `HKLM` or `HKCU`:
+```
+ReadRegStr $0 HKCU "Environment" "Path"
+StrCpy   $0 "C:\Program Files\openooda\bin;$0"
+WriteRegExpandStr HKCU "Environment" "Path" "$0"
+```
+The same pattern creates `OODA_*` env variables. `BroadcastSystemSettings` with `WM_SETTINGCHANGE` notifies Explorer so the new PATH is picked up without a logoff.
+
+Uninstall. Native. The uninstaller `.exe` reverses the install: removes files, undoes the PATH edit, removes the env vars. The uninstaller is also signed via `!uninstfinalize` and `signtool`. The entry shows in Settings > Apps > Installed apps because NSIS registers the standard `Uninstall` registry key.
+
+Auto-update. None built in. Same options as MSI: ship a new EXE, or write a Squirrel-style updater that checks a manifest URL and re-runs the installer.
+
+Trust story. `!finalize 'sign.bat "%1"'` in the NSIS script calls `signtool.exe` against the produced installer `.exe`, and the same trick signs the uninstaller. SmartScreen reputation builds the same way as MSI.
+
+CLI gotchas. The build host needs NSIS. On Linux, `makensis` runs under Wine; fine for a CI build, slower than native. The NSIS scripting language is small but unfamiliar; the team has to learn it. `setx` is the easy path for PATH but does not update the current shell and has a 1024-character limit; NSIS direct-registry writes are safer and reversible. PATH is set for the user, not the system, unless the installer runs elevated and the user accepts UAC.
+
+Verdict. Smallest installer. Free. Scriptable. Works on Linux under Wine. PATH and env work in straight NSIS. The cleanest fit for a developer-facing CLI toolchain with no GUI.
+
+## 4. Plain zip
+
+Build cost. Zero. Any zip tool, any host. The artifact is the zip plus a short README. No signing of the archive is meaningful; the embedded `.exe` files still need to be signed for SmartScreen.
+
+Install surface. Anywhere the user wants. No registry. No `%ProgramFiles%`. No elevation. The user owns the layout.
+
+Uninstall. Delete the folder. Edit `PATH` and env vars to remove the `openooda\bin` entry. No Add or Remove Programs entry. No ref-count. If the user installs two versions, they have to keep track.
+
+Auto-update. None. The user downloads a new zip and re-drops it.
+
+Trust story. Same SmartScreen rules as a signed `.exe`. The zip itself is unsigned, but each embedded `.exe` carries its own Authenticode signature if signed.
+
+CLI gotchas. No Add or Remove Programs entry, so corporate IT and most "what is installed on this box" tools will not see openOODA. PATH editing by hand is the number one cause of "I installed openOODA but it is not on my PATH" support tickets. No way to install a system-wide or per-user version from one archive without telling the user to do extra work. Several package managers (winget, Chocolatey, Scoop) can install from a zip with a manifest. The user still needs a tool.
+
+Verdict. Lowest possible cost. Worst possible support story. Viable as a v0 ship while the project is small; not viable as the long-term answer.
+
+## 5. Comparison table
+
+| Axis | MSIX | MSI via WiX | NSIS | Plain zip |
+|------|------|-------------|------|-----------|
+| Build host | Win SDK or WinApp CLI | MSBuild on Windows | NSIS, Linux+Wine ok | Any |
+| Output | `.msix` bundle | `.msi` or Burn | Single `.exe` | `.zip` + README |
+| Overhead | tens of KB | 100-300 KB | ~34 KB | zero |
+| Install path | locked, system | user picks | user picks | anywhere |
+| PATH edit | AppExecAlias only | native | native, scripted | manual |
+| Env vars | PSF hack, in container | native | native, scripted | manual |
+| Uninstall | one command, clean | Add/Remove, repair | Add/Remove, scripted | delete folder |
+| Auto-update | built in (Store, AI) | none; GPO | none; Squirrel ok | none |
+| Group policy | partial | native | via startup script | via startup script |
+| Linux buildable | yes (WinApp CLI) | painful | yes (Wine) | yes |
+| Money (tools) | 0 | $0-720/yr | $0 | $0 |
+| Money (sign) | $0 if Store | $130-300/yr | $130-300/yr | $0 |
+| Best for | Store apps, sandboxed | enterprise Win32 | CLI toolchains | dev-only |
+
+## 6. Recommendation
+
+Pick **NSIS** for the v1 Windows installer. Reasons:
+
+1. It is a single small `.exe`. A developer downloads it, double-clicks, and gets the toolchain. No Store. No GPO. No zip-and-edit.
+2. PATH and `OODA_*` env variables are first-class. The NSIS `EnvVarUpdate.nsh` and `WriteRegExpandStr` handle both system and user scope, and the uninstaller reverses them.
+3. Build cost is zero. NSIS 3.12 is free. The script is plain text and lives in the openOODA repo. CI on the Linux host runs `makensis` under Wine. No WiX OSMF. No Microsoft tax.
+4. Signing is well-trodden: `!finalize` and `!uninstfinalize` call `signtool.exe` against the installer and the uninstaller.
+5. The format is the right shape for a CLI toolchain: no UWP sandbox, no VFS, no AppData virtualization. The user owns the install dir.
+6. The Add or Remove Programs entry comes for free, so corporate IT and the user's own "what is on this box" tools can see openOODA.
+
+Trade-offs to accept. No built-in auto-update; can be added later via `ooda self-update` or a Squirrel-style updater or a `winget` manifest. SmartScreen reputation takes a few weeks of downloads before the warning goes away; sign with an OV cert and the "Verified publisher" name shows immediately. WiX is the right second pick if the project ever needs Group Policy push or enterprise rollouts. Do not start with MSIX: the sandbox is a wrong fit.
+
+Ship order: NSIS for v1, plain zip as a fallback for users who cannot run the `.exe`, and a `winget` manifest for users who already have the Windows Package Manager.
+
+## 7. Code signing note
+
+Windows Authenticode has three real options in 2026:
+
+- **OV (Organization Validation) cert**: $130-300/year. Sectigo, DigiCert, Certum, GlobalSign, SSL.com. SmartScreen reputation builds over download volume.
+- **EV (Extended Validation) cert**: $280-690/year. Microsoft removed the SmartScreen bypass in 2024. Not recommended purely for SmartScreen. Still required for kernel-mode driver signing.
+- **Azure Artifact Signing** (formerly Trusted Signing): from $9.99/month, no hardware token, integrates with CI. Identity validation required. Same SmartScreen behavior as OV. Available to organizations in US, Canada, EU, UK; individuals in US and Canada only.
+
+Open-source projects can get free signing through the SignPath Foundation (qualifying projects only). For a small developer-facing open-source toolchain, the practical 2026 choice is either a Certum or Sectigo OV cert at the low end, or Azure Artifact Signing at $9.99/month. Skip EV; the premium is not worth it.
+
+For the openOODA Windows lane: sign the NSIS installer and the uninstaller with an OV cert, name `openOODA` as the publisher, and add a timestamp server URL to keep the signature valid past cert expiry.
+
+## 8. What was not checked
+
+- No installer was actually built. The plan calls this Phase 0; nothing in this report is validated by a real Windows machine.
+- Cost rows are the public 2026 list prices. Negotiation, multi-year discounts, and bundle deals are not modeled.
+- WiX 6 OSMF is a contract on the binaries, not the source. The interaction between a Linux CI build that pulls the WiX NuGet and the OSMF EULA was not confirmed with a lawyer.
+- MSIX `AppExecutionAlias` works per executable, not per directory. Whether the openOODA binaries resolve correctly from PowerShell and `cmd` after a triple alias entry was not tested.
+- The NSIS-on-Wine build path was not exercised. Wine version compatibility with `makensis` 3.12 is not known.
+- The `winget` manifest format was not surveyed. The ship-order bullet in section 6 is a recommendation, not a plan.
+- The `chs_rt` Job Objects and restricted-token shim, and how the install scope (per-user vs per-machine) interacts with the chs_rt sandbox, are out of scope here and live in the Phase 2 runtime research.

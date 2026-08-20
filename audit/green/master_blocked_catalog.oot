@@ -1,0 +1,128 @@
+// # Master BLOCKED Catalog — std library
+//
+// Logline: Zero-trust re-read of all 22 library_status_*.oot siblings. Catalog every row where the second field is BLOCKED, classify by C error flavor, point at the function/type in the actual ooda/std/*.oo file, and propose a one-line fix.
+//
+// Setup: Source = 22 audit siblings (3 support + 2 trunk + 17 tail). 1405 BLOCKED rows confirmed by direct grep of '| BLOCKED |' (door file agrees; library_blocked_survey.oot's 1533 and cross_ref_audit.oot's 1627 are stale). Categorizer reads the prove-or-fail and need fields. Top-5 per category = 50 rows; remaining counts roll up.
+//
+// Beats:
+//   1. Per-category summary (10 categories + other).
+//   2. Top-5 representative rows per category with grep'd fix.
+//   3. Remaining count per category.
+//   4. Totals.
+
+// ## 1. Per-category summary
+//
+// | cat | n | description |
+// |-----|---|-------------|
+// | need_prove | 193 | need: prove (no C error, prove-driver or fixture shape) |
+// | redef | 38 | C: redefinition / conflicting types |
+// | missing_type | 311 | C: unknown type / implicit decl / no member |
+// | incompatible | 137 | C: incompatible types / cannot convert |
+// | dot_arrow | 110 | C: dot vs arrow on non-struct (is a pointer; use ->?) |
+// | timeout | 193 | oodac emit-c or prove hung (TIMEOUT rc=124) |
+// | exit0 | 29 | oodac emit-c or prove exited non-zero (ec, core, abort) |
+// | declarations | 35 | C: expected expression / syntax in decls |
+// | result_cell | 4 | Result/Option cell unwrap hole |
+// | init_temps | 13 | C: uninitialized temp / invalid initializer |
+// | other | 342 | oodac lower needed (fail truncated to 'In function' or run rc=1) |
+
+// ## 2. Top-5 representative rows per category
+//
+// Format: audit/<file>:<line> -> ooda/<path>:<grep-line> | category | error snippet | fix
+
+// --- need_prove (193) ---
+// audit/library_status_tail_11.oot:118 -> ooda/std/nerf_3dgs/plenoxels_sparse_voxel_grid.oo:80 | need_prove | FAIL_GCC - std/nerf_3dgs/././vec3_math.oo:18:6: error: redefinition of ‘vec3_new’ 18 / pub fn vec3_… | fix: write prove_prod_*.oo or split module for driver
+// audit/library_status_tail_12.oot:71 -> ooda/std/physics/fluid_engine.oo:16 | need_prove | FAIL_GCC - fixtures/prove_prod_te_physics_fluid_engine.oo:35:32: error: unknown type name ‘Vec3’ fi… | fix: write prove_prod_*.oo or split module for driver
+// audit/library_status_tail_14.oot:41 -> ooda/std/robot/locomotion_engine.oo:130 | need_prove | FAIL_GCC - std/robot/././locomotion_types.oo:23:6: error: redefinition of ‘vec3_new’ 23 / pub fn ve… | fix: write prove_prod_*.oo or split module for driver
+// audit/library_status_tail_14.oot:54 -> ooda/std/robot/safety.oo:18 | need_prove | FAIL_GCC - std/robot/././safety_types.oo:24:13: error: redefinition of ‘safety_fault_new’ 24 / pub … | fix: write prove_prod_*.oo or split module for driver
+// audit/library_status_tail_14.oot:76 -> ooda/std/robotics_auv/auv_swarm_area_coverage.oo:84 | need_prove | FAIL_GCC - std/robotics_auv/././auv_hydrodynamics_constants.oo:28:9: error: redefinition of ‘vec3_n… | fix: write prove_prod_*.oo or split module for driver
+
+// --- redef (38) ---
+// audit/library_status_tail_12.oot:8 -> ooda/std/pbr_raytracing/ray_aabb_slab_intersection.oo:28 | redef | std/pbr_raytracing/././vec3_math.oo:18:6: error: redefinition of ‘vec3_new’; 18 / pub fn vec3_new(x… | fix: remove duplicate decl of vec3_new in ooda/std/pbr_raytracing/ray_aabb_slab_intersection.oo or guard with #ifdef
+// audit/library_status_tail_12.oot:9 -> ooda/std/pbr_raytracing/ray_bezier_curve_hair.oo:65 | redef | std/pbr_raytracing/././vec3_math.oo:18:6: error: redefinition of ‘vec3_new’;std/pbr_raytracing/././… | fix: remove duplicate decl of vec3_add in ooda/std/pbr_raytracing/ray_bezier_curve_hair.oo or guard with #ifdef
+// audit/library_status_tail_12.oot:20 -> ooda/std/pbr_raytracing/surface_interaction.oo:64 | redef | std/pbr_raytracing/././vec3_math.oo:18:6: error: redefinition of ‘vec3_new’;std/pbr_raytracing/././… | fix: remove duplicate decl of vec3_add in ooda/std/pbr_raytracing/surface_interaction.oo or guard with #ifdef
+// audit/library_status_tail_14.oot:55 -> ooda/std/robot/safety_engine.oo:41 | redef | std/robot/././safety_types.oo:24:13: error: redefinition of ‘safety_fault_new’; 24 / pub fn safety_… | fix: remove duplicate decl of safety_fault_new in ooda/std/robot/safety_engine.oo or guard with #ifdef
+// audit/library_status_support_2.oot:44 -> ooda/std/sec/crypto/tss_ops.oo:15 | redef | std/sec/crypto/tss_types.oo:12:17: error: redefinition of ‘tss_params_new’; 12 / pub fn tss_params_… | fix: remove duplicate decl of tss_params_new in ooda/std/sec/crypto/tss_ops.oo or guard with #ifdef
+
+// --- missing_type (311) ---
+// audit/library_status_tail_1.oot:39 -> ooda/std/3d/xr_ops.oo:60 | missing_type | std/3d/xr_ops.oo:5:1: error: unknown type name ‘XrView’; 5 / // Setup: Pure XR operational routines… | fix: declare type XrView or import at ooda/std/3d/xr_ops.oo:60
+// audit/library_status_tail_2.oot:100 -> ooda/std/auto/orca_stubs.oo:14 | missing_type | std/auto/orca_stubs.oo:1:34: error: unknown type name ‘OrcaState’; 1 / // # ORCA GPU Parallel Solve… | fix: declare type OrcaState or import at ooda/std/auto/orca_stubs.oo:14
+// audit/library_status_support_1.oot:35 -> ooda/std/crypto/keys_ops.oo:14 | missing_type | std/crypto/keys_ops.oo:1:1: error: unknown type name ‘KeyPair’; 1 / // # Keys Operations and Helper… | fix: declare type KeyPair or import at ooda/std/crypto/keys_ops.oo:14
+// audit/library_status_tail_6.oot:17 -> ooda/std/deep_ai/rag_chunk_reranker.oo:50 | missing_type | std/deep_ai/rag_chunk_reranker.oo: In function ‘reranker_sort_and_filter’:;std/deep_ai/rag_chunk_re… | fix: add pub type reranker_sort_and_filter to ooda/std/deep_ai/rag_chunk_reranker.oo or import it
+// audit/library_status_tail_6.oot:80 -> ooda/std/digital_twin/asset_state_synchronizer.oo:22 | missing_type | std/digital_twin/asset_state_synchronizer.oo:1:51: error: unknown type name ‘List’; 1 / // # Asset … | fix: declare type List or import at ooda/std/digital_twin/asset_state_synchronizer.oo:22
+
+// --- incompatible (137) ---
+// audit/library_status_tail_1.oot:144 -> ooda/std/ai_multimodal/unet_condition_router.oo:42 | incompatible | std/ai_multimodal/unet_condition_router.oo: In function ‘condition_route_fuse’:;std/ai_multimodal/u… | fix: cast/wrap to declared C type; oodac lower needed for ooda/std/ai_multimodal/unet_condition_router.oo
+// audit/library_status_tail_2.oot:173 -> ooda/std/auto_robot/sensor_fusion_ekf.oo:55 | incompatible | need: oodac/C lower so import+call gcc+run (see fail) std/auto_robot/sensor_fusion_ekf.oo: In funct… | fix: cast/wrap to declared C type; oodac lower needed for ooda/std/auto_robot/sensor_fusion_ekf.oo
+// audit/library_status_tail_2.oot:199 -> ooda/std/bft_consensus/hotstuff_chained_vote.oo:40 | incompatible | std/bft_consensus/hotstuff_chained_vote.oo: In function ‘vote_accumulator_add’:;std/bft_consensus/h… | fix: cast/wrap to declared C type; oodac lower needed for ooda/std/bft_consensus/hotstuff_chained_vote.oo
+// audit/library_status_tail_2.oot:209 -> ooda/std/bft_consensus/pbft_checkpoint_proof.oo:39 | incompatible | std/bft_consensus/pbft_checkpoint_proof.oo: In function ‘checkpoint_proof_add_vote’:;std/bft_consen… | fix: cast/wrap to declared C type; oodac lower needed for ooda/std/bft_consensus/pbft_checkpoint_proof.oo
+// audit/library_status_tail_2.oot:211 -> ooda/std/bft_consensus/pbft_three_phase_commit.oo:76 | incompatible | std/bft_consensus/pbft_three_phase_commit.oo: In function ‘pbft_on_prepare’:;std/bft_consensus/pbft… | fix: cast/wrap to declared C type; oodac lower needed for ooda/std/bft_consensus/pbft_three_phase_commit.oo
+
+// --- dot_arrow (110) ---
+// audit/library_status_tail_4.oot:217 -> ooda/std/database/buffer_pool.oo:65 | dot_arrow | std/database/buffer_pool.oo: In function ‘buffer_pool_fetch_page’:;std/database/buffer_pool.oo:69:5… | fix: emit bpm as pointer or fix field access at ooda/std/database/buffer_pool.oo:65
+// audit/library_status_tail_14.oot:160 -> ooda/std/robotics_ros2/tf2_spatial_transform.oo:99 | dot_arrow | std/robotics_ros2/tf2_spatial_transform.oo: In function ‘transform3d_apply_point’:;std/robotics_ros… | fix: emit t as pointer or fix field access at ooda/std/robotics_ros2/tf2_spatial_transform.oo:99
+// audit/library_status_tail_15.oot:32 -> ooda/std/scicomp/simplex_solver_lp.oo:49 | dot_arrow | std/scicomp/simplex_solver_lp.oo: In function ‘simplex_pivot’:;std/scicomp/simplex_solver_lp.oo:53:… | fix: emit tab as pointer or fix field access at ooda/std/scicomp/simplex_solver_lp.oo:49
+// audit/library_status_tail_10.oot:47 -> ooda/std/industrial_predictive/ts_maintenance_trigger_rule.oo:3 | dot_arrow | gcc std/industrial_predictive/ts_maintenance_trigger_rule.oo:41:35: error: ‘thresholds’ is a pointe… | fix: emit thresholds as pointer or fix field access at ooda/std/industrial_predictive/ts_maintenance_trigger_rule.oo:3
+// audit/library_status_tail_10.oot:59 -> ooda/std/industrial_predictive/ts_sensor_drift_calibration.oo:42 | dot_arrow | gcc std/industrial_predictive/ts_sensor_drift_calibration.oo:46:30: error: ‘profile’ is a pointer; … | fix: emit profile as pointer or fix field access at ooda/std/industrial_predictive/ts_sensor_drift_calibration.oo:42
+
+// --- timeout (193) ---
+// audit/library_status_tail_3.oot:91 -> ooda/std/bioinformatics/gc_content.oo | timeout | ec=134 malloc(): unaligned tcache chunk detected;timeout: the monitored command dumped core; | fix: shave oodac emit-c below 25-45s; likely module or its deps
+// audit/library_status_tail_3.oot:140 -> ooda/std/cloud_faas/eventbridge_pattern_matcher.oo | timeout | ec=134 malloc(): unaligned tcache chunk detected;timeout: the monitored command dumped core; | fix: shave oodac emit-c below 25-45s; likely module or its deps
+// audit/library_status_tail_3.oot:143 -> ooda/std/cloud_faas/faas_cold_start_optimizer.oo | timeout | ec=134 malloc(): unaligned tcache chunk detected;timeout: the monitored command dumped core; | fix: shave oodac emit-c below 25-45s; likely module or its deps
+// audit/library_status_tail_3.oot:145 -> ooda/std/cloud_faas/faas_invocation_router.oo | timeout | ec=134 malloc(): unaligned tcache chunk detected;timeout: the monitored command dumped core; | fix: shave oodac emit-c below 25-45s; likely module or its deps
+// audit/library_status_tail_3.oot:160 -> ooda/std/cloud_faas/memory_dedup_ksm.oo | timeout | ec=134 malloc(): unaligned tcache chunk detected;timeout: the monitored command dumped core; | fix: shave oodac emit-c below 25-45s; likely module or its deps
+
+// --- exit0 (29) ---
+// audit/library_status_tail_3.oot:108 -> ooda/std/cloud/cloud.oo | exit0 | ec=1 /tmp/grok-goal-3ce9d29419ad/implementer/to_err_work/c/e0115.c:ERR c_emit Result[Option/Result]… | fix: oodac emit-c raises on c_emit (residual/match-let); fix emit logic
+// audit/library_status_tail_3.oot:110 -> ooda/std/cloud/etcd_client.oo | exit0 | ec=1 /tmp/grok-goal-3ce9d29419ad/implementer/to_err_work/c/e0116.c:ERR c_emit Result[Option/Result]… | fix: oodac emit-c raises on c_emit (residual/match-let); fix emit logic
+// audit/library_status_tail_3.oot:111 -> ooda/std/cloud/etcd_watch.oo | exit0 | ec=1 /tmp/grok-goal-3ce9d29419ad/implementer/to_err_work/c/e0117.c:ERR c_emit Result[Option/Result]… | fix: oodac emit-c raises on c_emit (residual/match-let); fix emit logic
+// audit/library_status_tail_4.oot:218 -> ooda/std/database/database.oo | exit0 | ec=1 /tmp/grok-goal-3ce9d29419ad/implementer/to_err_work/c/e0139.c:ERR c_emit Result[Option/Result]… | fix: oodac emit-c raises on c_emit (residual/match-let); fix emit logic
+// audit/library_status_tail_4.oot:223 -> ooda/std/database/lsm_sstable.oo | exit0 | ec=1 /tmp/grok-goal-3ce9d29419ad/implementer/to_err_work/c/e0140.c:ERR c_emit Result[Option/Result]… | fix: oodac emit-c raises on c_emit (residual/match-let); fix emit logic
+
+// --- declarations (35) ---
+// audit/library_status_tail_3.oot:55 -> ooda/std/bio_advanced/protein_disulfide_bonds.oo:30 | declarations | std/bio_advanced/protein_disulfide_bonds.oo:30:4: error: expected ‘;’ before ‘dx’;std/bio_advanced/… | fix: fix syntax at ooda/std/bio_advanced/protein_disulfide_bonds.oo:30 (dx)
+// audit/library_status_tail_4.oot:162 -> ooda/std/crispr_cas/epigenetic_histone_mark_chip.oo:24 | declarations | std/crispr_cas/epigenetic_histone_mark_chip.oo: In function ‘histone_classify_state’:;std/crispr_ca… | fix: fix syntax at ooda/std/crispr_cas/epigenetic_histone_mark_chip.oo:24 (histone_classify_state)
+// audit/library_status_tail_8.oot:153 -> ooda/std/gis_spatial/rtree_ops.oo:14 | declarations | std/gis_spatial/rtree_ops.oo: In function ‘rtree_box_area’:;std/gis_spatial/rtree_ops.oo:15:4: erro… | fix: fix syntax at ooda/std/gis_spatial/rtree_ops.oo:14 (rtree_box_area)
+// audit/library_status_tail_9.oot:48 -> ooda/std/graph_networks/closeness_harmonic_centrality.oo:21 | declarations | std/graph_networks/closeness_harmonic_centrality.oo:21:54: error: expected expression before ‘if’;s… | fix: fix syntax at ooda/std/graph_networks/closeness_harmonic_centrality.oo:21 (if)
+// audit/library_status_tail_9.oot:148 -> ooda/std/grid/wind_curve.oo:100 | declarations | std/grid/wind_curve.oo: In function ‘power_curve_swept_area’:;std/grid/wind_curve.oo:101:8: error: … | fix: fix syntax at ooda/std/grid/wind_curve.oo:100 (power_curve_swept_area)
+
+// --- result_cell (4) ---
+// audit/library_status_support_1.oot:25 -> ooda/std/crypto/ecdsa.oo | result_cell | no callable API without pointer field or Result unwrap | fix: oodac lower Result/Option cell at ooda/std/crypto/ecdsa.oo (struct/Result/cap hole)
+// audit/library_status_support_1.oot:46 -> ooda/std/crypto/x25519.oo | result_cell | no callable API without pointer field or Result unwrap | fix: oodac lower Result/Option cell at ooda/std/crypto/x25519.oo (struct/Result/cap hole)
+// audit/library_status_tail_8.oot:25 -> ooda/std/formal_verif/contract_pre_post_condition.oo | result_cell | no callable API without pointer field or Result unwrap | fix: oodac lower Result/Option cell at ooda/std/formal_verif/contract_pre_post_condition.oo (struct/Result/cap hole)
+// audit/library_status_tail_9.oot:154 -> ooda/std/gui/chat.oo | result_cell | no callable API without pointer field or Result unwrap | fix: oodac lower Result/Option cell at ooda/std/gui/chat.oo (struct/Result/cap hole)
+
+// --- init_temps (13) ---
+// audit/library_status_tail_15.oot:176 -> ooda/std/synthetic_biology/metabolic_control_analysis_mca.oo:35 | init_temps | gcc std/synthetic_biology/metabolic_control_analysis_mca.oo:37:59: error: ‘den_safe’ may be used un… | fix: oodac must init temp den_safe=0; add zero-init in emit-c
+// audit/library_status_tail_10.oot:52 -> ooda/std/industrial_predictive/ts_mtbf_mttr_calculator.oo:58 | init_temps | gcc std/industrial_predictive/ts_mtbf_mttr_calculator.oo:44:10: error: ‘a_i’ may be used uninitiali… | fix: oodac must init temp a_i=0; add zero-init in emit-c
+// audit/library_status_tail_3.oot:48 -> ooda/std/bio_advanced/pdb_secondary_stride.oo:40 | init_temps | gcc std/bio_advanced/pdb_secondary_stride.oo:41:10: error: ‘angle_factor’ may be used uninitialized… | fix: oodac must init temp angle_factor=0; add zero-init in emit-c
+// audit/library_status_tail_3.oot:67 -> ooda/std/bio_advanced/rna_riboswitch_energy.oo:42 | init_temps | gcc std/bio_advanced/rna_riboswitch_energy.oo:43:33: error: ‘frac_bound’ may be used uninitialized … | fix: oodac must init temp frac_bound=0; add zero-init in emit-c
+// audit/library_status_tail_10.oot:184 -> ooda/std/media_dsp/dsp_parametric_equalizer.oo:37 | init_temps | gcc std/media_dsp/dsp_parametric_equalizer.oo:38:10: error: ‘safe_sr’ may be used uninitialized [-W… | fix: oodac must init temp safe_sr=0; add zero-init in emit-c
+
+// --- other (342) ---
+// audit/library_status_tail_2.oot:193 -> ooda/std/bft_consensus/downtime_liveness_tracker.oo:30 | other | need: oodac/C lower so import+call gcc+run (see fail) std/bft_consensus/downtime_liveness_tracker.o… | fix: audit truncated; inspect ooda/std/bft_consensus/downtime_liveness_tracker.oo:30 (validator_record_block_activity) for real C error
+// audit/library_status_tail_4.oot:51 -> ooda/std/compilers_polyhedral/fourier_motzkin_dependence.oo:57 | other | std/compilers_polyhedral/fourier_motzkin_dependence.oo: In function ‘test_affine_dependence_simple’… | fix: audit truncated; inspect ooda/std/compilers_polyhedral/fourier_motzkin_dependence.oo:57 (test_affine_dependence_simple) for real C error
+// audit/library_status_tail_4.oot:100 -> ooda/std/compilers_vm/dwarf5_debug_lines.oo:116 | other | need: oodac/C lower so import+call gcc+run (see fail) std/compilers_vm/dwarf5_debug_lines.oo: In fu… | fix: audit truncated; inspect ooda/std/compilers_vm/dwarf5_debug_lines.oo:116 (dwarf_step_special_opcode) for real C error
+// audit/library_status_tail_4.oot:165 -> ooda/std/crispr_cas/hdr_ssodn_template_designer.oo:26 | other | need: oodac/C lower so import+call gcc+run (see fail) std/crispr_cas/hdr_ssodn_template_designer.oo… | fix: audit truncated; inspect ooda/std/crispr_cas/hdr_ssodn_template_designer.oo:26 (ssodn_evaluate_arms) for real C error
+// audit/library_status_tail_4.oot:170 -> ooda/std/crispr_cas/off_target_deepcrispr_cnn.oo:42 | other | need: oodac/C lower so import+call gcc+run (see fail) std/crispr_cas/off_target_deepcrispr_cnn.oo: … | fix: audit truncated; inspect ooda/std/crispr_cas/off_target_deepcrispr_cnn.oo:42 (deepcrispr_predict) for real C error
+
+// ## 3. Remaining rows per category (top-5 shown above; rest rolled up)
+//
+// need_prove: remaining rows: 188
+// redef: remaining rows: 33
+// missing_type: remaining rows: 306
+// incompatible: remaining rows: 132
+// dot_arrow: remaining rows: 105
+// timeout: remaining rows: 188
+// exit0: remaining rows: 24
+// declarations: remaining rows: 30
+// result_cell: remaining rows: 0
+// init_temps: remaining rows: 8
+// other: remaining rows: 337
+
+// ## 4. Totals
+// Total BLOCKED: 1405
+// Sum of categories: 1405
+// Files: 22 audit siblings (3 support + 2 trunk + 17 tail)
+// Source-line hits (grep succeeded): 841
+// Source files not found: 1

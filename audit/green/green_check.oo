@@ -1,0 +1,251 @@
+// # Std Library Zero-Trust Static Analyzer
+//
+// Logline: Independently audit every ooda/std/**/*.oo for size, Academy header, import resolution, and prove_prod coverage.
+//
+// Setup: EnvCap to read CWD, FsReadCap to walk std/ and fixtures/. Pure oo, no shell.
+//
+// Beats:
+//   1. Recursively walk ooda/std/ and ooda/fixtures/ via oo_fs_read_dir.
+//   2. Per std file: line_count, 4-element Academy header, pub fn / type / import counts.
+//   3. Resolve each import (std/, ./, ../) against ooda/std/ and flag unresolvable ones.
+//   4. Cross-reference: parse prove_prod_*.oo and collect every std/ import as a lock target.
+//   5. Tally GREEN / BLOCKED / RESIDUAL and print per-file anomalies.
+// residual: does not lower or run prove_prod locks; static read-only audit.
+
+pub fn count_newlines(text: String) -> Int {
+    let mut n: Int = 0;
+    let len: Int = text.len();
+    let mut i: Int = 0;
+    while i < len { if char_at(text, i) == "\n" { n = n + 1; } i = i + 1; }
+    return n;
+}
+
+pub fn has_academy_header(text: String) -> Bool {
+    let mut saw_t: Bool = false;
+    let mut saw_l: Bool = false;
+    let mut saw_s: Bool = false;
+    let mut saw_b: Bool = false;
+    let len: Int = text.len();
+    let mut i: Int = 0;
+    let mut start: Int = 0;
+    let mut lines: Int = 0;
+    while i < len {
+        if lines >= 30 { break; }
+        if char_at(text, i) == "\n" {
+            let line: String = str_slice(text, start, i);
+            if str_starts_with(line, "// # ") { saw_t = true; }
+            if str_starts_with(line, "// Logline:") { saw_l = true; }
+            if str_starts_with(line, "// Setup:") { saw_s = true; }
+            if str_starts_with(line, "// Beats:") { saw_b = true; }
+            start = i + 1;
+            lines = lines + 1;
+        }
+        i = i + 1;
+    }
+    return saw_t && saw_l && saw_s && saw_b;
+}
+
+pub fn count_prefix_lines(text: String, prefix: String) -> Int {
+    let mut n: Int = 0;
+    let len: Int = text.len();
+    let mut i: Int = 0;
+    let mut start: Int = 0;
+    while i < len {
+        if char_at(text, i) == "\n" {
+            if str_starts_with(str_slice(text, start, i), prefix) { n = n + 1; }
+            start = i + 1;
+        }
+        i = i + 1;
+    }
+    return n;
+}
+
+pub fn extract_imports(text: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let len: Int = text.len();
+    let mut i: Int = 0;
+    let mut start: Int = 0;
+    while i < len {
+        if char_at(text, i) == "\n" {
+            let line: String = str_slice(text, start, i);
+            if str_starts_with(line, "import ") {
+                let llen: Int = line.len();
+                let mut j: Int = 7;
+                let mut q1: Int = -1;
+                while j < llen { if char_at(line, j) == "\"" { q1 = j; break; } j = j + 1; }
+                if q1 >= 0 {
+                    let mut k: Int = q1 + 1;
+                    let mut q2: Int = -1;
+                    while k < llen { if char_at(line, k) == "\"" { q2 = k; break; } k = k + 1; }
+                    if q2 > q1 { out = list_push(out, str_slice(line, q1 + 1, q2)); }
+                }
+            }
+            start = i + 1;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn list_contains(xs: List[String], target: String) -> Bool {
+    let n: Int = list_len(xs);
+    let mut i: Int = 0;
+    while i < n { if list_get(xs, i) == target { return true; } i = i + 1; }
+    return false;
+}
+
+pub fn dirname(path: String) -> String {
+    let len: Int = path.len();
+    let mut i: Int = len - 1;
+    while i > 0 { if char_at(path, i) == "/" { return str_slice(path, 0, i); } i = i - 1; }
+    return "";
+}
+
+pub fn resolve_import(imp: String, importer: String, std_root: String) -> String {
+    if str_starts_with(imp, "std/") { return std_root + "/" + imp; }
+    if str_starts_with(imp, "./") {
+        let d: String = dirname(importer);
+        let tail: String = str_slice(imp, 2, imp.len());
+        if d == "" { return std_root + "/" + tail; }
+        return d + "/" + tail;
+    }
+    if str_starts_with(imp, "../") {
+        let d: String = dirname(importer);
+        let d2: String = dirname(d);
+        let tail: String = str_slice(imp, 3, imp.len());
+        if d2 == "" { return std_root + "/" + tail; }
+        return d2 + "/" + tail;
+    }
+    return imp;
+}
+
+pub fn yn(b: Bool) -> String { if b { return "Y"; } return "N"; }
+
+pub fn walk_oo(fs: &FsReadCap, root: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut stack: List[String] = list_new();
+    stack = list_push(stack, root);
+    while list_len(stack) > 0 {
+        let last: Int = list_len(stack) - 1;
+        let dir: String = list_get(stack, last);
+        let mut ns: List[String] = list_new();
+        let mut k: Int = 0;
+        while k < last { ns = list_push(ns, list_get(stack, k)); k = k + 1; }
+        stack = ns;
+        if !oo_fs_is_dir(fs, dir) { continue; }
+        let ents: List[String] = oo_fs_read_dir(fs, dir);
+        let n: Int = list_len(ents);
+        let mut i: Int = 0;
+        while i < n {
+            let path: String = dir + "/" + list_get(ents, i);
+            if oo_fs_is_dir(fs, path) { stack = list_push(stack, path); }
+            else if str_ends_with(path, ".oo") { out = list_push(out, path); }
+            i = i + 1;
+        }
+    }
+    return out;
+}
+
+pub fn main(fs: &FsReadCap, env: &EnvCap) {
+    println("=== GREEN CHECK: std library zero-trust static audit ===");
+    let std_root: String = "ooda/std";
+    let std_prefix: String = "std/";
+    let lock_prefix: String = "ooda/fixtures/prove_prod_";
+    let root_len: Int = std_root.len();
+
+    let std_files: List[String] = walk_oo(fs, std_root);
+    let fix_files: List[String] = walk_oo(fs, "ooda/fixtures");
+
+    let mut locks: List[String] = list_new();
+    let ftotal: Int = list_len(fix_files);
+    let mut fi: Int = 0;
+    while fi < ftotal {
+        let path: String = list_get(fix_files, fi);
+        if str_starts_with(path, lock_prefix) {
+            let res: Result[String, String] = oo_read_file(fs, path);
+            match res {
+                Ok(text) => {
+                    let imps: List[String] = extract_imports(text);
+                    let m: Int = list_len(imps);
+                    let mut j: Int = 0;
+                    while j < m {
+                        let imp: String = list_get(imps, j);
+                        if str_starts_with(imp, std_prefix) { locks = list_push(locks, imp); }
+                        j = j + 1;
+                    }
+                }, Err(_) => {}
+            }
+        }
+        fi = fi + 1;
+    }
+    let lock_count: Int = list_len(locks);
+
+    let total: Int = list_len(std_files);
+    let mut green: Int = 0;
+    let mut blocked: Int = 0;
+    let mut residual: Int = 0;
+    let mut need_prove: Int = 0;
+    let mut unres_files: Int = 0;
+    let mut oversized: Int = 0;
+    let mut no_header: Int = 0;
+
+    println("=== per-file anomalies ===");
+    let mut i: Int = 0;
+    while i < total {
+        let abs: String = list_get(std_files, i);
+        let rel: String = str_slice(abs, root_len + 1, abs.len());
+        let res: Result[String, String] = oo_read_file(fs, abs);
+        match res {
+            Ok(text) => {
+                let lc: Int = count_newlines(text);
+                let hdr: Bool = has_academy_header(text);
+                let pf: Int = count_prefix_lines(text, "pub fn ");
+                let ty: Int = count_prefix_lines(text, "type ");
+                let im: Int = count_prefix_lines(text, "import ");
+                let imps: List[String] = extract_imports(text);
+                let mut unres: Int = 0;
+                let m: Int = list_len(imps);
+                let mut j: Int = 0;
+                while j < m {
+                    if !oo_path_exists(fs, resolve_import(list_get(imps, j), abs, std_root)) { unres = unres + 1; }
+                    j = j + 1;
+                }
+                let covered: Bool = list_contains(locks, std_prefix + rel);
+                let size_ok: Bool = lc <= 256;
+                let mut status: String = "GREEN";
+                if !size_ok { status = "RESIDUAL"; oversized = oversized + 1; }
+                else if !hdr { status = "RESIDUAL"; no_header = no_header + 1; }
+                else if unres > 0 { status = "BLOCKED"; unres_files = unres_files + 1; }
+                else if !covered { status = "BLOCKED"; need_prove = need_prove + 1; }
+                if status == "GREEN" { green = green + 1; }
+                if status == "BLOCKED" { blocked = blocked + 1; }
+                if status == "RESIDUAL" { residual = residual + 1; }
+                if status != "GREEN" {
+                    println("[" + status + "] " + rel
+                        + "  lc=" + lc.to_string()
+                        + "  hdr=" + yn(hdr)
+                        + "  pub=" + pf.to_string()
+                        + "  type=" + ty.to_string()
+                        + "  imp=" + im.to_string()
+                        + "  unres=" + unres.to_string()
+                        + "  cov=" + yn(covered));
+                }
+            }, Err(_) => { residual = residual + 1; println("[RESIDUAL<READ>] " + rel); }
+        }
+        i = i + 1;
+    }
+
+    println("");
+    println("=== TALLY ===");
+    println("total files scanned:     " + total.to_string());
+    println("GREEN-eligible:          " + green.to_string());
+    println("BLOCKED candidates:      " + blocked.to_string());
+    println("  - need: prove lock:    " + need_prove.to_string());
+    println("  - unresolvable import: " + unres_files.to_string());
+    println("RESIDUAL:                " + residual.to_string());
+    println("  - oversized (>256):    " + oversized.to_string());
+    println("  - missing header:      " + no_header.to_string());
+    println("");
+    println("prove_prod locks (raw std imports): " + lock_count.to_string());
+    process_exit(0);
+}

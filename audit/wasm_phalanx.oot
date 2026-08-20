@@ -1,0 +1,88 @@
+# WASM-PHALANX — 12-role assignment for real emit-wasm bodies
+
+File: openOODA/audit/wasm_phalanx.oot
+Owner named this leftover. C emit + gcc stays the everyday path.
+Browser WASM host is residual. Do not sell it.
+
+## 1. Ship bar
+
+  A fixture that is only `println("Hello, openOODA!");` in `main`
+  must emit a `\0asm` module whose `main` / `_start` body is WASI
+  `fd_write` of that literal, not dummy `02 00 0b`.
+  `wasmtime` (if present) must print that line and exit 0.
+  Other functions may keep dummy `end` this cycle.
+  Magic `\0asm` and `ooda-fns` stay. Existing magic smokes must still pass.
+
+## 2. Frozen API (do not rename)
+
+  Existing (keep):
+    void oo_wasm_write_empty_module(void);
+    void oo_wasm_write_source_module(long long fn_count);
+    void oo_wasm_note_fn(OoStr name);
+
+  New:
+    void oo_wasm_set_fn_print(OoStr s);
+  Meaning: the last `oo_wasm_note_fn` name gets a WASI fd_write body
+  of bytes `s` plus a trailing newline if `s` has none.
+  If a name has no print, keep dummy `end`.
+  Add WASI import only when at least one print body exists.
+  Import name: `wasi_snapshot_preview1` / `fd_write`.
+  Type: `(i32 i32 i32 i32) -> i32`. fd=1 (stdout).
+
+  Compiler helper (DE2 owns the body):
+    pub fn wasm_fn_println_lit(src: String, fname: String) -> String
+  Return the string literal inside a body that is only `println("...");`.
+  Return "" if the body is anything else.
+
+## 3. File ownership (disjoint)
+
+  DE1   ooda/oodac/wasm_emit.oo
+        plus only the wasm name rows in
+        ooda/oodac/tc_names_known.oo
+        ooda/oodac/tc_call_arity.oo
+  DE2   ooda/oodac/wasm_emit_fn.oo
+        ooda/oodac/wasm_emit_stmt.oo
+        (add wasm_fn_println_lit; do not print WAT on the product path)
+  RT    ooda/runtime/chs_rt_wasm.c
+        ooda/runtime/chs_rt_wasm_print.c   (new if split; 256-line C)
+        one include line in ooda/runtime/chs_rt.c
+        wasm decls only in ooda/runtime/chs_rt.h
+        one prototype line in ooda/oodac/c_emit_preamble.oo
+  PV1   ooda/fixtures/wasm_empty.oo
+        ooda/fixtures/wasm_nofn.oo
+        openOODA/audit/wasm_pv1.oot
+  PV2   openOODA/audit/wasm_pv2.oot
+  SEC   ooda/scripts/wasm_fail_closed_smoke.oo
+        openOODA/audit/wasm_sec.oot
+  MEM   ooda/scripts/wasm_buf_smoke.oo
+        openOODA/audit/wasm_mem.oot
+  INT   ooda/scripts/wasm_phalanx_int.oo
+        openOODA/audit/wasm_int.oot
+  HARN  ooda/fixtures/wasm_print_hi.oo
+        ooda/scripts/wasm_print_lit_smoke.oo
+        fix stale `(module` check in ooda/scripts/open_wasm_binary_smoke.oo
+  HYG   openOODA/audit/wasm_hyg.oot
+        ooda/oodac/wasm_emit_mem.oo
+        ooda/oodac/wasm_emit_preamble.oo
+  DOCS  openOODA/SHIPPED.oot
+        openOODA/ROADMAP.oot
+        ../openOODA.github.io/guide/Limits.oot
+        openOODA/audit/wasm_docs.oot
+  COORD openOODA/audit/wasm_coord.oot
+
+## 4. Forbidden
+
+  No .py .sh .md .js. No llvm_emit*.oo. No c_emit*.oo except the one
+  preamble prototype. No lex/parse/check/tc except the two DE1 rows.
+  Do not copy bin/ooda onto oodac/oodac.
+  Do not claim a browser host. Do not retire C emit + gcc.
+
+## 5. Proof
+
+  From ooda/:
+    ./oodac/oodac emit-wasm fixtures/wasm_print_hi.oo > /tmp/hi.wasm
+    od -An -tx1 -N8 /tmp/hi.wasm
+    wasmtime /tmp/hi.wasm
+  Rebuild only if you own oodac/*.oo or runtime and you must run emit.
+  Official rebuild: bootstrap/oodac_pure_build. Do not race three rebuilds.
+  Prefer gcc of a tiny C driver against chs_rt.c for RT-only proof.

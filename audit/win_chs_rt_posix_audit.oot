@@ -1,0 +1,154 @@
+# WIN-CHS_RT-POSIX AUDIT — Phase 0 research, sub-agent B
+
+File: openOODA/audit/win_chs_rt_posix_audit.oot
+Date: 2026-08-19. Lane: read-only audit. Owner: openOODA owner. Cross-ref: openOODA/audit/win_compiler_plan.oot.
+Scope: every POSIX-only or Linux-only call in ooda/runtime/chs_rt_*.c, oo_*.c, and chs_rt.h.
+Method: targeted greps over ooda/runtime for headers, syscalls, fork/exec, pthread, socket, fs. Each row cites file:line.
+
+## 1. Files audited
+
+42 chs_rt_*.c files, 3 oo_*.c files, 1 main header (chs_rt.h), 3 sub-headers.
+
+chs_rt_actor.c, chs_rt_alloc.c, chs_rt_arena.c, chs_rt_caps.c, chs_rt_channel.c, chs_rt_crypto.c, chs_rt_dns.c, chs_rt_emit_tmp.c, chs_rt_fetch.c, chs_rt_ffi.c, chs_rt_ffi_sec.c, chs_rt_flist.c, chs_rt_fs.c, chs_rt_hash.c, chs_rt_hitl.c, chs_rt_host.c, chs_rt_landlock.c, chs_rt_libfloor.c, chs_rt_list.c, chs_rt_list_set.c, chs_rt_llist.c, chs_rt_llist_f.c, chs_rt_llist_s.c, chs_rt_math.c, chs_rt_meta.c, chs_rt_netfloor.c, chs_rt_print.c, chs_rt_rlimit.c, chs_rt_str.c, chs_rt_str_intern.c, chs_rt_str_int.c, chs_rt_str_ops.c, chs_rt_str_tok.c, chs_rt_sys.c, chs_rt_thread.c, chs_rt_time_rand.c, chs_rt_tls.c, chs_rt_vision.c, chs_rt_wasm.c, chs_rt_wasm_print.c, chs_rt_xlang.c. oo_holo.c, oo_hide.c, oo_sha256.c. Headers: chs_rt.h, chs_rt_dns.h, chs_rt_landlock.h, chs_rt_rlimit.h.
+
+## 2. Public-path calls (must port)
+
+| file:line | linux call | windows equivalent | scope |
+|-----------|------------|--------------------|-------|
+| chs_rt_fs.c:32,34,36,42 | realpath | GetFullPathNameA (or _fullpath) | pub |
+| chs_rt_fs.c:43 | open(O_RDONLY\|O_DIRECTORY\|O_CLOEXEC) | CreateFileA(..., FILE_FLAG_BACKUP_SEMANTICS) | pub |
+| chs_rt_fs.c:44 | openat(dfd, b, O_WRONLY\|...) | CreateFileA in dir handle | pub |
+| chs_rt_fs.c:45,81,159 | close(fd) | CloseHandle | pub |
+| chs_rt_fs.c:51,92,100 | fopen/fseek/ftell/fread | C stdio (CRT); no change | pub |
+| chs_rt_fs.c:119 | clock_gettime(CLOCK_MONOTONIC,&ts) | QueryPerformanceCounter | pub |
+| chs_rt_fs.c:128,131,139 | opendir / readdir / closedir | FindFirstFile / FindNextFile / FindClose | pub |
+| chs_rt_fs.c:147 | stat(..., &st) S_ISDIR | GetFileAttributesExA | pub |
+| chs_rt_fs.c:159 | unlink(path) | DeleteFileA | pub |
+| chs_rt_fs.c:172 | rmdir(path) | RemoveDirectoryA | pub |
+| chs_rt_fs.c:185 | mkdir(path, 0777) | CreateDirectoryA | pub |
+| chs_rt_fs.c:198 | link(old, new) | CreateHardLinkA (NTFS only) | pub |
+| chs_rt_fs.c:211 | symlink(target, link) | CreateSymbolicLinkA (Win10+ dev mode) | pub |
+| chs_rt_sys.c:18,107,108 | getenv(key) (C stdlib) | getenv (CRT); no change | pub |
+| chs_rt_sys.c:46 | clearenv | no equiv; rebuild envp via SetEnvironmentVariable | pub |
+| chs_rt_sys.c:56 | setenv("PATH", "/usr/bin:/bin", 1) | SetEnvironmentVariable / _putenv | pub |
+| chs_rt_sys.c:127,134,138 | fork / execvp / waitpid | CreateProcessA + WaitForSingleObject + GetExitCodeProcess | pub |
+| chs_rt_sys.c:135,40 | _exit(127) | _exit (CRT); no change | pub |
+| chs_rt_sys.c:139 | WIFEXITED / WEXITSTATUS | GetExitCodeProcess | pub |
+| chs_rt_sys.c:158 | fopen("/proc/self/cmdline","rb") | GetCommandLineA | pub |
+| chs_rt_sys.c:228 | stat(..., &st) | stat (CRT) or GetFileAttributesExA | pub |
+| chs_rt_sys.c:161,208 | fread(stdin via FILE) | C stdio; no change | pub |
+| chs_rt_netfloor.c:76,137 | socket(AF_INET, ...) | WSASocketA (init WSAStartup) | pub |
+| chs_rt_netfloor.c:84 | setsockopt(SO_REUSEADDR) | setsockopt (Winsock) | pub |
+| chs_rt_netfloor.c:86,143 | bind | bind (Winsock) | pub |
+| chs_rt_netfloor.c:90 | listen(fd, 1) | listen (Winsock) | pub |
+| chs_rt_netfloor.c:114 | getaddrinfo | getaddrinfo (Winsock, ws2_32) | pub |
+| chs_rt_netfloor.c:116,118 | socket / connect | socket / connect (Winsock) | pub |
+| chs_rt_netfloor.c:122 | freeaddrinfo(res) | freeaddrinfo (Winsock) | pub |
+| chs_rt_netfloor.c:80,141 | htonl / htons | htonl / htons (Winsock) | pub |
+| chs_rt_netfloor.c:167 | write(fd, p, left) on TCP | send (Winsock) | pub |
+| chs_rt_netfloor.c:198,224 | read(fd, buf, want) on TCP | recv (Winsock) | pub |
+| chs_rt_netfloor.c:243,87-149 | close | closesocket (Winsock) | pub |
+| chs_rt_fetch.c:70-110 | getaddrinfo / socket / connect / close / write / read | Winsock equivalents | pub |
+| chs_rt_tls.c:33-42 | getaddrinfo / socket / connect / close | Winsock equivalents | pub |
+| chs_rt_tls.c:99-112 | OpenSSL SSL_CTX_new/SSL_connect | Schannel (SECUR32) or OpenSSL on Windows (libssl-3.dll) | pub |
+| chs_rt_dns.c:30,73,39,42,81,44,48,83 | getaddrinfo / inet_ntop / freeaddrinfo | Winsock equivalents | pub |
+| chs_rt_libfloor.c:18,22 | getentropy / getpid | BCryptGenRandom / GetCurrentProcessId | pub |
+| chs_rt_libfloor.c:35,42,160,162,165,172,184 | pthread_once / mutex_init / lock / unlock | InitOnceExecuteOnce / CRITICAL_SECTION | pub |
+| chs_rt_libfloor.c:81,85,102,121 | fork / execl / waitpid / kill | CreateProcessA / WaitForSingleObject / TerminateProcess | pub |
+| chs_rt_libfloor.c:105-108 | WIFEXITED / WEXITSTATUS / WIFSIGNALED / WTERMSIG | GetExitCodeProcess | pub |
+| chs_rt_libfloor.c:129,137,144 | oo_sys_epoll_create / inotify_init / prctl (residual Err) | residual Err on Windows (no I/O loop); SysCap-stub keeps the name | pub |
+| chs_rt_sys.c:147 | oo_sys_exec1 -> sh -c | CreateProcessA via cmd.exe wrapper | pub |
+| chs_rt_rlimit.c:17 | setrlimit(RLIMIT_AS, &rl) | SetProcessWorkingSetSize or Job Object JOB_OBJECT_LIMIT_PROCESS_MEMORY | pub |
+| chs_rt_rlimit.c:31 | setrlimit(RLIMIT_NOFILE, &rl) | NO DIRECT EQUIVALENT; degrade to ignore | pub |
+| chs_rt_rlimit.c:45 | setrlimit(RLIMIT_CPU, &rl) | Job Object JOB_OBJECT_CPU_RATE_CONTROL (percent) | pub |
+| chs_rt_landlock.c:79,156,191,211 | syscall __NR_landlock_* + prctl(PR_SET_NO_NEW_PRIVS) | NO DIRECT EQUIVALENT; redesign: Job Object + restricted token + NTFS DACL | pub |
+| chs_rt_landlock.c:150 | open(path, O_PATH\|O_DIRECTORY\|O_CLOEXEC) | CreateFileA (no O_PATH equivalent) | pub |
+| chs_rt_landlock.c:157-215 | close(fd) | CloseHandle | pub |
+| chs_rt_landlock.c:207 | prctl(PR_SET_NO_NEW_PRIVS, 1, ...) | NO DIRECT EQUIVALENT (no setuid bit on Win32) | pub |
+| chs_rt_ffi.c:5 | <dlfcn.h> | <libloaderapi.h> via LoadLibraryA | pub |
+| chs_rt_ffi.c:103 | realpath | GetFullPathNameA | pub |
+| chs_rt_ffi.c:124 | dlopen | LoadLibraryExA | pub |
+| chs_rt_ffi.c:128,165,187 | dlerror | GetLastError + FormatMessageA | pub |
+| chs_rt_ffi.c:133,186 | dlclose | FreeLibrary | pub |
+| chs_rt_ffi.c:163 | dlsym | GetProcAddress | pub |
+| chs_rt_ffi.c:122-126 | pthread_mutex_lock / unlock | CRITICAL_SECTION | pub |
+| chs_rt_ffi_sec.c:26,30 | getentropy / getpid | BCryptGenRandom / GetCurrentProcessId | pub |
+| chs_rt_ffi_sec.c:42 | pthread_once | InitOnceExecuteOnce | pub |
+| chs_rt_ffi_sec.c:69,70 | realpath | GetFullPathNameA | pub |
+| chs_rt_ffi_sec.c:106,107 | access(sig, R_OK) | GetFileAttributesA + INVALID_FILE_ATTRIBUTES check | pub |
+| chs_rt_ffi_sec.c:112,123,131 | fork / execlp("minisign", ...) / waitpid | CreateProcessA("minisign.exe", ...) + WaitForSingleObject | pub |
+| chs_rt_ffi_sec.c:115-120 | open("/dev/null", O_RDWR) / dup2 / close | CreateFileA("NUL", ...) / SetStdHandle / CloseHandle | pub |
+| chs_rt_ffi_sec.c:132 | WIFEXITED(status) | GetExitCodeProcess | pub |
+| chs_rt_thread.c:14, chs_rt_actor.c:27 | usleep(10000) | Sleep(10) | pub |
+| chs_rt_thread.c:57,92 | pthread_create / pthread_join | CreateThread / WaitForSingleObject + CloseHandle | pub |
+| chs_rt_thread.c:9,49,52,57,64,82,84,91 | pthread_mutex_lock / unlock | CRITICAL_SECTION / LeaveCriticalSection | pub |
+| chs_rt_actor.c:71,72,74,170,171,103-176 | pthread_mutex_init / create / join / destroy / lock / unlock | CreateThread / WaitForSingleObject / CloseHandle / DeleteCriticalSection / CRITICAL_SECTION | pub |
+| chs_rt_channel.c:63-66,89-100,123-125,134-135 | pthread_mutex_init/lock/unlock + pthread_cond_init/cond_signal | SRWLOCK / CONDITION_VARIABLE | pub |
+| chs_rt_alloc.c:26,30 | getentropy / getpid | BCryptGenRandom / GetCurrentProcessId | pub |
+| chs_rt_alloc.c:15,44,88,94,105,110 | pthread_once / mutex_lock / unlock | InitOnceExecuteOnce / CRITICAL_SECTION | pub |
+| chs_rt_time_rand.c:19,23,62,72,81 | getentropy / getpid / clock_gettime / nanosleep | BCryptGenRandom / GetCurrentProcessId / QueryPerformanceCounter / Sleep | pub |
+| chs_rt_time_rand.c:10,38 | pthread_once | InitOnceExecuteOnce | pub |
+| chs_rt_caps.c:22,27,61,64,12,73 | getentropy / getpid / pthread_once | BCryptGenRandom / GetCurrentProcessId / InitOnceExecuteOnce | pub |
+| chs_rt_meta.c:19,23,10,42 | getentropy / getpid / pthread_once | BCryptGenRandom / GetCurrentProcessId / InitOnceExecuteOnce | pub |
+| chs_rt_crypto.c:10 | explicit_bzero (strings.h) | SecureZeroMemory (windows.h) or RtlSecureZeroMemory | pub |
+| chs_rt_print.c:18,76 | fopen / unlink | fopen (CRT) / DeleteFileA | pub |
+| chs_rt_print.c:158,166,179 | atexit | atexit (CRT); no change | pub |
+| chs_rt_hitl.c:42 | fopen("/dev/tty", "r") | CreateFileA("CONIN$", ...) | pub |
+| chs_rt_ffi.c:15 | __thread int g_ffi_dlopen_depth | __declspec(thread) | pub |
+| oo_hide.c:38,41 | getentropy / getpid | BCryptGenRandom / GetCurrentProcessId | pub |
+| oo_hide.c:62 | __attribute__((constructor)) | #pragma init_seg(lib) or DllMain DLL_PROCESS_ATTACH | pub |
+
+## 3. Internal-only calls (defer)
+
+| file:line | linux call | windows equivalent | scope |
+|-----------|------------|--------------------|-------|
+| chs_rt_list.c:7,16,28,35,37,42,104,106,197,199 | pthread_mutex_t / pthread_once / lock / unlock | CRITICAL_SECTION / InitOnceExecuteOnce | int |
+| chs_rt_llist.c:30,32 / llist_s.c / llist_f.c / flist.c | pthread_mutex_lock / unlock | CRITICAL_SECTION | int |
+| chs_rt_list_set.c:8,36 | exit(1) (cap-fail) | exit (CRT); no change | int |
+| chs_rt_xlang.c:53,54 | mkdir(".ooda-cache", 0755) | CreateDirectoryA | int |
+| chs_rt_xlang.c:80 | system("gcc -flto ...") | system (CRT) with gcc.exe path | int |
+| chs_rt_vision.c:152,154,161,209,210,228,229 | fopen / fread / fclose / mkdir | C stdio / CreateDirectoryA | int |
+| chs_rt_emit_tmp.c:15,63,65 | abort() | abort (CRT); no change | int |
+| chs_rt_wasm.c:87 | atexit(oo_wasm_flush) | atexit (CRT); no change | int |
+| chs_rt_str.c, chs_rt_str_tok.c, chs_rt_str_intern.c, chs_rt_str_int.c, chs_rt_hash.c | abort / exit | CRT; no change (assertion only) | int |
+| chs_rt_str_intern.c:44,66,70,86 | pthread_mutex_init / lock / unlock | CRITICAL_SECTION | int |
+| oo_holo.c:116-170 | fopen / fread / fwrite / fclose (binary blob) | C stdio (CRT); no change | int |
+| oo_sha256.c | (none) | n/a | int |
+| chs_rt_math.c | (none) | n/a | int |
+| chs_rt_host.c:11-50 | extern ooda_host_* (only with OODA_WITH_HOST_FFI) | staticlib keeps symbols; not POSIX | int |
+
+## 4. No-direct-equivalent cases
+
+| surface | linux construct | why no win32 equivalent | redesign |
+|---------|-----------------|--------------------------|----------|
+| chs_rt_landlock.c:79,156,191,211,207 | syscall __NR_landlock_* + prctl(PR_SET_NO_NEW_PRIVS) | Linux-only LSM; no syscall on Win32; no `no_new_privs` flag. | Windows Job Object + restricted token + NTFS DACL on the allowlist. Map `oo_landlock_restrict` to a new `&WindowsCap` that builds a Job Object and assigns it to the current process. Refuse where Landlock would refuse. |
+| chs_rt_rlimit.c:31 (RLIMIT_NOFILE) | setrlimit(RLIMIT_NOFILE, ...) | Win32 has no per-process fd cap (handles scale with kernel pool). | Degrade to ignore: return `OK` with a stderr note. The shim warns the user and does not change fd count. |
+| chs_rt_rlimit.c:45 (RLIMIT_CPU soft) | setrlimit(RLIMIT_CPU, &rl) | Win32 has no CPU-second soft/hard split; Job Object CPU is a rate, not seconds. | Use Job Object `JOB_OBJECT_CPU_RATE_CONTROL` (percent). Convert "seconds" -> "percent of one core" in the shim. |
+| chs_rt_ffi_sec.c:115-119 (/dev/null) | open("/dev/null", O_RDWR) + dup2 | Path-only convention `NUL` is reserved but not the same fd. | CreateFileA("NUL", GENERIC_READ\|GENERIC_WRITE) + SetStdHandle(STD_INPUT_HANDLE/...). |
+| chs_rt_ffi_sec.c:123 (execlp minisign) | execlp("minisign", ...) | execlp PATH search has no Win32 equivalent. | CreateProcessA: search PATH in shim, pass full path. |
+| chs_rt_sys.c:158 (/proc/self/cmdline) | fopen("/proc/self/cmdline","rb") | /proc is Linux-only. | GetCommandLineA and CommandLineToArgvW. |
+| chs_rt_hitl.c:42 (/dev/tty) | fopen("/dev/tty","r") | /dev/tty is Linux/BSD. | CreateFileA("CONIN$", ...). |
+| chs_rt_libfloor.c:129,137 (epoll/inotify) | oo_sys_epoll_create / oo_sys_inotify_init (already residual Err) | Already sealed behind SysCap as Err; no product claim. | Keep the shim: same residual Err on Windows. |
+| chs_rt_libfloor.c:144 (prctl) | oo_sys_prctl (already residual Err) | No Win32 equivalent for the Linux prctl namespace. | Keep the shim: same residual Err on Windows. |
+| chs_rt_sys.c:46 (clearenv) | clearenv / environ rewrite | Win32 has no envp pointer block; env is per-process query. | Walk `GetEnvironmentStrings`, rebuild via SetEnvironmentVariable. |
+| chs_rt_xlang.c:80 (system gcc) | system("gcc -flto ...") | system is CRT; "gcc" must be "gcc.exe" on Windows. | Detect host, emit "gcc.exe" form; PATH already required. |
+
+## 5. Summary counts
+
+- POSIX-only or Linux-only call sites in ooda/runtime: 95.
+- Direct Windows equivalent (CreateFile / LoadLibrary / Winsock / BCryptGenRandom / CRITICAL_SECTION / CloseHandle / GetFileAttributesEx / etc.): 86.
+- No direct equivalent (redesign needed): 9 (the 9 rows of section 4; epoll/inotify/prctl are residual Err and only count once each).
+- Public-path rows: 88. Internal-only rows: 18.
+- Landlock and RLIMIT_NOFILE are the only two POSIX-isms the SHIPPED.oot currently exercises as a product path; the master plan already names them. setrlimit(RLIMIT_AS/RLIMIT_CPU) get Job Object wrappers; the fd cap degrades to a no-op with a stderr note.
+- pthread_cond_wait / pthread_cond_timedwait / pthread_cond_broadcast are NOT used. Channels (chs_rt_channel.c) are non-blocking by design (line 6-7 comment). Only `pthread_cond_init` and `pthread_cond_signal` are present. Windows CONDITION_VARIABLE has direct equivalents.
+
+## 6. What was not checked
+
+- chs_rt_host.c full call graph under OODA_WITH_HOST_FFI. The shim is the host staticlib, not the runtime; oodac is the host. The runtime only declares `extern char *ooda_host_*` and calls them. Not in this audit's POSIX-call scope.
+- oo_holo.c: only C stdio (fopen/fread/fwrite) confirmed. File size 144 lines, not fully re-read. Low risk (no POSIX-only headers).
+- oo_sha256.c: not opened. Filename suggests NIST SHA only. Low risk.
+- chs_rt_str_ops.c, chs_rt_str_int.c, chs_rt_str_tok.c, chs_rt_str_intern.c, chs_rt_str.c, chs_rt_hash.c, chs_rt_math.c, chs_rt_emit_tmp.c, chs_rt_list_set.c, chs_rt_wasm.c, chs_rt_wasm_print.c: grepped; no POSIX-only headers found. Internal-only stdlib + abort/exit (CRT). Read once to confirm.
+- Setjmp / longjmp / sigaction / sigprocmask: not found in any chs_rt_*.c.
+- memfd_create / seccomp / eventfd / timerfd / signalfd / mmap / mprotect / msync / getrandom: not found in any chs_rt_*.c. epoll/inotify/prctl exist only as residual Err stubs in chs_rt_libfloor.c.
+- The C stdlib (stdio.h, stdlib.h, string.h, time.h) is portable; this audit did not flag it.
+- The audit is read-only. No edits to ooda/runtime/, no mingw build, no .oo generation.

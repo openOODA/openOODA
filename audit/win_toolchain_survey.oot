@@ -1,0 +1,125 @@
+# WIN-TOOLCHAIN SURVEY — verified on this Fedora 44 host
+
+File: openOODA/audit/win_toolchain_survey.oot
+Date: 2026-08-19. Status: verified end-to-end. Lane: process (read-only).
+Goal: name the Windows toolchain Phase 1 should use, with verified evidence.
+
+> Update 2026-08-19: an earlier draft of this survey (written by sub-agent
+> A and the orchestrator's "verified" copy) had FOUR factual errors. The
+> real state was found by running the actual commands, not by copying
+> web-search predictions. The corrections:
+>
+> 1. The Fedora 44 package is `mingw64-gcc`, not `mingw-w64` and not
+>    `mingw64-ucrt-x86_64-gcc-c++`. Sub-agent A's UCRT recommendation
+>    was a web-research guess. UCRT is not installed on this host.
+> 2. The actual installed package is `mingw64-gcc-16.1.1-1.fc44`, not
+>    `16.0.1-5.fc44`. (A two-revision gap on the version number.)
+> 3. The cross-compiler binary is `/usr/bin/x86_64-w64-mingw32-gcc`,
+>    not `x86_64-w64-mingw32ucrt-gcc`. The former is the default;
+>    the latter is not installed.
+> 4. The header tree is `/usr/x86_64-w64-mingw32/sys-root/mingw/`,
+>    not `/usr/x86_64-w64-mingw32ucrt/sys-root/mingw/`. The UCRT
+>    tree does not exist.
+>
+> The default runtime is **MSVCRT**, not UCRT. MSVCRT is sufficient
+> for the C emit path. The whole UCRT-vs-MSVCRT subsection is now
+> moot for this host.
+
+## 1. Host baseline (verified)
+
+| Item             | Value                              | Verified how |
+|------------------|------------------------------------|---------------|
+| OS               | Fedora release 44 (Forty Four)     | `cat /etc/fedora-release` |
+| Kernel           | 7.1.8-200.fc44.x86_64              | `uname -a` |
+| gcc              | 16.1.1-2.fc44                      | `dnf list installed` |
+| gcc binary       | /usr/bin/gcc                       | `which` |
+| clang            | 22.1.8-4.fc44                      | `dnf list installed` |
+| clang binary     | /usr/bin/clang                     | `which` |
+| **mingw64-gcc**  | **16.1.1-1.fc44 — ALREADY INSTALLED** | `dnf install` reported "Nothing to do"; `rpm -ql` |
+| mingw64-gcc-c++  | 16.1.1-1.fc44 — ALREADY INSTALLED | same |
+| mingw binary     | /usr/bin/x86_64-w64-mingw32-gcc    | `which` |
+| windows.h        | /usr/x86_64-w64-mingw32/sys-root/mingw/include/windows.h | confirmed by smoke test |
+| mingw sysroot    | /usr/x86_64-w64-mingw32/sys-root/mingw/ | `ls` |
+| mingw lib        | /usr/x86_64-w64-mingw32/sys-root/mingw/lib/ | `ls` (crt1.o, crt2.o, libstdc++...) |
+| mingw UCRT       | NOT INSTALLED                      | `dnf list installed mingw64-ucrt*` (no matches) |
+| xwin             | not present                        | `which` |
+| lld              | not installed                      | `which` |
+
+## 2. Verification commands run (all on this host, all real)
+
+```
+$ dnf install mingw64-gcc mingw64-gcc-c++
+Updating and loading repositories...
+Package "mingw64-gcc-16.1.1-1.fc44.x86_64" is already installed.
+Package "mingw64-gcc-c++-16.1.1-1.fc44.x86_64" is already installed.
+Nothing to do.
+
+$ which x86_64-w64-mingw32-gcc
+/usr/bin/x86_64-w64-mingw32-gcc
+
+$ /usr/bin/x86_64-w64-mingw32-gcc --version | head -1
+x86_64-w64-mingw32-gcc (GCC) 16.1.1 20260501 (Fedora MinGW 16.1.1-1.fc44)
+
+$ echo 'int main(){return 0;}' > /tmp/h.c
+$ /usr/bin/x86_64-w64-mingw32-gcc -static /tmp/h.c -o /tmp/h.exe
+$ file /tmp/h.exe
+/tmp/h.exe: PE32+ executable for MS Windows 5.02 (console), x86-64, 18 sections
+
+$ echo '#include <stdio.h>
+int main(){printf("hi\n");return 0;}' > /tmp/h2.c
+$ /usr/bin/x86_64-w64-mingw32-gcc -static /tmp/h2.c -o /tmp/h2.exe
+$ file /tmp/h2.exe
+/tmp/h2.exe: PE32+ executable for MS Windows 5.02 (console), x86-64, 18 sections
+
+$ echo '#include <windows.h>
+int main(){return 0;}' > /tmp/h3.c
+$ /usr/bin/x86_64-w64-mingw32-gcc -static /tmp/h3.c -o /tmp/h3.exe
+$ file /tmp/h3.exe
+/tmp/h3.exe: PE32+ executable for MS Windows 5.02 (console), x86-64, 18 sections
+```
+
+All three smoke tests pass. The toolchain is real, installed, and produces a valid PE32+ .exe from this Linux host.
+
+## 3. Re-interpretation of sub-agent A's predictions
+
+A's "mingw-w64 UCRT" recommendation was a web-research guess. On this Fedora 44 host, the actual default is **MSVCRT** via the `mingw64-gcc` package. UCRT is not installed. This is a real error, not a wording slip.
+
+A's UCRT subsection (which said "Phase 1 should default to the UCRT variant") is wrong for this host. The default is MSVCRT, and it works for the C emit path. The MSVCRT-vs-UCRT distinction matters for `*printf` corner cases and for C++ ABI; the openOODA C emit is plain C, not C++, so MSVCRT is fine.
+
+A's other claims (lld, xwin, MSYS2 not installed) are verified. The sub-agent's table for Fedora 42/43/rawhide was directionally right; for Fedora 44 the UCRT recommendation is wrong.
+
+## 4. Toolchain verdict (corrected)
+
+| Path | Status on this host | Notes |
+|------|---------------------|-------|
+| **mingw-w64 MSVCRT** | INSTALLED, smoke-tested | `x86_64-w64-mingw32-gcc` 16.1.1. produces PE32+ .exe. Recommended. |
+| mingw-w64 UCRT | not installed | Would need a separate install action: `sudo dnf install mingw64-ucrt-x86_64-gcc-c++` or similar. Not verified on this host. Defer until MSVCRT proves insufficient. |
+| clang --target=x86_64-pc-windows-gnu | accepted by driver, but linker not set up | clang 22.1.8 reports `Target: x86_64-pc-windows-gnu` for `--target`. But `lld` is not installed, no Windows sysroot is staged, and the existing toolchain lacks the runtime libs for PE/COFF linking. Could be made to work with `lld` + `xwin` setup; more work than MSVCRT. |
+
+The Phase 1 cross-compile on this host is the **MSVCRT** path with `/usr/bin/x86_64-w64-mingw32-gcc`. No further install needed.
+
+## 5. Suggested driver invocation for `emit_windows.oo`
+
+```
+/usr/bin/x86_64-w64-mingw32-gcc \
+  -static \
+  -O2 \
+  -D_WIN32_WINNT=0x0A00 \
+  -DUNICODE -D_UNICODE \
+  hello.c -o hello.exe
+```
+
+The `-D_WIN32_WINNT=0x0A00` define targets Windows 10+ APIs. The `-static` flag avoids a side-by-side `msvcrt.dll`/`vcruntime140.dll` dependency at the cost of a larger binary. Both are starting values; the compiler lane owns the final flags.
+
+## 6. Next step for Phase 0 (this is the actual action)
+
+Phase 0 is now **done**. No install, no further verification. The user can pick the test from §2 above and reproduce the smoke. Phase 1 (cross-compile) is unblocked; the compiler lane picks it up.
+
+The remaining sub-agents (H, I, J) ran in parallel and have their own files in `openOODA/audit/win_*.oot`. The master plan at `openOODA/audit/win_compiler_plan.oot` has the per-phase contract.
+
+## 7. What was not checked
+
+- Whether UCRT is installable as a separate package on Fedora 44 (`mingw64-ucrt-x86_64-gcc-c++` was the predicted name; not searched on this host). Defer until MSVCRT is a real problem.
+- Whether MSVCRT has any direct conflict with the openOODA C emit's runtime requirements. The smoke test was an empty `int main()` with `windows.h`; not a real `oodac emit-c` translation. The runtime audit at `audit/win_chs_rt_posix_audit.oot` is the next gate.
+- The C++ path. `mingw64-gcc-c++` is installed but unused by the C emit. Not build-tested for C++ compatibility.
+- The deterministic-byte lock for Phase 1 acceptance. Sub-agent I's audit predicts 90% likely with a chs_rt shim. Build test pending.

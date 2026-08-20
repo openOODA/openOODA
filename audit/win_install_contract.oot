@@ -1,0 +1,122 @@
+# WIN-INSTALL-CONTRACT — Phase 0 follow-up, sub-agent N
+
+File: openOODA/audit/win_install_contract.oot
+Siblings: win_install_contract_map.oot (§4-6), win_install_contract_phase4.oot (§7-10).
+
+Read-only walk of `ooda/install/` to extract a contract for `install_win.oo`.
+Source: `openOODA/ooda/install/*.oo` + `openOODA/ooda/install/BOOTSTRAP_PIN` +
+`openOODA/ooda/scripts/install_xdg_smoke.oo` + `openOODA/ooda/cli/cmd_more.oo`.
+Date: 2026-08-19. Lane owner: cli (Windows variant is cli territory).
+Active install path: `install.oo` -> `install_xdg.oo` -> `install_art.oo`.
+
+## 0. Headline
+
+`install.oo` (45 lines) imports only `install_art.oo` + `install_xdg.oo`. It does
+**not** import `chapters_a.oo`, `chapters_b.oo`, `layout.oo`, or `util.oo`. Those
+four files (504 lines total) are **residual** - still on disk, still documented
+in `README.oot`, but not wired into the entry the cli or the smoke runs. A
+Windows variant of `install.oo` therefore only needs to mirror `install.oo` +
+`install_xdg.oo` (+ the art used by both). Carrying `chapters_*` across is
+optional Phase 4+ work, not minimum.
+
+The cli dispatch is at `cli/cmd_more.oo:51-66`. It builds
+`OODA_SRC_ROOT=... OODA_CHECKOUT=... OODA_COMPILER=... OODAC_BIN=... oodac run
+install/install.oo` and runs it via `sh -c`. Windows Phase 4 will need to pick
+either Git-Bash, WSL, or a native Win32 launcher; the audit does not pick for
+the cli owner.
+
+## 1. Per-file function table
+
+| File | Lines | Function | Lines | Job |
+|---|---|---|---|---|
+| `install.oo` | 45 | `main(p, fw, env)` | 16-44 | Banner, read `OODA_FS_WRITEDIR` + `OODA_CHECKOUT`, call `install_xdg`, print next-step hint. |
+| `install_xdg.oo` | 118 | `home_or(env)` | 14-20 | Read `OODA_FS_WRITEDIR`; return `""` if absent. |
+| `install_xdg.oo` | 118 | `install_xdg(p, fw, env, checkout)` | 22-117 | The XDG install. Resolves paths, `test -x` checks, `mkdir -p`, `cp -f`/`cp -a`, `chmod +x`, `rm -rf`, writes `env` + `INSTALL_RECEIPT.txt`. |
+| `install_art.oo` | 79 | `ink(p, code)` | 12-17 | `printf '\033[<code>m'` via `process_exec`. |
+| `install_art.oo` | 79 | `ink_reset` | 19-21 | `ink(p, "0")`. |
+| `install_art.oo` | 79 | `ink_cyan` | 23-25 | `1;38;5;51`. |
+| `install_art.oo` | 79 | `ink_violet` | 27-29 | `1;38;5;141`. |
+| `install_art.oo` | 79 | `ink_ok` | 31-33 | `1;38;5;82`. |
+| `install_art.oo` | 79 | `ink_dim` | 35-37 | `38;5;244`. |
+| `install_art.oo` | 79 | `ink_warn` | 39-41 | `1;38;5;214`. |
+| `install_art.oo` | 79 | `banner(p)` | 43-54 | Wordmark + tagline. |
+| `install_art.oo` | 79 | `say(p, kind, msg)` | 56-79 | Labeled story line (`ok`/`do`/`dim`/`hd`/`bad`). |
+| `chapters_a.oo` | 158 | `chapter0_preface()` | 12-28 | Print capability contract preface. (residual) |
+| `chapters_a.oo` | 158 | `chapter1_who_we_are()` | 30-45 | Print product blurb. (residual) |
+| `chapters_a.oo` | 158 | `chapter2_layout_story(layout)` | 47-75 | Print XDG layout table. (residual) |
+| `chapters_a.oo` | 158 | `chapter3_download_and_unpack(net, fs, sys, env, layout)` | 77-157 | Tarball download + extract + `last_extract_root` file. (residual) |
+| `chapters_b.oo` | 223 | `chapter4_place_files(fs, layout)` | 12-114 | Place binaries, std slot, receipt, install.oo copy. (residual) |
+| `chapters_b.oo` | 223 | `chapter5_config_and_path(fs, env, layout)` | 116-149 | Write shell `env` file. (residual) |
+| `chapters_b.oo` | 223 | `chapter6_verify(fs, sys, layout)` | 151-178 | `path_exists` + `sys_exec(bin, "--version")`. (residual) |
+| `chapters_b.oo` | 223 | `chapter7_what_you_have(layout)` | 180-195 | Print post-install summary. (residual) |
+| `chapters_b.oo` | 223 | `chapter8_next_steps(layout)` | 197-218 | Print next steps. (residual) |
+| `layout.oo` | 86 | `resolve_layout(env)` | 42-66 | Read `HOME`, `XDG_*`, `OODA_*`; return `Layout`. (residual) |
+| `layout.oo` | 86 | `env_or(env, key, fallback)` | 68-81 | `env_get` with empty-string fallback. (residual) |
+| `util.oo` | 37 | `must_read(fs, path)` | 12-21 | `read_file` or `fail_install`. (residual) |
+| `util.oo` | 37 | `err_str(r)` | 23-28 | Extract `Err` string. (residual) |
+| `util.oo` | 37 | `fail_install(msg)` | 31-37 | Print "INSTALL FAILED" + `process_exit(1)`. (residual) |
+
+`install.oo` exposes **1 function** to mirror. `install_xdg.oo` exposes
+**2 functions**. `install_art.oo` exposes **9 functions** (cosmetic - ANSI ink
+and banner; only useful if Windows console supports VT escapes; Windows 10+
+`conhost.exe` does, so the same `printf '\033[..m'` works in cmd and PowerShell
+when VT is enabled).
+
+`Layout` is a struct defined in `layout.oo:31-40` with fields
+`home, bin, cache, config, std, version, arch, repo`. Only used by
+residual chapters. A `win_install` does not need to define it.
+
+## 2. install.oo vs install_xdg.oo
+
+| Question | Answer | Evidence |
+|---|---|---|
+| What does the XDG path handle vs the legacy path? | `install_xdg.oo` is the **only** wired install surface. It copies `bin/ooda`, `oodac/oodac`, `std/`, `runtime/`, writes `env`, writes receipt. | `install.oo:14` imports `install_xdg.oo`; `install.oo:38` calls `install_xdg`. |
+| Which is the active product path? | `install.oo`. | `cli/cmd_more.oo:55` runs `install/install.oo`; `install_xdg_smoke.oo:29,33` also runs `install/install.oo`. |
+| Is `install.oo` still product, or is it residual? | **Product.** Active entry, run by the cli, exercised by the smoke. | `cli/cmd_more.oo:51-66`; `install_xdg_smoke.oo`. |
+| Are `chapters_a.oo`, `chapters_b.oo`, `layout.oo`, `util.oo` wired? | **No.** Zero imports of them anywhere in `ooda/install/` or the install smoke. They are residual. | `grep -r '^import' ooda/install/` shows only `install_art.oo` + `install_xdg.oo`. |
+| Where is the legacy "full installer" story documented? | Only in `README.oot` and inside the chapter files themselves. README claims `install/install.oo` is "Full installer - story, XDG layout, download, place, config, verify" - but the actual `install.oo` is 45 lines and downloads nothing. | `README.oot:7` vs `install.oo` (45 lines). |
+
+## 3. env var map (POSIX to Windows)
+
+Read by the **active** install path (`install.oo` + `install_xdg.oo`):
+
+| POSIX | Where read | Windows analog | Notes |
+|---|---|---|---|
+| `OODA_FS_WRITEDIR` | `install.oo:28`, `install_xdg.oo:15` | `%USERPROFILE%` (default) | Required by install. Refuses to run if empty. `write_file` is fail-closed under this prefix on POSIX; Windows analog must enforce the same. |
+| `OODA_CHECKOUT` | `install.oo:28` | Required, no default | Tree with `bin\ooda.exe` and `oodac\oodac.exe`. |
+
+Read by **residual** path (`layout.oo`, `chapters_*`):
+
+| POSIX | Windows analog | Notes |
+|---|---|---|
+| `HOME` | `USERPROFILE` | XDG fallbacks build off this. |
+| `XDG_DATA_HOME` | `LOCALAPPDATA` | `..\Roaming` is a defensible alt. |
+| `XDG_CACHE_HOME` | `LOCALAPPDATA` | Same value. |
+| `XDG_CONFIG_HOME` | `APPDATA` (`..\Roaming`) | Config writes here. |
+| `XDG_BIN_HOME` | n/a | No Windows convention. Use `%LOCALAPPDATA%\openooda\bin` and prepend to user `PATH`. |
+| `OODA_HOME` | `LOCALAPPDATA%\openooda\data` | Overridable. |
+| `OODA_BIN` | `%LOCALAPPDATA%\openooda\bin` | Overridable. |
+| `OODA_CACHE` | `%LOCALAPPDATA%\openooda\cache` | Overridable. |
+| `OODA_CONFIG` | `%APPDATA%\openooda` | Overridable. |
+| `OODA_STD` | `%OODA_HOME%\std` | Overridable. |
+| `OODA_VERSION` | (same) | Pin string. See win_install_contract_map.oot §6. |
+| `OODA_SRC_ROOT` | (same) | emit+gcc path. Only read by callers, not by install. |
+
+**Writes the install path produces** (set by the user after install, or by the
+installer on their behalf):
+
+| Var | Where | How on Windows |
+|---|---|---|
+| `OODA_HOME` | `env` file | `setx OODA_HOME "..."` (persistent) or `setx` per-process. |
+| `OODA_STD` | `env` file | same. |
+| `OODA_CONFIG` | `env` file | same. |
+| `OODA_CACHE` | `env` file | same. |
+| `PATH` | `env` file | Prepend `%OODA_BIN%`. Use `setx PATH "%OODA_BIN%;%PATH%"` (truncates to 1024 chars in legacy setx; use `setx /M` is **not** safe - use `setx` per-user) or write `HKCU\Environment\Path` via `reg add`. Document the trade-off. |
+
+The `env` file on POSIX is `~/.config/ooda/env` and is `source`d. The Windows
+analog must be a `.bat` (`call env.bat`) or `.ps1` (`. .\env.ps1`) and the
+next-step hint must say which.
+
+See `win_install_contract_map.oot` for the shell-command and file-path maps.
+See `win_install_contract_phase4.oot` for the Phase 4 minimum and maximum
+contract and the open questions for the cli owner.

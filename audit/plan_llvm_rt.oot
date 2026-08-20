@@ -1,0 +1,195 @@
+# LLVM-RT — C runtime ABI versus LLVM preamble
+
+File: openOODA/audit/plan_llvm_rt.oot
+RT lane. Read of chs_rt.h, llvm_emit_preamble.oo, llvm_link_shim.oo,
+llvm_emit_list.oo, and llvm_emit_method.oo. No product edit.
+No c_emit edit. No runtime C edit.
+
+Logline: The C layouts for OoStr, OoResS, and OoSList match the LLVM
+types, so the runtime C file does not need a change.
+Setup: Target is x86_64 System V on Linux. ABI means layout and call
+rules between LLVM IR and the C runtime. The preamble is the IR header
+that names types and symbols. The shim is a small IR file that maps
+Ooda names to C names. sret is a hidden pointer for a return larger
+than 16 bytes. byval is a hidden pointer for an argument larger than
+16 bytes.
+Beats:
+  1. State the verdict.
+  2. Compare the three C types to the LLVM types.
+  3. Compare each live call shape to the C prototype.
+  4. Name emit and shim gaps that LLVM can fix.
+  5. Name residual types. Do not change C for them.
+
+## 1. Verdict
+
+no runtime change required
+
+C layouts match the LLVM types.
+C prototypes match System V for those layouts.
+LLVM emit can fix every name and call-shape gap.
+
+Do not edit `runtime/chs_rt.h`.
+Do not edit `runtime/chs_rt*.c`.
+Do not add `oo_process_exit` or `oo_str_to_int` to C.
+Those two names are static inline in C emit only.
+
+Status: done for the runtime seal. Emit and shim work stay open.
+
+## 2. Method
+
+Proof is static on this worktree.
+Target triple in the preamble is `x86_64-unknown-linux-gnu`.
+`int` is 32 bits. `long long` is 64 bits. A pointer is 64 bits.
+No `#pragma pack` sits on OoStr, OoResS, or OoSList.
+One packed struct exists in landlock code. It is not these types.
+
+System V rule used here:
+  A value of 16 bytes with integer fields uses two registers.
+  A value larger than 16 bytes uses MEMORY: sret out, byval in.
+
+## 3. Layout
+
+| C type | C fields | Size | LLVM type | Match |
+| :--- | :--- | ---: | :--- | :--- |
+| OoStrHeader | uint32, uint32 | 8 | { i32, i32 } | yes |
+| OoListHeader | uint32, uint32 | 8 | { i32, i32 } | yes |
+| OoStr | char*, long long | 16 | { i8*, i64 } | yes |
+| OoIList | i64*, i64, i64 | 24 | { i64*, i64, i64 } | yes |
+| OoSList | OoStr*, i64, i64 | 24 | { %OoStr*, i64, i64 } | yes |
+| OoResS | int, OoStr | 24 | { i32, %OoStr } | yes |
+| OoResV | int, OoStr | 24 | { i32, %OoStr } | yes |
+
+OoResS offsets: ok at 0, pad 4, val.data at 8, val.len at 16.
+LLVM `{ i32, %OoStr }` uses the same pad because %OoStr needs
+align 8.
+
+The header structs live before heap payload. They are not fields of
+the OoStr or OoSList values that cross a call.
+
+On a failed `oo_read_file`, C stores the error text in `val`.
+`ok` is 0. LLVM `extractvalue` field 1 therefore reads that text.
+That matches `llvm_emit_match_expr.oo` and `.unwrap`.
+
+## 4. Call shapes that match C
+
+C takes every aggregate by value. LLVM must encode the System V class.
+
+16-byte OoStr (two registers). Preamble and emit agree with C:
+
+  void oo_str_retain(OoStr)
+  void oo_str_release(OoStr)
+  OoStr oo_str_lit(const char*)
+  OoStr oo_str_concat(OoStr, OoStr)
+  i64 oo_chars_len(OoStr)
+  OoStr oo_char_at(OoStr, i64)
+  OoStr oo_str_slice(OoStr, i64, i64)
+  i32 oo_str_eq(OoStr, OoStr)
+  i32 oo_str_contains(OoStr, OoStr)
+  void oo_print_str(OoStr)
+  OoStr oo_int_to_str(i64)
+
+24-byte list (MEMORY). Preamble and `llvm_emit_list.oo` agree with C:
+
+  void oo_ilist_new(%OoIList* sret)
+  void oo_ilist_push(%OoIList* sret, %OoIList* byval, i64)
+  i64 oo_ilist_get(%OoIList* byval, i64)
+  i64 oo_ilist_len(%OoIList* byval)
+  void oo_slist_new(%OoSList* sret)
+  void oo_slist_push(%OoSList* sret, %OoSList* byval, %OoStr)
+  %OoStr oo_slist_get(%OoSList* byval, i64)
+  i64 oo_slist_len(%OoSList* byval)
+  void oo_ilist_retain / release (%OoIList* byval)
+  void oo_slist_retain / release (%OoSList* byval)
+
+`llvm_emit_arc.oo`, `llvm_emit_let.oo`, `llvm_emit_fn.oo`, and
+`llvm_emit_mainargs.oo` use the same sret and byval forms.
+
+24-byte Result (MEMORY). The shim agrees with C:
+
+  C: OoResS oo_read_file(long long, OoStr)
+  IR to C: void @oo_read_file(%OoResS* sret, i64, %OoStr)
+  C: OoResV oo_write_file(long long, OoStr, OoStr)
+  IR to C: void @oo_write_file(%OoResV* sret, i64, %OoStr, %OoStr)
+  C: int oo_path_exists(long long, OoStr)
+  IR: i32 @oo_path_exists(i64, %OoStr)
+  C: OoResS oo_sys_exec(long long, int, OoStr*)
+  IR: void @oo_sys_exec(%OoResS* sret, i64, i32, %OoStr*)
+
+The shim copies OoResV field 1 into OoResS field 1.
+The layouts are the same. This is a name map, not a C change.
+
+Scalars match: i64 with long long, i32 with int, double with double.
+
+## 5. Gaps LLVM emit can fix
+
+These are not C ABI breaks.
+
+1. `.len()` on a list.
+   Preamble: `i64 @oo_slist_len(%OoSList* byval(%OoSList))`.
+   `llvm_emit_method.oo` emits `call i64 @oo_slist_len(%OoSList)`.
+   Same fault for `@oo_ilist_len`.
+   A 24-byte value in registers is not the C rule.
+   DE2 owns that file. Use the byval slot that list emit already uses.
+
+2. `oo_process_exit` and `oo_str_to_int`.
+   The preamble declares both as extern C.
+   `chs_rt.h` has neither.
+   C emit prints them as `static inline` in the C preamble.
+   The shim defines `@process_exit`, not `@oo_process_exit`.
+   Add a shim or an IR body. Do not add a C symbol.
+
+3. Ooda name versus C name.
+   C emit maps `read_file` to `oo_read_file`.
+   LLVM fntab keeps `@read_file` and relies on the shim.
+   `emit-mods` writes `_shim.ll`.
+   The one-file `emit-llvm` plus `chs_rt.c` link does not add the shim.
+   Emit can call `@oo_*` with sret, or it can always link the shim.
+
+4. `file_size` in `llvm_fntab.oo`.
+   C: `long long oo_file_size(long long cap, OoStr path)`.
+   Fntab: `oo_file_size=i64#%OoStr` (no cap).
+   The source always passes the cap. Fix the declare. Do not change C.
+
+5. `process_exec` has a fntab row and no C symbol.
+   C has `oo_sys_exec1(long long, OoStr)`.
+   Add a shim. Do not rename the C function.
+
+6. byval and sret have no `align 8`.
+   The type align is 8, so the backend should use 8.
+   Emit may add `align 8` to make the intent clear.
+
+## 6. Residual types. Do not change C
+
+LLVM maps every Result to `%OoResS` ({ i32, %OoStr }, 24 bytes).
+
+C also has larger Results. Leave them in C:
+
+  OoResI: int, i64, OoStr. Size 32.
+  OoResF: int, double, OoStr. Size 32.
+  OoResLI / OoResLS / OoResLF: list plus OoStr. Size 48.
+
+If LLVM later calls a C function that returns OoResI, emit must use a
+32-byte type or a shim. Do not shrink the C struct.
+
+`%OoFList` is absent. C `OoFList` stays. Same for nested list types.
+
+Preamble grants only fs, sys, env, and net.
+C already has the other grant functions. Emit may declare them.
+
+## 7. What not to do
+
+Do not pack OoStr, OoResS, or OoSList.
+Do not change `int ok` to i8 or i64.
+Do not split OoResS into ok plus two strings.
+Do not replace by-value C arguments with pointers in `chs_rt.h`.
+Do not edit `c_emit*.oo`.
+Do not edit `llvm_emit_match_expr.oo`.
+Do not overwrite `oodac/oodac`.
+
+## 8. Next
+
+DE2: fix `.len()` to byval. Fix the `file_size` declare.
+SEC: read the shim. The shim hard-codes `sys_exec` argc 3.
+MEM: list retain and release already use byval on the slot.
+
+Runtime seal: no runtime change required.

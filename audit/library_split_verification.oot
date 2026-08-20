@@ -1,0 +1,255 @@
+// # Library Split Verification Spec
+//
+// Logline: Per-step checks proving the door+siblings split of three oversized std files (btree_disk_ops, protein_translation, dispatch_worker) preserved symbol resolution, line budget, and BLOCKED row count. Executable by any agy without further instruction.
+//
+// Setup: 2026-08-19 repair pass. Library lane owns the split. Audit lane owns library_status.oot. Three files targeted per handoff_library_split.oot:21 (btree 395, protein 380, dispatch 323). All three are BLOCKED. Cause is oodac gaps (library_status.oot:13-19), not file size. The split must not regress symbol resolution. Pre/during/post checks pin the row count and prove status. Pin: v0.205.0-beta.
+//
+// Beats:
+//   1. Read first.
+//   2. Pre-split gates.
+//   3. During-split checks.
+//   4. Post-split gates.
+//   5. Per-file specifics: btree / protein / dispatch.
+//   6. Cross-file checks, rollback, acceptance smoke, timing.
+//
+// residual: real prove is not run here; this spec verifies the cut, not the run.
+
+// 0. READ FIRST
+//
+//   - openOODA/audit/handoff_library_split.oot  (the spec you are verifying).
+//   - openOODA/audit/library_status.oot         (BLOCKED row context).
+//   - openOODA/audit/handoff_compiler_repair.oot (c_emit issues block these
+//     files too per library_status.oot:13-19).
+//   - The three target .oo files (count, shape, public symbols).
+//
+// If handoff_library_split.oot is missing or stale, STOP and report
+// "stale handoff".
+
+// 1. UNIVERSAL PROTOCOL (apply to all 3 files)
+//
+// Target files F:
+//   btree_disk_ops       -> ooda/std/database/btree_disk_ops.oo
+//   protein_translation  -> ooda/std/bioinformatics/protein_translation.oo
+//   dispatch_worker      -> ooda/std/swarm/dispatch_worker.oo
+
+// 1.1 Pre-split gates (must pass before any sibling is written)
+//
+//   P1.  wc -l ooda/std/<path>/F.oo > /tmp/F.lines.before
+//   P2.  grep -nE 'F.oo' openOODA/audit/library_status_support_*.oot \
+//        | head -20 > /tmp/F.blocked.before
+//        Capture the BLOCKED cell for F. If F does not appear, the
+//        file is GREEN or absent; STOP and report.
+//   P3.  grep -nE '^(pub fn|pub type|type) ' ooda/std/<path>/F.oo \
+//        | sort -u > /tmp/F.syms.before
+//        Count the lines: N_F (the public symbol ground truth).
+//   P4.  grep -nE '^import ' ooda/std/<path>/F.oo > /tmp/F.imports.before
+//   P5.  ./oodac/oodac check ooda/std/<path>/F.oo > /tmp/F.oodac.before 2>&1
+//        Expectation: same failure shape as before. If CLEAN, the file
+//        is GREEN; the split is moot. STOP.
+//   P6.  Cross-check: openOODA/audit/handoff_library_split.oot:21 names
+//        the three files. Confirm F.oo is on the list with the line
+//        count from P1. If not, STOP.
+
+// 1.2 During-split checks (after each new sibling S is written)
+//
+//   D1.  wc -l ooda/std/<path>/S.oo
+//        Expect <= 256. If not, STOP — the cut is too big for this seam.
+//   D2.  ./oodac/oodac check ooda/std/<path>/S.oo > /tmp/S.oodac 2>&1
+//        Compare to F.oodac.before (P5). A NEW failure means the cut
+//        broke something. STOP and route to §6 rollback.
+//   D3.  grep -nE '^(pub fn|pub type|type) ' ooda/std/<path>/S.oo \
+//        | sort -u > /tmp/S.syms
+//        Compare against the S row in handoff_library_split.oot §3-5.
+//        If S has a symbol not assigned to it OR is missing one it
+//        was supposed to own, STOP with "mismatched symbol partition".
+//   D4.  grep -nE '^import ' ooda/std/<path>/S.oo | sort -u > /tmp/S.imports
+//        S.imports must be a subset of F.imports.before (P4) plus the
+//        door re-export. If S imports something F did not, STOP.
+//   D5.  Verify the original F.oo is still on disk UNCHANGED. The door
+//        is rewritten in step 1.3 only. stat -c '%s' ooda/std/<path>/F.oo
+//        matches P1.
+
+// 1.3 Post-split gates (after the door F.oo is rewritten)
+//
+//   Post1. Read the new F.oo. It must be:
+//          (a) <= 256 lines;
+//          (b) Academy header (4-element: // # Title, // Logline:,
+//              // Setup:, // Beats:);
+//          (c) only N `import "./<sibling>.oo";` lines (one per sibling).
+//   Post2. wc -l ooda/std/<path>/F.oo within ±5 of the handoff table's
+//          door estimate (handoff_library_split.oot §3-5 columns).
+//   Post3. ./oodac/oodac check ooda/std/<path>/F.oo > /tmp/F.oodac.after
+//          Diff against F.oodac.before. A new failure means the re-export
+//          is broken. STOP and rollback.
+//   Post4. Rebuild the public symbol union:
+//            cat /tmp/S.syms /tmp/S2.syms ... | sort -u > /tmp/F.syms.after
+//          Diff F.syms.before vs F.syms.after. .after MUST be a superset
+//          of .before. Any .before symbol missing from .after = LOST
+//          SYMBOL. STOP and rollback.
+//   Post5. Re-capture the BLOCKED cell:
+//            grep -nE 'F.oo' openOODA/audit/library_status_support_*.oot
+//            | head -20 > /tmp/F.blocked.after
+//          F.blocked.after count MUST be <= F.blocked.before. If up,
+//          the split broke symbol resolution. STOP.
+//   Post6. Sum of line counts: door + all siblings <= P1 + 60 (overhead
+//          = 4-element headers per sibling). Wildly larger = the cut
+//          added content, out of scope for a pure file move.
+
+// 1.4 Symbol-set comparison (the hard check)
+//
+//   For each symbol name N in /tmp/F.syms.before:
+//     - grep -rln "^pub fn N\\|^type N" ooda/std/<path>/
+//       Confirm N is in EXACTLY one file: the door (re-export stub)
+//       or a sibling.
+//     - Confirm N is no longer in the original heavy F.oo.
+//
+//   A symbol that lives in BOTH the door (as definition) and a sibling
+//   is a duplicate. A symbol in NEITHER is a regression.
+
+// 2. PER-FILE SPECIFICS
+
+// 2.1 btree_disk_ops.oo (database/btree_disk_ops.oo, 395 lines)
+// Per handoff_library_split.oot §3:
+//   Door:    btree_disk_ops.oo               (~16 lines)
+//   Sibling: btree_disk_ops_lookup.oo        (A, ~75)
+//   Sibling: btree_disk_ops_insert.oo        (B, ~165)
+//   Sibling: btree_disk_ops_split.oo         (C, ~89)
+//   Sibling: btree_disk_ops_remove.oo        (D, ~109)
+// Public symbols to preserve (7 per handoff §3 acceptance):
+//   btree_node_key_at, btree_node_val_at, btree_node_find_key_index,
+//   btree_node_lookup_value, btree_node_insert_key_value,
+//   btree_node_split_leaf, btree_node_remove_key.
+// Pre-check: the door keeps `import "./btree_disk_types.oo";` (handoff
+// line 39, original line 13). Each sibling that names BTreeNode/BTreeKey
+// types directly must re-import it.
+// Smoke:
+//   S1.1  grep -c '^pub fn' ooda/std/database/btree_disk_ops.oo == 0
+//   S1.2  grep -cE '^(pub fn|pub type)' ooda/std/database/btree_disk_ops_lookup.oo == 4
+//   S1.3  grep -cE '^(pub fn|pub type)' ooda/std/database/btree_disk_ops_insert.oo == 1
+//   S1.4  grep -cE '^(pub fn|pub type)' ooda/std/database/btree_disk_ops_split.oo  == 1
+//   S1.5  grep -cE '^(pub fn|pub type)' ooda/std/database/btree_disk_ops_remove.oo == 1
+//   S1.6  Sum S1.2..S1.5 == 7. If not, the partition is wrong.
+
+// 2.2 protein_translation.oo (bioinformatics/protein_translation.oo, 380 lines)
+// Per handoff_library_split.oot §4:
+//   Door:    protein_translation.oo          (~17 lines)
+//   Sibling: protein_translation_types.oo    (A, ~75)
+//   Sibling: protein_translation_codons.oo   (B, ~135)
+//   Sibling: protein_translation_aa.oo       (C, ~95)
+//   Sibling: protein_translation_scan.oo     (D, ~75)
+//   Sibling: protein_translation_seq.oo      (E, ~60)
+// Public symbols to preserve (23 per handoff §4 acceptance). 3 record
+// types: ProteinSequence, OrfRecord, TranslateAcc.
+// Pre-check: codon_table.oo already exists in ooda/std/bioinformatics/
+// (handoff_library_split.oot:114-115). protein_translation_codons.oo
+// must NOT shadow it. The 3 type defs each appear EXACTLY ONCE:
+//   grep -rn 'type ProteinSequence' ooda/std/bioinformatics/ | wc -l == 1
+//   grep -rn 'type OrfRecord'       ooda/std/bioinformatics/ | wc -l == 1
+//   grep -rn 'type TranslateAcc'    ooda/std/bioinformatics/ | wc -l == 1
+// Smoke:
+//   S2.1  grep -c '^pub fn' ooda/std/bioinformatics/protein_translation.oo == 0
+//   S2.2  grep -c '^type ' ooda/std/bioinformatics/protein_translation_types.oo >= 3
+//   S2.3  grep -cE '^(pub fn|pub type)' ooda/std/bioinformatics/protein_translation_codons.oo == (handoff §4 B)
+//   S2.4  Same for _aa.oo, _scan.oo, _seq.oo.
+//   S2.5  Sum of pub fn + pub type across the 5 siblings == 23.
+
+// 2.3 dispatch_worker.oo (swarm/dispatch_worker.oo, 323 lines)
+// Per handoff_library_split.oot §5:
+//   Door:    dispatch_worker.oo              (~15 lines)
+//   Sibling: dispatch_worker_types.oo        (A, ~135)
+//   Sibling: dispatch_worker_node.oo         (B, ~130)
+//   Sibling: dispatch_worker_task.oo         (C, ~110)
+// Conflict to dedupe (handoff_library_split.oot:144-146, 157-158):
+//   type DispatcherConfig is declared in dispatch_worker.oo:6-12 AND
+//   in dispatch_types.oo:6-9. The split MUST dedupe:
+//     - dispatch_types.oo keeps the canonical def.
+//     - dispatch_worker_types.oo imports dispatch_types.oo instead.
+//     - The new dispatch_worker.oo door does NOT redeclare.
+//   Post-check: grep -rn 'type DispatcherConfig' ooda/std/swarm/ | wc -l == 1
+// Public symbols to preserve (17 per handoff §5 acceptance).
+// Smoke:
+//   S3.1  grep -c '^pub fn' ooda/std/swarm/dispatch_worker.oo == 0
+//   S3.2  grep -c '^type ' ooda/std/swarm/dispatch_worker_types.oo >= 3
+//         (SwarmDispatcher, WorkerNode, SwarmTask; DispatcherConfig
+//         imported from dispatch_types.oo).
+//   S3.3  grep -cE '^(pub fn|pub type)' ooda/std/swarm/dispatch_worker_node.oo == 5
+//   S3.4  grep -cE '^(pub fn|pub type)' ooda/std/swarm/dispatch_worker_task.oo == 6
+//   S3.5  ./oodac/oodac check ooda/std/swarm/dispatch_worker.oo does NOT
+//         report "redefinition of DispatcherConfig".
+
+// 3. CROSS-FILE CHECKS (after all 3 splits complete)
+//
+//   X1.  openOODA/audit/library_status.oot:7 BLOCKED column. Re-read.
+//        MUST be unchanged (cause is oodac, not file size) or decreased.
+//        If UP, the split broke symbol resolution. Identify which target
+//        by re-running each S.oodac vs the pre-state.
+//   X2.  The 3 target files still appear as BLOCKED. Row wording must
+//        NOT change to mention "oversized" or "line count" — cause
+//        stays "oodac" (handoff_library_split.oot §6). Flag if rewrote.
+//   X3.  openOODA/scripts/dinner_lint.oo does not trip on any new file.
+//        No new 256-line violations; no missing-header violations. If
+//        a new sibling is missing // # Title or // Logline: in its
+//        first 25 lines (FORMAT.oot:31-41), STOP and patch.
+//   X4.  No new .sh, .py, .md, .js files. RULES.oot:81,91 forbid them
+//        outside the host bootstrap. find ooda/std -name '*.sh' -o
+//        -name '*.py' returns the same set as before.
+
+// 4. ACCEPTANCE SMOKE (end-to-end proof the cut is equivalent)
+//
+//   A1.  The 3 doors each import the right siblings:
+//          grep -c '^import' ooda/std/database/btree_disk_ops.oo      == 4
+//          grep -c '^import' ooda/std/bioinformatics/protein_translation.oo == 5
+//          grep -c '^import' ooda/std/swarm/dispatch_worker.oo       == 3
+//        If any count is off, the door is incomplete. STOP.
+//   A2.  Each sibling oodac-checks with the SAME oodac gap as before
+//        the split (defects from handoff_compiler_repair.oot still
+//        exist on the same fns). No NEW oodac defects. diff
+//        /tmp/F.oodac.before /tmp/F.oodac.after shows the same
+//        failure lines, just from the new files.
+//   A3.  Each new file passes the Academy header check:
+//          head -25 ooda/std/<path>/<sibling>.oo | grep -E \
+//            '^// # |^// Logline:|^// Setup:|^// Beats:'
+//        shows all 4 elements present.
+//   A4.  Re-run the BLOCKED row count for each target. New count ==
+//        old count. If any dropped, the split happened to fix an oodac
+//        gap (good; audit lane will refresh the row). If any increased,
+//        rollback that file.
+
+// 5. TIMING BUDGET
+//
+//   btree  : pre-flight 5m + 4 siblings (5m ea) + door+post 10m + smoke 5m + report 5m = 40m
+//   protein: pre-flight 5m + 5 siblings (5m ea) + door+post 10m + smoke 5m + report 5m = 50m
+//   dispatch:pre-flight 5m + 3 siblings (5m ea) + door+post 10m + smoke 5m + report 5m = 35m
+//   cross-file X1-X4 + acceptance A1-A4 are shared across all 3.
+//
+// If any step runs > 2x its budget, STOP. The cut has uncovered a
+// problem the protocol did not anticipate.
+
+// 6. ROLLBACK (per file)
+// Library lane executes; audit lane does not touch git history.
+//
+//   R1.  git status ooda/std/<path>/F.oo 'ooda/std/<path>/F_*.oo'
+//        All F_*.oo and the modified F.oo should appear.
+//   R2.  git checkout HEAD -- ooda/std/<path>/F.oo
+//   R3.  rm ooda/std/<path>/F_lookup.oo ooda/std/<path>/F_insert.oo \
+//          ooda/std/<path>/F_split.oo  ooda/std/<path>/F_remove.oo
+//        (or the protein / dispatch sibling names; do NOT rm the door).
+//   R4.  wc -l ooda/std/<path>/F.oo matches /tmp/F.lines.before.
+//   R5.  ./oodac/oodac check ooda/std/<path>/F.oo matches /tmp/F.oodac.before.
+//   R6.  git status shows clean for ooda/std/<path>/.
+//
+// If R4 or R5 differs from /tmp/F.*.before, F.oo was already modified
+// before the split started. Report the divergence and STOP.
+
+// 7. DONE CRITERIA
+// All must hold:
+//   D1.  All 3 splits complete §1-§2 for their target.
+//   D2.  All 4 cross-file checks (§3) pass.
+//   D3.  Acceptance smoke (§4) passes.
+//   D4.  No new files outside the 3 doors + 12 siblings (or the
+//        minimum-cut alternative: 3 doors + 3 siblings if the handoff
+//        records that path was taken).
+//   D5.  library_status.oot BLOCKED count is unchanged or decreased.
+// Report file:line evidence per check, the captured /tmp/*.before vs
+// /tmp/*.after diffs, and the final oodac-check output for each file.
+// No "should work" claims; every check is a concrete command output.

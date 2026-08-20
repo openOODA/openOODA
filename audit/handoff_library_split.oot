@@ -1,0 +1,200 @@
+// # Library Split Handoff — Three Oversized Std Files
+//
+// Logline: Hand off the 256-line-cap split of btree_disk_ops, protein_translation, and dispatch_worker to the library lane.
+//
+// Setup: Audit lane owns board state and library_status.oot. Library lane (agy) owns std/*.oo edits. This spec is durable, not a script.
+//
+// Beats:
+//   1. Per-file seam analysis with file:line evidence.
+//   2. Door-and-siblings split proposals mirroring library_status.oot and std/ naming.
+//   3. Per-sibling line budget and acceptance test.
+//   4. Cross-reference: prove status (BLOCKED) is unchanged by file size.
+
+// ## 1. Why split (file:line evidence)
+//
+// FORMAT.oot:20: "Line limit: Every `.oo` and `.oot` file must not exceed 256 lines. Comments count."
+// FORMAT.oot:56: "256-line constraint: Comments count toward the 256-line limit. Split files only along natural domain seams."
+// FORMAT.oot:92: "Line limit: Strictly <= 256 lines per `.oot` document."
+// library_status.oot:7: "files 4476  GREEN 2844  BLOCKED 1572  RESIDUAL 60  UNCHECKED 0".
+// library_status.oot:13-19: top BLOCKED needs are oodac gaps, not file size.
+//
+// The three target files (btree_disk_ops.oo = 395, protein_translation.oo = 380, dispatch_worker.oo = 323)
+// are all BLOCKED. Splitting reduces line count only. Prove status stays BLOCKED.
+
+// ## 2. Door-and-siblings pattern (reference)
+//
+// library_status.oot:21-44: door summarises, 21 sibling tails continue the table.
+// std mirrors the same shape:
+//   dispatch.oo (door) + dispatch_types.oo, dispatch_worker.oo, dispatch_engine.oo, dispatch_stubs.oo.
+//   database.oo (door) + database_<role>.oo (siblings).
+// Pattern rule for the three splits:
+//   <topic>.oo          = door (header + thin re-export via imports).
+//   <topic>_<role>.oo   = sibling (one role per file; <= 256 lines).
+// Sibling naming follows the existing std pattern (types, ops, scan, node, task).
+
+// ## 3. btree_disk_ops.oo (395 lines)
+//
+// Current shape (file:line):
+//   Lines 1-12    Academy header.
+//   Line 13       import "./btree_disk_types.oo";.
+//   Lines 15-29   btree_node_key_at (slot accessor).
+//   Lines 31-45   btree_node_val_at (slot accessor).
+//   Lines 47-58   btree_node_find_key_index (binary search).
+//   Lines 60-74   btree_node_lookup_value (read).
+//   Lines 76-225  btree_node_insert_key_value (insert; n=0/1/2/3 cases).
+//   Lines 227-300 btree_node_split_leaf (split; single fn).
+//   Lines 302-395 btree_node_remove_key (remove; n=0/1/2/3 cases).
+//
+// Domain seams:
+//   A. Lookup and accessors — lines 15-74  (read paths only).
+//   B. Insert               — lines 76-225 (mutate; n-state case expansion).
+//   C. Split                — lines 227-300 (BTreeSplit producer).
+//   D. Remove               — lines 302-395 (mutate; n-state case expansion).
+//
+// Proposed split (1 door + 4 siblings):
+//
+// | Sibling                    | Role      | Body lines | Total w/ header |
+// |----------------------------|-----------|------------|------------------|
+// | btree_disk_ops.oo (door)   | re-export | 4 imports  | ~16              |
+// | btree_disk_ops_lookup.oo   | A         | 60 + 3     | ~75              |
+// | btree_disk_ops_insert.oo   | B         | 150 + 3    | ~165             |
+// | btree_disk_ops_split.oo    | C         | 74 + 3     | ~89              |
+// | btree_disk_ops_remove.oo   | D         | 94 + 3     | ~109             |
+//
+// All <= 256 lines. Overhead = 5 Academy headers (~60 lines) and the door re-export.
+// btree_disk_ops.oo stays as the door because it is the established import path; siblings are
+// sub-roles of "ops", same shape as dispatch_worker.oo holding worker ops under dispatch.oo.
+//
+// Acceptance test:
+//   1. oodac check on each new sibling and the door; expect clean emit.
+//   2. All 7 public symbols stay importable from btree_disk_ops.oo:
+//      btree_node_key_at, btree_node_val_at, btree_node_find_key_index,
+//      btree_node_lookup_value, btree_node_insert_key_value,
+//      btree_node_split_leaf, btree_node_remove_key.
+//   3. No new imports beyond line 13 of the original (`./btree_disk_types.oo`).
+//   4. Prove status stays BLOCKED. library_status.oot row unchanged in column 5.
+
+// ## 4. protein_translation.oo (380 lines)
+//
+// Current shape (file:line):
+//   Lines 1-12     Academy header.
+//   Lines 14-20    type ProteinSequence.
+//   Lines 22-29    type OrfRecord.
+//   Lines 31-38    type TranslateAcc.
+//   Lines 40-52    int_pow4, int_pow32.
+//   Lines 54-72    dna_base_at, dna_pack4, codon_pack, codon_at.
+//   Lines 74-175   codon_standard_aa (NCBI table 1; ~100-line switch).
+//   Lines 177-195  codon_is_start_standard, codon_is_stop_standard.
+//   Lines 197-262  protein_aa_weight_da (residue mass switch).
+//   Lines 264-278  protein_aa_charge (KR+/DE-).
+//   Lines 280-338  translate_empty, translate_scan, protein_translate_frame,
+//                  protein_translate_nucleotides, protein_estimate_molecular_weight,
+//                  protein_estimate_net_charge.
+//   Lines 340-380  protein_sequence_new, protein_sequence_mw, protein_sequence_charge,
+//                  protein_orf_new, orf_is_complete.
+//
+// Domain seams:
+//   A. Types and bit-pack utils — lines 14-72   (3 types + 7 pack helpers).
+//   B. Codon table              — lines 74-195  (standard_aa + is_start + is_stop).
+//   C. AA properties            — lines 197-278 (weight_da + charge).
+//   D. Translation scan         — lines 280-338 (translate_empty, scan, frame, nucleotides, estimate_*).
+//   E. Sequence and ORF records — lines 340-380 (sequence_*, orf_new, is_complete).
+//
+// Proposed split (1 door + 4 siblings):
+//
+// | Sibling                            | Role      | Body lines | Total w/ header |
+// |------------------------------------|-----------|------------|------------------|
+// | protein_translation.oo (door)      | re-export | 5 imports  | ~17              |
+// | protein_translation_types.oo       | A         | ~60        | ~75              |
+// | protein_translation_codons.oo      | B         | ~120       | ~135             |
+// | protein_translation_aa.oo          | C         | ~80        | ~95              |
+// | protein_translation_scan.oo        | D         | ~60        | ~75              |
+// | protein_translation_seq.oo         | E         | ~45        | ~60              |
+//
+// All <= 256 lines. codon_table.oo already exists in ooda/std/bioinformatics/ (the lookup table);
+// protein_translation_codons.oo holds the AA decoding and start/stop predicates. Do NOT shadow it.
+//
+// Acceptance test:
+//   1. oodac check on each new sibling and the door; expect clean emit.
+//   2. All 23 public symbols stay importable from protein_translation.oo.
+//   3. The 3 type defs (ProteinSequence, OrfRecord, TranslateAcc) declared exactly once in *_types.oo.
+//   4. Prove status stays BLOCKED. library_status.oot row unchanged in column 5.
+
+// ## 5. dispatch_worker.oo (323 lines)
+//
+// Current shape (file:line):
+//   Lines 1-4     Academy header (minimal).
+//   Lines 6-12    type DispatcherConfig.
+//   Lines 14-23   type SwarmDispatcher.
+//   Lines 25-34   type WorkerNode.
+//   Lines 36-47   type SwarmTask.
+//   Lines 49-80   dispatcher_config_init.
+//   Lines 82-93   dispatcher_init.
+//   Lines 95-110  worker_node_init.
+//   Lines 112-125 swarm_task_create.
+//   Lines 127-228 worker_node_can_accept, assign, release, update_status, heartbeat.
+//   Lines 230-323 task_is_terminal, can_retry, mark_dispatched, mark_completed,
+//                 mark_failed, mark_cancelled.
+//
+// Domain seams:
+//   A. Types and lifecycle ctors   — lines 6-125   (4 types + 4 init/create fns).
+//   B. Worker-node state machine   — lines 127-228 (5 worker ops).
+//   C. Task state machine          — lines 230-323 (6 task ops).
+//
+// Conflict note: type DispatcherConfig is declared in dispatch_worker.oo:6-12 AND dispatch_types.oo:6-9.
+// Library lane must dedupe during the split. Canonical def lives in dispatch_types.oo;
+// dispatch_worker_types.oo imports it instead of redeclaring.
+//
+// Proposed split (1 door + 3 siblings):
+//
+// | Sibling                      | Role      | Body lines | Total w/ header |
+// |------------------------------|-----------|------------|------------------|
+// | dispatch_worker.oo (door)    | re-export | 3 imports  | ~15              |
+// | dispatch_worker_types.oo     | A         | ~120       | ~135             |
+// | dispatch_worker_node.oo      | B         | ~115       | ~130             |
+// | dispatch_worker_task.oo      | C         | ~95        | ~110             |
+//
+// All <= 256 lines. dispatch_worker_types.oo reuses the canonical DispatcherConfig from
+// dispatch_types.oo:6-9 via `import "./dispatch_types.oo";`.
+//
+// Acceptance test:
+//   1. oodac check on each new sibling and the door; expect clean emit.
+//   2. All 17 public symbols stay importable from dispatch_worker.oo.
+//   3. type DispatcherConfig declared exactly once. oodac must not report "redefinition".
+//   4. Prove status stays BLOCKED. library_status.oot row unchanged in column 5.
+
+// ## 6. Cross-reference to library_status.oot
+//
+// The 3 target files are in the BLOCKED set per library_status.oot:7.
+// Recent commits of the form "audit: GREEN N BLOCKED M" toggle row counts (audit lane, not library).
+// BLOCKED cause is oodac (library_status.oot:13-19), not file size.
+//
+// After the split:
+//   - btree_disk_ops.oo: still BLOCKED, same oodac gap.
+//   - protein_translation.oo: still BLOCKED, same oodac gap.
+//   - dispatch_worker.oo: still BLOCKED, same oodac gap.
+//
+// Audit lane will refresh library_status.oot and library_status_tail_*.oot row entries; this is
+// expected. Library lane must not re-attribute BLOCKED to file size in the new rows.
+
+// ## 7. Out of scope and constraints
+//
+// Out of scope for the library lane:
+//   - Editing btree_disk_types.oo, dispatch_types.oo, codon_table.oo, or any other std file.
+//   - Re-running prove (audit/prove_helpers/* owns prove).
+//   - Editing library_status.oot or its tails (audit lane owns the door).
+//   - Renaming public symbols; this is a pure file move, not an API change.
+//
+// Constraints (per FORMAT.oot sections 1-2):
+//   - 4-element Academy header on every new sibling (FORMAT.oot:31-41).
+//   - <= 256 lines per file (FORMAT.oot:20).
+//   - No new imports beyond what the originals already use. protein_translation.oo and
+//     dispatch_worker.oo currently import nothing of their own; btree_disk_ops.oo imports only
+//     btree_disk_types.oo (line 13).
+//   - ASD-STE100 prose (FORMAT.oot:80-83, RULES.oot 1.10).
+//
+// Handoff complete when:
+//   - 12 new sibling .oo files exist (4 btree + 5 protein + 3 dispatch) plus 3 slimmed doors.
+//   - All 15 files <= 256 lines.
+//   - oodac check clean on every new file.
+//   - library_status.oot BLOCKED rows still present, cause still oodac.

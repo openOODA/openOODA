@@ -1,0 +1,56 @@
+# WASM-HARN — Const if-true fixture and smoke lock
+
+File: openOODA/audit/wasm_harn.oot
+HARN review only. Disk is the source. Did not edit fixture, smoke, or emit.
+Did not rebuild. Did not run oodac/oodac.wasm4.
+
+Logline: The if-true fixture body is only if true then-yes else else-no, and the smoke drives product ./oodac/oodac with magic 0061736d01000000.
+Setup: Paths are ooda/fixtures/wasm_if_true.oo and ooda/scripts/wasm_if_true_smoke.oo. cwd for the smoke is ooda/.
+Beats:
+  1. Quote the fixture main body.
+  2. Confirm the smoke binary and magic check.
+  3. Confirm then-yes and not else-no.
+
+## 1. Fixture body
+
+  Path: ooda/fixtures/wasm_if_true.oo
+  After the Academy header, main is only:
+
+    pub fn main() {
+        if true {
+            println("then-yes");
+        } else {
+            println("else-no");
+        }
+    }
+
+  Body quote: if true { println("then-yes"); } else { println("else-no"); }
+  No other statements. No imports. One public main.
+
+## 2. Smoke drive
+
+  Path: ooda/scripts/wasm_if_true_smoke.oo
+  Binary: let oodac = "./oodac/oodac";
+  Command: oodac emit-wasm fixtures/wasm_if_true.oo
+  Drives product oodac: yes
+  Does not name oodac/oodac.wasm4.
+  Does not copy bin/ooda onto oodac/oodac.
+
+## 3. Magic and print lock
+
+  First eight bytes must match hex 0061736d01000000 (\0asm version 1).
+  File must not contain WAT text (module.
+  When /home/jeryd/.wasmtime/bin/wasmtime exists:
+    stdout must contain then-yes
+    stdout must not contain else-no
+  When wasmtime is absent:
+    bytes must name fd_write and then-yes
+    this fallback does not grep-fail else-no in the wasm file
+
+## 4. HARN write set
+
+  This role wrote only:
+
+    openOODA/audit/wasm_harn.oot
+
+Status: Review complete. Fixture body matches. Smoke drives product oodac.

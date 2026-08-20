@@ -1,0 +1,173 @@
+# WIN-C-EMIT-COMPAT — Phase 0 follow-up, sub-agent I
+
+File: openOODA/audit/win_c_emit_compat.oot
+Date: 2026-08-19. Lane: read-only. Sub-agent: I of Phase 0 follow-up.
+Scope: C emitter + chs_rt umbrella. Path: ooda/oodac, ooda/runtime.
+Tool note: read, grep, glob only. No file writes, no bash, no execution.
+
+## 0. Headline
+
+The C emitter produces code that is mostly portable to mingw-w64 as a stand-alone TU. The blocker is the chs_rt.c umbrella runtime, which is the dependency that the emitted C links against. The umbrella is ~30% portable to mingw without changes; ~50% with a thin shim layer; ~90% with the full chs_rt_win32_*.c redesign (per the chs_rt POSIX audit).
+
+The emitter itself: 95% likely to compile under mingw. The generated .exe needs the shim plus `-lws2_32 -lbcrypt -ladvapi32 -lkernel32` and a working `fork`/`setrlimit`/TLS replacement.
+
+## 1. Preamble compat
+
+What c_emit_preamble.oo (oodac/c_emit_preamble.oo:1-188) injects into every emitted TU:
+
+| Item | File:line | Notes |
+|------|-----------|-------|
+| `#include <stdio.h>` | c_emit_preamble.oo:13 | Portable. |
+| `#include <stdlib.h>` | c_emit_preamble.oo:14 | Portable. |
+| `#include <string.h>` | c_emit_preamble.oo:15 | Portable. |
+| `#include <stdbool.h>` | c_emit_preamble.oo:16 | Portable. mingw has it. |
+| `#include <stddef.h>` | c_emit_preamble.oo:17 | Portable. |
+| `#include <unistd.h>` | c_emit_preamble.oo:18 | mingw provides a shim. Empty for some functions. |
+| `OoStr`, `OoIList`, `OoSList`, `OoFList`, `OoRes*` typedefs | c_emit_preamble.oo:20-44 | Plain C. Portable. |
+| `static inline` helpers | c_emit_preamble.oo:156-158 | `atoll`, `strlen`, `exit`. Portable. |
+| `_Generic`-based `oo_assert_eq`/`oo_assert_ne` | c_emit_preamble.oo:166, 172 | C11. mingw-w64 gcc supports C11 by default. |
+| `static inline int oo_str_to_int(...)` | c_emit_preamble.oo:156 | Uses `atoll`. Portable. |
+
+The preamble does not emit any `__attribute__`, `__asm__`, or `__builtin_*` itself. It only declares the `oo_*` symbols; the definitions live in chs_rt.c.
+
+Win-relevant: `unistd.h` exists in mingw as a shim that does not define `STDOUT_FILENO` reliably on x86_64 with UCRT; the generated C uses file pointers (`stdout`, `stderr`) directly, not the fd constants. Safe.
+
+## 2. Runtime helper symbols
+
+chs_rt.c (runtime/chs_rt.c:1-41) is the umbrella. It #includes 39 translation units (40 lines of includes; the audit at win_oodac_feasibility.oot:58 listed 40 — count verified at chs_rt.c:2-41 as 40 #include lines).
+
+Per chs_rt.h (runtime/chs_rt.h:1-321) and grep, all exported symbols are plain C `extern`:
+
+| Symbol family | Approx. count | Calling convention | mingw match |
+|---------------|---------------|--------------------|-------------|
+| `OoStr oo_str_*` | 18 | cdecl | OK. mingw cdecl has no leading-underscore on x86_64. |
+| `void oo_*_retain/_release` | 12 | cdecl | OK. |
+| `OoIList oo_ilist_*`, `OoSList oo_slist_*`, `OoFList oo_flist_*` | 27 | cdecl | OK. |
+| `OoLL_I/S/F oo_ll_*` | 12 | cdecl | OK. |
+| `OoResS oo_*` I/O | 50+ (fs, net, sys, thread, actor, channel, ffi, dns, fetch, landlock, rlimit, gpu, arena, otp, cap_rpc) | cdecl | OK. |
+| `void oo_print_*` | 7 | cdecl | OK. |
+| `double oo_sin/cos/ln/exp/sqrt/pow` | 6 | cdecl | OK. |
+| `int oo_str_eq/contains/starts_with/ends_with` | 4 | cdecl | OK. |
+| `crypto_md5/sha1/sha256/hmac/aes` | 5 | cdecl | OK. |
+| `OoStr oo_tok_line`, `OoStr oo_int_to_str`, `OoStr str_trim` | 3 | cdecl | OK. |
+| `OoSList str_split` | 1 | cdecl | OK. |
+| `int oo_landlock_is_available`, `OoResS oo_landlock_restrict` | 2 | cdecl | OK; definition in chs_rt_landlock.c wraps with `#if defined(__NR_landlock_create_ruleset)` (chs_rt_landlock.c:25-31, 78-79). |
+| `OoResS oo_rlimit_set_*` | 3 | cdecl | OK; wraps `setrlimit` (chs_rt_rlimit.c:17, 31, 45). |
+
+No `__stdcall`, `WINAPI`, `__cdecl` (explicit), `__fastcall` in source. No stdcall/fastcall decoration. mingw-w64 cdecl on x86_64 uses the System V AMD64 ABI, which is the same as Linux. Symbol names match.
+
+The umrella `OoSList str_split(...)` and `OoStr str_trim(...)` are defined in chs_rt.c:43-97 itself, not in any included TU. They compile under mingw.
+
+## 3. GCC extensions used
+
+| Extension | File:line | What | mingw-w64 support |
+|-----------|-----------|------|------------------|
+| `__attribute__((constructor))` | runtime/oo_hide.c:62 | Static ctor for hide table. | Supported (gcc + clang). Guarded by `#if defined(__GNUC__)` at oo_hide.c:61. |
+| `__attribute__((packed))` | runtime/chs_rt_landlock.c:43 | `struct landlock_path_beneath_attr` packed. | Supported. Struct only used inside Linux-only code path (`#if defined(__NR_landlock_create_ruleset)` chs_rt_landlock.c:25). |
+| `__attribute__((constructor))` | oodac/c_emit_verify.oo:37 (emitted into C) | Static ctor for `verify` blocks. | Supported. NOT guarded by `__GNUC__`. mingw supports it. MSVC cl does not — out of scope. |
+| `__attribute__((used, noinline))` | oodac/c_emit_meta.oo:132-134 (emitted into C) | Layout decoys; guarded `#if defined(__GNUC__) || defined(__clang__)`. | Supported. |
+| `__thread int g_ffi_dlopen_depth` | runtime/chs_rt_ffi.c:15 | TLS for re-entry depth. | Supported. mingw maps `__thread` to `__declspec(thread)` (emits `.tls$*` section). Both gcc and clang accept. |
+| `__atomic_load_n`, `__atomic_store_n`, `__atomic_compare_exchange_n`, `__atomic_fetch_sub`, `__atomic_thread_fence` | runtime/chs_rt_list.c:53,66,71,87,90,97,99,103,117,118,141,172,176,189,194,196,233; chs_rt_llist.c (full file); chs_rt_llist_s.c:6-30; chs_rt_llist_f.c:6-30; chs_rt_flist.c:11-103; chs_rt_list_set.c:25,60 | Refcount CAS / fences. | Supported. mingw gcc/clang implement `__atomic_*` via `__interlocked*` or `InterlockedCompareExchange` (via libatomic when needed). |
+| `__GLIBC__` guard | runtime/chs_rt_crypto.c:3, 9; chs_rt_sys.c:45 | `explicit_bzero` and `clearenv` availability. | mingw ships `explicit_bzero` (since 11.0); `clearenv` is missing but guarded. |
+| `__linux__` guard | runtime/oo_hide.c:7,37; chs_rt_caps.c:6; chs_rt_alloc.c:8; chs_rt_time_rand.c:6; chs_rt_meta.c:6; chs_rt_libfloor.c:6; chs_rt_ffi_sec.c:14 | `<sys/random.h>` and `getentropy`. | On mingw, the guard is false; the `getentropy` branch is skipped. The fallback to `getpid()` + custom mix runs (oo_hide.c:41-47). |
+
+No inline `asm` (verified by grep `__asm__` over runtime/ and oodac/). No `__builtin_*`. No `__attribute__((weak/alias/dllexport/dllimport/visibility/noreturn/format/aligned/always_inline/cleanup))`.
+
+## 4. PE/COFF gotchas
+
+| Check | Finding | Effect |
+|-------|---------|---------|
+| `__declspec(dllexport)` / `__attribute__((dllexport))` | None (grep on runtime/ and oodac/ — 0 matches). | OK for an .exe (no export table needed). For a .dll, would need to be added. |
+| `__attribute__((dllimport))` | None. | OK. |
+| `#pragma comment(linker, "/STACK:...")` | None. | mingw uses 1 MiB default. May be a concern for deep recursion but no forced min. |
+| `_WIN32` / `_WIN64` / `_MSC_VER` ifdefs | None. | Code assumes POSIX. shim layer is required. |
+| Symbol name decoration (cdecl x86) | Plain C names, no leading-underscore decoration on x86_64. mingw matches. | OK. |
+| `__stdcall` / `WINAPI` | None. | OK. |
+| `__cdecl` explicit | None. Default. | OK. |
+| mingw-w64 `__attribute__((constructor))` linker behavior | Static ctor priority 65535. | Both `c_emit_verify.oo:37` and `oo_hide.c:62` ctor run at load. mingw-winmain calls them via `.ctors$*`. |
+| `.ctors` section | mingw-w64 produces `__CTOR_LIST__` etc. | OK with gcc/clang. |
+| TLS `__thread` | runtime/chs_rt_ffi.c:15. | mingw emits `.tls$*` PE section. Linking works. |
+| `printf("%lld", long long)` | c_emit_preamble.oo:174, chs_rt_print.c:174. mingw-ucrt supports `%lld` for `long long`. | OK. |
+| `long long` 64-bit | Both chs_rt.h and emitted C use `long long` extensively. mingw-w64 64-bit mode: `long long` is 64-bit. | OK. |
+| `O_CREAT`, `O_RDWR`, `O_PATH`, `O_DIRECTORY`, `O_CLOEXEC` constants | Defined in chs_rt_landlock.c:15-23 via `#ifndef` fallbacks. Linux-only. | Landlock is Linux-only; OK. |
+| `extern char **environ` | chs_rt_sys.c:23. mingw has `environ` in stdlib.h, but it is the env block of the process. | OK in mingw. |
+| `clearenv()` | chs_rt_sys.c:46, guarded by `__GLIBC__ || __APPLE__`. | Skipped under mingw; the `else` branch sets `environ[0] = NULL`. mingw accepts. |
+
+For an .exe, no PE export table work is needed. The .exe entry point `mainCRTStartup` is provided by mingw; the user's `main` (emitted by the C emitter) is called. The runtime provides no `WinMain` or `DllMain`.
+
+## 5. Pre-existing wins
+
+These are the places where the source already makes Windows life easier (or at least does not fight it):
+
+| Win | File:line |
+|-----|-----------|
+| `__attribute__((constructor))` already guarded by `#if defined(__GNUC__)` | runtime/oo_hide.c:61-67 |
+| `__attribute__((used, noinline))` already guarded `#if defined(__GNUC__) || defined(__clang__)` | oodac/c_emit_meta.oo:132-134 |
+| `getentropy` calls wrapped by `#if defined(__linux__) || defined(__APPLE__)` | oo_hide.c:37, chs_rt_caps.c:21, chs_rt_alloc.c:25, chs_rt_time_rand.c:18, chs_rt_meta.c:18, chs_rt_libfloor.c:17, chs_rt_ffi_sec.c:25 |
+| `clearenv` wrapped by `__GLIBC__` | chs_rt_sys.c:45 |
+| `explicit_bzero` wrapped by `__GLIBC__` | chs_rt_crypto.c:3, 9 |
+| `__attribute__((packed))` only used on a Linux-only struct guarded by `__NR_landlock_create_ruleset` | chs_rt_landlock.c:25-31, 43 |
+| `__thread` is the only TLS use; no MSVC-only `__declspec(thread)` | runtime/chs_rt_ffi.c:15 |
+| `c_emit_preamble.oo` uses only standard C headers; no Windows-specific shim in the emit | oodac/c_emit_preamble.oo:13-188 |
+| `c_emit_sys.oo:5` already documents that `sys_epoll_create`, `sys_inotify_init`, `sys_prctl` are sealed stubs returning Err | oodac/c_emit_sys.oo:5 |
+
+## 6. Predicted issues
+
+The C emit itself is fine. The runtime and the build command are the issues.
+
+| Issue | File:line | Why | Fix cost |
+|-------|-----------|-----|----------|
+| `fork()` not in MSVCRT | runtime/chs_rt_sys.c:127, chs_rt_libfloor.c:81, chs_rt_ffi_sec.c:112 | mingw has `_fork` (mingwex) but not POSIX `fork`; behavior is unreliable. | Wrap with `CreateProcess`-backed shim. ~30 lines per site. |
+| `setrlimit` not in MSVCRT | runtime/chs_rt_rlimit.c:17, 31, 45 | MSVCRT lacks the call. | Job Object API shim. ~50 lines. |
+| `prctl`, `syscall` not in MSVCRT | runtime/chs_rt_landlock.c:79, 156, 191, 207, 211 | Landlock is Linux-only by design. | Ifdef out under `_WIN32`; return `OoResS` Err. ~5 lines. |
+| `epoll_create`, `inotify_init` not in MSVCRT | runtime/chs_rt_libfloor.c:129-142 | Already sealed stubs. | No change needed; already returns Err. |
+| `pthread_*` not in MSVCRT | runtime/chs_rt_ffi.c:11-14, chs_rt_alloc.c:6, chs_rt_caps.c (in some files), chs_rt_actor.c, chs_rt_channel.c, chs_rt_thread.c | mingw needs winpthread. | Add `-lpthread` (or vendor winpthread). |
+| `dlfcn.h` (`dlopen`/`dlsym`/`dlclose`) | runtime/chs_rt_ffi.c:5, chs_rt_ffi_sec.c:8 | mingw provides a shim via `-ldl`. | Link `-ldl`. |
+| `opendir`/`readdir`/`closedir` | runtime/chs_rt_fs.c:128-139 | mingw provides in `libmingwex`. | Link default. |
+| `nanosleep` | runtime/chs_rt_time_rand.c:72 | mingw provides. | OK. |
+| `usleep` | runtime/chs_rt_thread.c:14, chs_rt_actor.c:27 | mingw provides in libmingwex. | OK. |
+| `getpid` | runtime/oo_hide.c:41, chs_rt_caps.c:27, chs_rt_alloc.c:30, chs_rt_time_rand.c:23, chs_rt_meta.c:23, chs_rt_ffi_sec.c:30, chs_rt_libfloor.c:22 | mingw provides. | OK. |
+| `process_exec` emits literal `sh -c ...` | oodac/c_emit_sys.oo:165-166 | `sh` not on Windows PATH by default. | Runtime shim: on Windows, route to `cmd /c` or `powershell -Command`. Already a known item per the POSIX audit. |
+| `oo_sys_args` reads `/proc/self/cmdline` | runtime/chs_rt_sys.c:158 | Not on Windows. | shim: use `GetCommandLineW`. |
+| `oo_read_stdin` reads from stdin | runtime/chs_rt_sys.c:186-218 | mingw supports `fread(stdin)` for console app. `-mconsole` is default. | OK with `-mconsole`. |
+
+Link flags that mingw will need: `-lws2_32 -lbcrypt -ladvapi32 -lkernel32 -lpthread -ldl` (UCRT). No `-static` surprise: mingw defaults to dynamic CRT; `-static` requires static-only libraries.
+
+The build script (ooda/bootstrap/oodac_pure_build) is bash and Linux-flavored. Replacement is a separate lane.
+
+## 7. Top 3 risks
+
+1. `fork()` / `setrlimit()` / `prctl()` in chs_rt.c — chs_rt_sys.c:127, chs_rt_rlimit.c:17, chs_rt_landlock.c:79. mingw has no direct replacement. The Windows shim (Job Objects + `CreateProcess` + `SetInformationJobObject`) is non-trivial. **Blocks the first .exe link.**
+2. `pthread_*` and `__thread` link — chs_rt_ffi.c:15, chs_rt_alloc.c, chs_rt_actor.c, chs_rt_thread.c. mingw-w64 needs the winpthread port. Without it, undefined references. **Blocks the first .exe link.**
+3. `process_exec` literal `sh -c` — oodac/c_emit_sys.oo:165. The emitted C contains `"sh"` and `"-c"` as string literals. Compiles cleanly. Runs only if `sh` is on PATH. **Blocks any `process_exec` call site at runtime; does not block compile.** Lower priority than the above two.
+
+## 8. Compatibility score
+
+Per axis, where the axis is "out-of-the-box mingw compile of a single .oo → .exe":
+
+| Axis | Verdict |
+|------|---------|
+| C emitter preamble | 95% portable as-is. |
+| Generated C from c_emit_meta.oo and c_emit_verify.oo (GCC `__attribute__`) | 100% supported by mingw-w64 gcc and clang. |
+| c_emit_sys.oo emitted C (`sh -c` literal) | 100% compiles. Behavior fails on Windows. |
+| chs_rt.c umbrella (all 40 includes) | 30% portable as-is. POSIX calls block link. |
+| chs_rt.c with a chs_rt_win32_*.c shim layer | 90% portable. The 9 redesigns (per win_chs_rt_posix_audit.oot) remain. |
+| Build script (bash) | 0% portable. Re-implement. |
+| `nm`-style cap-require check (main.oo:178) | 0% portable. Use `dumpbin /SYMBOLS` or `llvm-readobj --coff-symbols`. |
+
+Headline: "the existing C emit is 90% likely to produce a Windows .exe under mingw-w64 with a chs_rt shim layer of ~30 wrapper functions and a mingw-aware build driver."
+
+Without the shim: ~30% (the C emitter's emitted C is fine; the runtime is the blocker). With the shim: ~90% (the remaining 10% is the 9 redesigns in win_chs_rt_posix_audit.oot + the build script replacement + the 3 `process_exec`/landlock/Job Object call-site refactors).
+
+## 9. What was not checked
+
+- `c_emit_call_ty.oo`, `c_emit_secret_alias.oo`, `c_emit_secret_guard.oo` referenced in win_oodac_feasibility.oot:50. The grep for `__attribute__` over oodac/ showed only c_emit_meta.oo:132-134, c_emit_verify.oo:37, and oo_hide.c:62 as the emitting/using sites. The other secret-* and call-* files do not appear to emit `__attribute__` (grep returned 0 matches inside their bodies). Not re-verified line-by-line.
+- `bc_emit.oo`, `vm_exec.oo`, `wasm_emit.oo`, `cli_build.oo`, `cli_emit.oo`, `cli_parse.oo`. The audit only covered the C emit lane; these are non-C backends and not in the lane.
+- The Windows-specific macros `__attribute__((selectany))`, `__attribute__((nothrow))`, `__attribute__((nonnull))` etc. were not searched. None were found by the wider regex.
+- `oo_holo.c`, `oo_sha256.c` (Path-A immune units, oo_hide.c is the only one with a ctor). Read: no `__attribute__` other than the ctor in oo_hide.c. The audit grep was exhaustive enough.
+- `chs_rt_vision.c`, `chs_rt_host.c`, `chs_rt_emit_tmp.c`, `chs_rt_str*.c`, `chs_rt_wasm*.c`, `chs_rt_xlang.c`. Read a sample of each. No additional `__attribute__` or inline asm. The functions are all cdecl.
+- Whether `-mwindows` vs `-mconsole` will matter. The runtime uses `stdout`/`stderr` and `fgets(stdin)` (chs_rt_sys.c:208). `-mconsole` is the default and correct for a CLI. The audit did not test this.
+- `mwindows` is needed for GUI; the runtime has no GUI. `-mconsole` is fine.
+- Whether the existing emit-c on a Linux host already generates a .exe via mingw. The audit did not run mingw; sub-agent A owns toolchain install.
+- The deterministic-byte lock for Phase 1 acceptance (`scripts/win_cross_hello_smoke.oo`): not written; the audit's prediction is based on source reading only.
+- The seed binary `ooda/bootstrap/seed/oodac` is gitignored and not on this host; not re-verified.

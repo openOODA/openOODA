@@ -1,0 +1,255 @@
+// # Compiler repair handoff — 6 bugs from 2026-08-19 survey
+//
+// Logline: Six concrete compiler-lane defects with file:line evidence,
+// patches, acceptance smokes, and rollback. Compiler agent executes;
+// this file is the durable record. Pin: v0.205.0-beta.
+//
+// Setup: Survey produced the bug list 2026-08-19. C emit + gcc stays
+// the everyday path. No board edits until INT proof.
+//
+// Beats:
+//   1. State ownership and isolation.
+//   2. Walk six bugs with file:line evidence.
+//   3. Close with severity / owner / fix table.
+//
+// residual: Cargo, LLVM clang link, AArch64 stay residual.
+
+// OWNERSHIP
+//
+// Lane: compiler. Files: ooda/oodac/*.oo, ooda/runtime/*.c|*.h,
+// ooda/fixtures/wasm_*.oo, ooda/scripts/*wasm*_smoke.oo,
+// openOODA/audit/*.oot (this file, handoff row only).
+//
+// Forbidden: edit ooda/oodac/main.oo or cli_emit.oo; copy bin/ooda
+// onto ooda/oodac/oodac; touch ooda/std/; edit SHIPPED.oot or
+// ROADMAP.oot before INT proof; add .py .sh .md .js.
+// Touched files stay <= 256 lines. HYG audits after.
+
+// BUG 1 — x86_emit.oo missing 6 imports (MED)
+//
+// Six of fourteen x86_emit_*.oo helpers are on disk but never
+// imported. x86_emit_stream cannot reach them. Dead code.
+//
+// Evidence:
+//   ooda/oodac/x86_emit.oo:15-23 imports 7: fold, fn, rsi, str,
+//     greet, walk, sys (+ token_fmt, secret_check).
+//   Disk inventory: 14 x86_emit_*.oo exist. 6 missing imports:
+//     x86_emit_alu, x86_emit_bind, x86_emit_ctl, x86_emit_frame,
+//     x86_emit_harv, x86_emit_span (orphans).
+//   x86_emit.oo:25-61 stream body has no calls to those six.
+//
+// Fix:
+//   File: ooda/oodac/x86_emit.oo
+//   Action: after line 23, add 6 imports (alphabetical): the 6
+//     orphan names listed above.
+//   Wire each into x86_emit_stream after line 60 with a list_len
+//   probe. Add an x86_match_<role> helper inside each file if
+//   none exists; default returns list_new().
+//   Pass: x86_emit.oo still folds hello.oo; grep -c '^import' == 14.
+//   Fail: any import referencing a helper that does not exist.
+//
+// Acceptance:
+//   1. ./oodac/oodac emit-x86 fixtures/hello.oo | grep -q 'main:'
+//   2. grep -c '^import' ooda/oodac/x86_emit.oo == 14.
+//   3. wc -l ooda/oodac/x86_emit.oo <= 80.
+//
+// Rollback: git checkout HEAD -- ooda/oodac/x86_emit.oo.
+
+// BUG 2 — llvm_emit_method.oo:146 .len() live ERR (HIGH)
+//
+// llvm_apply_method handles .len() for %OoSList, %OoIList, %OoStr.
+// Any other rty hits the fail-closed ERR. Survey says the live
+// rty can be a Result wrapper that needs the byval list path.
+//
+// Evidence:
+//   ooda/oodac/llvm_emit_method.oo:122-148 is the .len() block.
+//   :139 emits byval call only for %OoSList / %OoIList.
+//   :142-145 handles %OoStr.
+//   :146 ERRs: "ERR\tllvm_emit\t.len() needs String or List".
+//
+// Fix:
+//   File: ooda/oodac/llvm_emit_method.oo
+//   Action: at line 146, replace the single ERR with a normalized
+//   branch BEFORE the ERR. Pattern (in OODA):
+//     if rty == "%OoResS" { emit @oo_chars_len(%OoStr recv); }
+//     if rty starts with "%OoS" or "%OoIL" {
+//         alloca rty; store; emit
+//         call i64 @oo_<slist|ilist>_len(rty* byval(rty) slot);
+//     }
+//     // keep the original ERR for the truly unknown case
+//   The result methods on lines 67-100 and unwrap on 101-121 are
+//   unchanged. The :139 byval block can be extracted into a small
+//   helper shared with the new branch.
+//   Pass: .len() on a %OoResS emits @oo_chars_len.
+//   Fail: any IR that drops `recv` or has wrong byval size.
+//
+// Acceptance:
+//   1. Fixture: let r = "x".to_string(); let n = r.len();
+//      Drive emit-llvm; grep output for "@oo_chars_len".
+//   2. llc -filetype=null on the output, exit 0.
+//   3. Existing `.len()` on String literal still emits @oo_chars_len.
+//
+// Rollback: git checkout HEAD -- ooda/oodac/llvm_emit_method.oo.
+
+// BUG 3 — ret_arc UAF on `return out` of %OoSList (HIGH)
+//
+// ret_arc releases every ARC local, then rets the same register.
+// load_expand does `return out` where out is %OoSList. After
+// ret_arc the slot is freed; the returned register dangles.
+// A dangling list can make load_source look empty, surfacing
+// as `ERR\tcheck\tempty` (plan_llvm_mem.oot:76).
+//
+// Evidence:
+//   openOODA/audit/plan_llvm_mem.oot:22-23 names the residual.
+//   :67-68 confirms C does retain first; LLVM does not.
+//   :83-85 names the path: `return out` of a %OoSList local is
+//     HIGH; ret_arc releases `out` then rets it; load_expand does
+//     that. :117-123 puts the fix in ret_arc / stmt.
+//
+// Fix:
+//   File: ooda/oodac/llvm_emit_stmt.oo (owns ret_arc; if named
+//   differently, locate `fn llvm_emit_ret_arc` or `pub fn ret_arc`).
+//   Action: pass the returned value's slot name into ret_arc.
+//   For each ARC slot, if slot_name == ret_name, emit
+//   `oo_<ty>_retain`; else emit `oo_<ty>_release` as before.
+//   Pass: emit-llvm of `let out = [1,2,3]; return out;` produces
+//     a slist_retain immediately before the ret, and zero
+//     slist_release for `out`.
+//   Fail: any release for the returned value, or a missing retain.
+//
+// Acceptance:
+//   1. emit-llvm on the fixture above.
+//   2. grep output: `slist_retain` appears; `slist_release` for
+//      `%out` does NOT appear.
+//   3. llc -filetype=null, exit 0.
+//   4. C product path still passes (C already retains first).
+//
+// Rollback: git checkout HEAD -- ooda/oodac/llvm_emit_stmt.oo.
+
+// BUG 4 — wasm_fn_println_lit helper never added (HIGH)
+//
+// wasm_phalanx.oot §3 line 35 names
+//   pub fn wasm_fn_println_lit(src, fname) -> String
+// returning the literal inside a body that is only
+// `println("...");`. The helper is never defined or imported.
+// wasm_emit.oo's pick_print / pick_if fall back to dummy `end`
+// when the body is not a one-liner fold.
+//
+// Evidence:
+//   openOODA/audit/wasm_phalanx.oot:33-35 names helper + contract.
+//   openOODA/audit/wasm_phalanx.oot:43-45 puts DE2 on
+//     ooda/oodac/wasm_emit_fn.oo and wasm_emit_stmt.oo.
+//   ooda/oodac/wasm_emit.oo:14-18 imports only token_fmt, fold,
+//     pick_print, pick_if. No wasm_emit_fn / wasm_emit_stmt.
+//   ooda/oodac/wasm_emit.oo:56-62 tries pick_print then pick_if;
+//     neither is the phalanx helper.
+//
+// Fix:
+//   File 1: ooda/oodac/wasm_emit_fn.oo (new helper body; sibling
+//     of wasm_emit_fold.oo and wasm_emit_pick_print.oo). Add three
+//     small token_fmt walkers (wasm_fn_body, wasm_body_is_only_
+//     println, wasm_println_lit) and the public entry that returns
+//     the inside of the first STRING if the body is only
+//     `println("...");`, else "".
+//   File 2: ooda/oodac/wasm_emit.oo
+//     - after line 18, add: import "wasm_emit_fn.oo";
+//     - after line 62 (pick_if tail), inside the while body, add:
+//         let mut lit2 = wasm_fn_println_lit(src, name);
+//         if chars_len(lit2) > 0 { oo_wasm_set_fn_print(lit2); }
+//   Pass: emit-wasm of `pub fn foo() { println("hi"); }` produces
+//     a WASI fd_write of "hi\n" for `foo`.
+//   Fail: empty literal, or WAT text in the binary.
+//
+// Acceptance:
+//   1. Create ooda/fixtures/wasm_print_hi_helper.oo:
+//        pub fn main() { foo(); }
+//        pub fn foo() { println("hi"); }
+//   2. ./oodac/oodac emit-wasm ooda/fixtures/wasm_print_hi_helper.oo
+//        > /tmp/hi.wasm
+//   3. od -An -tx1 -N8 /tmp/hi.wasm | grep -q 0061736d01000000.
+//   4. wasmtime /tmp/hi.wasm prints "hi".
+//   5. ! grep -q '(module' /tmp/hi.wasm.
+//
+// Rollback: git checkout HEAD -- ooda/oodac/wasm_emit_fn.oo
+//                    ooda/oodac/wasm_emit.oo
+
+// BUG 5 — open_wasm_binary_smoke.oo missing (module refusal (MED)
+//
+// open_wasm_binary_smoke.oo asserts magic + file(1) but never
+// refuses WAT text. Every other wasm_*.oo smoke in the suite
+// uses `! grep -q '(module' <wasm>`. wasm_harn.oot §3 line 42
+// requires the binary contain no WAT text. The fix is unrecorded.
+//
+// Evidence:
+//   ooda/scripts/open_wasm_binary_smoke.oo:46-53 has only od magic
+//     + file WebAssembly. No `'(module'` grep.
+//   ooda/scripts/wasm_wat_honest_smoke.oo:35 is the canonical
+//     pattern: `! grep -q '(module' <wasm>`.
+//   openOODA/audit/wasm_harn.oot:42-43 requires no WAT text.
+//   openOODA/audit/wasm_phalanx.oot:63 names this fix as HARN.
+//
+// Fix:
+//   File: ooda/scripts/open_wasm_binary_smoke.oo
+//   Action: between line 49 and line 50, insert:
+//     if expect_quiet(p, "! grep -q '(module' " + wasm).is_err() {
+//         println("FAIL wat");
+//         process_exit(1);
+//     }
+//   Update the Beats comment at lines 7-11 to add a beat
+//   "(no WAT text)".
+//   Pass: smoke still PASS on the empty module from chs_rt_wasm.c.
+//   Fail: a WAT regression that emits `(module` is now caught.
+//
+// Acceptance:
+//   1. ./oodac/oodac run scripts/open_wasm_binary_smoke.oo stdout
+//      ends with "open_wasm_binary_smoke: PASSED".
+//   2. Pipe "(module" into /tmp/x.wasm; run the smoke against it;
+//      must exit non-zero with "FAIL wat" on stdout.
+//
+// Rollback: git checkout HEAD -- ooda/scripts/open_wasm_binary_smoke.oo.
+
+// BUG 6 — plan_llvm_coord.oot §6 results table blank (LOW)
+//
+// Section 6 of plan_llvm_coord.oot holds 13 proof rows with empty
+// exit / mark / verdict cells. The audit instructs INT to fill
+// them. The table has no ownership marker or trigger, so the
+// INT lane has no signal that the table is theirs to fill.
+//
+// Evidence:
+//   openOODA/audit/plan_llvm_coord.oot:93-98: leave cells blank
+//     until the live run. :100-114: 13 rows, all blank.
+//     :48: INT fills only those cells (COORD-serialized).
+//
+// Fix:
+//   File: openOODA/audit/plan_llvm_coord.oot
+//   Action: do NOT edit the 13 rows. Add a one-line trigger above
+//   the table at line 99:
+//     // INT-FILL: when all 13 verdict cells are non-empty, the
+//     // LLVM phalanx is closed.
+//   And clarify in the §2 roles table (line 28-41) that INT writes
+//   the section 6 cells (already implied at line 48; make it
+//   explicit). No product or other-audit edits.
+//   Pass: file still passes HYG (line cap 256). 13 rows unchanged.
+//   Fail: any pre-filled verdict (would lie about proof).
+//
+// Acceptance:
+//   1. wc -l openOODA/audit/plan_llvm_coord.oot <= 256.
+//   2. grep -c '^|' openOODA/audit/plan_llvm_coord.oot == 14.
+//   3. The 13 verdict cells in section 6 stay empty until INT
+//      runs the 13 commands from ooda/.
+//
+// Rollback: git checkout HEAD -- openOODA/audit/plan_llvm_coord.oot.
+
+// SUMMARY
+//
+// | # | bug                              | severity | owner       | fix file:line                              |
+// | 1 | x86_emit 6 imports missing       | MED      | compiler    | ooda/oodac/x86_emit.oo:24 (new imports)   |
+// | 2 | llvm_emit_method .len() ERR      | HIGH     | DE2         | ooda/oodac/llvm_emit_method.oo:146        |
+// | 3 | ret_arc UAF on %OoSList return   | HIGH     | DE2         | ooda/oodac/llvm_emit_stmt.oo (ret_arc)    |
+// | 4 | wasm_fn_println_lit never added  | HIGH     | DE2         | ooda/oodac/wasm_emit_fn.oo + wasm_emit.oo |
+// | 5 | open_wasm_binary_smoke no WAT    | MED      | HARN        | ooda/scripts/open_wasm_binary_smoke.oo:50 |
+// | 6 | plan_llvm_coord §6 table blank   | LOW      | COORD + INT | openOODA/audit/plan_llvm_coord.oot:99     |
+//
+// Handoff: compiler-lane agent executes. INT fills plan_llvm_coord.oot
+// §6 only after each fix has a passing smoke. DOCS may not touch
+// SHIPPED.oot or ROADMAP.oot before INT proof.

@@ -1,0 +1,81 @@
+// # Prove chain runner — minimal version
+//
+// Logline: Walk every prove_prod_*.oo fixture, count, check basic structure.
+//
+// Setup: Walks ooda/fixtures/. Pure oo, no struct fields (c_emit weak spot).
+//
+// Beats:
+//   1. Walk fixtures dir, count prove_prod_*.oo files.
+//   2. Per-file: check has import, has main, has println PASSED.
+//   3. Tally structurally valid vs broken.
+//
+// residual: No match expressions (c_emit bug). Uses string ops only.
+// No std/ imports — the openOODA scope does not resolve them.
+
+pub fn main() {
+    let fixtures_dir: String = "/home/jeryd/Projects/openOODA/ooda/fixtures";
+    let mut total: Int = 0;
+    let mut valid: Int = 0;
+    let mut broken: Int = 0;
+    let mut broken_list: String = "";
+
+    let entries: List[String] = oo_fs_read_dir(fixtures_dir);
+    let n: Int = list_len(entries);
+    let mut i: Int = 0;
+    while i < n {
+        let name: String = list_get(entries, i);
+        if str_index_of(name, "prove_prod_") >= 0 {
+            if str_index_of(name, ".oo") >= 0 {
+                let path: String = fixtures_dir + "/" + name;
+                let text: String = oo_read_file(path);
+                total = total + 1;
+                let has_import: Int = str_index_of(text, "import ");
+                let has_main: Int = str_index_of(text, "pub fn main");
+                let has_passed: Int = str_index_of(text, "PASSED");
+                if has_import >= 0 {
+                    if has_main >= 0 {
+                        if has_passed >= 0 {
+                            valid = valid + 1;
+                        }
+                    }
+                }
+                if has_import < 0 {
+                    broken = broken + 1;
+                    if chars_len(broken_list) > 0 {
+                        broken_list = broken_list + ", ";
+                    }
+                    broken_list = broken_list + name;
+                }
+                if has_main < 0 {
+                    if has_import >= 0 {
+                        broken = broken + 1;
+                        if chars_len(broken_list) > 0 {
+                            broken_list = broken_list + ", ";
+                        }
+                        broken_list = broken_list + name;
+                    }
+                }
+                if has_passed < 0 {
+                    if has_main >= 0 {
+                        if has_import >= 0 {
+                            broken = broken + 1;
+                            if chars_len(broken_list) > 0 {
+                                broken_list = broken_list + ", ";
+                            }
+                            broken_list = broken_list + name;
+                        }
+                    }
+                }
+            }
+        }
+        i = i + 1;
+    }
+
+    println("=== prove chain audit (zero trust) ===");
+    println("fixtures scanned: " + total.to_string());
+    println("structurally valid: " + valid.to_string());
+    println("structurally broken: " + broken.to_string());
+    if chars_len(broken_list) > 0 {
+        println("broken: " + broken_list);
+    }
+}

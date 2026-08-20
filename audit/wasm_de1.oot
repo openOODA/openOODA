@@ -1,0 +1,130 @@
+# WASM DE1 — hello fold is only let greet then println ident
+
+File: openOODA/audit/wasm_de1.oot
+DE1 proof. Re-read ooda/oodac/wasm_emit_fold.oo. Main match is still
+the exact hello.oo shape. Did not edit wasm_emit_fold.oo.
+Did not edit wasm_emit.oo.
+
+Logline: wasm_fold_hello returns the greet line only when fn main is let IDENT = greet(STRING); println(IDENT); then RBRACE.
+Setup: tokenize_lines packs kind in field 0 and unquoted text in field 3.
+Beats:
+  1. After the main LBRACE, accept only KW_LET IDENT EQ IDENT greet LPAREN STRING RPAREN, optional SEMI, IDENT println LPAREN that IDENT RPAREN, optional SEMI, then RBRACE.
+  2. Extra statements miss. A no-let println(greet(...)) misses. A typed let misses.
+  3. hello.oo matches and folds main's STRING. Hostile extra println misses.
+
+## 1. Exact main match
+
+  ooda/oodac/wasm_emit_fold.oo is 190 lines. Under 256.
+  Public helper is wasm_fold_hello. Main match is wf_main_greet_arg.
+  Main has no skip-to-return walk. Each kind is a hard gate.
+
+    KW_LET IDENT vname EQ IDENT greet LPAREN STRING RPAREN SEMI
+    IDENT println LPAREN IDENT vname RPAREN SEMI RBRACE
+
+  After LBRACE the next kind must be KW_LET. A leading println misses.
+  After the IDENT, the next kind must be EQ. A COLON type mark misses.
+  After EQ the kind must be IDENT greet, then LPAREN STRING RPAREN.
+  An IDENT arg, a missing call, or a second greet arg misses.
+  After the optional let SEMI the next ident must be println.
+  println is IDENT. It is not a keyword. The text must be println.
+  The println arg must be the same vname. A STRING misses.
+  A different ident misses.
+  After the optional println SEMI the next kind must be RBRACE.
+  A second println is IDENT, not RBRACE. Extra stmts miss.
+
+  wasm_fold_hello then needs greet body return STRING + param + STRING.
+  Fold text is prefix + main STRING + suffix.
+  An empty STRING arg has length 0. wasm_fold_hello returns "".
+
+  The match is still exact. The file is not broken. No edit.
+
+## 2. hello.oo matches
+
+  fixtures/hello.oo main body:
+
+    let message = greet("openOODA Developer");
+    println(message);
+
+  Lexer skips // comments. They are not tokens.
+  After main LBRACE the kinds are:
+
+    KW_LET IDENT message EQ IDENT greet LPAREN STRING RPAREN SEMI
+    IDENT println LPAREN IDENT message RPAREN SEMI RBRACE
+
+  vname is message. greet arg is openOODA Developer.
+  println arg is message. Next token is RBRACE.
+  wf_main_greet_arg returns openOODA Developer.
+
+  greet body after its LBRACE:
+
+    KW_RETURN STRING Hello,  PLUS IDENT name PLUS STRING ! SEMI RBRACE
+
+  Result: Hello,  + openOODA Developer + ! .
+  That is Hello, openOODA Developer!
+  Lock: scripts/wasm_hello_smoke.oo.
+
+  Sibling INT scratch on this host (cwd ooda/, same product binary):
+
+    /tmp/grok-goal-3afece913704/implementer/int_proof.log
+
+  emit-wasm fixtures/hello.oo EXIT 0. 197 bytes. Magic 00 61 73 6d.
+  Bytes name fd_write and Hello, openOODA Developer!.
+  wasmtime prints Hello, openOODA Developer! and exits 0.
+
+## 3. Extra println misses
+
+  fixtures/wasm_hello_hostile.oo main:
+
+    let message = greet("openOODA Developer");
+    println(message);
+    println("other");
+
+  After the first println SEMI the next kind is IDENT.
+  That IDENT text is println. It is not RBRACE.
+  wf_main_greet_arg returns "". wasm_fold_hello returns "".
+  emit-wasm must not plant a greet-only print on main.
+  Lock: scripts/wasm_hello_hostile_smoke.oo.
+
+  wasm_emit.oo applies fold first, and only when the name is main.
+  Empty fold does not call oo_wasm_set_fn_print for the greet line.
+  greet is not main. greet keeps dummy end.
+  Hostile main is not one println(STRING). Later print helpers miss.
+  Extra println still misses.
+
+## 4. No-let and typed let miss
+
+  fixtures/wasm_hello_nolet.oo main:
+
+    println(greet("x"));
+
+  After LBRACE the kind is IDENT, not KW_LET. Return is "".
+  Fold does not take Hello, x!.
+
+  A typed let is KW_LET IDENT COLON. The next kind must be EQ.
+  COLON misses.
+
+## 5. Fold uses main arg, not verify
+
+  hello.oo verify tokens start with KW_VERIFY IDENT greet.
+  wf_find_fn wants KW_FN then IDENT. verify is unused.
+  First greet(STRING) in the file is World. This match never leaves main.
+  A first-call scan would take World. Fold does not.
+
+## 6. Isolation
+
+  Read:
+    ooda/oodac/wasm_emit_fold.oo
+    ooda/oodac/wasm_emit.oo
+    ooda/oodac/token_fmt.oo
+    ooda/oodac/token_emit.oo
+    ooda/oodac/token_scan_string.oo
+    ooda/fixtures/hello.oo
+    ooda/fixtures/wasm_hello_hostile.oo
+    ooda/fixtures/wasm_hello_nolet.oo
+    ooda/scripts/wasm_hello_smoke.oo
+    ooda/scripts/wasm_hello_hostile_smoke.oo
+  Wrote:
+    openOODA/audit/wasm_de1.oot
+  Did not write wasm_emit_fold.oo. Did not write wasm_emit.oo.
+
+Status: hello fold is still let IDENT = greet(STRING); println(IDENT); only. Extra println misses. Fold already exact.

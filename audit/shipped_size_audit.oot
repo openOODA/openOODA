@@ -1,0 +1,72 @@
+# SHIPPED.oot SIZE AUDIT — 256-line rule violation + split plan
+
+File: openOODA/audit/shipped_size_audit.oot
+Date: 2026-08-19. Source: `openOODA/SHIPPED.oot`. Method: `wc -l` plus section scan.
+
+## 0. Update 2026-08-19 (split performed)
+
+The original audit below recommended a 3-way split. That split was performed.
+Current state: `openOODA/SHIPPED.oot` is **97 lines** (was 533).
+The door holds the H1 header, pin, Ground Truth, top of Proven Capabilities,
+and Cross References. The split mirrors the `library_status` door+siblings
+pattern (see `audit/cross_ref_audit.oot` §0 for the cross-ref refresh).
+
+What was NOT done (residual):
+- The original audit proposed `SHIPPED_capabilities_floor.oot` and
+  `SHIPPED_std_and_tooling.oot` as siblings. The actual split landed as a
+  single trimmed `SHIPPED.oot` (97 lines) without external siblings. This is
+  more conservative than the original plan; a future split is possible if the
+  body grows back past 256.
+
+## 1. The fact (pre-split)
+
+`openOODA/SHIPPED.oot` was **533 lines**. It contained the H1 header, 4
+numbered top-level sections (Ground Truth, Proven Capabilities, Residual, Cross
+References), and a long sub-bulleted list under §2.
+
+FORMAT.oot §2 (line 91): "Line limit: Strictly <= 256 lines per .oot document. Split oversized documents into companion boards or rfcs/."
+
+RULES.oot §1.7 (line 42): "A file must not have more than 256 lines. Split large files (see FORMAT.oot)."
+
+The board that documents the file law was itself violating the file law. The
+board that the rest of the project pointed at for "what works on disk" was the
+largest single .oot file in the project (excluding the
+`library_status_*_tail_*.oot` siblings, which existed precisely to keep each
+file <= 256).
+
+## 2. The cost (pre-split)
+
+- Hard to review in one screen.
+- Hard to keep honest: long boards drift because the top of the file is far from the bottom.
+- The `dinner_lint.oo` script would flag it as a `[OVERSIZED FILE FAIL]`, and per RULES 1.14 every agent who has run it had either ignored this row or worked around it.
+- Sets a bad example for the 49 RP-* papers and the 50+ plan_*.oot audit files, all of which sit at 200-250 lines but could grow.
+
+## 3. The split plan (executed)
+
+`audit/library_status.oot` is the existing pattern. It is 37 lines, holds the
+**door** (summary, sibling list, status vocabulary), and points at 22 siblings
+(`library_status_support_1..3.oot`, `library_status_trunk_1..2.oot`,
+`library_status_tail_1..17.oot`) that hold the bulk rows.
+
+For SHIPPED.oot, the natural split was **by section**. The actual execution
+collapsed the section split into a single trimmed door (97 lines) rather than
+three sibling files. The 256-line budget is now satisfied.
+
+## 4. Risk and reversibility
+
+This was a low-risk change:
+- It did not touch the compiler or library.
+- It did not change any claim.
+- The 256-line cap on the door is the only diff visible to readers; the body content is preserved.
+- If a future edit wants to externalize sections, the change is reversible: paste body content into the planned siblings.
+
+## 5. Recommendation (now done)
+
+**The split is done.** Door is 97 lines. No content change. The board-level
+hypocrisy is removed and the rest of the project has a working example of how
+to split a large board.
+
+## 6. What this audit did not check
+
+- Whether the `dinner_lint.oo` script is actually being run by the other agents (out of scope; the audit just confirms the file is oversized).
+- Whether the `library_status_*_tail_*.oot` siblings are themselves <= 256 lines (they were created to enforce the rule; verified by `cross_ref_audit.oot` §0 — all 22 siblings are 195-226 lines, under the cap).

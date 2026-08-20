@@ -1,0 +1,175 @@
+# WIN-OODAC FEASIBILITY — Phase 0 research, sub-agent C
+
+File: openOODA/audit/win_oodac_feasibility.oot
+Date: 2026-08-19. Lane: read-only. Sub-agent: C of 4.
+Tool note: this Explore session has read, glob, grep only. No bash, no file, no stat. All file sizes, ELF magic, and bytes are inferred from scripts and docs, not directly observed.
+
+## 0. Scope and finding summary
+- Read ooda/oodac/main.oo, ooda/bootstrap/oodac_pure_build, ooda/bootstrap/seed/README.oot and SIGNING.oot, ooda/runtime/chs_rt.c (umbrella), and the full chs_rt_*.c set.
+- The compiler is pure .oo. It has zero host-header includes and zero extern "C" declarations. The Linux-only surface is in the C runtime and in three sh invocations in oodac/*.oo.
+- The seed binary at ooda/bootstrap/seed/oodac is gitignored and not present on this host (only signing artifacts). A working tree rebuild is the everyday path.
+- Recommendation: a Windows oodac.exe is feasible. The .oo compiler source is portable. The chs_rt_*.c runtime needs a Windows shim layer; the bash build script must be replaced with a mingw-aware driver.
+
+## 1. main.oo import trace
+
+### 1.1 Level 1: 140 imports from ooda/oodac/main.oo (lines 12 to 152)
+Buckets by prefix:
+- 11 token_*.oo: lex, token_emit, token_fmt, token_scan_ws, token_scan_string, token_scan_number, token_scan_ident, token_scan_punct, token_next, token_dump, token_stream.
+- 16 check_*.oo: check_cap_util, check_caps, check_drive, check_residual, check_typestate_tok, check_typestate_parse, check_typestate_walk, check_typestate_join, check_typestate_match, check_typestate_fn, check_typestate, check_typestate_call, check_typestate_item, check_hash, check_cache, check_collect, check_mod.
+- 1 load_*.oo: load_import.
+- 2 diag_*.oo: diag_json, diag_json_parse.
+- 11 parse_*.oo: parse_drive, parse_item, parse_expr, parse_skip, parse_method, parse_stmt_nav, parse_stmt_dump, parse_primary_lit, parse_primary_ident, parse_primary_form, parse_primary.
+- 40 tc_*.oo: tc_types_core, tc_diag, tc_method, tc_scope, tc_tables, tc_tables_ret, tc_read_result, tc_names, tc_call_ret, tc_call_arity, tc_call_util, tc_call_binop, tc_call_logic, tc_call_order, tc_call_eq, tc_call_let, tc_call_arg_prep, tc_call_arg_lits, tc_assign_immut, tc_assign_mut, tc_ops_unary, tc_ops_cmp, tc_ops_logic, tc_struct_mrecv, tc_struct_method, tc_struct_assign, tc_struct_lit, tc_struct_tab1, tc_struct_chain, tc_control_cond, tc_control_branch, tc_infer, tc_effects, tc_must_use_call, tc_match_exh, tc_parse_int, tc_refine_fn, tc_refine_return, tc_refine_let, tc_refine_call, tc_refine_builtin, tc_refine_assign, tc_refine, tc_refine_smt, tc_ann_prep, tc_ann_let, tc_ann_return, tc_ann_binop, tc_ann, tc_names_sum.
+- 42 c_emit_*.oo: c_emit_preamble, c_emit_env, c_emit_result_ty, c_emit_skip, c_emit_skip_grant, c_emit_contract, c_emit_ops, c_emit_ty, c_emit_list_ty, c_emit_ty_ext, c_emit_args, c_emit_call, c_emit_result, c_emit_lower, c_emit_netio, c_emit_sys, c_emit_libfloor, c_emit_print, c_emit_arc, c_emit_arc_2, c_emit_temps, c_emit_let_ext, c_emit_let, c_emit_ident, c_match_skip_comma, c_emit_match_stmt, c_emit_match_let, c_emit_max_cycles, c_emit_meta, c_emit_secret_alias, c_emit_secret, c_emit_secret_check, c_emit_secret_prop, c_emit_secret_guard, c_emit_stmt, c_emit_fn, c_emit_meta_drive, c_emit_olist, c_emit_struct, c_emit_helpers, c_emit_verify, c_emit, c_emit_walk, c_emit_sum.
+- 2 ast_emit_*.oo: ast_emit_outline, ast_emit_reflect.
+- 1 bc_emit.oo.
+- 1 vm_exec.oo.
+- 1 wasm_emit.oo.
+- 3 cli_*.oo: cli_build, cli_emit, cli_parse.
+
+### 1.2 Level 2 (sampled across the 140)
+- lex.oo -> lex_scan.oo.
+- token_next.oo -> token_scan_ws.oo, token_scan_string.oo, token_scan_number.oo, token_scan_ident.oo, token_scan_punct.oo, tc_parse_int.oo.
+- check_caps.oo -> token_fmt.oo.
+- check_typestate.oo -> check_typestate_tok.oo, check_typestate_parse.oo, check_typestate_walk.oo, check_typestate_call.oo, check_typestate_item.oo.
+- c_emit.oo -> token_fmt.oo, c_emit_skip.oo, bc_emit_env.oo, bc_emit_expr.oo, bc_emit_stmt.oo, bc_emit_surface.oo.
+- c_emit_meta_drive.oo -> token_fmt.oo, c_emit_skip.oo, c_emit_meta.oo, c_emit_fn.oo, lex.oo, token_stream.oo, c_emit_env.oo, c_emit_arc.oo.
+- vm_exec.oo -> vm_val.oo, vm_stack.oo, vm_ops.oo, vm_builtin.oo, vm_exec_parse.oo.
+- vm_builtin.oo -> vm_val.oo, vm_stack.oo, vm_surface.oo.
+- wasm_emit_stmt.oo -> tc_parse_int.oo, token_fmt.oo, wasm_emit_primary.oo, wasm_emit_expr.oo.
+- tc_call_let.oo -> lex.oo, token_fmt.oo, tc_tables_ret.oo.
+- tc_names.oo -> tc_names_known.oo, tc_names_sum.oo.
+
+### 1.3 Level 3 (leaves)
+- token_fmt.oo, c_emit_env.oo, c_emit_skip.oo, tc_read_result.oo, vm_val.oo, vm_stack.oo, tc_parse_int.oo, bc_emit_surface.oo, lex_scan.oo, check_typestate_*.oo — these are referenced from many parents but import nothing themselves in the visible source.
+- These leaves are pure .oo; no C surface.
+
+### 1.4 C-surface finding in the compiler source
+- grep for `extern "C"` over oodac/oodac/*.oo: zero matches.
+- grep for `^#include` over oodac/oodac/*.oo: zero matches.
+- grep for C-symbol names (mmap, mprotect, etc.) over oodac/oodac/*.oo: only string-literal names that the C emitter passes through (c_emit_sys.oo lines 35-55, c_emit_call_ty.oo lines 23-24, tc_names_known.oo line 64, check_cap_util.oo lines 85-87, c_emit_secret_alias.oo line 35, c_emit_secret_guard.oo lines 162-164 and 224). No actual call into C. The C emit prints these names into the generated C source, and the runtime provides stubs.
+
+## 2. chs_rt link surface
+
+### 2.1 The umbrella
+oda/runtime/chs_rt.c lines 1 to 41 #include the 40 runtime translation units. The build command (ooda_pure_build line 349) passes only chs_rt.c to gcc. The umbrella is the only entry gcc sees; the 40 files are textual #include.
+
+40 files in umbrella (alphabetical):
+chs_rt_actor.c, chs_rt_alloc.c, chs_rt_arena.c, chs_rt_caps.c, chs_rt_channel.c, chs_rt_crypto.c, chs_rt_dns.c, chs_rt_emit_tmp.c, chs_rt_fetch.c, chs_rt_ffi.c, chs_rt_ffi_sec.c, chs_rt_flist.c, chs_rt_fs.c, chs_rt_hash.c, chs_rt_hitl.c, chs_rt_host.c, chs_rt_landlock.c, chs_rt_libfloor.c, chs_rt_list.c, chs_rt_llist.c, chs_rt_llist_f.c, chs_rt_llist_s.c, chs_rt_math.c, chs_rt_meta.c, chs_rt_netfloor.c, chs_rt_print.c, chs_rt_rlimit.c, chs_rt_sys.c, chs_rt_thread.c, chs_rt_time_rand.c, chs_rt_tls.c, chs_rt_vision.c, chs_rt_wasm.c, chs_rt_wasm_print.c, chs_rt_xlang.c, chs_rt_str.c (NOT — see below), chs_rt_str_intern.c, chs_rt_str_int.c, chs_rt_str_ops.c, chs_rt_str_tok.c.
+
+### 2.2 Stragglers (on disk, NOT in the umbrella)
+- oda/runtime/chs_rt_str.c — only #includes "chs_rt.h"; provides string operations not brought in by chs_rt_str_*.c.
+- oda/runtime/chs_rt_list_set.c — no includes; not linked by the official build.
+Either file is residual, dead, or compiled outside the umbrella. The Windows port must decide whether to keep, drop, or include them.
+
+### 2.3 Helper objects compiled outside the umbrella
+- oda/runtime/oo_sha256.c, oda/runtime/oo_holo.c, oda/runtime/oo_hide.c — Path-A immune units, per oda/.gitignore lines 46 to 48. Not referenced by the umbrella. Compiled in separately when the host links the corresponding feature.
+
+## 3. Host header includes
+
+### 3.1 Headers emitted by the C emitter (ooda/oodac/c_emit_preamble.oo lines 13 to 18)
+stdio.h, stdlib.h, string.h, stdbool.h, stddef.h, unistd.h. Every C-emit translation unit gets these. On Windows, unistd.h is replaced by io.h (or omitted if mingw provides a shim).
+
+### 3.2 Headers in the runtime by file
+oda/runtime/chs_rt.h: stdio.h, stdlib.h, string.h, ctype.h, time.h, stdint.h.
+oda/runtime/chs_rt_actor.c: pthread.h, unistd.h.
+oda/runtime/chs_rt_alloc.c: unistd.h, pthread.h, limits.h, sys/random.h.
+oda/runtime/chs_rt_arena.c: stdlib.h, string.h, stdio.h.
+oda/runtime/chs_rt_caps.c: errno.h, sys/types.h, unistd.h, pthread.h, sys/random.h.
+oda/runtime/chs_rt_channel.c: pthread.h.
+oda/runtime/chs_rt_crypto.c: stdint.h, strings.h (explicit_bzero). Windows: explicit_bzero in mingw since 11.0; BCryptGenRandom for sys/random.h.
+oda/runtime/chs_rt_dns.c: netdb.h, arpa/inet.h, sys/socket.h, sys/types.h, string.h.
+oda/runtime/chs_rt_fetch.c: errno.h, netdb.h, sys/socket.h, sys/types.h, unistd.h.
+oda/runtime/chs_rt_ffi.c: stdlib.h, limits.h, unistd.h, dlfcn.h, string.h, pthread.h.
+oda/runtime/chs_rt_ffi_sec.c: stdlib.h, limits.h, fcntl.h, unistd.h, dlfcn.h, string.h, pthread.h, sys/stat.h, sys/wait.h, errno.h, sys/random.h.
+oda/runtime/chs_rt_fs.c: limits.h, stdlib.h, string.h, fcntl.h, unistd.h, dirent.h, sys/stat.h.
+oda/runtime/chs_rt_hitl.c: stdio.h, stdlib.h, string.h.
+oda/runtime/chs_rt_landlock.c: sys/prctl.h, sys/syscall.h, fcntl.h, unistd.h, errno.h, string.h, limits.h.
+oda/runtime/chs_rt_libfloor.c: unistd.h, pthread.h, sys/random.h, sys/wait.h, signal.h, string.h, stdlib.h, stdio.h.
+oda/runtime/chs_rt_list.c: pthread.h.
+oda/runtime/chs_rt_meta.c: unistd.h, pthread.h, sys/random.h.
+oda/runtime/chs_rt_netfloor.c: unistd.h, errno.h, netdb.h, sys/socket.h, sys/types.h, arpa/inet.h, netinet/in.h.
+oda/runtime/chs_rt_print.c: unistd.h.
+oda/runtime/chs_rt_rlimit.c: sys/resource.h, sys/time.h, errno.h, string.h.
+oda/runtime/chs_rt_sys.c: errno.h, sys/types.h, sys/wait.h, unistd.h, stdlib.h, stdio.h, string.h, limits.h, sys/stat.h.
+oda/runtime/chs_rt_thread.c: unistd.h, pthread.h.
+oda/runtime/chs_rt_time_rand.c: time.h, unistd.h, pthread.h, sys/random.h.
+oda/runtime/chs_rt_tls.c: unistd.h, errno.h, netdb.h, sys/socket.h, sys/types.h, arpa/inet.h, netinet/in.h.
+oda/runtime/chs_rt_vision.c: stdio.h, string.h, limits.h, ctype.h, sys/stat.h.
+oda/runtime/chs_rt_xlang.c: stdio.h, string.h, stdlib.h, sys/stat.h.
+oda/runtime/chs_rt_wasm.c: (chs_rt.h only).
+oda/runtime/chs_rt_wasm_print.c: (chs_rt.h only).
+oda/runtime/chs_rt_str.c: (chs_rt.h only; straggler).
+oda/runtime/oo_hide.c: stdint.h, stdlib.h, string.h, unistd.h, sys/random.h.
+oda/runtime/oo_holo.c: stdio.h, stdlib.h, string.h, stdint.h.
+oda/runtime/oo_sha256.c: string.h, stdint.h, stdlib.h.
+
+### 3.3 Windows-relevant headers (need replacement or shim)
+sys/prctl.h, sys/syscall.h, sys/resource.h, sys/socket.h, sys/types.h, sys/stat.h, sys/wait.h, sys/time.h, sys/random.h, netdb.h, arpa/inet.h, netinet/in.h, pthread.h, dlfcn.h, dirent.h, signal.h, unistd.h, fcntl.h.
+
+### 3.4 Portable headers (no change)
+stdio.h, stdlib.h, string.h, ctype.h, time.h, stdint.h, stddef.h, stdbool.h, errno.h, limits.h, math.h, strings.h (mingw 11+), strings.h fallback _explicit_bzero.
+
+## 4. Linux-only calls in oodac/
+
+### 4.1 Real shell invocations (must change for Windows)
+- oda/oodac/cli_build.oo line 30: `readlink -f /proc/$PPID/exe` to find the host compiler. Windows: GetModuleFileName(NULL, …) or argv[0] resolution.
+- oda/oodac/cli_build.oo line 46: same pattern, in the llvm backend.
+- oda/oodac/cli_build.oo line 74: same pattern, for the host-stamp cache.
+- oda/oodac/check_cache.oo line 87: `oo_file_stamp("/proc/self/exe")` to fingerprint the running compiler. Windows: GetModuleFileNameW.
+- oda/oodac/main.oo line 178: `nm "$bin" | grep` to verify cap-require symbols in the output. Windows: dumpbin /SYMBOLS or objdump -t.
+- oda/oodac/c_emit_sys.oo line 165: `process_exec` hardcodes `oo_str_lit("sh")` and `oo_str_lit("-c")`. Windows: `cmd /c` or `powershell -Command`. The runtime must choose.
+- oda/oodac/cli_build.oo lines 32 and 34: `as --64` and `ld` (Linux binutils). Windows: clang/lld-link or mingw as/ld.
+- oda/oodac/cli_build.oo line 48: `clang` from PATH. Windows: clang-cl or x86_64-w64-mingw32-clang.
+
+### 4.2 String-literal names (no call site, just opaque identifiers the emitter prints)
+- oda/oodac/c_emit_sys.oo lines 35 to 55: emits `oo_sys_epoll_create`, `oo_sys_inotify_init`, `oo_sys_prctl` as sealed stubs. Per c_emit_sys.oo line 5, these are "sealed stubs, not full async I/O." Windows: the stubs already return Err; the shim does not need to implement epoll/inotify/prctl semantics for the seed to build.
+- oda/oodac/c_emit_call_ty.oo lines 23 to 24, tc_names_known.oo line 64, check_cap_util.oo lines 85 to 87: same names as strings in cap-classification tables.
+- oda/oodac/c_emit_secret_alias.oo line 35, c_emit_secret_guard.oo lines 162 to 164 and 224: mmap, mprotect, shmat, pwrite, sendfile as data-sink name lists (no actual call).
+
+### 4.3 None of the above is a C call
+The compiler .oo source has no C-level Linux-only calls. The only blockers for a Windows build are the shell invocations in 4.1.
+
+## 5. Build script for Windows
+
+### 5.1 What oodac_pure_build does today
+- Bash; lines 1 to 378.
+- Discovers the host oodac binary (lines 10 to 17): SEED_OODAC, then oodac/oodac, then oodac_bin, then ooda/bootstrap/seed/oodac, then oodac/main.
+- DFS-collects imports (lines 48 to 80); fail-closed on cycle or missing.
+- Optional check gate (lines 102 to 143).
+- Emits each module's C via $OODAC_BIN emit-c, with a sha256-keyed cache (lines 145 to 173).
+- Python3 helper to dedupe function definitions and split bodies into ≤200-line chunks (lines 178 to 232).
+- Appends runtime prototype block to preamble (lines 236 to 314).
+- gcc command (line 349 to 350):
+    gcc -O2 -I"$ROOT/runtime" ${OO_SSL_CFLAGS} runtime/chs_rt.c $TMP/all.c -lm -ldl -lpthread ${OO_SSL_LIBS} -o $OUT
+- Self-test on outputs named oodac (lines 354 to 375): rejects if oodac-named output is the CLI, or fails to check fixtures/hello.oo.
+
+### 5.2 What would have to change for mingw-w64
+- Replace bash with PowerShell or cmd. The DFS and Python helper block is the bulk; both can be redone in PowerShell.
+- Replace gcc with x86_64-w64-mingw32-gcc (or clang --target=x86_64-windows-msvc / -windows-gnu).
+- Add -D_WIN32_WINNT=0x0601 (Win 7) and -DWIN32_LEAN_AND_MEAN. mingw provides windows.h, winsock2.h, ws2tcpip.h.
+- Drop -ldl; replace with -lws2_32 (winsock), -lbcrypt (getrandom), -ladvapi32 (registry/limits), -liphlpapi (DNS). mingw maps pthread to winpthreads; on MSVC use the VStudio threading.
+- Replace -lm with the mingw default (already linked).
+- Skip -lssl/-lcrypto unless OO_HAVE_OPENSSL is satisfied; on Windows, OpenSSL is shipped as a separate DLL.
+- Output: oodac.exe, a PE/COFF binary.
+- The DFS-collect import graph is the same; the emit-c path is identical because the compiler source is pure .oo.
+- The cap-require nm check (main.oo line 178) needs a Windows replacement: dumpbin /SYMBOLS or `llvm-readobj --coff-symbols`.
+
+### 5.3 What would have to change for LLVM-windows (clang -target x86_64-pc-windows-msvc)
+- The build is the same as mingw except the triple. clang handles winsock, bcrypt, advapi32 directly.
+- The runtime shim (chs_rt_win32_*.c) is the dominant work; the build flags are minor.
+
+## 6. Recommendation
+1. The compiler source (ooda/oodac/*.oo) is portable. The Phase 1 cross-compile target (oodac --target windows) emits a Windows .exe from this Linux host; the .oo source needs no edits. Three shell invocations (cli_build.oo lines 30, 46, 74; check_cache.oo line 87; main.oo line 178; cli_build.oo line 165) need a `process_target` table that picks the right command per backend. The compiler owner owns this.
+2. The C runtime is the bulk of the Windows work. chs_rt_sys.c, chs_rt_fs.c, chs_rt_thread.c, chs_rt_tls.c, chs_rt_dns.c, chs_rt_fetch.c, chs_rt_netfloor.c, chs_rt_ffi.c, chs_rt_ffi_sec.c, chs_rt_libfloor.c, chs_rt_meta.c, chs_rt_alloc.c, chs_rt_landlock.c, chs_rt_rlimit.c, chs_rt_time_rand.c, chs_rt_caps.c, chs_rt_actor.c, chs_rt_channel.c, chs_rt_arena.c, chs_rt_print.c, chs_rt_math.c each need a Windows shim. The runtime owner owns this.
+4. Landlock and setrlimit (chs_rt_landlock.c, chs_rt_rlimit.c) have no direct Windows equivalent. They are stubs today (per c_emit_sys.oo:5 and chs_rt_landlock.c which uses prctl+syscall). The shim maps them to Job Objects + restricted tokens, per the master plan. Out of scope for sub-agent C; sub-agent B owns this.
+4. The build script (ooda/bootstrap/oodac_pure_build) is bash and Linux-flavored. A mingw build needs a parallel PowerShell or cmd driver. The Phase 3 acceptance ("a Windows-native oodac.exe can check oodac/main.oo on a Windows host") needs both the compiler and the build driver. The build script is host-utility code; the compiler lane owns it but it is the gate for a real Windows rebuild.
+
+## 7. What was not checked
+- The seed binary ooda/bootstrap/seed/oodac: not present on this host. The .gitignore line 84 lists `/bootstrap/seed/oodac` as ignored; the directory contains only oodac.pub, oodac.sha256, oodac.sha256.minisig, README.oot, SIGNING.oot. file(1) and size were not directly observed.
+- The Python3 dedup step in oodac_pure_build lines 178 to 232. Not executed; a Windows equivalent is required.
+- Whether the existing emit-c path in ooda/oodac/ can be made target-aware without a new emit_windows.oo. The master plan names emit_windows.oo; this sub-agent did not read it.
+- Whether mingw-w64 and llvm-mingw are installable on this Fedora host. Sub-agent A owns that question.
+- The stragglers oda/runtime/chs_rt_str.c and oda/runtime/chs_rt_list_set.c: not exercised by the umbrella. Build behavior on Windows is unknown.
+- chs_rt_stragglers' C contents (only the #include lines were read).
+- oodac/.gitignore notes that oodac/oodac, oodac/oodac2, oodac/main are gitignored; a working tree rebuild is the everyday path, so the seed binary is irrelevant for the cross-compile lane.

@@ -1,0 +1,152 @@
+# LIBRARY PRE-ENGAGEMENT — what I learned before the user comes back
+
+File: openOODA/audit/library_pre_engagement.oot
+Date: 2026-08-19. Lane: process (no edits to ooda/). I read; I did not run oodac.
+
+## 0. Headline
+
+The 3 "oversized" std files are **three different problems**, not one. agy is struggling because the 3 have been treated as a single "split the file" task. They are not.
+
+| File | Size | Status | Root cause |
+|---|---:|---|---|
+| `std/database/btree_disk_ops.oo` | 395 | **GREEN** | std lacks 4-slot array sugar; ops manually unroll k0..k3 / v0..v3 |
+| `std/bioinformatics/protein_translation.oo` | 380 | **GREEN** | std lacks codon-table lookup; `codon_standard_aa` is 100 lines of nested if/else on (b0,b1,b2) |
+| `std/swarm/dispatch_worker.oo` | 323 | **BLOCKED** | real oodac bug: `DispatcherConfig` defined twice (2-field in `dispatch_types.oo`, 5-field in `dispatch_worker.oo`); C lower picks the first; field initializers in the second fail at `dispatch_worker.oo:73, 180` |
+
+## 1. Evidence (file:line)
+
+### 1.1 library_status.oot (the door) — read 2026-08-19
+
+The door is 44 lines. Live counts at `library_status.oot:7`:
+- `files 4476  GREEN 2907  BLOCKED 1509  RESIDUAL 60  UNCHECKED 0`
+- `emit OK 4259 ERR 85 TIMEOUT 132 SEGV 0`
+
+Top BLOCKED oodac needs at `library_status.oot:13-19`:
+- import+call gcc (dot vs arrow, Result cells, decls)
+- emit-c finish under 30s
+- pub fn with simple args or struct-lit drivers
+- emit-c heap/abort and slist OOB
+- c_emit unexpected SEMI/RBRACE
+- Result[List[T]] and nested Result/Option
+
+**All 6 are oodac/C-lower bugs. None are file-size issues.**
+
+### 1.2 The 3 oversized files — actual BLOCKED status
+
+From `audit/library_status_tail_3.oot:101`:
+- `std/bioinformatics/protein_translation.oo | GREEN | OK | fixtures/prove_prod_a2_protein_translation.oo | —`
+
+From `audit/library_status_tail_4.oot:215`:
+- `std/database/btree_disk_ops.oo | GREEN | OK | fixtures/prove_prod_s0_btree_disk_ops.oo | —`
+
+From `audit/library_status_tail_15.oot:148, 152`:
+- `std/swarm/dispatch_worker.oo | BLOCKED | OK | std/swarm/./dispatch_worker.oo: In function 'dispatcher_config_init': ... 73:101: error: 'DispatcherConfig' has no member named 'max_worker_capacity' ... | need: prove`
+- `std/swarm/dispatch_worker.oo | BLOCKED | OK | std/swarm/./struct DispatcherConfig { strategy: 0, max_queue_depth: 0, max_worker_capacity: 0, default_timeout_ms: 0, max_retries: 0 }; ... 180:21: error: invalid initializer ... | need: oodac/C lower so import+call gcc+run (see fail)`
+
+**btree and protein are GREEN. dispatch_worker is BLOCKED for an oodac bug, not size.**
+
+### 1.3 The oodac bug — DispatcherConfig conflict
+
+Two definitions of the same struct:
+- `std/swarm/dispatch_types.oo:6-9`: 2 fields (`strategy`, `max_queue_depth`)
+- `std/swarm/dispatch_worker.oo:6-12`: 5 fields (`strategy`, `max_queue_depth`, `max_worker_capacity`, `default_timeout_ms`, `max_retries`)
+
+Both are imported by `std/swarm/dispatch.oo:13, 14`. The shim_marker functions in `dispatch.oo:18-69` all call the **5-arg** `dispatcher_config_init(0, 32, 4, 1000, 2)`. The **2-arg** `dispatcher_config_new` in `dispatch_types.oo:11-16` is **dead code** — no caller in `dispatch.oo`, `dispatch_engine.oo`, or `dispatch_worker.oo`.
+
+The C lower picks the FIRST struct definition it sees. The struct in C is the 2-field version. When `dispatch_worker.oo:73, 180` tries to initialize 5 fields, the C compiler errors out.
+
+**This is a real oodac bug** (struct definitions from multiple files are not unioned). **It is also fixable in the library lane** by deleting `dispatch_types.oo` (or renaming its struct to `LegacyDispatcherConfig`).
+
+### 1.4 Why btree and protein are over 256
+
+These two files are GREEN, so the prove works. They are over 256 because the std language lacks sugar:
+
+- **btree_disk_ops.oo** (395 lines): 7 functions that manually unroll 4-slot array operations on `BTreeNode` (`k0..k3`, `v0..v3`). `btree_node_insert_key_value` alone is 150 lines (76-225) because each `n` value (0/1/2/3) and `idx` value (0/1/2/3) is unrolled. A `List[Int]` of length 4 would collapse this to ~20 lines per function.
+
+- **protein_translation.oo** (380 lines): 22 functions. `codon_standard_aa` is 100 lines (74-175) of nested if/else to dispatch the 64-codon table. `protein_aa_weight_da` is 66 lines (197-262) for 21 amino acid weights. Both could be a single `List[Int]` lookup.
+
+The std has `List[Name]`, `List[Int]`, `List[List[Int]]` lowers (per `SHIPPED.oot:16`). The std **does not** use lists internally. These files predate the list lower.
+
+## 2. Why agy is struggling
+
+The 3 files have been treated as a uniform "split the file" task:
+- `handoff_library_split.oot` proposed 1+4 or 1+5 splits for all 3
+- `library_split_deep_read.oot` corrected the splits, found 1 FUNDAMENTALLY WRONG (dispatch) and 2 NEEDS ADJUSTMENT
+- `library_split_minimum_viable.oot` proposed 1+1 minimum cuts
+- `library_split_verification.oot` provided the checklist
+
+**But splitting doesn't fix the actual problems:**
+- btree and protein: splits fix FORMAT (256 line cap), but the files are GREEN. Splitting adds work without unblocking.
+- dispatch: the file is BLOCKED, but the BLOCKED reason is the `DispatcherConfig` conflict. Splitting won't unblock it until the duplicate is resolved.
+
+## 3. What I think the right answer is
+
+When the user comes back and asks me to "figure it out", my recommendation will be:
+
+### Option A — Library-only fix (agy's lane)
+
+1. **Delete `std/swarm/dispatch_types.oo`** (or rename `DispatcherConfig` to `LegacyDispatcherConfig` and keep the file as residual). This makes the 5-field struct in `dispatch_worker.oo` the only `DispatcherConfig`. The 2-arg `dispatcher_config_new` is dead code anyway.
+2. After step 1, the dispatch split becomes doable. The door can hold 5 fields, the sibling holds ops.
+3. btree and protein: ship the 1+1 minimum splits (`library_split_minimum_viable.oot`) for FORMAT compliance. The splits don't unblock anything (already GREEN) but they fix the 256 overage.
+
+Result: 3 files under 256, dispatch unblocks (1 BLOCKED row in tail_15 becomes GREEN), 1509 → 1508 BLOCKED. Cost: low. agy can do this.
+
+### Option B — Compiler fix (not agy's lane)
+
+The oodac bug is real: struct definitions from multiple files should union. A compiler fix would make any duplicate `DispatcherConfig` (or any other type) automatically merge fields. Then `dispatch_types.oo` could stay and agy could split `dispatch_worker.oo` cleanly.
+
+This is the "right" architecture fix. But it's the compiler lane's job, not agy's.
+
+### Option C — Document and defer
+
+Accept the 3 files as known exceptions. Add a one-line entry in `WORKFLOW.oot` that names these 3 as "oversized; std-language sugar required to reduce" and defer the split to a future cycle when the compiler has the sugar.
+
+Cost: zero work now. The 3 files stay over 256, but the project is honest about why.
+
+## 4. The non-obvious finding
+
+The deep reader and my handoff both treated "file size" as the problem. The actual problem is:
+
+1. **dispatch_worker.oo is BLOCKED for a real oodac bug** (struct definition union). The fix is in `dispatch_types.oo` (delete it) or in the compiler (union structs). Either fix takes 1 file edit.
+
+2. **btree_disk_ops.oo and protein_translation.oo are GREEN** and over 256 because the std language predates the list lower. The "right" fix is to migrate them to use `List[Int]`, but that's library + compiler work. The minimum fix is to ship the 1+1 split for FORMAT compliance.
+
+3. **The BLOCKED 1509 number is unrelated to the 3 oversized files.** Top BLOCKED needs are 100% oodac bugs (per `library_status.oot:13-19`). The 3 files are a side show.
+
+## 5. What I need the user to tell me
+
+When the user comes back, the question to ask is: **"Do you want me to apply Option A (delete `dispatch_types.oo`, split all 3), Option B (write a compiler-bug spec for the struct union), or Option C (defer with a documented exception)?"**
+
+agy is the right owner for A. The compiler lane is the right owner for B. The user owns C (it's a policy call).
+
+## 6. What I will NOT do
+
+- I will not edit `ooda/`, even though the fix in Option A is 1 file (`dispatch_types.oo`). I can write the spec for the edit, but not the edit itself. agy or another library lane owner does the edit.
+- I will not run `oodac` or any compiler to verify the BLOCKED row. The evidence in `audit/library_status_tail_*.oot` is sufficient.
+- I will not propose a list-migration rewrite of btree/protein. That's a separate, much larger effort and not what the user asked.
+
+## 7. Sources read for this spec
+
+- `ooda/std/database/btree_disk_ops.oo` (395 lines, full read)
+- `ooda/std/database/btree_disk_types.oo` (74 lines, full read)
+- `ooda/std/bioinformatics/protein_translation.oo` (380 lines, full read)
+- `ooda/std/bioinformatics/codon_table.oo` (204 lines, full read)
+- `ooda/std/bioinformatics/bioinformatics.oo` (166 lines, full read)
+- `ooda/std/swarm/dispatch.oo` (70 lines, full read)
+- `ooda/std/swarm/dispatch_types.oo` (20 lines, full read)
+- `ooda/std/swarm/dispatch_worker.oo` (323 lines, full read)
+- `ooda/std/swarm/dispatch_engine.oo` (123 lines, full read)
+- `ooda/std/swarm/dispatch_stubs.oo` (29 lines, full read)
+- `openOODA/audit/library_status.oot` (44 lines, full read)
+- `openOODA/audit/library_status_tail_3.oot:101` (grep hit)
+- `openOODA/audit/library_status_tail_4.oot:215` (grep hit)
+- `openOODA/audit/library_status_tail_15.oot:148, 149, 152` (grep hits)
+- `openOODA/audit/handoff_library_split.oot` (prior session)
+- `openOODA/audit/library_split_deep_read.oot` (prior session)
+- `openOODA/audit/library_split_minimum_viable.oot` (prior session)
+- `openOODA/audit/library_blocked_survey.oot` (prior session)
+- `openOODA/audit/library_split_verification.oot` (prior session)
+
+## 8. Status
+
+Done. This is a pre-engagement spec; no execution follows until the user approves an option (A/B/C).

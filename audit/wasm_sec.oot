@@ -1,0 +1,76 @@
+# WASM_SEC — emit_n ovf latch and emit-wasm check gate
+
+File: openOODA/audit/wasm_sec.oot
+SEC on the WASM lane. Own this note only. Did not edit product .oo or .c.
+
+Logline: emit_n does not clear the overflow latch at entry, and emit-wasm still runs check before emit.
+Setup: Static read of ooda/runtime/chs_rt_wasm_print.c and ooda/oodac/main.oo.
+Beats:
+  1. State ovf-not-cleared and check-before-emit.
+  2. Quote emit_n entry and first ovf use.
+  3. Quote the only ovf = 0 site (not emit_n).
+  4. Quote the emit-wasm arm order.
+
+## 0. Verdict
+
+ovf-not-cleared: yes
+check-before-emit: yes
+
+No CRIT. No HIGH. No product patch. Did not rebuild oodac.
+
+## 1. emit_n does not assign oo_wasm_ovf = 0 at entry
+
+File: ooda/runtime/chs_rt_wasm_print.c
+
+Entry (exact):
+
+  static void oo_wasm_emit_n(unsigned int n) {
+    static unsigned char pay[24000], mod[28000];
+    unsigned int i, psz, mlen, nlen, main_i = 0, base = 0;
+    const char *nm;
+    static const unsigned char hv[8] = {0x00, 0x61, 0x73, 0x6d,
+                                        0x01, 0x00, 0x00, 0x00};
+
+Those are print.c lines 114-119. Next statements clamp n, bind
+a pending print, and scan names. None assign oo_wasm_ovf.
+
+First ovf use in emit_n (print.c 144-147, a read):
+
+  if (oo_wasm_ovf) {
+    oo_wasm_emit_tiny();
+    return;
+  }
+
+Later read (print.c 233-236) is the same fail-closed return.
+emit_n never writes oo_wasm_ovf.
+
+The only `oo_wasm_ovf = 0` in the two runtime wasm C files is
+print.c 83-85 inside oo_wasm_emit_print_body, not at emit_n entry:
+
+  int saveo = oo_wasm_ovf;
+  oo_wasm_lim = 64u;
+  oo_wasm_ovf = 0;
+
+chs_rt_wasm.c only assigns oo_wasm_ovf = 1 on leb/raw/u8 overflow.
+
+## 2. emit-wasm still calls run_check_core first
+
+File: ooda/oodac/main.oo lines 228-232 (exact):
+
+    if cmd == "emit-wasm" {
+        let src: String = load_source_with_imports(fs, path);
+        run_check_core(sys, src);
+        wasm_emit_stream(src);
+        return;
+    }
+
+Order: load, run_check_core, wasm_emit_stream. Check is line 230.
+Emit is line 231. wasm_emit_stream is not reached if check exits.
+
+## 3. Isolation
+
+Wrote only openOODA/audit/wasm_sec.oot.
+Did not edit oodac, runtime, fixtures, or smokes.
+Did not clear ovf. Did not rebuild oodac.
+
+Status: PASS. Both proofs hold on disk.

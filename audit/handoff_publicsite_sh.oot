@@ -1,0 +1,243 @@
+// # Public site .sh handoff spec
+//
+// Logline: Convert the two .sh smokes in openOODA.github.io/scripts/ to pure .oo so dinner_lint.oo.bin reports zero .sh failures in that tree.
+//
+// Setup: 2026-08-19 repair pass. Pin v0.205.0-beta. dinner_lint.oo scans openOODA, ooda, docs, openOODA.github.io for .py and .sh (dinner_lint.oo:21). RULES 1.13 forbids .sh except ../ooda/bootstrap/oodac_pure_build (RULES.oot:81,91). FORMAT §0 restates the ban (FORMAT.oot:14-18). The two files below are the only .sh hits in the public site lane. This spec is read-only; the public site lane owns the change.
+//
+// Beats:
+//   1. Name the two failing .sh files with path, line count, and job.
+//   2. Give three options per file (convert, move, exempt) with concrete steps.
+//   3. Pick one recommendation per file and give the acceptance test.
+
+// ============================================================
+// 1. Files in scope
+// ============================================================
+//
+// dinner_lint.oo:21 globs openOODA.github.io and rejects .sh.
+// The two hits in the public site are:
+//
+//   openOODA.github.io/scripts/collect_check.sh   56 lines
+//   openOODA.github.io/scripts/wave01_check.sh    224 lines
+//
+// Both live under the public site scripts/ folder.
+// Both are POSIX /bin/sh, not bash, not python.
+// Both run a series of grep/awk checks and exit 0 on PASS, 1 on FAIL.
+// Neither file is on the install path; install is at openOODA.github.io/install (RULES.oot:91 allows exactly one host shell: ../ooda/bootstrap/oodac_pure_build).
+//
+// RULES.oot:81: "Never create .sh files, except the one host rebuild named below."
+// FORMAT.oot:14-18: ".sh — except ../ooda/bootstrap/oodac_pure_build"
+// RULES.oot:79-83: the four forbidden extensions.
+// RULES.oot:89: "ooda/scripts/*.oo — pure .oo proofs, smokes, fixers, and tools"
+// RULES.oot:95: "Any PR, commit, or patch introducing unauthorized file extensions (.py, .sh, .md) fails closed immediately."
+
+// ============================================================
+// 2. File A: openOODA.github.io/scripts/collect_check.sh
+// ============================================================
+//
+// Path:   openOODA.github.io/scripts/collect_check.sh
+// Lines:  56
+// Shebang:collect_check.sh:1  #!/bin/sh
+// Job:    Assert the mail-list row is on door / guide / 404
+//         and absent on the store, and that the install pin
+//         line and copy are unchanged. Exits 0 on PASS, 1 on FAIL.
+//
+// Concrete checks (read from collect_check.sh):
+//   collect_check.sh:18-20  has_form index.html   door
+//   collect_check.sh:18-20  has_form guide/index guide
+//   collect_check.sh:18-20  has_form 404.html    door-404
+//   collect_check.sh:22-26  store has no collect form
+//   collect_check.sh:28-32  install command is host script
+//   collect_check.sh:34-43  no lecture <p> under the pin
+//   collect_check.sh:45-49  no "subscribe|newsletter|we emailed" copy
+//
+// Why .sh and not .oo:
+//   Pre-RULES 1.13 artifact. The checks are pure file reads
+//   and string matches. No subprocess, no fork, no env.
+//   shell_exec / process_exec is not needed. The checks map
+//   1:1 to the scenario DSL (FORMAT.oot:118-133).
+//
+// Option A: Convert to .oo (RECOMMENDED)
+//   Rename  collect_check.sh        -> collect_check.oo
+//   Place   openOODA.github.io/scripts/collect_check.oo
+//   Imports import "std/scenario.oo"; import "std/fs.oo";
+//   Header  // # Mail-row and install-pin smoke
+//           // Logline: Assert the door mail row, the install
+//           //         pin line, and the no-newsletter rule.
+//           // Setup: FsReadCap on the public site root and
+//           //        the registry root.
+//           // Beats: 5 expect_* calls in main.
+//   Body    one scenario() block, then seven expect_substring
+//           or expect_absent calls. Drop the bash function
+//           has_form (collect_check.sh:10-16) and the awk
+//           paragraph check (collect_check.sh:34-43) into a
+//           pure .oo helper that uses fs_read + str_contains.
+//   No shell-out. The scenario runner is the .oo product.
+//
+// Option B: Move out of scripts/
+//   The folder scripts/ under openOODA.github.io is the
+//   natural home for site smokes. Moving the file to
+//   openOODA.github.io/qa/ or openOODA/scripts/ hides the
+//   file from the public site owner and breaks RULES 1.13
+//   because the moved .sh is still a .sh. Reject. If the
+//   .oo form is wanted elsewhere, copy the .oo file, not the
+//   .sh. Moving without converting is not a fix.
+//
+// Option C: Document a RULES 1.13 exemption
+//   RULES.oot:81 names exactly one exempt file:
+//   ../ooda/bootstrap/oodac_pure_build. No public site file
+//   is on that allow-list. RULES.oot:95 fails closed on any
+//   new .sh. No exemption is possible. Reject.
+//
+// Recommendation: Option A.
+//   Rationale: the file is 56 lines of grep / awk; the .oo
+//   scenario form is 80-120 lines but it satisfies RULES 1.13,
+//   RULES 1.14, FORMAT §0, and FORMAT §3 in one change. The
+//   public site lane owns the rename; the compiler lane does
+//   not need to touch this file.
+
+// ============================================================
+// 3. File B: openOODA.github.io/scripts/wave01_check.sh
+// ============================================================
+//
+// Path:   openOODA.github.io/scripts/wave01_check.sh
+// Lines:  224
+// Shebang:wave01_check.sh:1  #!/bin/sh
+// Job:    Wave 0 + Wave 1 content check. Reads shipped files
+//         on disk. Exits 1 on any miss. Covers 9 numbered
+//         checks across door, guide, registry, and the host
+//         install script.
+//
+// Concrete checks (read from wave01_check.sh):
+//   wave01_check.sh:33-40  gone styles.css / site.css / assets/bg.jpg / logos
+//   wave01_check.sh:33-40  gone update_index.oo / update_titles.oo
+//   wave01_check.sh:42-57  guide/index.html PAGES array has no Research.oot
+//   wave01_check.sh:59-72  empty-hash fallback is Use.oot, not Home.oot
+//   wave01_check.sh:74-117 guide/Home.oot: no load_notes, no greet("World"), no command table
+//   wave01_check.sh:119-139 nav store label and href on 5 files
+//   wave01_check.sh:141-153 registry title/description has no "installable"
+//   wave01_check.sh:155-170 door Tokens details is <details class="drop" open>
+//   wave01_check.sh:172-188 door has curl pipe, install is host bash
+//   wave01_check.sh:190-217 Tokens details follows install copy button (no lecture <p>)
+//
+// Why .sh and not .oo:
+//   Pre-RULES 1.13 artifact. The checks are pure file reads,
+//   grep / awk / sed-style parses, and exit codes. Nothing
+//   in the file forks a subprocess, mints a capability, or
+//   touches the network. The whole file is a 1:1 candidate
+//   for the scenario DSL.
+//
+// Option A: Convert to .oo and split (RECOMMENDED)
+//   The 224-line shell, after conversion to the .oo scenario
+//   form, grows to ~340 lines. RULES.oot:42 caps files at 256.
+//   Split along the natural Wave 0 / Wave 1 seam in the
+//   comment at wave01_check.sh:1-3 ("Wave 0+1 content check").
+//
+//   File 1  openOODA.github.io/scripts/wave0_check.oo
+//     - gone styles.css / site.css / assets/bg.jpg / logos
+//     - gone update_index.oo / update_titles.oo
+//     - guide/index.html PAGES array has no Research.oot
+//     - empty-hash fallback is Use.oot
+//     - guide/Home.oot: no load_notes, no greet("World"), no command table
+//     Header beats: 5 expect_absent / expect_substring calls.
+//
+//   File 2  openOODA.github.io/scripts/wave1_check.oo
+//     - nav store label and href on 5 files
+//     - registry title/description has no "installable"
+//     - door Tokens details is <details class="drop" open>
+//     - door has curl pipe, install is host bash
+//     - Tokens details follows install copy button
+//     Header beats: 5 expect_* calls.
+//
+//   Both files import "std/scenario.oo"; and std/fs.oo.;
+//   both run via `ooda run scripts/wave0_check.oo` and
+//   `ooda run scripts/wave1_check.oo` from the public site
+//   root. No shell-out, no process_exec.
+//
+// Option B: Convert to one .oo, accept 256-line cap risk
+//   If the public site owner wants one file, the .oo form
+//   must drop three of the nine checks or compress the
+//   scenario names. The 256 cap is strict (RULES.oot:42,
+//   FORMAT.oot:20). Risk: the file lands at 240-250 lines
+//   and any future check pushes it over. Reject unless the
+//   owner commits to a follow-up split before adding checks.
+//
+// Option C: Move out of scripts/ and leave as .sh
+//   Same problem as File A. RULES 1.13 is a file-law, not a
+//   folder-law. Moving the .sh does not fix the lint. The
+//   moved file still fails RULES 1.14. Reject.
+//
+// Recommendation: Option A (split into wave0_check.oo and
+// wave1_check.oo).
+//   Rationale: the .sh already names the seam ("Wave 0+1").
+//   Splitting at the .oo form costs zero behavior change
+//   and lands each file well under 256 lines. The two files
+//   share helpers (gone, need, nav_store) — extract them
+//   into a small private helper module under
+//   openOODA.github.io/scripts/_site_check.oo if the helpers
+//   would otherwise duplicate. If the helpers fit in either
+//   wave file, keep them private there.
+
+// ============================================================
+// 4. Things to NOT do
+// ============================================================
+//
+//   - Do not edit RULES.oot or FORMAT.oot to allow .sh in
+//     openOODA.github.io/. The exemption list is closed
+//     (RULES.oot:81,91). Adding a row breaks the law.
+//   - Do not rename .sh to .sh.txt, .sh.bin, or .sh.bak.
+//     dinner_lint.oo:21 matches on suffix .sh, and
+//     RULES.oot:95 fails closed on the patch.
+//   - Do not move the .sh to /tmp, to a tarball, or to a
+//     git-ignored folder. dinner_lint walks the on-disk
+//     tree, not git history.
+//   - Do not add a `// # ` header to the .sh and call it
+//     compliant. dinner_lint.oo:21 rejects the file before
+//     the header check at line 30 runs.
+//   - Do not leave the .sh in scripts/ and add a `.oo` twin.
+//     dinner_lint counts each .sh once. Two files double
+//     the noise. One file, one form.
+
+// ============================================================
+// 5. Acceptance test
+// ============================================================
+//
+//   1. Remove or rename the two .sh files:
+//        rm openOODA.github.io/scripts/collect_check.sh
+//        rm openOODA.github.io/scripts/wave01_check.sh
+//   2. Add the .oo replacements per Section 2 Option A and
+//      Section 3 Option A.
+//   3. Run the product linter from the monorepo root:
+//        ./bin/ooda run openOODA/scripts/dinner_lint.oo
+//      Expected stdout line:
+//        "Format & 9-Board Rule 1.13 Lint OK: zero forbidden files,
+//         all line counts <= 256, all N product modules compliant."
+//      Expected: zero [FORBIDDEN FILE FAIL] lines, zero
+//      [OVERSIZED FILE FAIL] lines, zero [FORMAT FAIL] lines.
+//   4. Re-run the renamed .oo smokes:
+//        ./bin/ooda run openOODA.github.io/scripts/collect_check.oo
+//        ./bin/ooda run openOODA.github.io/scripts/wave0_check.oo
+//        ./bin/ooda run openOODA.github.io/scripts/wave1_check.oo
+//      Each must exit 0 and print "ALL PASS" (or the
+//      scenario DSL equivalent).
+//   5. Confirm grep -r '\\.sh$' openOODA.github.io/scripts/
+//      returns nothing.
+//
+// Done means: dinner_lint.oo.bin reports 0 .sh failures in
+// openOODA.github.io/scripts/. The site owner runs the lock
+// at the end of the change set, not before.
+
+// ============================================================
+// 6. Owners and out-of-scope
+// ============================================================
+//
+// Owner:   public site lane (openOODA.github.io/).
+// Lane:    This audit file does not touch product code.
+//          It does not touch ooda/oodac, ooda/std, ooda/runtime,
+//          ooda/cli, or ooda/bin. The compiler and stdlib
+//          lanes are out of scope.
+// Out:     The install script at openOODA.github.io/install.
+//          That file is the one host shell entry allowed by
+//          RULES.oot:81,91. dinner_lint.oo:21 excludes it
+//          by name. Do not convert it to .oo.
+// Out:     ../ooda/bootstrap/oodac_pure_build. Same reason.
+//          dinner_lint.oo:21 excludes it by name.

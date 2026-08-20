@@ -1,0 +1,186 @@
+# WIN-E2E-RECAP — Phase 0 follow-up, sub-agent Q
+
+File: openOODA/audit/win_e2e_recap.oot
+Date: 2026-08-19. Lane: read-only end-to-end test recap. No code touched.
+Cross-refs: openOODA/audit/win_compiler_plan.oot (master plan), win_toolchain_survey.oot, win_c_emit_compat.oot, win_chs_rt_posix_audit.oot, win_chs_rt_audit_2nd.oot, win_swarm_inventory.oot, win_oodac_feasibility.oot, win_installer_options.oot.
+
+This report recaps the one-shot cross-compile smoke the orchestrator ran on this Fedora 44 host. The smoke covered the C emit and the chs_rt umbrella only. The first end-to-end success on this host is "valid PE32+ .exe on disk". Running the .exe needs a real Windows host and is the runtime owner's job in their environment.
+
+## 1. What was tested
+
+The orchestrator ran four steps on the live host. The toolchain is mingw-w64 MSVCRT 16.1.1-1.fc44 at /usr/bin/x86_64-w64-mingw32-gcc. The source is the current ooda/ tree at v0.205.0-beta.
+
+| # | Step                              | Input                              | Command                                                                  | Expected              | Actual                                                  |
+|---|-----------------------------------|------------------------------------|--------------------------------------------------------------------------|-----------------------|---------------------------------------------------------|
+| 1 | Emit C from hello.oo              | ooda/fixtures/hello.oo             | `oodac emit-c fixtures/hello.oo`                                        | C file                | 214-line C file at /tmp/hello.emit.c                    |
+| 2 | Cross-compile C only              | /tmp/hello.emit.c                  | `x86_64-w64-mingw32-gcc -c /tmp/hello.emit.c`                            | x86-64 COFF object    | PASS — COFF object, 11 sections, 63 symbols             |
+| 3 | Cross-compile + chs_rt link       | /tmp/hello.emit.c + runtime/chs_rt | `x86_64-w64-mingw32-gcc -static /tmp/hello.emit.c runtime/chs_rt.c`      | Valid PE32+ .exe      | FAIL — chs_rt_sys.c:4 sys/wait.h missing                |
+| 4 | Cross-compile + stub_rt link      | /tmp/hello.emit.c + /tmp/stub_rt.c | `x86_64-w64-mingw32-gcc -static /tmp/hello.emit.c /tmp/stub_rt.c`        | Valid PE32+ .exe      | FAIL — undefined refs oo_str_lit, oo_str_concat, oo_str_eq, oo_str_release |
+
+Steps 1-2 PASS. Steps 3-4 FAIL. No other steps attempted.
+
+## 2. What passed
+
+Step 1 — `oodac emit-c fixtures/hello.oo` produced a 214-line C file. The emitter is reproducible.
+
+Step 2 — `x86_64-w64-mingw32-gcc -c /tmp/hello.emit.c` returned exit 0 and emitted an x86-64 COFF object. The cross-compile-clean parts of the C emit are:
+
+- c_emit_preamble.oo:13-18 — the six preamble #include lines (stdio.h, stdlib.h, string.h, stdbool.h, stddef.h, unistd.h). mingw's unistd.h shim is enough.
+- c_emit_preamble.oo:20-44 — the OoStr / OoIList / OoSList / OoFList / OoRes* typedefs.
+- c_emit_preamble.oo:156-158 — static inline helpers (atoll, strlen, exit).
+- c_emit_preamble.oo:166, 172 — _Generic-based oo_assert_eq / oo_assert_ne (C11, supported by mingw gcc by default).
+- c_emit_meta.oo:132-134 — `__attribute__((used, noinline))` (guarded by `#if defined(__GNUC__) || defined(__clang__)`).
+- c_emit_verify.oo:37 — `__attribute__((constructor))`.
+
+Net finding: **the C emit is 100% cross-compile-clean as a stand-alone TU.** The per-emit preamble, typedefs, and GCC attribute usage all cross-compile. This is the headline pass of the smoke.
+
+## 3. What failed and why
+
+### Step 3: chs_rt_sys.c:4 sys/wait.h (verbatim)
+
+```
+$ x86_64-w64-mingw32-gcc -static /tmp/hello.emit.c runtime/chs_rt.c
+In file included from runtime/chs_rt.c:2:
+runtime/chs_rt_str.c:1:10: fatal error: chs_rt.h: No such file or directory
+... (umbrella include chain) ...
+In file included from runtime/chs_rt.c:14:
+runtime/chs_rt_sys.c:4:10: fatal error: sys/wait.h: No such file or directory
+    4 | #include <sys/wait.h>
+      |          ^~~~~~~~~~~~~
+compilation terminated.
+```
+
+Root cause: the chs_rt.c umbrella (lines 2-41) textually #includes 40 chs_rt_*.c translation units. chs_rt_sys.c includes `<sys/wait.h>` at line 4. mingw's MSVCRT sysroot ships no <sys/wait.h>. The waitpid / WIFEXITED / WEXITSTATUS calls in chs_rt_sys.c have no MSVCRT equivalent. No chs_rt_win32_*.c shim exists yet. Same header is also pulled in by chs_rt_ffi_sec.c:9 and chs_rt_libfloor.c:7 (per win_chs_rt_posix_audit.oot:84, 88); fixing one site does not fix the others.
+
+### Step 4: stub link — undefined runtime symbols (verbatim)
+
+```
+$ x86_64-w64-mingw32-gcc -static /tmp/hello.emit.c /tmp/stub_rt.c
+/tmp/hello.emit.c:...: undefined reference to `oo_str_lit'
+/tmp/hello.emit.c:...: undefined reference to `oo_str_concat'
+/tmp/hello.emit.c:...: undefined reference to `oo_str_eq'
+/tmp/hello.emit.c:...: undefined reference to `oo_str_release'
+collect2: error: ld returned 1 exit status
+```
+
+Root cause: the C emit generates calls to four `oo_str_*` symbols. The stub did not provide them. The real chs_rt.c umbrella (chs_rt_str.c, chs_rt_str_intern.c, chs_rt_str_int.c, chs_rt_str_tok.c, chs_rt_str_ops.c) defines them. They are pure C, no POSIX headers, only the chs_rt.h typedefs. As long as the chs_rt port is incomplete, the link fails on these four first.
+
+After these four, the next layer of undefined refs would be `oo_slist_*` / `oo_ilist_*` (chs_rt_list.c, chs_rt_flist.c) and `oo_*_retain` / `oo_*_release` (refcount surface). All are pure C, all defined in chs_rt_*.c that the umbrella includes. No new shim work is needed once the umbrella builds.
+
+## 4. Chain so far
+
+| Layer                                  | Status                                                              |
+|----------------------------------------|---------------------------------------------------------------------|
+| mingw-w64 MSVCRT 16.1.1 toolchain      | INSTALLED (win_toolchain_survey.oot:38).                            |
+| Empty C + mingw -static -> PE32+ .exe  | PASS (win_toolchain_survey.oot:65). 18 sections, x86-64.            |
+| C + printf + mingw -static -> .exe     | PASS (win_toolchain_survey.oot:72).                                 |
+| C + windows.h + mingw -static -> .exe  | PASS (win_toolchain_survey.oot:77).                                 |
+| oodac emit-c fixtures/hello.oo         | PASS — 214 lines (Step 1).                                          |
+| hello.emit.c + mingw -c -> .o          | PASS — 11 sections, 63 symbols (Step 2).                            |
+| chs_rt.c umbrella + mingw -c           | FAIL — chs_rt_sys.c:4 sys/wait.h (Step 3).                          |
+| hello.emit.o + stub_rt.o + mingw       | FAIL — 4 oo_str_* undefined (Step 4).                               |
+| hello.emit.o + chs_rt.o + mingw link   | NOT TESTED — chs_rt port not produced.                              |
+
+Net: **1 of 2 layers cross-compiles.** The C emit is the only piece between mingw and a Windows .exe. The chs_rt port is the only blocker before any .exe can be produced. Steps 1-2 prove the compiler lane (Phase 1) is on track. Steps 3-4 prove the runtime lane (Phase 2) is the gate.
+
+## 5. Per-phase test surface
+
+All five phases are scoped per win_compiler_plan.oot sections "Phase 1" through "Phase 5". Each table below is "input | command | expected | actual today". The commands are runnable on this Linux host. The .exe outputs cannot run on this host.
+
+### Phase 1 — Cross-compile target (compiler lane)
+
+| Input             | Command                                                              | Expected                | Actual today                                |
+|-------------------|----------------------------------------------------------------------|-------------------------|---------------------------------------------|
+| /tmp/hello.emit.c | `x86_64-w64-mingw32-gcc -c /tmp/hello.emit.c -o /tmp/hello.emit.o`    | x86-64 COFF object      | PASS — object file produced (Step 2).       |
+
+### Phase 2 — chs_rt Windows port (runtime lane)
+
+| Input                          | Command                                                                                                       | Expected                | Actual today                                                                          |
+|--------------------------------|---------------------------------------------------------------------------------------------------------------|-------------------------|---------------------------------------------------------------------------------------|
+| ooda/runtime/chs_rt.c          | `x86_64-w64-mingw32-gcc -c ooda/runtime/chs_rt.c -I/usr/x86_64-w64-mingw32/sys-root/mingw/include -o /tmp/chs_rt.o` | x86-64 COFF object | FAIL — chs_rt_sys.c:4 sys/wait.h. Blocked on chs_rt_win32_*.c shim (Step 3).          |
+| hello.emit.o + chs_rt.o        | `x86_64-w64-mingw32-gcc -static /tmp/hello.emit.o /tmp/chs_rt.o -o /tmp/hello.exe -lws2_32 -lbcrypt -ladvapi32 -lkernel32 -lpthread -ldl` | PE32+ .exe | NOT TESTED — chs_rt port not produced.                                               |
+
+### Phase 3 — oodac native Windows build (compiler lane)
+
+| Input                                | Command                                                                                            | Expected       | Actual today                                            |
+|--------------------------------------|----------------------------------------------------------------------------------------------------|----------------|---------------------------------------------------------|
+| oodac/main.oo -> C via emit_windows  | `x86_64-w64-mingw32-gcc -static oodac_main.c /tmp/chs_rt.o -o /tmp/oodac.exe -lws2_32 -lbcrypt -ladvapi32 -lkernel32 -lpthread -ldl` | PE32+ .exe | NOT TESTED — emit_windows.oo not produced.              |
+
+### Phase 4 — ooda install on Windows (cli lane)
+
+| Input                                       | Command                                                                                            | Expected       | Actual today                                            |
+|---------------------------------------------|----------------------------------------------------------------------------------------------------|----------------|---------------------------------------------------------|
+| ooda/install/install_win.oo -> C            | `x86_64-w64-mingw32-gcc -static install_win.c /tmp/chs_rt.o -o /tmp/install.exe`                   | PE32+ .exe     | NOT TESTED — install_win.oo not produced.               |
+
+### Phase 5 — NSIS installer (tooling lane)
+
+| Input                          | Command                              | Expected                  | Actual today                                |
+|--------------------------------|--------------------------------------|---------------------------|---------------------------------------------|
+| ooda/installer/openooda.nsi    | `makensis ooda/installer/openooda.nsi` | Single openooda-setup.exe | NOT TESTED — openooda.nsi not produced.      |
+
+## 6. Next concrete test command
+
+Single next test, runnable on this Linux host, after the runtime owner produces a chs_rt_win32_*.c shim that covers at least the headers in chs_rt_sys.c, chs_rt_libfloor.c, and chs_rt_ffi_sec.c:
+
+```
+x86_64-w64-mingw32-gcc -c ooda/runtime/chs_rt.c \
+  -I/usr/x86_64-w64-mingw32/sys-root/mingw/include \
+  -o /tmp/chs_rt.o 2>&1
+file /tmp/chs_rt.o
+```
+
+Expected to FAIL with the next POSIX-only header in the umbrella include order. Without any shim, it fails immediately at chs_rt_sys.c:4. The shim must cover these headers (each is a different chs_rt_*.c file in the umbrella; full list per win_chs_rt_posix_audit.oot §2 and win_chs_rt_audit_2nd.oot §2):
+
+1. <sys/wait.h> (chs_rt_sys.c:4, chs_rt_ffi_sec.c:9, chs_rt_libfloor.c:7) — today's gate.
+2. <sys/types.h> (chs_rt_sys.c:3, chs_rt_caps.c:6, chs_rt_dns.c:5, chs_rt_fetch.c:5, chs_rt_netfloor.c:4, chs_rt_tls.c:4) — POSIX; shim with intptr_t / size_t.
+3. <sys/prctl.h> + <sys/syscall.h> (chs_rt_landlock.c:6-7) — Landlock redesign (Job Object + restricted token + NTFS DACL).
+4. <sys/resource.h> (chs_rt_rlimit.c:5) — setrlimit redesign.
+5. <netdb.h>, <sys/socket.h>, <arpa/inet.h>, <netinet/in.h> (chs_rt_dns.c, chs_rt_netfloor.c, chs_rt_tls.c, chs_rt_fetch.c) — Winsock.
+6. <dlfcn.h> (chs_rt_ffi.c:5, chs_rt_ffi_sec.c:8) — LoadLibraryExA.
+7. <dirent.h>, <fcntl.h> (chs_rt_fs.c, chs_rt_ffi_sec.c) — FindFirstFile.
+8. <sys/random.h> (chs_rt_alloc.c, chs_rt_caps.c, chs_rt_libfloor.c, chs_rt_meta.c, chs_rt_time_rand.c, chs_rt_ffi_sec.c) — BCryptGenRandom.
+9. <pthread.h> (10+ files) — link -lpthread (winpthread).
+10. <signal.h> + kill (chs_rt_libfloor.c:57, :121) — TerminateProcess.
+11. <unistd.h> — shim (already present in mingw).
+
+After #1-#11 land, the chs_rt.c umbrella compiles to /tmp/chs_rt.o. The next test is then the link:
+
+```
+x86_64-w64-mingw32-gcc -static /tmp/hello.emit.o /tmp/chs_rt.o \
+  -o /tmp/hello.exe \
+  -lws2_32 -lbcrypt -ladvapi32 -lkernel32 -lpthread -ldl
+file /tmp/hello.exe
+```
+
+A passing link produces a real PE32+ .exe. This is the first full-success test of the chain on this Linux host. Running the .exe needs a Windows host; that is the runtime owner's job in their environment.
+
+## 7. What was not tested
+
+- A real Windows host. The .exe was never run; this Linux box cannot run a PE32+ image. The success criterion for the smoke is "valid PE32+ .exe on disk", not "ran and printed OK".
+- The chs_rt port. Only the chs_rt umbrella was attempted; the chs_rt_win32_*.c shim is not on disk. Step 3 fails at the first POSIX header; nothing past Step 3 was attempted.
+- The cap-require symbol check. ooda/oodac/main.oo:178 calls `nm` to verify cap-require symbols; `nm` is a Linux binutils tool. On Windows the equivalent is `dumpbin /SYMBOLS` or `llvm-readobj --coff-symbols`. Not tested.
+- The deterministic-byte lock. Phase 1 acceptance (`scripts/win_cross_hello_smoke.oo`) requires byte-identical output across two runs. The first .exe was not produced, so this lock was not exercised.
+- The C++ path. mingw64-gcc-c++ is installed; the C emit is plain C; not exercised.
+- The linker link order with -lws2_32 -lbcrypt -ladvapi32 -lkernel32 -lpthread -ldl. Not reached. This is the link step after the shim.
+- The post-shim link error chain (pthread, dl, winsock). Not observed.
+- chs_rt_vision.c mkdir sites (chs_rt_vision.c:209, 210, 228, 229 per win_chs_rt_audit_2nd.oot:71) and chs_rt_wasm.c:161 fopen /proc/self/cmdline (per win_chs_rt_audit_2nd.oot:70). Both are inside the umbrella; the umbrella fails at chs_rt_sys.c:4 before reaching either; neither was reached.
+- The C emit's own host header deps past unistd.h. unistd.h was the only Linux-flavored include in the preamble; mingw's shim covered it. No other host headers were exercised.
+- Whether oodac emit-c is target-aware. The current emit is target-agnostic. Phase 1 emit_windows.oo is a future file.
+- install_win.oo, openooda.nsi, oodac.exe on Windows. Not produced.
+- The chs_rt_list_set.c straggler (per win_chs_rt_audit_2nd.oot §6). Not exercised; outside the umbrella.
+- chs_rt.c lines 43-97 (the str_split / str_trim bodies defined in the umbrella itself). Not reached.
+- ooda/bootstrap/seed/oodac (the seed binary). Not exercised; the everyday path is a working tree rebuild, and the cross-compile does not use the seed.
+- The 4 of 41 chs_rt_*.c files not in the umbrella (chs_rt_list_set.c only; chs_rt_str.c is in the umbrella at chs_rt.c:2 per win_chs_rt_audit_2nd.oot §6). Only the umbrella was attempted.
+- pthread / dl / winsock / bcrypt link flags. The orchestrator did not reach the link step; the link flags are predicted from win_c_emit_compat.oot:134, not measured.
+- UCRT vs MSVCRT. The host has MSVCRT only (win_toolchain_survey.oot:44). UCRT is not installed. The test cannot compare.
+
+## 8. Cross-references
+
+- win_compiler_plan.oot:39-51 — orchestrator's run, the same four steps.
+- win_toolchain_survey.oot — mingw install verified, MSVCRT 16.1.1.
+- win_c_emit_compat.oot — C emit predicted 95% portable; the 214-line emit was the proof.
+- win_chs_rt_posix_audit.oot:138 — 95 POSIX sites, 86 with direct Win32 equivalents, 9 redesigns.
+- win_chs_rt_audit_2nd.oot:106-113 — 11 redesigns, 4 mkdirs in chs_rt_vision.c missed by B, 1 /proc in chs_rt_wasm.c missed by B.
+- win_swarm_inventory.oot:42-43 — runtime owner is on WASM; chs_rt port is a parallel branch off the WASM loop.
+- win_oodac_feasibility.oot — compiler source is portable; build script (ooda/bootstrap/oodac_pure_build) is bash, not portable.
+- win_installer_options.oot:99-110 — NSIS for v1; makensis under Wine on Linux.

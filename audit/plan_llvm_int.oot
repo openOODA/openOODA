@@ -1,0 +1,174 @@
+# LLVM INT — Side ELF link and smoke commands
+
+File: openOODA/audit/plan_llvm_int.oot
+INT notes only. C emit + gcc remains the product path. Do not overwrite oodac/oodac.
+Pin: v0.205.0-beta. Lane: LLVM emit only. COORD owns the gcc side rebuild.
+This file is the command list. It is not a proof log.
+
+Logline: After the side gcc compiler exists, emit-mods, clang-link oodac_llvm, wipe g_*, run the open68 smokes, and keep product check OK.
+Setup: cwd is ooda/. Side gcc compiler is .ooda-cache/ooda-tmp/oodac_gcc_llvm. Product ./oodac/oodac and ./bin/ooda stay untouched.
+Beats:
+  1. Gate on the side gcc compiler. Do not start bootstrap/oodac_pure_build.
+  2. emit-mods then clang-link to .ooda-cache/ooda-tmp/oodac_llvm.
+  3. Wipe g_*. Run the .oo smokes with ./bin/ooda run. Product check still prints OK.
+
+## 0. Law
+
+  Do not overwrite `oodac/oodac`.
+  Do not copy `bin/ooda` onto `oodac/oodac`.
+  Do not run `bootstrap/oodac_pure_build` in this lane.
+  Do not use `llvm-link`. clang takes the `.ll` files plus `runtime/chs_rt.c`.
+  Cwd for every command below is `/home/jeryd/Projects/openOODA/ooda`.
+
+## 1. Gate (after COORD)
+
+    test -x .ooda-cache/ooda-tmp/oodac_gcc_llvm
+    test -x ./bin/ooda
+    test -x ./oodac/oodac
+    ./oodac/oodac check fixtures/hello.oo
+    # must print OK now, before emit-mods
+
+  `oodac_gcc_llvm` is a gcc-built compiler (C path) with the LLVM emit source.
+  `emit-mods` re-spawns `$OODAC_BIN --backend llvm emit-llvm` per module
+  (`oodac/cli_emit.oo`). Set both env names to the side compiler or the
+  child uses `./oodac/oodac`.
+
+## 2. emit-mods
+
+  Real argv is `emit-mods <file> <outdir>` (`oodac/main.oo`, `cli_parse.oo`).
+  Same drive as `scripts/open68_link_smoke.oo`.
+
+    rm -rf .ooda-cache/ooda-tmp/open68-mods
+    mkdir -p .ooda-cache/ooda-tmp/open68-mods
+    OODAC_BIN=.ooda-cache/ooda-tmp/oodac_gcc_llvm \
+    OODA_COMPILER=.ooda-cache/ooda-tmp/oodac_gcc_llvm \
+      .ooda-cache/ooda-tmp/oodac_gcc_llvm \
+      emit-mods oodac/main.oo .ooda-cache/ooda-tmp/open68-mods
+    # expect: OK	emit-mods	.ooda-cache/ooda-tmp/open68-mods
+    test -s .ooda-cache/ooda-tmp/open68-mods/list.txt
+    test $(find .ooda-cache/ooda-tmp/open68-mods -name '*.ll' | wc -l) -gt 1
+
+## 3. clang-link (no llvm-link)
+
+  Real flags from `scripts/open68_link_smoke.oo` (`mods` there is
+  `.ooda-cache/ooda-tmp/open68-mods`).
+
+    clang -O0 -Wno-override-module -Iruntime \
+      .ooda-cache/ooda-tmp/open68-mods/*.ll \
+      runtime/chs_rt.c -lm -ldl -lpthread \
+      -o .ooda-cache/ooda-tmp/oodac_llvm
+    test -x .ooda-cache/ooda-tmp/oodac_llvm
+    grep -a -q 'oodac: usage:' .ooda-cache/ooda-tmp/oodac_llvm
+    ! grep -a -q 'pure .oo product CLI' .ooda-cache/ooda-tmp/oodac_llvm
+
+  Do not write that ELF onto `oodac/oodac`.
+
+## 4. Wipe g_*
+
+  Tree keys live under `.ooda-cache/check` and start with `g_`
+  (`oodac/check_cache.oo`). Cold smokes wipe this set.
+
+    mkdir -p .ooda-cache/check
+    rm -f .ooda-cache/check/g_*
+    ! ls .ooda-cache/check/g_* >/dev/null 2>&1
+
+## 5. How open68 smokes are invoked (repo fact)
+
+  No e2e or CI line execs `scripts/open68_*_smoke.oo`.
+  `scripts/ci_product_rails.oo` only `oodac check`s `open68_llvm_lock.oo`.
+  Every open68 smoke is a `pub fn main` `.oo` with Setup: cwd is ooda/.
+  Product exec of that class is `./bin/ooda run` (AGENTS.oot;
+  `audit/plan_sk1.oot`: `timeout 30 ./bin/ooda run scripts/lsp_complete_smoke.oo`;
+  `audit/wasm_sec.oot`: `./bin/ooda run scripts/wasm_fail_closed_smoke.oo`).
+  Some INT notes use `./scripts/` (`audit/plan1_int.oot`). Same file.
+  Compiler `run` exists (`oodac/main.oo`): check + emit-c + gcc + exec.
+  `scripts/install_xdg_smoke.oo` uses `./oodac/oodac run`. Prefer CLI.
+
+  Prefer:
+
+    ./bin/ooda run scripts/open68_cold_hello_smoke.oo
+
+  That is the same invocation `open68_stamp_smoke.oo` needs:
+
+    ./bin/ooda run scripts/open68_stamp_smoke.oo
+
+  Stamp smoke wants `.ooda-cache/ooda-tmp/oodac_stamp`, not `oodac_llvm`.
+  It may plant via `oodac_stamp_gcc`. Cold hello must not plant.
+  Fallback if `./bin/ooda` is missing:
+
+    ./oodac/oodac run scripts/open68_cold_hello_smoke.oo
+
+## 6. Run list (after oodac_llvm exists)
+
+  Phase 1 (prefer this first):
+
+    timeout 240 ./bin/ooda run scripts/open68_cold_hello_smoke.oo
+    # want: open68_cold_hello_smoke: PASSED
+
+  Phase 2:
+
+    timeout 360 ./bin/ooda run scripts/open68_main_check_smoke.oo
+    # want: open68_main_check_smoke: PASSED
+
+  Phase 3:
+
+    timeout 720 ./bin/ooda run scripts/open68_cmds_floor_smoke.oo
+    # want: open68_cmds_floor_smoke: PASSED
+
+  Emit lock (drives product `./oodac/oodac --backend llvm emit-llvm`,
+  not the LLVM ELF):
+
+    timeout 120 ./bin/ooda run scripts/open68_match_expr_smoke.oo
+    # want: open68_match_expr_smoke: PASSED
+
+  Hostile / plant (same `./bin/ooda run` class):
+
+    timeout 180 ./bin/ooda run scripts/open68_pv1_hostile.oo
+    timeout 180 ./bin/ooda run scripts/open68_pv2_plant.oo
+
+  Optional old lock (needs `oodac_stamp`; skip if that ELF is absent):
+
+    timeout 120 ./bin/ooda run scripts/open68_stamp_smoke.oo
+
+  If a mutate smoke dies, restore hello from its bak:
+
+    cp .ooda-cache/ooda-tmp/open68_cold/hello.bak fixtures/hello.oo
+    cp .ooda-cache/ooda-tmp/open68_pv1/hello.bak fixtures/hello.oo
+    cp .ooda-cache/ooda-tmp/hello_stamp.bak fixtures/hello.oo
+
+## 7. Product must still print OK
+
+    ./oodac/oodac check fixtures/hello.oo
+    # must print OK
+    test -x ./oodac/oodac
+    grep -a -q 'oodac: usage:' ./oodac/oodac
+    ! grep -a -q 'pure .oo product CLI' ./oodac/oodac
+
+  That binary is the C-path product compiler. Leave it in place.
+
+## 8. Copy-paste block
+
+    cd /home/jeryd/Projects/openOODA/ooda
+    test -x .ooda-cache/ooda-tmp/oodac_gcc_llvm
+    ./oodac/oodac check fixtures/hello.oo
+    rm -rf .ooda-cache/ooda-tmp/open68-mods
+    mkdir -p .ooda-cache/ooda-tmp/open68-mods
+    OODAC_BIN=.ooda-cache/ooda-tmp/oodac_gcc_llvm \
+    OODA_COMPILER=.ooda-cache/ooda-tmp/oodac_gcc_llvm \
+      .ooda-cache/ooda-tmp/oodac_gcc_llvm \
+      emit-mods oodac/main.oo .ooda-cache/ooda-tmp/open68-mods
+    clang -O0 -Wno-override-module -Iruntime \
+      .ooda-cache/ooda-tmp/open68-mods/*.ll \
+      runtime/chs_rt.c -lm -ldl -lpthread \
+      -o .ooda-cache/ooda-tmp/oodac_llvm
+    mkdir -p .ooda-cache/check
+    rm -f .ooda-cache/check/g_*
+    timeout 240 ./bin/ooda run scripts/open68_cold_hello_smoke.oo
+    timeout 360 ./bin/ooda run scripts/open68_main_check_smoke.oo
+    timeout 720 ./bin/ooda run scripts/open68_cmds_floor_smoke.oo
+    timeout 120 ./bin/ooda run scripts/open68_match_expr_smoke.oo
+    timeout 180 ./bin/ooda run scripts/open68_pv1_hostile.oo
+    timeout 180 ./bin/ooda run scripts/open68_pv2_plant.oo
+    ./oodac/oodac check fixtures/hello.oo
+
+C emit plus gcc remains the product path.

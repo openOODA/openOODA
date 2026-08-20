@@ -1,0 +1,134 @@
+# LLVM-MEM — ARC on match-expr and check/load
+
+File: openOODA/audit/plan_llvm_mem.oot
+MEM note only. C emit + gcc remains the product path. Pin: v0.205.0-beta.
+Did not edit oodac emit. COORD: MEM does not write DE1 or DE2 files.
+
+Logline: Match-expr payload store is an implicit move; the phi of %OoStr does not retain; check let=match is balanced.
+Setup: Read llvm_emit_arc.oo, llvm_emit_match_expr.oo, llvm_emit_fn.oo (param retain), llvm_emit_stmt.oo (ret_arc), llvm_emit_let.oo, load_import.oo, check_mod.oo, check_drive.oo, chs_rt_str.c.
+Beats:
+  1. Trace payload alloca, store, IDENT load, and scope release.
+  2. State whether the %OoStr phi retains.
+  3. Walk check/load string owners. Name fail-closed exits.
+
+## 0. Verdict
+
+NO CRIT in `llvm_emit_match_expr.oo`. No emit edit.
+
+Phalanx path `let src = match src_r { Ok(s) => s, Err(msg) => msg }` balances.
+`%OoResS` is not ARC. Bind store copies bits with no retain. Bind is ARC.
+Scope or ret_arc then drops the Result payload once. `let` adds the extra retain.
+
+HIGH residual lives in `llvm_emit_stmt` / `llvm_emit_arc`, not in match-expr:
+`ret_arc` releases locals then `ret`s the same register. C retain-then-drop is absent.
+
+## 1. Owners on disk
+
+  Heap `OoStr` starts at ref_count 1 (`oo_str_alloc_payload`).
+  `oo_str_lit` interns. `OO_FLAG_STATIC` makes retain and release no-ops.
+  `oo_str_hdr_ok` refuses null, static, and zeroinitializer. Safe unused arm.
+  `oo_read_file` Ok payload is a heap buffer. Err text is interned.
+
+  LLVM ARC names: `%OoStr`, `%OoIList`, `%OoSList` only (`llvm_ty_is_arc`).
+  `%OoResS` / `%OoResV` never retain or release.
+
+  Param: non-main String is stored then `oo_str_retain` (`llvm_emit_fn`).
+  Let/assign String: store then retain. Assign releases the old load.
+  Scope exit and ret_arc load each ARC slot and release.
+  Names that start with `__` are skipped.
+
+## 2. Payload store and load
+
+  Both binds alloca `%OoStr`, store zeroinitializer, `llvm_env_add_var` as `%OoStr`.
+  Taken arm: `extractvalue` field 1, store into `%<bind>.slot`. No retain.
+  IDENT arm: `load` through `llvm_env_slot`. No retain.
+  STRING arm: `oo_str_lit` (static).
+  No match-local `{;` frame. Binds live until the enclosing block pops.
+
+  One match plus `let x = <phi>` when the arm is the bind:
+
+    read_file Ok: RC=1
+    store bind: still 1
+    let retain: 2
+    scope_exit bind then x: 0
+
+  Untaken bind stays zeroinitializer. Release is a no-op.
+
+  Match-stmt (`llvm_emit_match.oo`) stores the same way. Same move.
+
+## 3. Phi of %OoStr does not retain
+
+  End block: `phi pty [ ok_val, ok ], [ err_val, err ]`. No `oo_str_retain`.
+  That is required for check let=match. A phi retain plus let retain leaks +1.
+
+  STRING/STRING: both interned. Phi is static. No leak.
+  IDENT bind / STRING `""`: Ok is a borrow of the bind. Let owns. Bind drop moves Result.
+
+  `return match r { Ok(s) => s, Err(e) => e }` is UAF: ret_arc drops `s` then rets the phi.
+  C does `oo_str_retain(__ret_val)` first. LLVM does not.
+  Check/load never returns a match expr. It always lets.
+
+## 4. Check / load string path
+
+  `load_expand`: `read_file` then `let src = match src_r { Ok(s) => s, Err(msg) => msg }`.
+  Same form in `check_modules`, `cli_emit` emit-c and fntab walks.
+  `load_source_with_imports` is `list_get` of the expand list.
+  `run_check_path` / `run_check_core_binds`: `chars_len(src)==0` prints `ERR	check	empty` and exits.
+
+  After DE1, src is the file bytes, not `%OoStr zeroinitializer`.
+  `let src` retains. Bind drop at scope end is the Result move. Local use is balanced.
+
+  `oo_slist_get` retains the element. `return list_get(r, last)` keeps RC=1 after list drop.
+
+  `return out` of a `%OoSList` local is HIGH: ret_arc releases `out` then rets it.
+  `load_expand` does that. A dangling list can make `load_source` look empty.
+  Fix belongs in ret_arc / stmt (retain returned ARC, then drop locals). Not match-expr.
+
+  Concat and `str_slice` temps are not env names. Each import splice leaks a slice.
+  That does not empty `src`. It is not the old stub.
+
+## 5. Double-release risks (not check let=match)
+
+  Two matches on one Result in one scope, two bind names, two lets of those binds:
+  each let retains, each bind releases. Extra bind drops free the payload early.
+
+  Bind name that already has `__slot__<name>` (an outer `let s`):
+  store writes `%<bind>.slot`; IDENT load and later release use the let slot.
+  Wrong value. Let can drop twice. Match slot is never released.
+
+  Two `Ok(s)` matches in one fn reuse `%s.slot` (invalid IR). `load_import.oo`
+  has an is_err match and a success match, both `s` / `msg`. llc fail-closed.
+
+  Phi IDENT that is not the bind only borrows that other String. Bind still drops
+  the Result payload at scope end.
+
+## 6. Fail-closed
+
+  Non-IDENT scrutinee: `process_exit(1)`. Call or block match stay residual.
+  Arm not IDENT or STRING: exit. Empty arm: exit. Arm LLVM types differ: exit.
+  Old stub returned zeroinitializer (empty check). Residual now dies, not empty.
+
+  Missing import: print and `process_exit(1)`. No ARC walk. Process ends.
+  `oo_str_hdr_ok` refuses junk headers. Static Err text from `read_file` is safe.
+  IDENT with missing type is forced to `%OoStr`. Soft. Check arms are String.
+
+  Unmatched Result leaks its payload (`%OoResS` is not ARC). Check always matches.
+
+## 7. Why match-expr was not patched
+
+  Retain on payload store: Result still holds the bits and is never released. Leak.
+  Drop binds from the ARC env: let=match keeps Result's +1. Leak on every load.
+  Retain the phi: let=match leaks +1. That is the check path.
+
+  A safe return-of-ARC retain is `llvm_emit_ret_arc` / `llvm_emit_stmt`, not DE1.
+  Slot uniquify would change DE1 (IDENT scrutinee, no `llvm_emit_expr` import).
+
+## 8. Isolation
+
+  Wrote only this file. Did not edit `oodac/llvm_emit_match_expr.oo`.
+  Did not edit `llvm_emit_expr.oo`, `llvm_emit_arc.oo`, or `c_emit*.oo`.
+  Did not rebuild `oodac/oodac` or the side ELF.
+
+Status: match-expr check let=match has no CRIT leak or double-release.
+HIGH: ret without retain of returned ARC. Bind slot names are not unique.
+C emit + gcc remains the product path.

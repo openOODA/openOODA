@@ -1,0 +1,159 @@
+# WASM PV1 — Hostile IDENT if is not a const-true fold
+
+File: openOODA/audit/wasm_pv1.oot
+PV1 red team. WASM lane. Source proof only. Did not edit fixtures or smokes.
+C emit + gcc stays the everyday path. Did not rebuild.
+
+Logline: The hostile if condition is IDENT x, not KW_TRUE or KW_FALSE, and the smoke fails only on a fold-me-only print or plant.
+Setup: Read `ooda/fixtures/wasm_if_hostile.oo`, `ooda/scripts/wasm_if_hostile_smoke.oo`, `ooda/oodac/token_emit.oo`, and `ooda/oodac/wasm_emit_if.oo`. Drive words are source. Did not exec emit-wasm.
+Beats:
+  1. Quote the hostile main body.
+  2. Prove the if condition token is IDENT x.
+  3. Prove the product fail is only fold-me-only stdout or bytes.
+
+## 0. Verdict
+
+PASS
+
+The fixture is a non-const if. The condition is IDENT `x`.
+It is not KW_TRUE. It is not KW_FALSE.
+The named smoke fails the product path only when `fold-me` is
+present and `other` is absent.
+
+Dummy empty stdout, ERR, wasmtime fail, no `fold-me`, and both
+strings present all pass. That is the hostile lock.
+
+## 1. Hostile shape quote
+
+File: `ooda/fixtures/wasm_if_hostile.oo` (19 lines).
+
+Header Setup: "Condition is IDENT x, not KW_TRUE."
+Header Beat 3: "A fold-me-only module is a lie."
+
+Main body, exact:
+
+    pub fn main() {
+        let x = true;
+        if x {
+            println("fold-me");
+        } else {
+            println("other");
+        }
+    }
+
+COORD bar (`audit/wasm_coord.oot` lock 3) names this same shape.
+
+Contrast (not this fixture):
+
+  `fixtures/wasm_if_true.oo`  — `if true { println("then-yes"); ... }`
+  `fixtures/wasm_if_false.oo` — `if false { println("then-no"); ... }`
+
+Those two use the true and false keywords. This one does not.
+
+## 2. Condition is IDENT x
+
+Token row is four tab fields: kind, line, col, text.
+`field_at(..., 0)` is kind. `field_at(..., 3)` is text.
+
+`token_emit.oo` `keyword_kind`:
+
+    if id == "true" { return "KW_TRUE"; }
+    if id == "false" { return "KW_FALSE"; }
+    return "IDENT";
+
+`x` is not `true`. `x` is not `false`. Kind is IDENT. Text is `x`.
+
+The let initializer `true` is KW_TRUE. That is not the if slot.
+A fold that copies the let into the if would treat IDENT `x` as
+const-true and plant `fold-me` only. That is the lie.
+
+`wasm_fn_if_println` (`wasm_emit_if.oo`) after the fname LBRACE:
+
+  1. Next kind must be KW_IF. Else return "".
+  2. Next kind `ck` must be KW_TRUE or KW_FALSE. Else return "".
+  3. IDENT returns "". INT returns "".
+
+Hostile after main LBRACE is KW_LET, not KW_IF. First miss.
+Hostile if slot is IDENT `x`, not KW_TRUE or KW_FALSE. Second miss.
+
+The helper never walks a let. It never treats IDENT as const-true.
+
+Other emit helpers also miss this body:
+
+  ident-let wants `let IDENT = STRING; println(IDENT);`
+    Hostile let value is KW_TRUE, not STRING. Next stmt is KW_IF.
+  print-lit, strcat, two-println, int-lit want println first.
+  hello fold wants `let IDENT = greet(STRING);`.
+
+So emit must keep dummy `end` or write ERR. It must not plant
+`fold-me` alone.
+
+## 3. Smoke fails only on fold-me-only
+
+File: `ooda/scripts/wasm_if_hostile_smoke.oo` (76 lines).
+Drive: `./oodac/oodac emit-wasm fixtures/wasm_if_hostile.oo`.
+
+`fail(msg)` is the only exit-1 path. Call sites:
+
+  harness: `mkdir`, `scenario`, `no oodac`, `no fixture`
+  product: `fail("fold-me-only")` only, in `refuse_fold_me_only`
+
+No `fail` on missing magic. No `fail` on dummy `02 00 0b`.
+No `fail` on empty stdout. No `fail` on wasmtime crash.
+No `fail` when `other` is also present.
+
+Honest PASS, then return:
+
+  1. emit-wasm process_exec is Err and stderr has `ERR`.
+  2. `^ERR` on stderr or on the wasm path.
+  3. wasmtime is present and `check` is Err (run fail).
+  4. Else fall through to `refuse_fold_me_only`, then print PASSED.
+
+`refuse_fold_me_only(p, path, bytes)`:
+
+  stdout path (`bytes == false`): empty file returns. Honest.
+  `gfold` is `grep -q fold-me` (or `grep -a` on bytes).
+  `goth` is `grep -q other` (or `grep -a` on bytes).
+  `fail("fold-me-only")` runs only when `gfold` is ok and `goth`
+  is err. That is: `fold-me` present, `other` absent.
+
+Product matrix:
+
+  | stdout or bytes | smoke |
+  | --- | --- |
+  | ERR / emit fail with ERR | PASS |
+  | empty stdout | PASS |
+  | dummy bytes, no `fold-me` | PASS |
+  | wasmtime fail | PASS |
+  | no `fold-me` (other may be present) | PASS |
+  | `fold-me` and `other` | PASS |
+  | `fold-me` without `other` | FAIL `fold-me-only` |
+
+When wasmtime is present and the run exits 0, the check is stdout.
+When wasmtime is absent, the check is wasm bytes (`grep -a`).
+
+A const-true IDENT fold prints or plants `fold-me` and drops
+`other`. That is the only product fail.
+
+Bound: if wasmtime is present and the run is Err, the smoke
+passes and does not scan bytes. That is still not a fail on
+dummy or ERR. The product fail string stays `fold-me-only`.
+
+## 4. Isolation
+
+Wrote:
+
+  `openOODA/audit/wasm_pv1.oot`
+
+Did not edit:
+
+  `ooda/fixtures/wasm_if_hostile.oo`
+  `ooda/scripts/wasm_if_hostile_smoke.oo`
+  `ooda/oodac/wasm_emit*.oo`
+  c_emit*, llvm*, x86*, cli, guide, regex.oo
+
+Did not rebuild. Did not exec `oodac/oodac.wasm4`.
+
+Status: PASS. Condition is IDENT x. Smoke fails only on
+fold-me-only stdout or bytes.
+Stop.

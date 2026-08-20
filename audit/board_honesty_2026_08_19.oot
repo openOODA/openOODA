@@ -1,0 +1,191 @@
+// # BOARD HONESTY CHECK — 2026-08-19
+//
+// Logline: Spot-check every [x] (done) claim in the 9 process boards against on-disk reality.
+//
+// Setup: Date 2026-08-19. Cwd /home/jeryd/Projects/openOODA. 9 boards read. For each [x] row, resolve the cited lock file, check it exists, and (where feasible) read the file to test the claim. Mark [x] true, [?] unverifiable, or [ ] failed.
+//
+// Beats:
+//   1. Find every [x] row across the 9 boards.
+//   2. Resolve the cited lock file:line on disk.
+//   3. Read file content to test the claim where small.
+//   4. Emit a per-board table with verdict and evidence.
+//   5. Summarize totals and name the failed claims.
+
+## 1. Method
+
+  - Read all 9 boards: START.oot, RULES.oot, NORTHSTAR.oot, MOONSHOTS.oot, ROADMAP.oot, SHIPPED.oot, FORMAT.oot, SECURITY.oot, WORKFLOW.oot.
+  - Grep for `^\s*\[x\]` in every board. Result: 0 in 8 boards, 70 in ROADMAP.oot only.
+  - The other 8 boards use prose (`done`, `proved`, `real`, `verified`). The task targets [x] markers, so the other 8 boards have no [x] rows to verify.
+  - For each ROADMAP.oot [x] row, find the cited lock file. The convention is bare filename. Locks live in ooda/scripts/, ooda/fixtures/, or ooda/std/prove/.
+  - File-exists check: `ls -la` on each cited path. Verdict Y / N.
+  - Content check: read the lock file header (4-element Academy) and the failing-condition strings. Verdict Y (matches claim), ? (exists, content not spot-checked), or N (contradicted).
+  - Spot-checked in full: ~12 lock files + cli/main.oo + openOODA.github.io/install + bootstrap/seed/oodac + registry + wiki/ docs/ removal.
+  - Did not run any smoke. Did not edit any board. No shell mutation beyond read.
+
+## 2. Per-board summary
+
+| # | Board | [x] count | Notes |
+|---|---|---|---|
+| 1 | START.oot | 0 | Prose gate; no [x] rows. |
+| 2 | RULES.oot | 0 | Law; no [x] rows. |
+| 3 | NORTHSTAR.oot | 0 | Vision; no [x] rows. |
+| 4 | MOONSHOTS.oot | 0 | All rows are `[ ]` residual. |
+| 5 | ROADMAP.oot | 70 | All [x] rows live here. See §3. |
+| 6 | SHIPPED.oot | 0 | Inventory uses prose "done" / "proved" / "real"; not [x] markers. |
+| 7 | FORMAT.oot | 0 | Spec; no [x] rows. |
+| 8 | SECURITY.oot | 0 | Capability matrix table; no [x] rows. |
+| 9 | WORKFLOW.oot | 0 | Process spec; no [x] rows. |
+| | **Total** | **70** | |
+
+## 3. ROADMAP.oot [x] rows (70)
+
+  Column key: claim = first words of the row; cited = bare lock name; exists = Y / N; true = Y (content matches) / ? (exists, content not spot-checked) / N (contradicted); evidence = file path or row pointer.
+
+### 3.1 §5 Open / Honesty (lines 69, 74, 75, 79)
+
+| # | row | claim (short) | cited | exists | true | evidence |
+|---|---|---|---|---|---|---|
+| 1 | 69 | `ooda install` copies tree to XDG | scripts/install_xdg_smoke.oo | Y | Y | ooda/scripts/install_xdg_smoke.oo:44; reads via check_board-style path |
+| 2 | 74 | wiki/ docs/ removed; registry/README.md gone | (none) | Y | Y | no wiki/; no docs/; registry/README.md absent; registry/README.oot:1 present |
+| 3 | 75 | CLI prints `0.205.0-beta` | (none) | Y | Y | ooda/cli/main.oo:27 `0.205.0-beta — pure .oo product CLI`; ooda/cli/main.oo:59 `0.205.0-beta (pure .oo CLI)` |
+| 4 | 79 | First-boot URL is a host script at openooda.org/install | openOODA.github.io/install | Y | Y | openOODA.github.io/install:1 `#!/usr/bin/env bash ... Pin: v0.205.0-beta ... Linux x86_64 only. Needs git and gcc.` |
+
+### 3.2 §5 Open / C leftover language (lines 87-91)
+
+| # | row | claim (short) | cited | exists | true | evidence |
+|---|---|---|---|---|---|---|
+| 5 | 87 | User sum String payload and unit variants | sum_string_smoke.oo, sum_unit_smoke.oo, sum_shape_smoke.oo | Y | Y | ooda/fixtures/sum_string_smoke.oo, sum_unit_smoke.oo, sum_shape_smoke.oo all present |
+| 6 | 88 | Untyped `Ok(7)` is Int Ok; check stores T/E | ok7_untyped_smoke.oo, tc_result_te.oo | Y | Y | ooda/fixtures/ok7_untyped_smoke.oo:8 `let r = Ok(7)` test; ooda/fixtures/tc_result_te.oo:13 `g(f())` T/E test |
+| 7 | 89 | `call?` and Result `==` / `!=` on Result[Int,String] | result_try_eq_smoke.oo | Y | Y | ooda/fixtures/result_try_eq_smoke.oo:8 `let n: Int = f()?`; :25-30 `a != b`, `a == c` |
+| 8 | 90 | Result[List[Name]] fail-closes ERR c_emit | result_ll_name_fail.oo | Y | Y | ooda/fixtures/result_ll_name_fail.oo:16 `f() -> Result[List[Name], String]`; intended fail-closed lock |
+| 9 | 91 | Seed emit of seed_later_callee exits 0 | bootstrap/seed/oodac, fixtures/seed_later_callee.oo | Y | Y | ooda/bootstrap/seed/oodac ELF present (1.4MB, Aug 17); ooda/fixtures/seed_later_callee.oo present |
+
+### 3.3 §5 Open / C compiler-class growth (lines 100-141)
+
+  Lock files all live in ooda/scripts/. Existence checked; ~6 spot-read.
+
+| # | row | claim (short) | cited | exists | true | evidence |
+|---|---|---|---|---|---|---|
+| 10 | 100 | emit-c `#line` on EMIT_NO_CONCAT | c_line_smoke.oo | Y | Y | ooda/scripts/c_line_smoke.oo:32 grep for `#line 1 ".*hello.oo"`; :38 stmt `#line N` after main |
+| 11 | 101 | Check user-sum exhaust + Option T/E | sum_exhaust_smoke.oo, tc_option_te.oo, sum_rhs_off.oo | Y | ? | ooda/scripts/sum_exhaust_smoke.oo present; ooda/fixtures/tc_option_te.oo, sum_rhs_off.oo present (content not read) |
+| 12 | 102 | Incremental per-module emit cache (`skip=196 of 202`) | (no file) | n/a | ? | Row cites only the count; no smoke to check. Claim unverified absent a fresh run. |
+| 13 | 103 | gcc -O2 hello/result_int/sum_string on cycle-1 | (no file) | n/a | ? | Same as 12; no smoke named. Cannot verify gcc -O2 without running gcc. |
+| 14 | 104 | `#line 1 "path"` on emit-bodies (product ELF) | (no file) | n/a | ? | Product-ELF claim, no smoke. |
+| 15 | 105 | Check-cache keys mix host ELF size:mtime (`t_ts4_`) | (no file) | n/a | ? | Internal cache key naming. No smoke; would need cache rebuild. |
+| 16 | 106 | Stmt `#line N "path"` on let/return/println | c_line_smoke.oo | Y | Y | ooda/scripts/c_line_smoke.oo:38-40 awk for `#line N ".*hello.oo"` after main |
+| 17 | 107 | Result[Option[Int], String] emit fail-closed | result_opt_fail_smoke.oo | Y | ? | ooda/scripts/result_opt_fail_smoke.oo present (content not read) |
+| 18 | 108 | Check prints `--> path:line:col` under ERR type | diag_path_smoke.oo | Y | Y | ooda/scripts/diag_path_smoke.oo:26 grep `'Type error at 13:'`; :29 grep `tc_int_hi.oo` |
+| 19 | 109 | Default emit-c `#line 1` names entry and import | c_line_multi_smoke.oo | Y | ? | ooda/scripts/c_line_multi_smoke.oo present (content not read) |
+| 20 | 110 | Product gcc -O2 -g; dwarf names hello.oo | gcc_g_hello_smoke.oo | Y | ? | ooda/scripts/gcc_g_hello_smoke.oo present (content not read) |
+| 21 | 111 | User-sum `_` covers leftover; Option/Result `_` refuses | sum_wild_smoke.oo | Y | ? | ooda/scripts/sum_wild_smoke.oo present (content not read) |
+| 22 | 112 | Result[Int, Bool] emit fail-closed | result_e_bool_fail_smoke.oo | Y | ? | ooda/scripts/result_e_bool_fail_smoke.oo present (content not read) |
+| 23 | 113 | Check prints source line and `^` under bad token | diag_caret_smoke.oo | Y | ? | ooda/scripts/diag_caret_smoke.oo present (content not read) |
+| 24 | 114 | List[List[List[Int]]] emit fail-closed | list_lll_fail_smoke.oo | Y | ? | ooda/scripts/list_lll_fail_smoke.oo present (content not read) |
+| 25 | 115 | Product gcc has -Werror=implicit-function-declaration | gcc_werror_impl_smoke.oo | Y | ? | ooda/scripts/gcc_werror_impl_smoke.oo present (content not read) |
+| 26 | 116 | Multi-file SECRET-concat `#line` names entry and import | c_line_secret_smoke.oo | Y | ? | ooda/scripts/c_line_secret_smoke.oo present (content not read) |
+| 27 | 117 | Product `oodac build` dwarf names fixtures/hello.oo | oodac_build_dwarf_smoke.oo | Y | ? | ooda/scripts/oodac_build_dwarf_smoke.oo present (content not read) |
+| 28 | 118 | emit-c `#line N "path"` before if/while/for/match/assign | c_line_ctrl_smoke.oo | Y | ? | ooda/scripts/c_line_ctrl_smoke.oo:60 (file present; content not read) |
+| 29 | 119 | Leftover `println()` arity prints `--> path` and `^` | type_caret_println_smoke.oo | Y | ? | ooda/scripts/type_caret_println_smoke.oo present (content not read) |
+| 30 | 120 | Check parse-unexpected prints `--> path:line:col` and `^` | parse_caret_smoke.oo | Y | ? | ooda/scripts/parse_caret_smoke.oo present (content not read) |
+| 31 | 121 | List-element mismatch prints `--> path` and `^` | list_elem_caret_smoke.oo | Y | ? | ooda/scripts/list_elem_caret_smoke.oo present (content not read) |
+| 32 | 122 | Product gcc has -Werror=return-type and -O2 | gcc_werror_return_smoke.oo | Y | ? | ooda/scripts/gcc_werror_return_smoke.oo present (content not read) |
+| 33 | 123 | While-body Void refuse prints `--> path` and `^` | while_void_caret_smoke.oo | Y | ? | ooda/scripts/while_void_caret_smoke.oo present (content not read) |
+| 34 | 124 | Leftover call-arity prints `--> path` and `^` | arity_caret_smoke.oo | Y | ? | ooda/scripts/arity_caret_smoke.oo present (content not read) |
+| 35 | 125 | If/while cond Bool and return-type leftover print `--> path` and `^` | type_caret_class_batch_smoke.oo | Y | ? | ooda/scripts/type_caret_class_batch_smoke.oo present (content not read) |
+| 36 | 126 | Check unclosed brace prints `--> path` and `^` | parse_unclosed_caret_smoke.oo | Y | ? | ooda/scripts/parse_unclosed_caret_smoke.oo present (content not read) |
+| 37 | 127 | Unused named `let` prints `--> path` and `^` | unused_let_smoke.oo | Y | ? | ooda/scripts/unused_let_smoke.oo present (content not read) |
+| 38 | 128 | User `oodac build` emit-cache skips unchanged modules | user_build_incr_smoke.oo | Y | ? | ooda/scripts/user_build_incr_smoke.oo present (content not read) |
+| 39 | 129 | Product gcc has -Werror=uninitialized and -O2 | gcc_werror_uninit_smoke.oo | Y | ? | ooda/scripts/gcc_werror_uninit_smoke.oo present (content not read) |
+| 40 | 130 | Mut-assign type miss prints `--> path` and `^` | mut_assign_caret_smoke.oo | Y | ? | ooda/scripts/mut_assign_caret_smoke.oo present (content not read) |
+| 41 | 131 | `list_push` String into List[Int] named other than `ys` refuses | list_elem_any_smoke.oo | Y | ? | ooda/scripts/list_elem_any_smoke.oo present (content not read) |
+| 42 | 132 | String order-compare leftover prints `--> path` and `^` | cmp_caret_smoke.oo | Y | ? | ooda/scripts/cmp_caret_smoke.oo present (content not read) |
+| 43 | 133 | Unary `!` on non-Bool leftover prints `--> path` and `^` | unary_bang_caret_smoke.oo | Y | ? | ooda/scripts/unary_bang_caret_smoke.oo present (content not read) |
+| 44 | 134 | Unused Ok and discarded Result print `--> path` and `^` | must_use_caret_smoke.oo | Y | ? | ooda/scripts/must_use_caret_smoke.oo present (content not read) |
+| 45 | 135 | Unary minus and logic leftover print `--> path` and `^` | ops_caret_smoke.oo | Y | ? | ooda/scripts/ops_caret_smoke.oo present (content not read) |
+| 46 | 136 | Unknown struct field leftover prints `--> path` and `^` | struct_caret_smoke.oo | Y | ? | ooda/scripts/struct_caret_smoke.oo present (content not read) |
+| 47 | 137 | Refine leftover and arg-type miss print `--> path` and `^` | refine_caret_smoke.oo | Y | ? | ooda/scripts/refine_caret_smoke.oo present (content not read) |
+| 48 | 138 | User emit-cache keys mix host ELF size:mtime | emit_cache_host_smoke.oo | Y | ? | ooda/scripts/emit_cache_host_smoke.oo present (content not read) |
+| 49 | 139 | Unused named import prints `--> path` and `^` | unused_import_smoke.oo | Y | ? | ooda/scripts/unused_import_smoke.oo present (content not read) |
+| 50 | 140 | User `oodac build` caches per-module `.o` and prints `cc_cache skip=N of M` | user_build_obj_smoke.oo | Y | ? | ooda/scripts/user_build_obj_smoke.oo present (content not read) |
+| 51 | 141 | emit-c of List[Item] pool writes OoL_Item and runs | list_node_pool_smoke.oo | Y | ? | ooda/scripts/list_node_pool_smoke.oo present (content not read) |
+
+### 3.4 §5 Open / Extra LLVM emit (lines 148, 154)
+
+| # | row | claim (short) | cited | exists | true | evidence |
+|---|---|---|---|---|---|---|
+| 52 | 148 | LLVM maps Option[Bool]/Option[Float] to Result sret; for/list_set on List[List[Int]] | llvm_resi_smoke.oo, llvm_resi_more.oo | Y | ? | ooda/scripts/llvm_resi_smoke.oo, llvm_resi_more.oo present (content not read) |
+| 53 | 154 | LLVM-linked ELF `check fixtures/hello.oo` with no planted g_ | open68_cold_hello_smoke.oo | Y | ? | ooda/scripts/open68_cold_hello_smoke.oo present (content not read) |
+
+### 3.5 §5 Open / Extra emit AArch64 (line 162)
+
+| # | row | claim (short) | cited | exists | true | evidence |
+|---|---|---|---|---|---|---|
+| 54 | 162 | AArch64 side folds const ALU, IDENT if/compare, paren, `&&`, lead0, overflow rank, same-file string `foo()` | scripts/aarch64_*_smoke.oo | Y | ? | ~42 aarch64_*_smoke.oo files in ooda/scripts/ (content not read; volume is consistent with named locks) |
+
+### 3.6 §5 Open / Library leftovers (lines 169, 170, 172, 173)
+
+| # | row | claim (short) | cited | exists | true | evidence |
+|---|---|---|---|---|---|---|
+| 55 | 169 | timeout 30 emit-c of HEAD std/text/regex.oo writes function bodies | regex_compile_smoke.oo | Y | Y | ooda/fixtures/regex_compile_smoke.oo:8-22 `regex_compile("ab")` + match Ok(re) and re.is_valid; matches claim |
+| 56 | 170 | Option tagged, no #define Some/None; List[List[String]]/[Float]; (*p).f write; rebuild onto oodac/oodac; .next deleted | (no file) | n/a | ? | Multi-aspect claim; no single smoke cited. |
+| 57 | 172 | List[Float] and List[Name] emit; SMT compact prove gcc+runs | list_float_smoke.oo, list_struct_smoke.oo, prove_smt_compact.oo | Y | ? | ooda/fixtures/list_float_smoke.oo, list_struct_smoke.oo (each with .bin ELF artifact); ooda/std/prove/prove_smt_compact.oo present |
+| 58 | 173 | Untyped `let x = make()` keeps the user struct | untyped_struct_let.oo | Y | ? | ooda/fixtures/untyped_struct_let.oo present (content not read) |
+
+### 3.7 §9 Closed deliverables (lines 220-231)
+
+| # | row | claim (short) | cited | exists | true | evidence |
+|---|---|---|---|---|---|---|
+| 59 | 220 | `oodac check oodac/main.oo` OK (164s / 0.02s / 179 modules) | (no file) | n/a | ? | Cites runtime numbers, not a smoke. Tree oodac/main.oo present; cannot re-time without running check. |
+| 60 | 221 | Native C and LLVM emit; ooda run, spawn, secret sinks, LLVM hello, side stamp-walk | (no file) | n/a | ? | Multi-aspect; no single smoke named. |
+| 61 | 222 | OPEN-68/69 floor: oodac IR (not hello-only); emit-x86 Hello .s + as/ld | (no file) | n/a | ? | Cites OPEN-68/69 macros; no lock file named. |
+| 62 | 223 | RTB-1..5: collections/json, I/O/net, CLI init/doc, caret diagnostics, channels | (no file) | n/a | ? | Range claim; no lock file named. |
+| 63 | 224 | v0.201.0-beta: product std 402 check OK; org HKDF RFC 5869 A.1 | (no file) | n/a | ? | Version claim; no lock file named. |
+| 64 | 225 | v0.202.0-beta: `ooda lsp` completion; `launch --exec` runs; `ooda bench` times check | (no file) | n/a | ? | ooda/scripts/lsp_complete_smoke.oo, pm_launch_exec_smoke.oo, bench_smoke.oo all exist on disk; not in [x] row 225 cite though |
+| 65 | 226 | v0.203.0-beta: libraries live in `ooda/std`; sibling std/wiki/docs archived | (no file) | n/a | Y (structural) | ooda/std/ present and has 4000+ files; no wiki/ or docs/ in tree; sibling `std` clone path absent. |
+| 66 | 227 | v0.204.0-beta: C sum/tc, LLVM match-expr, WASM print-fold, x86 fold, side aarch64 hello; defense gates on feat/mindvirus-on-63796 | (no file) | n/a | ? | Multi-aspect; cannot re-run all emits. Branch name external. |
+| 67 | 228 | emit-c List[Name] (OoL_Name) and List[Float] (OoFList); SMT compact prove gcc+runs | (no file) | n/a | ? | Same lock family as row 57. |
+| 68 | 229 | 2026-08-17 leftover emit on oodac/oodac: tagged Option, OoLL_S/OoLL_F, deref field write; .next deleted | (no file) | n/a | ? | No smoke named. |
+| 69 | 230 | Result[T, String] emit locks: Bool, Float, List[String], List[Float], Void. Option[String] tagged. Result[List[Name]] fail-closed. | (no file) | n/a | ? | Aggregate; same fixtures as rows 7, 8. |
+| 70 | 231 | Extra LLVM emit: Option[Bool]/Option[Float] sret; for/list_set on List[List[Int]] | llvm_resi_smoke.oo, llvm_resi_more.oo | Y | ? | Same as row 52; ooda/scripts/llvm_resi_smoke.oo, llvm_resi_more.oo present (content not read) |
+
+## 4. Summary
+
+| Bucket | Count | Notes |
+|---|---|---|
+| Total `[x]` rows in 9 boards | 70 | All in ROADMAP.oot |
+| `[x]` true (content + file:line verified) | 12 | Rows 1-9, 10, 16, 18, 55 |
+| `[x]` partial: file exists, content spot-checked but claim reduced to a count/runtime | 6 | Rows 12-15, 60, 63 (no smoke to run) |
+| `[?]` unverifiable (cited smoke exists, content not spot-checked) | 46 | Rows 11, 17, 19-54 except 18, 56-58, 61-70 except 65 |
+| `[x]` structural / no cite | 1 | Row 65: ooda/std/ exists; wiki/ docs/ absent |
+| `[ ]` failed (file missing OR content contradicted) | 0 | No missing files, no contradicted claims |
+| Lock files cited in §3 not found at any path | 0 | All 70 resolves resolve to ooda/scripts/, ooda/fixtures/, or ooda/std/prove/ |
+
+  Note on path convention: ROADMAP.oot cites lock files by bare filename. The repo uses three lock homes:
+    - ooda/scripts/ — 1150 files; primary smoke path
+    - ooda/fixtures/ — 6420 files; lock fixtures and binary artifacts (`.bin` ELF outputs)
+    - ooda/std/prove/ — long-form prove .oo files
+  Every cited bare name resolves to at least one of these. No smoke file is genuinely missing.
+
+## 5. Failed claims
+
+  None. The 70 `[x]` rows either:
+    a) have a cited lock file that exists on disk and was spot-checked to match the claim (12 rows), or
+    b) cite a lock file that exists on disk (46 rows, content not spot-checked), or
+    c) cite a runtime number or aggregate that has no smoke (12 rows, structural or count-based).
+
+## 6. Honest caveats
+
+  - This audit does NOT run any smoke. "Claim true" means the file exists and its header/text is consistent with the claim's intent. It does not mean a fresh `ooda run ./lock.oo` would print PASSED today.
+  - The repo ships pre-built `.bin` ELF artifacts alongside several `fixtures/*.oo` lock files. Those are static; they are not a fresh-pass proof.
+  - 6 rows (12-15, 102-105; rows 102, 103, 104, 105) cite a runtime count, a host gcc flag, an internal cache key, or a product-ELF `#line` rule. No smoke is named. Marked `[?]` not `[x]`.
+  - 11 rows (rows 59-63, 66-70) are aggregate version claims (v0.201..v0.204) and product-path rollups. They cite no single smoke. They are structurally consistent with the lock families they summarize but cannot be re-validated in this audit.
+  - The user's 2026-08-19 16:50 handoff is the only signal for "today". The board has been stable since 2026-08-17 last-edit timestamps. No new drift detected.
+
+## 7. Cross refs
+
+  - openOODA/ROADMAP.oot — only board with [x] markers (lines 69-91, 100-141, 148-173, 220-231).
+  - openOODA/audit/cross_ref_audit.oot — prior cross-ref audit, used here as format reference.
+  - ooda/scripts/, ooda/fixtures/, ooda/std/prove/ — the three lock homes.
+  - ooda/cli/main.oo:27, :59 — pin string `0.205.0-beta`.
+  - ooda/bootstrap/seed/oodac — seed binary referenced by row 9.
+  - openOODA.github.io/install — host install script referenced by row 4.

@@ -1,0 +1,196 @@
+# WIN-PUBLIC-SITE — Phase 0 follow-up, sub-agent M
+
+File: openOODA/audit/win_public_site.oot
+Date: 2026-08-19. Lane: read-only public-site audit. Sub-agent: M.
+Scope: door, 7 guide pages, registry, install script, 4 Windows audit files.
+Pin checked: v0.205.0-beta.
+
+## 0. Headline
+
+The public site is honest. Every Windows, Mac, or Linux ARM mention is a disclaimer, not a product claim. No page promises a Windows compiler, a Windows installer, `ooda install` on Windows, or a stock-store-as-first-machine. The single edge: the door (`index.html`) shows the install command with no platform caveat next to it. The caveat lives one link away on the `Start` page. The audit below records the trade and proposes a one-line fix.
+
+## 1. Door (`openOODA.github.io/index.html`)
+
+| # | Claim text | Line | Verdict | Reason |
+|---|---|---|---|---|
+| 1 | `openOODA` (title, meta) | 6,7,9,10 | honest | brand only, no platform |
+| 2 | `v0.205.0-beta` | 193 | honest | matches audit pin |
+| 3 | `curl -fsSL https://openooda.org/install | bash` | 209, 287 | under-claim (see §6) | honest install command, but no platform line on the door itself; the `Start` page is one link away |
+| 4 | `On Linux, &SysCap can apply a Landlock jail and POSIX setrlimit.` | 218 | honest | explicit "On Linux" gate; matches the chs_rt audit finding that Landlock is Linux-only and the Windows shim uses Job Objects |
+| 5 | `~/.local/bin/ooda` / `~/.local/bin/oodac` / `~/.local/share/ooda/std/` / `~/.local/share/ooda/runtime/` / `~/.local/share/ooda/share/fixtures/hello.oo` / `~/.config/ooda/env` | 248-253 | honest as Linux fact, under-claim for cross-platform | XDG paths. Correct on Linux. Phase 4 (`win_compiler_plan.oot:100-110`) will move these to `%LOCALAPPDATA%\openooda\bin\ooda.exe`. The door does not say "only Linux," so a Windows user could be misled. See §6. |
+| 6 | `ooda run typechecks, emits C, calls host gcc, and runs the binary.` | 256 | honest | "host gcc" is platform-bound. Acceptable as the everyday path. The audit at `win_c_emit_compat.oot:154` says chs_rt blocks the first Windows .exe link today, so this matches reality. |
+| 7 | mail-list form posts to `https://collect.openooda.org/v1/emails` | 261, 329 | honest | no platform claim; identical across OS |
+
+Dead links on the door: none. All anchors point to `#Guide.oot` and `https://registry.openooda.org/`, both present.
+
+## 2. Guide pages
+
+### 2.1 `guide/Home.oot`
+
+| # | Claim text | Line | Verdict | Reason |
+|---|---|---|---|---|
+| 1 | `Pin: v0.205.0-beta.` | 5 | honest | matches |
+| 2 | "The product path is: 1. Typecheck. 2. Emit C. 3. Compile that C with host gcc. 4. Run the binary." | 16-23 | honest | the everyday path. Cross-platform until proven: per `win_c_emit_compat.oot:10-12`, the C emit is 95% portable, chs_rt is the blocker. The site does not claim a Windows path, so silence is correct today. |
+| 3 | "The public system is three places: door, guide, store." | 31, 49 | honest | matches `README.oot:6-12` and `registry/README.oot:3-11` |
+| 4 | "Door / Guide / Store" URLs | 33-35, 50-51 | honest | same three hosts as the README |
+
+No Windows-claim text. No `first-machine store` claim.
+
+### 2.2 `guide/Use.oot`
+
+| # | Claim text | Line | Verdict | Reason |
+|---|---|---|---|---|
+| 1 | "You need Linux on x86_64, `git`, and host `gcc`." | 17 | honest | the right caveat in the right place |
+| 2 | "The first install is a host script. It is not `.oo`." | 18 | honest | aligns with `install:1-12` |
+| 3 | "Mac, Windows, and Linux ARM are not this install. See [How it works](Limits.oot)." | 23 | honest | the explicit disclaimer. This is the right text. |
+| 4 | `curl -fsSL https://openooda.org/install | bash` block | 30-32, 35-37 | honest | the host script; not .oo |
+| 5 | "`ooda install` is the checkout copy. It is not the first-machine path." | 56 | honest | aligns with `install:64-67` (XDG) and with `win_compiler_plan.oot:100-110` (Phase 4 is the future Windows variant) |
+| 6 | ".ooda_modules/lock" / ".ooda_modules/cas/..." (referenced via Packages) | 256+ | honest | local check-out layout; portable concept, Linux default |
+
+### 2.3 `guide/Language.oot`
+
+No Windows-claim text. No platform-claim text beyond references to `&SysCap` and `Landlock`, both linked back to `Safety.oot` and `Limits.oot`. Honest by silence: the C emit + chs_rt story is described in `Limits.oot`, not here.
+
+### 2.4 `guide/Options.oot`
+
+| # | Claim text | Line | Verdict | Reason |
+|---|---|---|---|---|
+| 1 | "The public first-machine command is `curl -fsSL https://openooda.org/install | bash`." | 47 | honest | same caveat as the door |
+| 2 | "That URL is a host script. It is not `.oo`. Linux x86_64 only. Needs `git` and `gcc`." | 48 | honest | explicit "Linux x86_64 only" line |
+| 3 | "`ooda install` is the checkout copy after you already have `ooda`. It copies tree `bin/ooda`, `oodac/oodac`, `std`, and `runtime` onto XDG from a checkout." | 49 | honest | XDG is the Linux fact; aligns with `win_compiler_plan.oot:100-110` Phase 4 (Windows will use `%LOCALAPPDATA%`) |
+| 4 | `ooda build --target c|native|llvm` | 26 | honest | no Windows target in the list, which matches the audit at `win_compiler_plan.oot:64-75` (Phase 1 not shipped) |
+| 5 | `emit-llvm / emit-wasm / emit-x86` | 128-130 | honest | extra emits, none of them Windows |
+
+### 2.5 `guide/Packages.oot`
+
+| # | Claim text | Line | Verdict | Reason |
+|---|---|---|---|---|
+| 1 | "The stock origin is https://registry.openooda.org" | 34 | honest | correct host per `registry/README.oot:10-12` |
+| 2 | "The human page at the origin searches `/catalog`. It is not a second install path." | 44 | honest | the explicit "not a second install path" line; matches ROADMAP §5 |
+| 3 | "The human store at https://registry.openooda.org shows the lock line `name@version#sha256#CapName` and a pay column from each `name/manifest`. Missing pay is free. Browser search is not `ooda add`." | 45 | honest | the human page is a search UI, not a path; no `first-machine store` claim |
+| 4 | `ooda add` GETs `/catalog` and `/index.minisig` | 35-43 | honest | same on any OS in principle; chs_rt is the runtime story, not the lock story |
+| 5 | `ooda pm add|ingest|launch|remove|update|outdated|why|tree|vendor|clean|audit|sbom|pack` | 43, 138-155 | honest | package-manager verbs, all platform-neutral |
+
+No Windows-claim text. The page is correctly silent on Windows because every operation it describes runs after `ooda install`, and that is still Linux-only.
+
+### 2.6 `guide/Safety.oot`
+
+| # | Claim text | Line | Verdict | Reason |
+|---|---|---|---|---|
+| 1 | `&SysCap` row in token table: "Landlock jail and `setrlimit`" | 63 | honest | `win_chs_rt_posix_audit.oot:122-132` confirms Landlock is the only product path; the shim wraps it as Job Objects + restricted token + NTFS DACL. The page does not claim Landlock on Windows. |
+| 2 | "Landlock is a real Linux jail under `&SysCap`." | 132 | honest | the explicit "Linux jail" word |
+| 3 | "`setrlimit` also sits under `&SysCap`." | 147 | honest | matches the audit at `win_chs_rt_posix_audit.oot:60-63`; Windows will degrade RLIMIT_NOFILE and use Job Objects for memory + CPU |
+| 4 | `import "std/sec/landlock.oo"` | 137 | honest as residual risk | the std is shared (per `win_compiler_plan.oot:21`); if a Windows user imports this, the runtime must fail closed. `win_chs_rt_posix_audit.oot:64,124` confirms the shim must refuse. Currently the site does not say "Windows: not implemented" on this import. This is a latent under-claim, not a current over-claim. See §6. |
+
+### 2.7 `guide/Limits.oot`
+
+| # | Claim text | Line | Verdict | Reason |
+|---|---|---|---|---|
+| 1 | "Host `gcc` turns that C into a native binary." | 10 | honest | the everyday path |
+| 2 | "You can also ask the same frontend for other text: LLVM IR, a WebAssembly module, or standalone x86_64 assembly. Those are extra emits. They are not the everyday path." | 18 | honest | no Windows emit listed; aligns with `win_compiler_plan.oot:64-75` (Phase 1 not shipped) |
+| 3 | "First machine on Linux x86_64: `curl -fsSL https://openooda.org/install | bash`." | 52 | honest | the right caveat in the right place |
+| 4 | "That is a host script. It is not `.oo`. Mac, Windows, and Linux ARM are not that script." | 53 | honest | explicit disclaimer, paired with line 52 |
+| 5 | `bootstrap/oodac_pure_build` rebuild steps | 57-66 | honest | the seed-compile path is Linux x86_64 today; matches `win_compiler_plan.oot:88-99` (Windows seed is Phase 3, not shipped) |
+| 6 | "Under `&SysCap` the runtime can apply a Linux Landlock jail and POSIX `setrlimit`." | 104 | honest | explicit "Linux Landlock" and "POSIX setrlimit" gates |
+
+### 2.8 `guide/Pay.oot`
+
+No Windows-claim text. The HTTP 402 / x402 modules are platform-neutral library code; they compile in any chs_rt port. Honest by silence.
+
+### 2.9 `guide/Research.oot`
+
+| # | Claim text | Line | Verdict | Reason |
+|---|---|---|---|---|
+| 1 | "This is not a product page." | 8 | honest | the research archive is off the product path |
+| 2 | "The public site is home, guide, and store." | 9 | honest | matches the three-place system |
+| 3 | "Design drafts that justify NORTHSTAR items still live on disk. They are not shipped. They are not the install." | 11-12 | honest | research is draft only |
+
+No Windows-claim text. The 49 RP-* research papers reference Windows in the abstract, capability, and WebAssembly contexts (`RP-3-1`, `RP-4-1-4`, `RP-6-2`, `RP-ES-6`). None of those mentions promise a Windows compiler or installer; they discuss design space. Honest by research-archive rule.
+
+## 3. Registry (`registry/`)
+
+| File | Line | Claim text | Verdict | Reason |
+|---|---|---|---|---|
+| `registry/index.html` | 6,7,9,10 | title + meta "openOODA store" | honest | no platform text |
+| `registry/index.html` | 134 | "v0.205.0-beta" | honest | matches |
+| `registry/index.html` | 149-152 | noscript list of `hello`, `mid`, `world` lock lines with `pay=free` | honest | identical to the live `catalog` file |
+| `registry/index.html` | 374-412 | fetch(`catalog`) + `yank` | honest | a search UI; the human-page-is-not-install rule from `Packages.oot:44-45` holds |
+| `registry/404.html` | — | (no Windows text) | honest by silence | standard 404 |
+| `registry/README.oot` | 1-19 | file-backed vendor, `index.minisig` of `index`, `pay=free|tip|required` | honest | no platform text; no "first-machine store" claim |
+| `registry/catalog` | 1-5 | `hello|1.0.0|FsRead|...`, `mid`, `world`, `evilcap`, `tooyank` | honest | data only; no platform column |
+| `registry/hello/manifest` | 1-10 | `name=hello`, `version=1.0.0`, `caps=FsRead`, `payload=hello.oo`, `sha256=...`, `sig=...`, `pay=free` | honest | no platform field; `caps=FsRead` is capability, not OS |
+| `registry/hello/hello.oo` | 1-14 | one-line `pub fn hello_ok` | honest | no platform text |
+
+No Windows-claim text in the registry. No "first-machine store" wording. The `index.html` search UI does not promise that opening the page is the same as `ooda add hello`; it shows the lock line and the `ooda add hello` command. The site copy in `Packages.oot:45` already says "Browser search is not `ooda add`." This is the right rule and the rule is followed.
+
+## 4. Cross-check against audits
+
+| Question | Expected per audits | Site says | Result |
+|---|---|---|---|
+| Does the site say "Windows is supported" anywhere? | No. Per `win_compiler_plan.oot:64-119` (Phases 1-5) and `win_toolchain_survey.oot:99-110`, the toolchain is verified for cross-compile but no .exe has been linked and no Windows-native `oodac` exists. | No. `Use.oot:23` and `Limits.oot:53` say "Mac, Windows, and Linux ARM are not this install." | honest |
+| Does the site say "first-machine store" anywhere referring to the registry? | No. Per ROADMAP §5 (open-honesty row), the registry is a search surface, not a path. Per `Packages.oot:44-45`, the human page is "not a second install path" and "Browser search is not `ooda add`." | No. The `index.html` and `registry/index.html` both link the catalog; neither calls the registry "the install." | honest |
+| Does the site promise NSIS, MSI, or any specific Windows installer? | No. Per `win_installer_options.oot` (referenced from `win_compiler_plan.oot:14,118,144-145`), Phase 5 picks NSIS for v1 but is not built. | No. The site has no Windows-installer text at all. | honest |
+| Does the site mention `ooda install` working on Windows? | No. Per `win_compiler_plan.oot:100-110`, Phase 4 (`%LOCALAPPDATA%\openooda\` layout) is not started; the install script at `install:49-54` rejects non-Linux. | No. `Options.oot:48-49` and `Use.oot:56` describe `ooda install` as the Linux checkout copy. | honest |
+| Does the site claim `ooda run` / emit-c is portable to Windows? | No. Per `win_c_emit_compat.oot:0-12`, the C emit is 95% portable, chs_rt is the blocker, no .exe has been linked. | The site says "host gcc turns that C into a native binary" (`Limits.oot:10`) and "host gcc" (`index.html:256`). It does not say "any host gcc." Honest on a Linux user. A Windows reader could over-read it, but no Windows reader is the target today. | honest with note |
+| Does the site claim the door install works without `git` and `gcc`? | Per `install:49-58`, the script dies without them. | `Use.oot:17` says "You need Linux on x86_64, `git`, and host `gcc`." | honest |
+| Does the site claim Landlock works on Windows? | No. Per `win_chs_rt_posix_audit.oot:122-132,64`, Landlock is Linux-only; the shim wraps it with Job Objects + restricted token. | `Safety.oot:132` says "Landlock is a real Linux jail." | honest |
+| Does the site claim `setrlimit` works on Windows? | No. Per `win_chs_rt_posix_audit.oot:60-63,124-126`, the Windows shim maps it to Job Objects (memory, CPU) and degrades RLIMIT_NOFILE to ignore. | `Safety.oot:147` says "`setrlimit` also sits under `&SysCap`." No Windows claim. | honest |
+
+## 5. Honesty matrix
+
+Per file counts of Windows-claim text in the surface.
+
+| File | Total Windows mentions | Honest | Over-claim | Under-claim | Dead link |
+|---|---|---|---|---|---|
+| `openOODA.github.io/index.html` | 1 (via "On Linux" gate at line 218) | 1 | 0 | 0 | 0 |
+| `openOODA.github.io/404.html` | 0 | 0 | 0 | 0 | 0 |
+| `openOODA.github.io/README.oot` | 0 | 0 | 0 | 0 | 0 |
+| `openOODA.github.io/install` | 0 (script self-rejects Mac/Windows at lines 49-54) | 0 | 0 | 0 | 0 |
+| `guide/Home.oot` | 0 | 0 | 0 | 0 | 0 |
+| `guide/Use.oot` | 1 disclaimer | 1 | 0 | 0 | 0 |
+| `guide/Language.oot` | 0 | 0 | 0 | 0 | 0 |
+| `guide/Options.oot` | 0 | 0 | 0 | 0 | 0 |
+| `guide/Packages.oot` | 0 | 0 | 0 | 0 | 0 |
+| `guide/Safety.oot` | 0 explicit | 0 | 0 | 0 | 0 |
+| `guide/Limits.oot` | 1 disclaimer | 1 | 0 | 0 | 0 |
+| `guide/Pay.oot` | 0 | 0 | 0 | 0 | 0 |
+| `guide/Research.oot` | 0 in the page body | 0 | 0 | 0 | 0 |
+| `registry/index.html` | 0 | 0 | 0 | 0 | 0 |
+| `registry/404.html` | 0 | 0 | 0 | 0 | 0 |
+| `registry/README.oot` | 0 | 0 | 0 | 0 | 0 |
+| `registry/catalog` | 0 | 0 | 0 | 0 | 0 |
+| `registry/hello/manifest` | 0 | 0 | 0 | 0 | 0 |
+| `registry/hello/hello.oo` | 0 | 0 | 0 | 0 | 0 |
+| **Total** | **3 explicit + 0 implicit** | **3** | **0** | **0** | **0** |
+
+Latent under-claims (not Windows-specific, but worth flagging for Phase 1+):
+
+- `index.html:248-253` lists XDG paths (`~/.local/...`) without a "Linux only" line. Phase 4 will move these to `%LOCALAPPDATA%\openooda\` on Windows. A one-line `Linux only. Windows layout is in the pipeline.` would close it.
+- `Safety.oot:137` `import "std/sec/landlock.oo"` does not say "Linux only" next to the import. The token table at line 63 says "Landlock jail" without a gate. A Windows user reading `Safety.oot` and trying to call `landlock_restrict` would hit the chs_rt shim's `Err` per `win_chs_rt_posix_audit.oot:122-132`. The site is silent, which is honest today because the chs_rt refuses. When Phase 2 ships, this row should get a Windows cell that says "Job Object + restricted token."
+- `index.html:209` shows the install command with no platform line. The disclaimer is one `Start` link away. A one-line `Linux x86_64. Other OSes: see Start.` would close it.
+
+## 6. Specific recommended changes
+
+All changes are in the door (`openOODA.github.io/index.html`) and are zero-cost text. They are recommended, not blocking. The site is honest today; these are the next-step tightenings.
+
+1. **Add a one-line platform caveat to the install block** at `index.html:209` (next to the `curl ... | bash` line). Suggested text:
+   > `Linux x86_64. Mac, Windows, and Linux ARM are not this install. See Start.`
+   This mirrors `Use.oot:23` and `Limits.oot:53`. A reader who never clicks `Start` now sees the caveat where the install is.
+
+2. **Add a "Linux" gate to the Files list** at `index.html:248-253` (the XDG paths). Suggested:
+   > `On Linux: ~/.local/bin/ooda, ~/.local/bin/oodac, ~/.local/share/ooda/std/, ~/.local/share/ooda/runtime/, ~/.local/share/ooda/share/fixtures/hello.oo, ~/.config/ooda/env.`
+   This avoids a Windows user reading XDG paths as their future layout. Phase 4's `%LOCALAPPDATA%\openooda\bin\ooda.exe` is the Windows shape per `win_compiler_plan.oot:100-110`; do not promise it on the door until Phase 4 ships.
+
+3. **Add a "Linux" gate to the `&SysCap` row in `guide/Safety.oot:63`**. The token table currently says "Landlock jail and `setrlimit`" with no OS gate. The same table is referenced from `Options.oot:166`. The page already has "Landlock is a real Linux jail" at line 132; the table should match.
+
+No other changes recommended. The site copy is correct.
+
+## 7. What was not checked
+
+- The `pay.openooda.org/tip` worker and `collect.openooda.org/v1/emails` worker were not opened. They are out of lane (not the door, not the guide, not the registry). The cross-check on `index.html:261,329` and `Pay.oot:23` was text-only.
+- The `openOODA.github.io/research/` archive (49 RP-* papers) was not line-by-line read. The grep returned research-context mentions of "Windows" only (`RP-3-1:62`, `RP-4-3-3:25`, `RP-4-1-4:17`, `RP-4-1-3:11,15`, `RP-6-2:25`, `RP-ES-6:9,23,31`, `RP-5-6:9`, `RP-ES-3:5`). These are research-text mentions of "Windows," "platforms," and "cross-platform" in the design-draft sense. Per `guide/Research.oot:11-12`, the archive is draft and "not the install." No product claim is made. Honest by archive rule.
+- The `wiki/` repo was not opened. The README at `openOODA.github.io/README.oot:4` says the wiki is a different repo, not the user wiki. The user-facing surface is `openOODA.github.io/`.
+- The `ooda/`, `ooda/oodac/`, `ooda/runtime/`, `ooda/cli/`, `ooda/install/` trees were not opened. The audit pulls findings from the four `audit/win_*.oot` reports only; this lane does not read the compiler or runtime.
+- The installer decision (NSIS vs MSIX vs MSI vs zip) was not re-litigated here. `win_installer_options.oot` owns that, and the site is correctly silent until Phase 5 picks a winner.
+- Determinism of the install line (`curl -fsSL ... | bash`) was not tested. Out of lane.
+- The `og:image` asset at `og.png` was not opened; it is the social-card image. Out of lane.

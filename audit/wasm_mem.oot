@@ -1,0 +1,193 @@
+# WASM-MEM — 30k print is ERR wasm buf; emit_n does not clear ovf
+
+File: openOODA/audit/wasm_mem.oot
+WASM-PHALANX MEM. RULES 1.6 fail safely. WORKFLOW resource exhaustion.
+Own only this note. Did not edit runtime, smoke, c_emit, llvm, or x86.
+
+Logline: A 30000-byte print sets oo_wasm_ovf and emit_n writes ERR wasm buf with no dummy \0asm module.
+Setup: cwd ooda/. Date 2026-08-18. Lock is scripts/wasm_buf_smoke.oo.
+Beats:
+  1. Read oo_wasm_emit_n start. It must not assign oo_wasm_ovf = 0.
+  2. Follow set_fn_print when s.len is 30000. It must set ovf and return.
+  3. Confirm oversized print stdout is ERR wasm buf, not magic 00 61 73 6d.
+
+## 0. Verdict
+
+PASS. emit_n does not clear ovf. Oversized print is ERR wasm buf.
+No dummy `\0asm`.
+
+Lock: ooda/scripts/wasm_buf_smoke.oo
+emit_n clears ovf: no
+residual: FN_CAP 4096 does not fit a real module; overflow prints ERR wasm buf.
+
+`oo_wasm_emit_n` start does not assign `oo_wasm_ovf = 0`.
+The first ovf use in emit_n is a read. If the flag is set, emit_n
+calls emit_tiny and returns.
+emit_tiny prints `ERR\twasm\tbuf` and writes no module bytes.
+
+This turn re-read the smoke and the runtime overflow path.
+Did not rebuild oodac. Did not copy bin/ooda onto oodac/oodac.
+
+Name truncate is safe. Scan refuses a file larger than 1048576.
+pay writes use 24000. mod writes use 28000.
+`oo_wasm_set_fn_print` refuses a literal longer than PBUF 4096.
+n=4096 writes no module and no smash.
+
+gcc includes chs_rt_wasm.c then chs_rt_wasm_print.c as one unit.
+print.c is 239 lines. wasm.c is 211 lines. Both under 256.
+
+## 1. 30k print is ERR, not dummy \0asm
+
+Smoke driver argv[1][0]==80 (P):
+
+  fill 30000 B bytes, note_fn "main", set_fn_print, write_source_module(1).
+
+Path on disk:
+
+  set_fn_print sees s.len 30000 > PBUF 4096, sets ovf, returns.
+  It does not bind. It does not store pending bytes.
+  write_source_module clamps n and calls emit_n. It does not
+  assign ovf.
+  emit_n does not assign ovf = 0 at start.
+  After the name walk, ovf is still 1. emit_n calls emit_tiny
+  and returns before any hv copy.
+
+emit_tiny is only:
+
+  fputs("ERR\twasm\tbuf\n", stdout);
+  fflush(stdout);
+
+That is 13 bytes. Hex:
+
+  45 52 52 09 77 61 73 6d 09 62 75 66 0a
+
+Text: ERR<TAB>wasm<TAB>buf<LF>
+First four bytes: 45 52 52 09, not 00 61 73 6d.
+
+A canned module is a fixed WebAssembly blob that starts with
+`\0asm` (bytes `00 61 73 6d`). emit_tiny does not write that
+header. Comment on disk: Overflow: no canned module.
+
+If emit_n cleared ovf at start, write_source_module would emit
+a dummy `\0asm` and the smoke would fail.
+
+On-disk driver artifacts (`.ooda-cache/ooda-tmp/`):
+
+  wasm_buf_print.wasm  text line ERR<TAB>wasm<TAB>buf
+  wasm_buf_n4096.wasm  same ERR line
+  print.err            empty
+  n4096.err            empty
+  wasm_buf_name.wasm   binary (NUL at offset 0; name path)
+
+Smoke asserts:
+
+  grep ERR<TAB>wasm<TAB>buf on the 30k print stdout
+  od first four bytes must not be 00 61 73 6d
+  size <= 28000
+  no 24000-byte B run in the file
+  n=4096 same ERR, same no-magic, size <= 28000
+  process must not die with a signal (exit < 128)
+
+## 2. emit_n start (ovf is not cleared)
+
+File: ooda/runtime/chs_rt_wasm_print.c
+Function: static void oo_wasm_emit_n(unsigned int n)
+Line 114.
+
+Start does: clamp n, bind a pending print, find main, set base.
+Start does not: oo_wasm_ovf = 0.
+
+After the name walk (line 144):
+
+  if (oo_wasm_ovf) { oo_wasm_emit_tiny(); return; }
+
+After section writes, before fwrite (line 233):
+
+  if (oo_wasm_ovf) { oo_wasm_emit_tiny(); return; }
+
+fwrite of mod runs only when ovf is still 0.
+hv (`00 61 73 6d 01 00 00 00`) is copied only after the first check.
+
+The only `oo_wasm_ovf = 0` in the two C files is print.c:85
+inside emit_print_body (64-byte scratch save/restore).
+That is not emit_n start.
+chs_rt_wasm.c only sets ovf to 1 (leb/raw/u8). It never assigns 0.
+write_source_module does not assign ovf.
+
+## 3. Bounds on disk
+
+chs_rt_wasm.c:
+
+  FN_CAP 4096. NAME_MAX 64. lim default 28000. ovf flag.
+  push_name: if len >= 64 then len = 63.
+  note_fn: walk data while len < 63.
+  scan: sz > 1048576 refuse.
+  cmdline buf 4096.
+
+chs_rt_wasm_print.c:
+
+  pay[24000] mod[28000]
+  OO_WASM_PAY_MAX 24000. OO_WASM_MOD_MAX 28000.
+  OO_WASM_PBUF 4096 (one shared print blob, not per function).
+  set_fn_print returns if s.len > 4096.
+  bind_print returns if pused + need > 4096.
+
+Set ovf = 1:
+
+  bind_print: pused + need > PBUF
+  set_fn_print: s.len > PBUF
+  set_fn_print: C-string walk hits PBUF and the next byte is not NUL
+  leb / raw / u8: a write would pass oo_wasm_lim
+
+Smoke static greps lock pay[24000], mod[28000], name truncate,
+1 MiB scan refuse, and a length guard on emit writers.
+
+## 4. Why n=4096 is ERR
+
+A new process starts ovf at 0 (BSS).
+write_source_module(4096) keeps n at FN_CAP.
+emit_n then writes 4096 dummy names into pay and mod.
+leb/raw/u8 set ovf when *n would pass lim.
+The second ovf check calls emit_tiny. fwrite does not run.
+
+FN_CAP 4096 still names the table. A real module with that
+many 63-char names does not fit 28000. The smoke locks ERR.
+
+Before the guard, emit_n wrote d[(*n)++] with no cap.
+pay and mod are adjacent function-static buffers.
+An export overflow wrote past pay and tore the module prefix.
+fwrite then used a large mlen and read past mod.
+That was silent corruption (WORKFLOW HIGH). The ovf path
+closes that hole.
+
+## 5. Not emit_n start (no patch)
+
+oo_wasm_emit_print_body saves ovf, sets oo_wasm_ovf = 0, then
+writes a 64-byte scratch. On scratch ovf it leaves ovf set
+and returns. On success it restores the saved flag.
+
+That is not emit_n start. emit_n already returned if ovf was
+set, so the save is 0 on this path. MEM did not invent a patch.
+
+## 6. Residual
+
+  FN_CAP 4096 does not fit a real module; overflow prints ERR wasm buf.
+  note_fn ignores name.len and stops at NUL or 63. Dest is safe.
+  A non-terminated short OoStr can leak adjacent bytes into a name.
+  cmdline is 4096 bytes. A truncated cmdline can miss a .oo path.
+  emit_tiny is a stale name for ERR text.
+  Dummy `02 00 0b` stays for a function with no print.
+  A browser host is residual. C emit plus gcc stays the everyday path.
+  MEM did not edit runtime.
+
+## 7. Isolation
+
+MEM wrote only:
+
+  openOODA/audit/wasm_mem.oot
+
+Did not edit oodac, runtime, fixtures, or smokes.
+Did not rebuild oodac. Did not copy bin/ooda onto oodac/oodac.
+
+Status: MEM buf audit is PASS. 30k print is ERR wasm buf.
+No dummy `\0asm`. emit_n does not clear ovf.
