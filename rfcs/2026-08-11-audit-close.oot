@@ -41,6 +41,9 @@ Four substitutes remain and are documented as such, not laundered as equivalents
 - **64-bit `ct_eq_int`.** Implemented as `(a ^ b) - 1 >> 63`, which is constant-time on the *value* path but leaks via branch on the early-out for `a == 0 || b == 0`. Acceptable for non-secret sizes; not for key bytes.
 - **Immutable-string zeroize.** Strings currently cannot be zeroized in place because the runtime treats them as interned/CoW; deallocation goes through the GC, not an explicit wipe. Secrets in strings outlive their scope.
 
+## 🛡️ Security & Capability Impact
+Six patch families gate every effect through an unforgeable capability token (RFC 0001): `&NetCap` for network, `&FsCap` for filesystem, `&SysCap` for OS calls including `landlock_restrict`/`setrlimit`, `&EnvCap` for environment, `&ProcessCap` for child process, `&FfiCap`/`&UnsafeFFICap` for C-library access. `process_exec` refuses SECRET-tainted args. HMAC attenuation narrows a parent token to a child via `oo_cap_attenuate_ok`; forged parents fail verification. Empty `OOODA_FS_WRITEDIR` denies writes. `oo_meta_epoch()` re-randomizes per-process to harden against replay.
+
 ## 🔀 Alternatives Considered
 
 - **OpenSSL for TLS now.** Rejected: pulling OpenSDL/OpenSSL would re-introduce the supply-chain risk the audit was closing, and would bind the stdlib to a C ABI before the runtime can sandbox C calls. TLS lands in a later RFC behind the cap boundary.

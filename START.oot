@@ -13,11 +13,11 @@ Only two file extensions are authorized in this repository:
 
 STRICTLY FORBIDDEN:
   - No `.py` — Python is completely unauthorized across all directories.
-  - No `.sh` — except the one host rebuild named below.
+  - No `.sh` — except the two host scripts named below.
   - No `.js` / `.ts` / `.rb` / `.pl` (except third-party editor glue in `vscode/server/`).
   - No `.md` — All documentation, boards, and notes MUST be `.oot`.
 
-One host exception: `../ooda/bootstrap/oodac_pure_build` starts gcc and the seed compiler. No other `.sh` or `.py`.
+Two host exceptions: `../ooda/bootstrap/oodac_pure_build` starts gcc and the seed compiler, and `../openOODA.github.io/install.sh` is the public host installer (bash, `curl https://openooda.org/install.sh | bash`). No other `.sh` or `.py`. `qa/e2e/*.sh` is QA-owned shell, allowed in `qa/` only.
 
 ## 1. The 9 Canonical Process Boards
 
@@ -37,19 +37,20 @@ The entire project governance is partitioned across exactly 9 process boards in 
 
 Full write map: WORKFLOW.oot section 0. Short map:
 
-  this folder            9 boards, audit/, rfcs/, scripts/
-  ../ooda/               Product: oodac/, cli/, runtime/, std/, scripts/, install/
-  ../qa/                 Hostile proofs (pm_*_spine.oo)
-  ../openOODA.github.io  Public site: / door, /guide/ ops. /research/ is archive, not nav.
+  this folder            9 boards, audit/ (door only, see below), rfcs/, scripts/
+  ../ooda/               Product: oodac/, cli/, runtime/, std/, scripts/, install/, docs/ (TOKEN_TOOLING.oot + AGENTS.oot), pm/ (stub, do not grow)
+  ../qa/                 Hostile proofs — qa_master.oo (22 green) + pm_*_spine.oo + tests_* + e2e/*.sh (allowed only in qa/)
+  ../openOODA.github.io  Public site: / door, /guide/ ops. /research/ is archive, not nav. Internal LLM: ignore completely.
   ../registry/           Public store: index, catalog, index.minisig, index.html
-  Guide is /guide/. Local wiki/ and docs/ clones are gone. GitHub openOODA/wiki and openOODA/docs are archived.
 
-  ../ooda/scripts/       Pure .oo smokes, proofs, tools, and fixers
-  ../ooda/fixtures/      Test fixtures and input files that smokes point at
-  ../ooda/bootstrap/     Seed compiler, official rebuild, and check corpus only
-  scripts/               Board tools (check_board.oo, verify_all.oo, dinner_lint.oo)
-  audit/                 Session logs and audit rollups
-  rfcs/                  Technical Request For Comments
+   ../ooda/scripts/       Pure .oo smokes, proofs, tools, and fixers — script_lint.oo enforces Academy headers
+   ../ooda/fixtures/      Test fixtures and input files that smokes point at
+   ../ooda/bootstrap/     Seed compiler, official rebuild, and check corpus only
+   ../ooda/docs/          TOKEN_TOOLING.oot — use ooda outline/reflect/check/dump (~1.3% context), never cat ~/.cache/ooda-tmp/**/all*.c (~700KB) or full ROADMAP.oot
+   ../ooda/AGENTS.oot     Hard traps — string index != 0 forbidden, "\r" ≠ CR, write_file needs OODA_FS_WRITEDIR, never copy bin/ooda onto oodac/oodac
+   scripts/               Board tools — check_board.oo (9-board whitelist), dinner_lint.oo (forbidden ext + ≤256 + Academy), verify_all.oo (oodac check + SHIPPED freshness), generate_shipped.oo (live double-run hostile probes — forces code review), purge_audit.oo
+   audit/                 Door: library_status.oot+22 siblings (GREEN/BLOCKED inventory). Gate: cross_ref_audit.oot (0 dead refs). Rollup: roadmap_ns_rollup.oot (historical). Ignore everything else — wave logs move to archive_2026_08_19.tgz.
+   rfcs/                  Technical RFCs — copy 0000-template.oot (Status Draft→Active→Accepted→Implemented, Security & Capability Impact and Testing & Verification Criteria both mandatory)
 
 `../ooda/bootstrap/` is not a process board. It holds:
   - `seed/oodac` — first trusted compiler binary
@@ -59,26 +60,36 @@ Do not add honesty-pack `.oot` files there. Residual truth lives in SHIPPED.oot 
 
 `scripts/check_board.oo` must be run from this folder (`openOODA/`). It keeps the nine boards and deletes any other `*.oot` here. Do not run it from the repo root or from `../ooda/`.
 
+`../ooda/pm/` is a stub (33 .oo files). Do not grow it. Real PM lives in `../ooda/cli/cmd_pm*.oo + ../ooda/cli/pm_*.oo + ../qa/pm_*_spine.oo`.
+
 ## 3. Reading Priority & Loading Sequence
 
 Read only what this turn needs. Order matters.
 
-### Always
+### Always (mandatory run, not just read)
   The owner's ask
   RULES.oot — law
-  SHIPPED.oot — what exists on disk (generated — verify freshness via `scripts/generate_shipped.oo`, do not trust blindly)
+  SHIPPED.oot — what exists on disk (generated — verify freshness via `scripts/generate_shipped.oo`, do not trust blindly — run, do not read)
+  SECURITY.oot §1-2 + §4 op lookup + §6 arg-flow — binary defense (Landlock, HMAC attenuation, rlimit, FsWriteCap + OODA_FS_WRITEDIR). Seals live in `ooda/runtime/chs_rt_caps.c`, not the historical `STATIC_CAPS.oot`.
   WORKFLOW.oot section 0 — where to write
+  `ooda/docs/TOKEN_TOOLING.oot` + `ooda/AGENTS.oot` — outline|reflect|check on named files; never cat full ROADMAP or emitted C.
 
 ### When the work is product code
-  ROADMAP.oot — pin, rebuild, section 5 Open this cycle. Section 6 residual tracks are later. Do not pick a section-6 row unless the owner names it.
-  SECURITY.oot — only if the change touches files, exec, net, or caps
+  ROADMAP.oot — pin, rebuild, section 5 Open this cycle. Section 6 residual tracks are later. Do not pick a section-6 row unless the owner names it. Open rows must cite RFC ID or `residual`.
+  SECURITY.oot — full op table when adding/fs/exec/net/cap/HMAC/Landlock edits
   NORTHSTAR.oot — only if the design is actually in doubt
 
 ### Only when needed
-  WORKFLOW.oot rest — swarm or hostile probe
+  WORKFLOW.oot rest — OODA tempo, swarm (§2 Phalanx 12 agents, file-disjoint), hostile probing (§3, Double-Run Law CRIT), bug lore (§5 Lore 2 decoy offset, Lore 4 cap fail-closed, Lore 8 string traps)
   FORMAT.oot — writing a new .oo or .oot header
   MOONSHOTS.oot — long-term vision, not this week
-  scripts/check_board.oo, scripts/verify_all.oo, scripts/dinner_lint.oo
+  rfcs/0000-template.oot — RFC process Draft→Active→Accepted→Implemented (Security & Testing both mandatory) — wire via WORKFLOW §0 row already added
+  qa/qa_master.oo — 22 green, run via `../ooda/bin/ooda run ./qa_master.oo` for product rail
+  scripts/check_board.oo, scripts/verify_all.oo, scripts/dinner_lint.oo, scripts/generate_shipped.oo, scripts/purge_audit.oo, ooda/scripts/script_lint.oo
+
+### Fence (do not cross)
+  `openOODA.github.io/` is public — ignore it as ground truth; internal cross-ref is the 9 boards + SHIPPED + audit/cross_ref_audit.oot.
+  `audit/plan1_*`, `audit/plan2_*`, `audit/plan3_*`, `audit/wasm_*`, `audit/x86_*`, `audit/win_*`, `audit/green/*`, `audit/research_paper_audit.oot` are wave logs and design specs, not gates — ignore.
 
 ## 4. Pre-Modification Gate & Axioms
 

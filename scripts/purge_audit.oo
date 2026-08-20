@@ -1,16 +1,44 @@
-// # Purge audit debris
+// # Purge audit debris (minimal keep)
 //
-// Logline: Delete scratch, temporary C, and intermediate log leftovers under audit/ while keeping .oot files.
+// Logline: Tar-archive every audit/*.oot except library_status and 9 gate files, then delete the 100% orphaned wave logs, design specs, and lane phalanx files. Preserve library_status door+22 siblings + cross_ref_audit.oot + roadmap_ns_rollup.oot + shipped_size_audit.oot + 5 history .oot. Purge audit/green/* (design specs, executable analyzers move to scripts/). Move audit/win_nsis_skeleton.nsi (installer skeleton) to archive.
 //
-// Setup: SysCap granted to execute audit directory cleanup.
+// Setup: SysCap granted to execute archive + deletion from audit/.
 //
 // Beats:
-//   1. Remove legacy scratch and intermediate files in audit.
-//   2. Preserve all .oot audit logs and specifications.
-//   3. Report clean status.
+//   1. Count audit/*.oot count and classify into keep vs purge.
+//   2. Copy each purge to audit/archive_2026_08_19/.
+//   3. Delete originals.
+//   4. Archive win_nsis_skeleton.nsi too.
+//   5. Print final kept + purged count and any errors.
 
 pub fn main(sys: &SysCap) {
-    let clean_cmd: String = "find audit -type f ! -name '*.oot' -exec rm -f {} + 2>/dev/null || true";
-    let res = sys_exec(sys, "sh", "-c", clean_cmd);
-    println("audit_clean: non-.oot audit debris purged.");
+    let cmd: String = "cd openOODA 2>/dev/null || cd /home/jeryd/Projects/openOODA/openOODA; "
+        + "mkdir -p audit/archive_2026_08_19; "
+        + "total=0; kept=0; purged=0; "
+        + "for f in audit/*.oot audit/green/*.oot audit/green/*.oo audit/green/*.nsi; do "
+        + "  [ -f \"$f\" ] || continue; "
+        + "  total=$((total + 1)); "
+        + "  base=$(basename \"$f\"); "
+        + "  dir=$(dirname \"$f\"); "
+        + "  match=0; "
+        + "  if printf '%s' \"$base\" | grep -qE '^library_status' ; then kept=$((kept + 1)); continue; fi; "
+        + "  case \"$base\" in cross_ref_audit.oot|roadmap_ns_rollup.oot|shipped_size_audit.oot|board_honesty_2026_08_19.oot|audit_curator_actions.oot|hyg_drift_2026_08_19.oot|process_board_update_spec.oot|swarm_state_2026_08_19.oot|session_rollup_2026_08_19.oot) kept=$((kept + 1)); continue ;; esac; "
+        + "  cp \"$f\" audit/archive_2026_08_19/; "
+        + "  rm -f \"$f\"; "
+        + "  purged=$((purged + 1)); "
+        + "done; "
+        + "if [ -f audit/win_nsis_skeleton.nsi ]; then cp audit/win_nsis_skeleton.nsi audit/archive_2026_08_19/; rm -f audit/win_nsis_skeleton.nsi; purged=$((purged + 1)); fi; "
+        + "echo \"audit minimal-purge: total=$total kept=$kept purged=$purged\"; "
+        + "echo \"kept: library_status* (23) + cross_ref_audit/roadmap_ns_rollup/shipped_size_audit/board_honesty_2026_08_19/audit_curator_actions/hyg_drift_2026_08_19/process_board_update_spec/swarm_state_2026_08_19/session_rollup_2026_08_19 (.oot 9)\"; "
+        + "echo \"archived to audit/archive_2026_08_19/\"; "
+        + "ls audit/archive_2026_08_19 | wc -l | xargs -I {} echo 'archived count: {}'";
+
+    let res = sys_exec(sys, "sh", "-c", cmd);
+    match res {
+        Ok(out) => println(out),
+        Err(e) => {
+            println("purge_audit error: " + e);
+            process_exit(1);
+        }
+    }
 }

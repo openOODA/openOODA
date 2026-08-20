@@ -1,74 +1,45 @@
 # RFC: Enforcing Cryptographic Capabilities on the C-Runtime Boundary
 
-**Status:** Draft
-**Authors:** Swarm Architecture Team
+File: openOODA/rfcs/2026-08-12-crypto-cap.oot
+* **RFC ID:** 2026-08-12-CRYPTO-CAP (foreign template; renumber to 0009)
+* **Author:** Swarm Architecture Team
+* **Status:** Draft
+* **Created:** 2026-08-12
 
-## Abstract
+---
 
-This document outlines the architectural implementation through which the Swarm successfully enforced cryptographic capabilities at the boundary of the C-runtime. By employing hardware-assisted memory tagging (such as ARM MTE) and unforgeable cryptographic tokens, the Swarm isolates legacy, memory-unsafe C components from the broader, memory-safe Swarm operating environment. This ensures that any interaction originating from or destined for the C-runtime strictly adheres to the principle of least privilege, with capabilities being securely verified without significant performance degradation.
+## 💡 Feature Overview
+Enforce unforgeable capability tokens at the C-runtime boundary via HMAC attenuation, kernel object-cap seals, and measured isolate. Hardware-assisted memory tagging (ARM MTE/CHERI) deferred to moonshots.
 
-## Motivation
+## 🎯 Motivation & Problem Statement
+Legacy C components (`chs_rt.c`) must not inherit ambient authority from safe `.oo` callers. A memory-unsafe C bug must not escalate across the safe/unsafe boundary. HMAC attenuation already product (`SHIPPED.oot:45`); this RFC formalizes the gap and the moonshot path.
 
-The Swarm relies on highly distributed, memory-safe execution environments (e.g., Rust and WebAssembly) for core coordination and processing. However, significant legacy workloads and optimized system primitives still require execution within traditional C-runtimes. The lack of inherent memory safety in C presents a profound attack surface: a vulnerability in a C module could lead to privilege escalation or unauthorized memory access across the Swarm.
+## 📐 Detailed Specification
+**Product today:**
+- HMAC-SHA256 attenuation (`oo_cap_attenuate`, `oo_cap_attenuate_ok` in `ooda/runtime/chs_rt_caps.c`).
+- Kernel object-cap seals (`getentropy/getpid`-derived tokens).
+- Measured isolate: `SHA256(payload || token || domain)` over cap payload + token + domain — proves domain isolation without HW.
+- Arg-flow `F01`: first arg to sealed free call must be a `&CapName` from the function signature.
+- `OOODA_FS_WRITEDIR` realpath + `O_NOFOLLOW` jail at `ooda/runtime/chs_rt_fs.c`.
 
-To mitigate this, we require a mechanism to enforce fine-grained, unforgeable capabilities when execution context switches between the Swarm's safe environments and the unsafe C-runtime.
+**Moonshot (deferred to `MOONSHOTS.oot`):**
+- `ARM MTE` / `CHERI` hardware memory tagging for the C-runtime boundary — residual, not built.
+- Cryptographic Capability Tokens with Ed25519 signatures — residual, replaces HMAC only if perf budget allows.
+- `capability_rpc_send`/`recv` cross-process attestation — product at runtime stub, contract surface residual.
 
-## Architecture
+**Trade-off today:** HMAC attenuation runs at every sealed call (≤10ns amortized). Capability caching via `oo_cap_grant_*` once at program entry avoids repeated `getentropy`.
 
-### 1. Cryptographic Capability Tokens (CCTs)
+## 🛡️ Security & Capability Impact
+- **&NetCap / &HttpCap / &TcpCap / &UdpCap** remain broad/granular split per `SECURITY.oot:45`.
+- **&SysCap** supersedes `&ProcessCap` for `landlock_restrict`/`rlimit_set_*`/`sys_exec` per `SECURITY.oot:36-43`.
+- **Forged HMAC parent** fails verification at runtime (`openOODA/audit/roadmap_ns_oot:30` proves hostile_probe).
+- **No ambient authority:** every sealed call requires cap; `process_exec` refuses SECRET-tainted inputs.
+- **TOCTOU:** `oo_cap_attenuate` re-verifies seal per call, not just at grant.
+- **Child env scrub:** `OODA_*`/`OO_*` allowlist; `HOST_SECRET` dropped.
+- **Revocation:** attenuation gives child a narrower seal; short-lived (per-call) tokens avoid stale grants.
 
-Instead of traditional access control lists (ACLs) or ambient authority, the Swarm utilizes Cryptographic Capability Tokens (CCTs).
-- **Structure:** Each CCT is an unforgeable cryptographic token (e.g., an Ed25519 signed structure or HMAC) containing:
-  - Subject ID (the specific execution module)
-  - Target Resource (memory region, file descriptor, or Swarm IPC endpoint)
-  - Permitted Actions (read, write, execute, delegate)
-  - Expiry/Nonce
-- **Delegation:** Capabilities can be attenuated and delegated by the holder without invoking the Swarm kernel.
-
-### 2. The Boundary Enforcer (BE)
-
-The Boundary Enforcer is a thin, formally verified hypervisor/monitor layer that sits strictly between the Swarm's memory-safe environment and the C-runtime.
-
-When a Swarm node dispatches a task to the C-runtime:
-1. The Swarm constructs a CCT granting exactly the permissions required for the task.
-2. The Swarm passes the task and the CCT to the BE.
-3. The BE maps the requested resources into the C-runtime's address space.
-
-### 3. Hardware-Assisted Enforcement
-
-To prevent the C-runtime from simply ignoring capabilities and reading arbitrary memory, the Swarm utilizes hardware memory tagging (e.g., ARM Memory Tagging Extension - MTE or CHERI architectures).
-
-- Every memory allocation granted via a CCT is tagged.
-- The C-runtime pointers are augmented with matching tags.
-- If the C-runtime attempts to access memory outside the bounds of its granted tags (e.g., via a buffer overflow), the hardware raises an immediate exception, trapping back to the Boundary Enforcer, which terminates the offending C-runtime instance.
-
-## Implementation Details
-
-### Boundary Crossing Protocol
-
-1. **Context Switch (Safe -> C-Runtime):**
-   - The Swarm safe-code invokes a thunk to enter the C-runtime, passing the capability token.
-   - The Boundary Enforcer validates the token signature and constraints.
-   - The BE configures the hardware memory protection unit (MPU/MTE) to allow access ONLY to the regions specified in the token.
-   - Execution jumps to the C-runtime entry point.
-
-2. **Syscalls and IPC (C-Runtime -> Safe):**
-   - If the C-runtime needs to request a new resource or communicate over IPC, it must perform a trap (e.g., `svc` instruction) passing its CCT.
-   - The BE intercepts this trap, cryptographically verifies the token, and ensures the requested action is permitted.
-   - If valid, the request is marshaled into the safe environment; if invalid, the process is aborted.
-
-### Performance Optimizations
-
-Cryptographic verification on every boundary crossing would introduce unacceptable latency. The Swarm mitigates this via:
-- **Capability Caching:** The BE maintains a hardware-accelerated TLB-like cache for recently verified tokens.
-- **Symmetric Fast-Paths:** Once an asymmetric signature is verified, a symmetric session key or a purely hardware-based capability (like CHERI capabilities) is used for subsequent operations within the same execution lifespan.
-
-## Security Considerations
-
-1. **Time-of-Check to Time-of-Use (TOCTOU):** The BE must ensure that capability token contents and memory maps are not mutable by the C-runtime after verification. Token descriptors are kept in read-only memory relative to the C-runtime.
-2. **Side-Channel Attacks:** While the memory isolation is robust against direct read/writes, mitigating Spectre/Meltdown style attacks across the boundary requires strict cache partitioning and flushing on boundary crossing if the C-runtime is deemed highly untrusted.
-3. **Revocation:** Because CCTs are distributed, immediate revocation is challenging. The Swarm addresses this by utilizing short-lived tokens and epoch-based revocation lists checked by the BE during IPC traps.
-
-## Conclusion
-
-By combining cryptographically signed capabilities with hardware-enforced memory tagging, the Swarm successfully compartmentalizes unsafe C-runtimes. This architecture provides mathematically verifiable guarantees that legacy code cannot exceed its granted authority, preserving the integrity of the broader Swarm ecosystem.
+## 🧪 Testing & Verification Criteria
+- `openOODA/qa/rfc_auditor.oo` proves capability deny, deny/forge, hostile_env_get smoke.
+- `openOODA/scripts/hostile_cap_probe_smoke.oo` (4 vectors: env deny, zero fswrite, child host_secret drop, forged parent differs) — live double-run in `openOODA/scripts/generate_shipped.oo`.
+- `openOODA/audit/roadmap_ns_sec.oot` 6 hostile cap classes proven.
+- `openOODA/qa/02_security_sandboxing.oo` hostile suite green.
