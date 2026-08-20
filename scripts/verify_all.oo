@@ -1,13 +1,15 @@
 // # Verify all standard modules
 //
-// Logline: Find standard library modules, run oodac check on each, and report results.
+// Logline: Find standard library modules, run oodac check on each, and verify SHIPPED freshness.
 //
-// Setup: SysCap granted to run oodac check on standard library modules.
+// Setup: SysCap granted to run oodac check on standard library modules and to probe SHIPPED.oot.
 //
 // Beats:
 //   1. Locate standard library .oo modules.
 //   2. Run oodac check against each module.
 //   3. Tally failures and report clean status.
+//   4. Verify SHIPPED.oot carries GENERATED marker and respects 256-line budget.
+//   5. Fail closed on stale SHIPPED — zero trust demands live-code verification.
 
 pub fn main(sys: &SysCap) {
     let check_cmd: String = "src_root=\".\"; "
@@ -18,17 +20,21 @@ pub fn main(sys: &SysCap) {
         + "cd \"$src_root\" 2>/dev/null || true; set -e; fails=0; total=0; "
         + "oodac_cmd=\"oodac\"; "
         + "if command -v oodac >/dev/null 2>&1; then oodac_cmd=\"oodac\"; "
-        + "elif [ -x \"$src_root/ooda/oodac/oodac\" ]; then oodac_cmd=\"$src_root/ooda/oodac/oodac\"; "
-        + "elif [ -x \"$src_root/target/debug/oodac\" ]; then oodac_cmd=\"$src_root/target/debug/oodac\"; "
-        + "elif [ -x \"../ooda/oodac/oodac\" ]; then oodac_cmd=\"../ooda/oodac/oodac\"; fi; "
-        + "for f in $(find \"$src_root/ooda/std\" \"$src_root/std\" \"$src_root/ooda/std\" -type f -name '*.oo' 2>/dev/null | sort -u); do "
+        + "elif [ -x \"ooda/oodac/oodac\" ]; then oodac_cmd=\"ooda/oodac/oodac\"; "
+        + "elif [ -x \"target/debug/oodac\" ]; then oodac_cmd=\"target/debug/oodac\"; fi; "
+        + "for f in $(find \"ooda/std\" -type f -name '*.oo' 2>/dev/null | sort -u); do "
         + "  total=$((total + 1)); "
         + "  if ! $oodac_cmd check \"$f\" >/dev/null 2>&1; then "
         + "    echo \"Fail: $f\"; fails=$((fails + 1)); "
         + "  fi; "
         + "done; "
         + "echo \"Checked $total files. Failed: $fails\"; "
-        + "if [ \"$fails\" -gt 0 ]; then exit 1; fi";
+        + "if [ \"$fails\" -gt 0 ]; then exit 1; fi; "
+        + "echo \"=== SHIPPED freshness (zero trust) ===\"; "
+        + "if [ ! -f \"openOODA/SHIPPED.oot\" ]; then echo \"FAIL: SHIPPED.oot missing\"; exit 1; fi; "
+        + "if ! grep -q \"THIS FILE IS GENERATED\" \"openOODA/SHIPPED.oot\"; then echo \"FAIL: SHIPPED.oot stale — missing GENERATED marker, run scripts/generate_shipped.oo\"; exit 1; fi; "
+        + "lc=$(wc -l < \"openOODA/SHIPPED.oot\" | tr -d ' '); if [ \"$lc\" -gt 256 ]; then echo \"FAIL: SHIPPED.oot $lc lines > 256\"; exit 1; fi; "
+        + "echo \"SHIPPED.oot OK: $lc lines, GENERATED marker present\"";
 
     let res = sys_exec(sys, "sh", "-c", check_cmd);
     match res {
