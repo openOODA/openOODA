@@ -1,0 +1,49 @@
+// # Live Verified Package Registry Bot
+//
+// Logline: Automated registry crawler, package ingestion, cryptographic verification, and catalog generator.
+//
+// Setup: Inspects registry packages, validates SHA-256 and min_pin, and rebuilds catalog under &FsCap and &SysCap.
+//
+// Beats:
+//   1. Audit repository package manifests and payloads.
+//   2. Verify Academy headers and 256-line constraint across packages.
+//   3. Validate toolchain min_pin SemVer compatibility.
+//   4. Generate verified registry catalog and index.
+
+import "cli/cmd_pm_bot.oo";
+
+fn fail_bot(msg: String) {
+    println("FAIL: " + msg);
+    process_exit(1);
+}
+
+pub fn main(fs: &FsCap, sys: &SysCap) {
+    let mut reg_dir: String = "registry";
+    if !path_exists(fs, reg_dir) {
+        if path_exists(fs, "../registry") {
+            reg_dir = "../registry";
+        }
+    }
+    if !path_exists(fs, reg_dir) {
+        fail_bot("missing registry directory");
+    }
+
+    println("=== openOODA Package Registry Verification Bot ===");
+    let mut bot_args: List[String] = list_new();
+    bot_args = list_push(bot_args, "pm");
+    bot_args = list_push(bot_args, "bot");
+    bot_args = list_push(bot_args, reg_dir);
+    bot_args = list_push(bot_args, "--sign");
+    cmd_pm_bot_run(fs, sys, bot_args);
+
+    let cat_p: String = reg_dir + "/catalog";
+    let idx_p: String = reg_dir + "/index";
+    if !path_exists(fs, cat_p) {
+        fail_bot("registry/catalog was not generated");
+    }
+    if !path_exists(fs, idx_p) {
+        fail_bot("registry/index was not generated");
+    }
+
+    println("OK: REGISTRY_BOT_PASSED");
+}

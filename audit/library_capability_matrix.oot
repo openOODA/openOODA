@@ -1,0 +1,86 @@
+# LIBRARY CAPABILITY MATRIX — Zero Ambient Authority rollup
+
+File: openOODA/audit/library_capability_matrix.oot
+Source-text isolation of `ooda/std`. Not `oodac check`. Not emit+gcc GREEN.
+Counts come from `scripts/audit_library_capabilities.oo` walking live `.oo` files with `read_file`.
+
+## 1. Scope
+
+The crawler opens every `.oo` file under `ooda/std`.
+It skips `.bin` leftovers and `.c` emit dumps.
+It uses one detector for synthetic bodies and for std modules.
+
+A sealed effect call needs a matching `&Cap` name in that same file.
+The detector treats an op as a call only when a non-identifier character sits before the name and `(` follows (spaces allowed).
+Fragments such as `prefetch`, `usb_cdc_fetch_rx`, `max_tcp_connections`, comment `No fetch`, and a field `alloc_bytes` are not calls.
+
+The op list is `process_exec`, `sys_exec`, `sys_spawn`, `read_file`, `write_file`, `fetch`, `tcp_connect`, `alloc_bytes`, and `landlock_restrict`.
+Matching tokens follow SECURITY.oot: `&ProcessCap` or `&SysCap`, `&FsReadCap` or `&FsCap`, `&FsWriteCap` or `&FsCap`, `&HttpCap` or `&NetCap`, `&TcpCap` or `&NetCap`, `&AllocCap`, `&SysCap`.
+
+This is token-vs-call text. It is not capability arg-flow.
+
+## 2. Synthetic lock
+
+Ambient body: `process_exec(`, `read_file(`, and `fetch(` with no `&Cap`.
+The detector must report a violation.
+
+Capped body: the same calls with `&ProcessCap`, `&FsReadCap`, and `&HttpCap`.
+The detector must stay clean.
+
+Fragment body: `No fetch`, `usb_cdc_fetch_rx`, `prefetch`, `max_tcp_connections`, and `alloc_bytes: Int`.
+The detector must stay clean.
+
+Comment body: `process_exec(` with `&ProcessCap` plus a `fetch` word that is not a call.
+The detector must stay clean.
+
+## 3. Named domains
+
+These folders are the OBJECTIVE domains. File counts are `.oo` modules:
+
+| Domain | Path | Files |
+| :--- | :--- | :--- |
+| Crypto | `ooda/std/crypto/` | 38 |
+| FS | `ooda/std/fs/` | 12 |
+| Network | `ooda/std/net/` | 38 |
+| Security | `ooda/std/sec/` | 361 |
+| Storage | `ooda/std/db_storage/` | 51 |
+| SIMD | `ooda/std/simd/` | 21 |
+
+The walk also covers the rest of `ooda/std`. Scanned count: 4754.
+
+## 4. Cluster rollup
+
+Cluster paths use substring matches (`/crypto`, `/net`, `/simd`, `/embedded_hal`, `/ai_ml`, `/deep_ai`, `/formal_verif`).
+Crypto includes `crypto_advanced` and related trees. Network includes `net_telemetry`. Hardware is SIMD plus `embedded_hal`.
+
+| Cluster | Files | Call-vs-token violations |
+| :--- | :--- | :--- |
+| Crypto | 222 | 0 |
+| FS | 12 | 0 |
+| Network | 91 | 0 |
+| Hardware | 58 | 0 |
+| AI/ML | 51 | 0 |
+| Formal Verification | 52 | 0 |
+
+Total violations on the full std walk: 0.
+Isolation verdict: CLEAN.
+
+An earlier unanchored `str_contains` scan reported 26 hits. Those were identifier fragments and English words, not sealed calls.
+
+## 5. What a violation means
+
+The file contains a sealed call `op(` and does not name a matching `&Cap` token.
+Do not treat this matrix as a compiler proof.
+Do not treat it as SHIPPED emit+gcc GREEN.
+
+Fix path for a true ambient call: pass the token in the function signature and down to the sealed op.
+
+## 6. Zero Ambient Authority
+
+On this call-anchored text audit, 4754 std modules have no unmatched sealed call of the listed ops.
+Re-run: from `openOODA/`, `../ooda/bin/ooda run ./scripts/audit_library_capabilities.oo`.
+
+Also see:
+  - `openOODA/SECURITY.oot` — op matrix
+  - `openOODA/scripts/audit_library_capabilities.oo` — crawler
+  - `openOODA/audit/library_status.oot` — GREEN/BLOCKED inventory (separate)

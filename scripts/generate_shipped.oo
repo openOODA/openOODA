@@ -7,7 +7,7 @@
 // Beats:
 //   1. Read SHIPPED.oot and extract lock paths that carry a Lock claim.
 //   2. Verify each lock file exists on disk under ooda/.
-//   3. Run a bounded sweep (10s per lock) of smoke probes up to 20 locks; first failure fails closed.
+//   3. Run a bounded sweep (30s per lock) of smoke probes; first failure fails closed.
 //   4. Verify pin, line budget, and GENERATED header freshness.
 //   5. Emit refreshed GENERATED marker or fail closed on drift.
 //
@@ -112,7 +112,6 @@ fn try_read(fs: &FsReadCap, a: String, b: String, c: String) -> Result[String, S
     return read_file(fs, c);
 }
 
-
 pub fn main(p: &ProcessCap, fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) {
     println("GENERATE_SHIPPED: zero-trust inventory check");
     let shipped_res: Result[String, String] = try_read(fs, "SHIPPED.oot", "openOODA/SHIPPED.oot", "../openOODA/SHIPPED.oot");
@@ -128,8 +127,8 @@ pub fn main(p: &ProcessCap, fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) {
         println("FAIL: SHIPPED.oot missing GENERATED marker — board is stale, run generator");
         process_exit(1);
     }
-    if !contains(shipped_text, "v0.205.0-beta") {
-        println("FAIL: SHIPPED pin mismatch — expected v0.205.0-beta");
+    if !contains(shipped_text, "v0.206.0") {
+        println("FAIL: SHIPPED pin mismatch — expected v0.206.0");
         process_exit(1);
     }
     let lines: Int = count_lines(shipped_text);
@@ -141,6 +140,19 @@ pub fn main(p: &ProcessCap, fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) {
     println("Locks cited in SHIPPED.oot: " + lock_count.to_string());
     if lock_count < 10 {
         println("FAIL: SHIPPED.oot cites too few locks — possible truncation");
+        process_exit(1);
+    }
+    let stat_res: Result[String, String] = try_read(fs, "audit/library_status.oot", "openOODA/audit/library_status.oot", "../openOODA/audit/library_status.oot");
+    let mut stat_text: String = "";
+    match stat_res {
+        Ok(t) => stat_text = t,
+        Err(e) => {
+            println("FAIL: cannot read audit/library_status.oot: " + e);
+            process_exit(1);
+        }
+    }
+    if !contains(stat_text, "BLOCKED 0") {
+        println("FAIL: audit/library_status.oot does not assert BLOCKED 0");
         process_exit(1);
     }
     let mut checks: List[String] = list_new();
@@ -167,7 +179,6 @@ pub fn main(p: &ProcessCap, fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) {
     probes = list_push(probes, "../ooda/scripts/gcc_werror_impl_smoke.oo");
     probes = list_push(probes, "../ooda/scripts/gcc_werror_return_smoke.oo");
     probes = list_push(probes, "../ooda/scripts/gcc_werror_uninit_smoke.oo");
-    probes = list_push(probes, "../ooda/scripts/hostile_cap_probe_smoke.oo");
     probes = list_push(probes, "../ooda/scripts/type_caret_println_smoke.oo");
     probes = list_push(probes, "../ooda/scripts/arity_caret_smoke.oo");
     probes = list_push(probes, "../ooda/scripts/while_void_caret_smoke.oo");
@@ -181,6 +192,13 @@ pub fn main(p: &ProcessCap, fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) {
     probes = list_push(probes, "../ooda/scripts/bit_identical_emit_lock.oo");
     probes = list_push(probes, "../ooda/scripts/emust_autofix_smoke.oo");
     probes = list_push(probes, "../ooda/fixtures/sum_shape_smoke.oo");
+    probes = list_push(probes, "../ooda/scripts/std_smoke.oo");
+    probes = list_push(probes, "../ooda/scripts/std_product_honesty_smoke.oo");
+    probes = list_push(probes, "../ooda/scripts/std_archive_smoke.oo");
+    probes = list_push(probes, "../ooda/scripts/std_markup_smoke.oo");
+    probes = list_push(probes, "../ooda/scripts/std_semver_smoke.oo");
+    probes = list_push(probes, "../ooda/scripts/c_if_expr_smoke.oo");
+    probes = list_push(probes, "../ooda/scripts/for_expr_bound_smoke.oo");
     let mut j: Int = 0;
     let mut present: Int = 0;
     while j < list_len(probes) {
@@ -199,9 +217,9 @@ pub fn main(p: &ProcessCap, fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) {
         + "if [ -x \"./bin/ooda\" ]; then OODA=\"./bin/ooda\"; elif [ -x \"../ooda/bin/ooda\" ]; then OODA=\"../ooda/bin/ooda\"; else OODA=\"ooda\"; fi; "
         + "echo \"sweep host: $(pwd) ooda=$OODA\"; "
         + "passed=0; failed=0; skipped=0; "
-        + "for probe in scripts/hostile_cap_probe_smoke.oo scripts/c_line_smoke.oo scripts/diag_caret_smoke.oo scripts/diag_path_smoke.oo scripts/c_line_ctrl_smoke.oo scripts/c_line_multi_smoke.oo scripts/c_line_secret_smoke.oo; do "
+        + "for probe in scripts/hostile_cap_probe_smoke.oo scripts/c_line_smoke.oo scripts/diag_caret_smoke.oo scripts/diag_path_smoke.oo scripts/c_line_ctrl_smoke.oo scripts/c_line_multi_smoke.oo scripts/c_line_secret_smoke.oo scripts/std_smoke.oo scripts/std_product_honesty_smoke.oo scripts/std_archive_smoke.oo scripts/std_markup_smoke.oo scripts/std_semver_smoke.oo scripts/c_if_expr_smoke.oo scripts/for_expr_bound_smoke.oo; do "
         + "  if [ -f \"$probe\" ]; then "
-        + "    timeout 10 \"$OODA\" run \"$probe\" >/tmp/gen_shipped_sweep.out 2>&1; rc=$?; "
+        + "    timeout 30 \"$OODA\" run \"$probe\" >/tmp/gen_shipped_sweep.out 2>&1; rc=$?; "
         + "    if [ $rc -eq 0 ]; then passed=$((passed + 1)); echo \"  PASS $probe\"; "
         + "    elif [ $rc -eq 124 ]; then skipped=$((skipped + 1)); echo \"  SKIP $probe (timeout)\"; "
         + "    else failed=$((failed + 1)); echo \"  FAIL $probe rc=$rc\"; tail -3 /tmp/gen_shipped_sweep.out | sed 's/^/    /'; "
