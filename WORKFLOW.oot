@@ -133,42 +133,27 @@ Session Adapter Template:
   Rails: ./bin/ooda check_all / scripts/dinner_lint.oo
   SWARM plan: solo (<reason>) OR fan-out (<agent>: <owned files>)
 
-## 2. Multi-Agent Swarm Protocols & Phalanx Architecture
+## 2. Multi-Agent Swarm Protocols & teamwork_preview Phalanx
 
 Multi-agent coordination maximizes throughput while strictly conserving token context.
 
-Core Swarm Protocols:
-  1. Right-Size the Model:
-     - Light/Flash models: hygiene, line-locks, linting, formatting, single command runs.
-     - Heavy/Pro models: compiler architecture, AST typechecking, complex multi-file bugs.
-  2. Small Ships:
-     - Assign each agent a single, well-scoped objective (typically one file).
-     - Terminate execution upon goal completion or first irrecoverable failure.
-  3. Stuck Protocols:
-     - If blocked, diagnose directly with `grep`, `tail`, and isolated CLI commands.
-     - Terminate rogue or hanging processes promptly.
-  4. Strict File Isolation:
-     - Concurrent writers must own disjoint sets of files.
-     - If overlapping edits are needed, serialize execution or branch separate worktrees.
-  5. Adversarial Red-Teaming:
-     - QA subagents actively construct counter-examples to falsify happy-path claims.
-     - QA identifies and documents the vulnerability; a builder subagent refactors the code.
-
-The 12-Agent Phalanx Architecture (Major Releases & Refactors):
-  - Engineering:
-      DE1, DE2 : Implement core product features and compiler passes.
-      RT       : Maintains C runtime (`chs_rt_*.c`) and emit boundaries.
-  - Adversarial:
-      PV1, PV2 : Red-team builder implementations with boundary edge cases.
-      SEC      : Audits capability arg-flow, shell escapes, and path traversal.
-      MEM      : Inspects allocation limits, heap quotas, and ARC leaks.
-  - Integration:
-      INT      : Validates end-to-end builds, traces, and link integrity.
-      HARN     : Develops test fixtures and smoke harnesses.
-      HYG      : Enforces 256-line limits, header compliance, and cruft cleanup.
-  - Command:
-      DOCS     : Synchronizes process boards (`.oot`) with actual codebase status.
-      COORD    : Assigns file ownership, manages sprint state, and rolls up reports.
+teamwork_preview Unified Swarm Rules:
+  1. Role Division & Right-Sizing:
+     - Lead / Orchestrator: Decomposes master roadmap, tracks dependencies, verifies inter-stage gates.
+     - Sentinel: Background liveness heartbeat, process status audits, non-blocking cron sweeps.
+     - Worker (Small Ships): Owns a single atomic file or module; terminates on goal or hard failure.
+     - Reviewer & Challenger: Adversarial inspection, mutation kill checks (>=95%), multi-compiler parity.
+  2. Disjoint File Ownership & Isolation:
+     - Active subagents must own strictly disjoint file sets. Concurrent write collisions fail closed.
+     - Read tools are shared; write modifications are partitioned per worker task ID.
+  3. Structured Handoffs & Non-Blocking Tempo:
+     - Subagents communicate via structured progress envelopes upon completion or unrecoverable error.
+     - Avoid infinite polling loops; rely on event-driven notifications and reactive wakeups.
+  4. 4-Stage Verification Gate:
+     - Stage 1: Build & syntax check -> Stage 2: Live binary smoke proof ->
+     - Stage 3: Adversarial / mutation stress -> Stage 4: Governance audit (`dinner_lint.oo` 0 violations).
+  5. Zero Ambient Authority & Fail-Closed Boundaries:
+     - Subagents never assume ungranted capability tokens (&FsWriteCap, &SysCap, &HttpCap). Missing caps fail closed.
 
 ## 3. Hostile Probing & Adversarial Verification
 
