@@ -2,43 +2,42 @@
 //
 // Logline: Validate SHIPPED freshness and run rfc_lint fail-closed. std FLOOR certified 100% GREEN (BLOCKED 0 per audit/library_status.oot:16).
 //
-// Setup: SysCap granted to invoke rfc_lint via ooda/bin/ooda. CWD must be openOODA/ via ooda/ symlink.
+// Setup: SysCap granted to invoke rfc_lint via ooda/bin/ooda. CWD can be repo root or openOODA/.
 //
 // Beats:
 //   1. Verify SHIPPED.oot is GENERATED + <=256 lines (zero-trust gate).
 //   2. Run scripts/rfc_lint.oo — fail closed if any RFC regresses.
-//   3. Verify 9 canonical boards present and RFC template present in openOODA/rfcs/.
+//   3. Verify 10 canonical boards present and RFC template present in openOODA/rfcs/.
 //   4. Print summary and exit 0 on pass, non-zero on any regression.
 
 pub fn main(sys: &SysCap) {
     let check_cmd: String = "set -e; "
         + "src_root=\".\"; "
         + "if [ -f \"SHIPPED.oot\" ] && [ -d \"audit\" ] && [ -d \"rfcs\" ]; then src_root=\".\"; "
+        + "elif [ -f \"openOODA/SHIPPED.oot\" ] && [ -d \"openOODA/audit\" ]; then src_root=\"openOODA\"; "
         + "elif [ -f \"../openOODA/SHIPPED.oot\" ] && [ -d \"../ooda\" ]; then src_root=\"..\"; "
-        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/ooda\" ] && [ -f \"$d/ooda/cli/main.oo\" ]; then src_root=\"$d\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
+        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/ooda\" ] && [ -f \"$d/openOODA/SHIPPED.oot\" ]; then src_root=\"$d/openOODA\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
         + "cd \"$src_root\" 2>/dev/null || true; "
-        + "echo \"=== Boards (9 canonical) ===\"; "
+        + "echo \"=== Boards (10 canonical) ===\"; "
         + "boards_ok=1; "
-        + "for b in START.oot RULES.oot NORTHSTAR.oot MOONSHOTS.oot ROADMAP.oot SHIPPED.oot FORMAT.oot SECURITY.oot WORKFLOW.oot; do "
-        + "  if [ -f \"$src_root/$b\" ]; then echo \"  $b OK\"; else echo \"  $b MISSING\"; boards_ok=0; fi; "
+        + "for b in START.oot RULES.oot NORTHSTAR.oot MOONSHOTS.oot ROADMAP.oot SHIPPED.oot FORMAT.oot SECURITY.oot WORKFLOW.oot QUICKREF.oot; do "
+        + "  if [ -f \"$b\" ]; then echo \"  $b OK\"; else echo \"  $b MISSING\"; boards_ok=0; fi; "
         + "done; "
         + "if [ \"$boards_ok\" -ne 1 ]; then echo \"FAIL: missing canonical board\"; exit 1; fi; "
         + "echo \"=== SHIPPED freshness (zero trust) ===\"; "
-        + "if [ ! -f \"$src_root/SHIPPED.oot\" ]; then echo \"FAIL: SHIPPED.oot missing at $src_root\"; exit 1; fi; "
-        + "if ! grep -q \"THIS FILE IS GENERATED\" \"$src_root/SHIPPED.oot\"; then echo \"FAIL: SHIPPED.oot stale (no GENERATED marker)\"; exit 1; fi; "
-        + "lc=$(wc -l < \"$src_root/SHIPPED.oot\" | tr -d ' '); if [ \"$lc\" -gt 256 ]; then echo \"FAIL: SHIPPED.oot $lc lines > 256\"; exit 1; fi; "
+        + "if [ ! -f \"SHIPPED.oot\" ]; then echo \"FAIL: SHIPPED.oot missing\"; exit 1; fi; "
+        + "if ! grep -q \"THIS FILE IS GENERATED\" \"SHIPPED.oot\"; then echo \"FAIL: SHIPPED.oot stale (no GENERATED marker)\"; exit 1; fi; "
+        + "lc=$(wc -l < \"SHIPPED.oot\" | tr -d ' '); if [ \"$lc\" -gt 256 ]; then echo \"FAIL: SHIPPED.oot $lc lines > 256\"; exit 1; fi; "
         + "echo \"SHIPPED.oot OK: $lc lines, GENERATED marker present\"; "
         + "echo \"=== RFC lint (fail-closed) ===\"; "
-        + "if [ ! -f \"$src_root/scripts/rfc_lint.oo\" ]; then echo \"FAIL: scripts/rfc_lint.oo missing\"; exit 1; fi; "
-        + "if [ ! -f \"$src_root/rfcs/0000-template.oot\" ]; then echo \"FAIL: rfcs/0000-template.oot missing\"; exit 1; fi; "
-        + "if [ -x \"ooda/bin/ooda\" ]; then OODA=\"./bin/ooda\"; elif [ -x \"../ooda/bin/ooda\" ]; then OODA=\"../ooda/bin/ooda\"; else OODA=\"ooda\"; fi; "
-        + "cd \"$src_root/ooda\" 2>/dev/null || true; "
-        + "if ! timeout 30 \"$OODA\" run \"../openOODA/scripts/rfc_lint.oo\" > \"$src_root/.rfc_lint.out\" 2>&1; then echo \"FAIL: rfc_lint failed to run\"; cat \"$src_root/.rfc_lint.out\"; exit 1; fi; "
-        + "cd \"$src_root\" 2>/dev/null || true; "
-        + "if ! grep -qE \"RFC lint OK\" \"$src_root/.rfc_lint.out\"; then echo \"FAIL: rfc_lint did not OK\"; cat \"$src_root/.rfc_lint.out\"; exit 1; fi; "
-        + "rfc_total=$(grep -cE '\\\\.oot OK' \"$src_root/.rfc_lint.out\" || echo 0); "
+        + "if [ ! -f \"scripts/rfc_lint.oo\" ]; then echo \"FAIL: scripts/rfc_lint.oo missing\"; exit 1; fi; "
+        + "if [ ! -f \"rfcs/0000-template.oot\" ]; then echo \"FAIL: rfcs/0000-template.oot missing\"; exit 1; fi; "
+        + "if [ -x \"../ooda/bin/ooda\" ]; then OODA=\"../ooda/bin/ooda\"; elif [ -x \"ooda/bin/ooda\" ]; then OODA=\"ooda/bin/ooda\"; else OODA=\"ooda\"; fi; "
+        + "if ! timeout 30 \"$OODA\" run \"scripts/rfc_lint.oo\" > \".rfc_lint.out\" 2>&1; then echo \"FAIL: rfc_lint failed to run\"; cat \".rfc_lint.out\"; exit 1; fi; "
+        + "if ! grep -qE \"RFC lint OK\" \".rfc_lint.out\"; then echo \"FAIL: rfc_lint did not OK\"; cat \".rfc_lint.out\"; exit 1; fi; "
+        + "rfc_total=$(grep -cE '\\.oot OK' \".rfc_lint.out\" || echo 0); "
         + "echo \"rfc_lint OK\"; "
-        + "rm -f \"$src_root/.rfc_lint.out\"; "
+        + "rm -f \".rfc_lint.out\"; "
         + "echo \"=== verify_all passed ===\"; "
         + "echo \"Note: ooda/std FLOOR certified 100% GREEN (4539 GREEN, BLOCKED 0 per audit/library_status.oot:16).\";";
 
