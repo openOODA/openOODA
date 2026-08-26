@@ -1,8 +1,8 @@
-// # LLVM Backend Status (v0.212.0)
+// # LLVM Backend Status (v0.216.0)
 //
-// Logline: Floor snapshot of the LLVM IR emit path on the 17:44 oodac binary; what works, what doesn't, what's wired but unbuilt.
+// Logline: Floor snapshot of the LLVM IR emit path; what works, what doesn't, what's wired but unbuilt.
 //
-// Setup: 19/19 LLVM-emit fixtures pass end-to-end through `oodac --backend llvm emit-llvm → clang -Iruntime → ./binary`. The in-tree 17:44 binary (sha ee95ba36…) is the pre-edit build; new CLI flags (`-Ossa`, `-Ojit`, `-Oautovec`, `--prefer-llvm`) are wired in source but not exposed until the next clean rebuild (Build #8 blocked by c_emit Gate 2 typedef conflict).
+// Setup: 19/19 LLVM-emit fixtures pass end-to-end through `oodac --backend llvm emit-llvm → clang -Iruntime → ./binary`. The in-tree binary is the pre-C-lane-uncommitted-work build; new CLI flags (`-Ossa`, `-Ojit`, `-Oautovec`, `--prefer-llvm`) are wired in source but not exposed until the next clean rebuild. v0.216.0 added full 55-opcode coverage to llvm_format_inst and fixed the slist_get OOB root cause in ssa_mem2reg_promote.
 //
 // Beats:
 //   1. What works end-to-end (C and LLVM backends).
@@ -10,6 +10,7 @@
 //   3. Known LLVM backend limitations.
 //   4. SSA optimizer chain status.
 //   5. LLVM IR well-formedness checks.
+//   6. v0.216.0 changes (this release).
 
 File: openOODA/STATUS_llvm.oot
 Status: open — 2026-08-26 floor snapshot. Use as the LLVM lane state for the next sprint.
@@ -85,3 +86,17 @@ For `fixtures/llvm_ir_lint.oo` (5-line source: `double`, `add3`, `main` printing
 ---
 
 Confidence: 4/5 on the LLVM emit + clang path. The 1 known limitation (ABI mismatch) is bounded; the 5 new flags are wired but unbuilt; the SSA O3 chain is verified at the IR level but not yet exercised on a rebuilt binary.
+
+---
+
+## 6. v0.216.0 changes (LLVM lane, this release)
+
+**Root-cause fix — slist_get OOB in `std/llvm_codegen/ssa_mem2reg.oo`**: `ssa_mem2reg_promote` returned a `SsaFunction` literal that omitted the `inst_lhs_vals: List<Int>` field, so the C emit of the resulting struct read uninitialized memory as a slist header. Symptom: `scripts/llvm_dump_ir.oo` (and any other script that imported `std/llvm_codegen/ssa_ir.oo` and then called `ssa_mem2reg_promote`) crashed at OOB value `8101242398333468672`. Fix: pass `inst_lhs_vals: new_lhss` through the new SsaFunction literal and build `new_lhss` in parallel with `new_ops / new_res / new_imms / new_bids`. Same shape applied to 4 SsaFunction literals in `std/llvm_codegen/ssa_opt_test.oo` (lines 26-35, 49-58, 72-81, 95-104).
+
+**Full-opcode coverage in `std/llvm_codegen/llvm_text_emitter.oo`**: `llvm_format_inst` previously handled 7 opcodes (1-5, 11-12, 14-22) and returned `"; nop"` for everything else. v0.216.0 adds explicit formatting for all 55 opcodes (1-55): bitwise (6-10), extended integer compare (36-40), phi (13), memory (14-16, 21), control flow (17-19, 53-54), const (20, 22), print (23-24), float arithmetic (25-29), float compare (30-35), int casts (41-43), float casts (44-45), call (46), GEP (47), aggregate (48-49), bitcast (50), pointer/int casts (51-52), landingpad (55). Function signature extended from `(op, res, imm)` to `(op, res, lhs, imm)` to emit real SSA-value references via `%v<lhs>`. Single call site (`llvm_text_emitter.oo:37` in `llvm_emit_module`) updated.
+
+**New coverage tool — `scripts/llvm_emit_opcode_smoke.oo` (55 lines)**: synthesises an SsaFunction with one instruction per opcode 1..55, calls `llvm_emit_module`, and asserts that no `"; nop"` marker appears. Prints `PASS` if all 55 opcodes formatted. This is the regression guard for the "6 nops" symptom the x86 lane reported for `println(1+2)`.
+
+**End-to-end status**: the v0.216.0 source changes are in lane. The next clean oodac rebuild (currently blocked by C lane uncommitted work in c_emit_match_stmt.oo, c_emit_arc.oo, c_emit_ops.oo, etc.) will exercise the new code paths. `scripts/llvm_dump_ir.oo` will then be able to run end-to-end and confirm the SSA IR for `println(1+2)` is `const(1); const(2); add; println_int(3)` (4 instructions, zero nops).
+
+**Lane discipline note**: no C, WASM, or x86 files were touched. All changes are in `std/llvm_codegen/` and `scripts/`.
