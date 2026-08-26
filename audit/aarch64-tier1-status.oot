@@ -1,0 +1,92 @@
+// # aarch64 tier 1 port status — coverage matrix and missing ports
+//
+// Logline: Records the done or in-flight state, line count, smoke presence, and reference path for every Tier 1 aarch64 port so a reader can see what ships and what still needs work.
+//
+// Setup: Source paths are anchored at /home/jeryd/Projects/openOODA. Emit modules live under ooda/oodac/aarch64_emit_*.oo. Smoke scripts live under ooda/scripts/aarch64_*_smoke.oo. Line counts are from wc -l at audit time. Smoke Y means a wiring-lock script exists; no compiler was run.
+//
+// Beats:
+//   1. Inventory all 14 Tier 1 ports from the plan and map each to a module file.
+//   2. Check the aarch64_*_smoke.oo mirror under ooda/scripts/ for every port.
+//   3. Compute the completion percentage from the done count over the total count.
+//   4. List the missing-port rows and the blocked-port rows so the next worker has a clear queue.
+
+File: openOODA/audit/aarch64-tier1-status.oot
+Status: open — Tier 1 audit snapshot. The aarch64 backend grows one port at a time. Three ports still have no emit module at all.
+Context: Read-only audit. No .oo files were modified. No compiler was invoked. No tmp files were written.
+
+---
+
+## 1. Tier 1 port matrix
+
+The table below lists all 14 Tier 1 ports from the plan. Done = Y marks a port the user listed as done. Line count comes from `wc -l` on the emit module. Smoke = Y marks an aarch64_*_smoke.oo script that asserts the module exists, is imported by aarch64_emit.oo, and stays under 256 lines. File:line is the canonical reference for the emit module.
+
+| #  | Feature      | Done | Lines | Smoke | File:line                          |
+|----|--------------|------|-------|-------|------------------------------------|
+| 1  | let          | Y    | 53    | Y     | ooda/oodac/aarch64_emit_let.oo:1   |
+| 2  | int          | N    | 256   | Y     | ooda/oodac/aarch64_emit_int.oo:1   |
+| 3  | string       | N    | 239   | Y     | ooda/oodac/aarch64_emit_str.oo:1   |
+| 4  | fn-call      | Y    | 227   | Y     | ooda/oodac/aarch64_emit_fn.oo:1    |
+| 5  | if refactor  | Y    | 130   | Y     | ooda/oodac/aarch64_emit_if.oo:1    |
+| 6  | match        | N    | 256   | Y     | ooda/oodac/aarch64_emit_match.oo:1 |
+| 7  | loop         | N    | 219   | Y     | ooda/oodac/aarch64_emit_loop.oo:1  |
+| 8  | struct       | N    | 0     | N     | (no module)                        |
+| 9  | opt          | N    | 198   | Y     | ooda/oodac/aarch64_emit_opt.oo:1   |
+| 10 | for          | N    | 102   | Y     | ooda/oodac/aarch64_emit_for.oo:1   |
+| 11 | free         | N    | 102   | Y     | ooda/oodac/aarch64_emit_free.oo:1  |
+| 12 | heap         | N    | 0     | N     | (no module)                        |
+| 13 | multi        | N    | 107   | N     | ooda/oodac/aarch64_emit_multi.oo:1 |
+| 14 | float        | N    | 0     | N     | (no module)                        |
+
+Totals: 14 ports surveyed. 3 done. 11 in flight. 8 in flight with a module on disk. 3 in flight with no module on disk. 11 of 14 ports have a smoke script.
+
+Notes:
+- The Done column reflects the user's plan list. The prompt marks let, fn-call, and if refactor as done. int is listed as "done, in flight" in the plan; we mark it in flight because the audit snapshot is the live state, not the prior state.
+- Line count for struct, heap, and float is 0 because no aarch64_emit_*.oo file exists for those features. The smoke column is N for the same reason.
+- int, match, and aarch64_emit_str are at or near the 256-line cap. match is at 256 exactly. str sits at 239. int sits at 256. All three are tight and may need a split seam if the port grows.
+- aarch64_emit.oo imports the modules for let, if, int, match, str, fn, multi, opt, loop, free, and for. It does not import any struct, heap, or float module because none exists.
+
+---
+
+## 2. Missing ports
+
+The following Tier 1 ports have no aarch64_emit_*.oo module on disk and no smoke script. Each entry names the port, the file that is missing, and the gap relative to the x86 backend.
+
+1. struct — no aarch64_emit_struct.oo. The x86 backend has ooda/oodac/x86_emit_struct.oo for reference. The aarch64 path cannot lower struct literals, struct fields, or struct methods.
+2. heap — no aarch64_emit_heap.oo. The x86 backend has ooda/oodac/x86_emit_heap.oo for reference. The aarch64 path cannot lower oo_alloc or oo_heap_free patterns. Free-test dispatch lives in aarch64_emit_free.oo but heap layout is separate.
+3. float — no aarch64_emit_float.oo. The x86 backend has ooda/oodac/x86_emit_float.oo and x86_emit_float_routine.oo. The aarch64 path cannot lower IEEE-754 literals, float arithmetic, or float println calls.
+
+The audit covers the Tier 1 surface only. Tier 0 ports (secret, contract, diag) have their own modules and are not in scope for this row.
+
+---
+
+## 3. Blocked ports
+
+The following Tier 1 ports have an emit module on disk but the work is not done yet. Each entry names the port, the current line count, the smoke status, and the reason the port is in flight.
+
+1. int — 256 lines, smoke Y. Module is at the 256-line cap. The int port is in flight because the user marked it "done, in flight"; new int shapes or new int operators may push the file past the cap and force a split.
+2. string — 239 lines, smoke Y. Module exists and is imported. The string port is in flight because cat() folding, escape handling, and string-return paths are still being hardened.
+3. match — 256 lines, smoke Y. Module is at the 256-line cap. The match port is in flight because the tagged-union let subject plus match block shape is the only matcher wired today; enum and result patterns are not yet covered.
+4. loop — 219 lines, smoke Y. Module exists. The loop port is in flight because while and break shapes are still being added; the current scope is loop-forever and labeled-break only.
+5. struct — 0 lines, smoke N. No module. The struct port is blocked on a missing module. See §2 row 1.
+6. opt — 198 lines, smoke Y. Module exists. The opt port is in flight because Option[T] unwrap and some() and none() shapes are being added; the current scope is opt_some(opt_unwrap_or(n, default)) only.
+7. for — 102 lines, smoke Y. Module exists. The for port is in flight because the 0..N range shape is the only matcher wired today; collection iteration and reverse range are not yet covered.
+8. free — 102 lines, smoke Y. Module exists. The free port is in flight because oo_alloc and oo_write_int round-trip is the only path; multi-write and free-with-no-alloc paths are not yet covered.
+9. heap — 0 lines, smoke N. No module. The heap port is blocked on a missing module. See §2 row 2.
+10. multi — 107 lines, smoke N. Module exists but no smoke script. The multi port is in flight because cross-module linkage is wired but not smoke-tested at the script level. The module is imported by aarch64_emit.oo (line: aarch64_emit.oo:8).
+11. float — 0 lines, smoke N. No module. The float port is blocked on a missing module. See §2 row 3.
+
+The in-flight ports cluster into three groups: ports at the 256-line cap (int, match), ports with module but no smoke (multi), and ports with no module at all (struct, heap, float).
+
+---
+
+## 4. Tier 1 completion percentage
+
+Done ports: 3 (let, fn-call, if refactor).
+Total Tier 1 ports: 14.
+Completion = 3 / 14 = 0.214285714.
+
+Tier 1 completion = 21.4%.
+
+If we count "module on disk" as a softer success signal, the figure rises to 11 / 14 = 78.6%. The hard done number stays at 21.4% because the user-supplied done list is the only ground truth for "done".
+
+Headline: Tier 1 is 21.4% done. Three ports lack any emit module. The next worker queue is: struct, heap, float, then a smoke script for multi, then int and match at the 256-line cap.

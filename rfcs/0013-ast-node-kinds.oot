@@ -1,0 +1,232 @@
+# RFC 0013: x86 Typed-AST Node Kinds
+
+File: openOODA/rfcs/0013-ast-node-kinds.oot
+Status: Draft
+Context: Authored for the Turn 2 implementer who replaces the 24-arm chain in ooda/oodac/x86_emit.oo:73-196 with a single typed-AST-driven dispatch. Reads with the umbrella (0011), the dead-arms audit (audit/x86-dead-arms.oot), and the std-surface audit (audit/x86-std-surface.oot).
+
+* **RFC ID**: 0013
+* **Author**: x86 Backend Agent
+* **Status**: Draft
+* **Created**: 2026-08-25
+
+---
+
+## 1. Goals
+
+The Turn 1 shim (ooda/oodac/x86_ast_typed.oo) is a thin forwarder over x86_ssa_compile_program_source. Turn 2 must replace the 24-arm token walker in ooda/oodac/x86_emit.oo:73-196 with a single call that walks a typed AST once and dispatches per node kind. This RFC names every node kind the AST must carry, the fields each kind holds, the chain-arm-to-node-kind mapping, and the cross-cutting concerns (spans, type annotations, contracts). It also carries the must-wire list from audit/x86-std-surface.oot §3 so the implementer knows which std/arch_x86/ fns the new dispatch must call. Out of scope: SSA opcodes, ELF layout, register allocation, and the in-process ELF writer (those are RFC 0011 Phases B and D).
+
+## 2. NodeKind enum
+
+Sum types follow the String-tagged record pattern of ooda/oodac/ast.oo:14-73. Each kind is a constructor `mk_<name>(fields...)` returning a single String. `node_kind(node)` returns the tag (the text before the first `(`). `node_is(node, tag)` returns Bool. Lists are comma-joined Strings parsed by `list_len_str` / `list_get_str` (ast.oo:93-137).
+
+### 2.1 TopLevel (7)
+
+| Kind | Tag | Notes |
+|------|-----|-------|
+| `mk_module(items)` | `Module` | Root; items is a List of TopLevel nodes. |
+| `mk_import(path)` | `Import` | Single path literal per RFC 0012 M1. |
+| `mk_type_decl(name, fields)` | `TypeDecl` | fields is a List of `(name, ty)` records. |
+| `mk_trait_decl(name, methods)` | `TraitDecl` | methods is a List of method sigs. |
+| `mk_impl_decl(trait_name, ty, methods)` | `ImplDecl` | methods is a List of FnDecls. |
+| `mk_fn_decl(name, params, ret, contracts, body)` | `FnDecl` | body is a Block; contracts is a List. |
+| `mk_verify_decl(expr)` | `VerifyDecl` | Top-level SMT verify clause. |
+
+### 2.2 Stmt (10)
+
+| Kind | Tag | Notes |
+|------|-----|-------|
+| `mk_let(name, ty, rhs)` | `LetBinding` | Immutable. ty may be empty for inferred. |
+| `mk_let_mut(name, ty, rhs)` | `LetMutBinding` | Mutable, 1+ Assign follow. |
+| `mk_assign(lhs, rhs)` | `Assign` | lhs is an EIdent or EField/EIndex. |
+| `mk_expr_stmt(expr)` | `ExprStmt` | expr is any Expr; used for ECall. |
+| `mk_while(cond, body)` | `WhileLoop` | cond is Expr; body is Block. |
+| `mk_for(ident, lo, hi, body)` | `ForRange` | 0..N literal range; body is Block. |
+| `mk_match(scrut, arms)` | `MatchStmt` | arms is a List of MatchArm. |
+| `mk_return(expr)` | `Return` | expr may be empty. |
+| `mk_break()` | `Break` | No payload. |
+| `mk_continue()` | `Continue` | No payload. |
+
+### 2.3 Expr (11)
+
+| Kind | Tag | Notes |
+|------|-----|-------|
+| `mk_call(callee, args)` | `ECall` | callee is EIdent or EField. |
+| `mk_binop(op, l, r)` | `EBinop` | op in Add/Sub/Mul/Div/Mod/Eq/Neq/Lt/Lte/Gt/Gte/And/Or. |
+| `mk_unop(op, x)` | `EUnop` | op in Neg/Not. |
+| `mk_if(cond, then_e, else_e)` | `EIf` | else_e may be empty. |
+| `mk_match_expr(scrut, arms)` | `EMatch` | arms same shape as MatchStmt. |
+| `mk_method_call(recv, name, args)` | `EMethodCall` | recv is Expr. |
+| `mk_field(recv, name)` | `EField` | recv is Expr (struct.field). |
+| `mk_index(base, idx)` | `EIndex` | base is Expr (list[i]). |
+| `mk_struct_lit(name, fields)` | `EStructLit` | fields is a List of `(name, expr)`. |
+| `mk_cast(expr, ty)` | `ECast` | Numeric casts (e.g. Int to Float). |
+| `mk_closure(params, body)` | `EClosure` | First-class fn literal. |
+
+### 2.4 Literal (7)
+
+| Kind | Tag | Notes |
+|------|-----|-------|
+| `mk_int_lit(v)` | `IntLit` | v is the decimal text. |
+| `mk_float_lit(v)` | `FloatLit` | v is the decimal text with dot. |
+| `mk_str_lit(v)` | `StrLit` | v is the unquoted text. |
+| `mk_bool_lit(v)` | `BoolLit` | v is `true` or `false`. |
+| `mk_ident(name)` | `Ident` | Local/global variable reference. |
+| `mk_list_lit(items)` | `ListLit` | items is a List of Expr. |
+| `mk_unit_lit()` | `UnitLit` | Empty tuple / `()`. |
+
+### 2.5 Type (13)
+
+Carry the existing ty.oo constructors (ast_type_def.oo:14-26) verbatim. The new dispatch reuses them. Tags: `TyInt`, `TyFloat`, `TyBool`, `TyStr`, `TyUnit`, `TyList(elem)`, `TyOption(elem)`, `TyResult(ok, err)`, `TyBox(elem)`, `TyName(n)`, `TyCap(n)`, `TyRef(inner)`, `TyRefMut(inner)`.
+
+## 3. Per-node field tables
+
+Each kind below lists field name, type (Str/List/Int/Bool), and what it carries. Types reuse the String-tagged record encoding.
+
+### 3.1 TopLevel fields
+
+| Kind | Field | Type | Carries |
+|------|-------|------|---------|
+| Module | items | List[TopLevel] | Sequence of top-level decls. |
+| Import | path | Str | Quoted path string with quotes stripped. |
+| TypeDecl | name, fields | Str, List[(Str, Ty)] | Type name and field list. |
+| TraitDecl | name, methods | Str, List[MethodSig] | Trait name and method sigs. |
+| ImplDecl | trait_name, ty, methods | Str, Ty, List[FnDecl] | Trait impl block. |
+| FnDecl | name, params, ret, contracts, body | Str, List[Param], Ty, List[Contract], Block | Full fn signature and body. |
+| VerifyDecl | expr | Expr | The expression to verify. |
+
+Param = `(name, ty)`. Contract = `(kind, body)` where kind is `requires | ensures | spec`.
+
+### 3.2 Stmt fields
+
+| Kind | Field | Type | Carries |
+|------|-------|------|---------|
+| LetBinding | name, ty, rhs | Str, Ty, Expr | Immutable local with optional type. |
+| LetMutBinding | name, ty, rhs | Str, Ty, Expr | Mutable local; one or more Assign follow. |
+| Assign | lhs, rhs | Expr, Expr | LHS is Ident or Field/Index. |
+| ExprStmt | expr | Expr | Expression in stmt position (e.g. ECall). |
+| WhileLoop | cond, body | Expr, Block | Loop with boolean cond. |
+| ForRange | ident, lo, hi, body | Str, Expr, Expr, Block | `for i in 0..N { ... }`. |
+| MatchStmt | scrut, arms | Expr, List[MatchArm] | Statement-position match. |
+| Return | expr | Expr | Empty for void. |
+| Break | - | - | No payload. |
+| Continue | - | - | No payload. |
+
+Block = `(stmts, expr)` where expr is the optional tail expression. MatchArm = `(pattern, body)`.
+
+### 3.3 Expr fields
+
+| Kind | Field | Type | Carries |
+|------|-------|------|---------|
+| ECall | callee, args | Expr, List[Expr] | Direct or field call. |
+| EBinop | op, l, r | Str, Expr, Expr | Binary op. |
+| EUnop | op, x | Str, Expr | Unary op. |
+| EIf | cond, then_e, else_e | Expr, Expr, Expr | If expression; else_e may be empty. |
+| EMatch | scrut, arms | Expr, List[MatchArm] | Expression-position match. |
+| EMethodCall | recv, name, args | Expr, Str, List[Expr] | Method dispatch. |
+| EField | recv, name | Expr, Str | Field access. |
+| EIndex | base, idx | Expr, Expr | List/array index. |
+| EStructLit | name, fields | Str, List[(Str, Expr)] | Struct literal. |
+| ECast | expr, ty | Expr, Ty | Numeric cast. |
+| EClosure | params, body | List[Param], Block | First-class fn. |
+
+### 3.4 Literal fields
+
+| Kind | Field | Type | Carries |
+|------|-------|------|---------|
+| IntLit | v | Str | Decimal integer text. |
+| FloatLit | v | Str | Float text including dot. |
+| StrLit | v | Str | Unquoted string text. |
+| BoolLit | v | Str | `true` or `false`. |
+| Ident | name | Str | Variable name. |
+| ListLit | items | List[Expr] | List literal. |
+| UnitLit | - | - | No payload. |
+
+### 3.5 Type fields
+
+| Kind | Field | Type | Carries |
+|------|-------|------|---------|
+| TyInt | - | - | Int primitive. |
+| TyFloat | - | - | Float primitive. |
+| TyBool | - | - | Bool primitive. |
+| TyStr | - | - | String primitive. |
+| TyUnit | - | - | Unit / void. |
+| TyList | elem | Ty | Element type. |
+| TyOption | elem | Ty | Option element. |
+| TyResult | ok, err | Ty, Ty | Result ok and err. |
+| TyBox | elem | Ty | Box element. |
+| TyName | n | Str | Named type. |
+| TyCap | n | Str | Capability token type. |
+| TyRef | inner | Ty | Shared reference. |
+| TyRefMut | inner | Ty | Mutable reference. |
+
+## 4. Mapping table: 24-arm chain to AST node kind
+
+Every arm in ooda/oodac/x86_emit.oo:73-196 maps to a sequence of node kinds. The `Result` column names the lowering target emit module per audit/x86-dead-arms.oot §1. Action column notes DELETE/MERGE/KEEP.
+
+| Arm | Lines | Trigger / Source shape | Node kinds emitted | Emit module | Action |
+|-----|-------|------------------------|--------------------|-------------|--------|
+| 1 | 074-080 | `fn greet(...)` + `main { greet(STR) }` | FnDecl, Block, ECall(Ident, [StrLit]) | x86_emit_fold.oo | KEEP |
+| 2 | 081-085 | 1-arg String passthrough fn | FnDecl + ECall(Ident, [StrLit]) | x86_emit_fn.oo | MERGE into #3-#7 |
+| 3 | 086-090 | 2-arg fn call (rsi) | FnDecl + ECall(Ident, [StrLit, StrLit]) | x86_emit_rsi.oo | MERGE into #3-#7 |
+| 4 | 091-095 | 3-arg fn call (rdx) | FnDecl + ECall(Ident, [..., 3 args]) | x86_emit_rdx.oo | MERGE into #3-#7 |
+| 5 | 096-100 | 4-arg fn call (rcx) | FnDecl + ECall(Ident, [..., 4 args]) | x86_emit_rcx.oo | MERGE into #3-#7 |
+| 6 | 101-105 | 5-arg fn call (r89) | FnDecl + ECall(Ident, [..., 5 args]) | x86_emit_r89.oo:111 | KEEP (uses n_call) |
+| 7 | 106-110 | 6-arg fn call (r89) | FnDecl + ECall(Ident, [..., 6 args]) | x86_emit_r89.oo:112 | KEEP (uses n_call) |
+| 8 | 111-115 | 2-arg String cat | FnDecl + ECall(cat, [StrLit, StrLit]) | x86_emit_str.oo:123 | KEEP |
+| 9 | 116-120 | 1-arg greet concat | FnDecl + ECall(greet, [StrLit]) | x86_emit_greet.oo:111 | KEEP |
+| 10 | 121-125 | `println(INT)` | ExprStmt + ECall(println, [IntLit]) | x86_emit_int.oo:15 | KEEP |
+| 11 | 126-130 | struct def + field access | TypeDecl + EStructLit + EField | x86_emit_struct.oo:54 | KEEP-WITH-REASON |
+| 12 | 131-135 | `let n: Int = INT; println(n)` | LetBinding(ty) + ExprStmt(ECall(println, [Ident])) | x86_emit_typed_let.oo:16 | KEEP-WITH-REASON |
+| 13 | 136-140 | multi-file call multiply_add | ECall(Ident, [IntLit, IntLit, IntLit]) | x86_emit_multi.oo:44 | KEEP (RFC 0012 supersedes) |
+| 14 | 141-145 | `let mut x: Int; x = v2; println(x)` | LetMutBinding + Assign + ExprStmt(ECall) | x86_emit_mut.oo:16 | KEEP |
+| 15 | 146-150 | match Some/None tagged union | MatchStmt with 2+ MatchArm | x86_emit_match.oo:85 | KEEP |
+| 16 | 151-155 | while loop with cond | WhileLoop(EBinop, Block) | x86_emit_loop.oo:30 | KEEP |
+| 17 | 156-160 | `for i in 0..N { ... }` | ForRange(ident, IntLit, IntLit, Block) | x86_emit_for.oo:19 | KEEP |
+| 18 | 161-165 | list_test stub (broken) | (none — emit is no-op) | x86_emit_list.oo:83,87 | **DELETE** |
+| 19 | 166-170 | real list program | LetBinding + ExprStmt(ECall(list_new)) + ECall(list_push, [Ident, IntLit]) | x86_emit_list.oo:28,92 | **MERGE** w/ #18 cleanup |
+| 20 | 171-175 | Option[T] ops | ExprStmt(ECall(opt_some, [IntLit])) | x86_emit_opt.oo:143 | KEEP |
+| 21 | 176-180 | oo_alloc + oo_free | ExprStmt(ECall(oo_alloc, [IntLit])) + ECall(oo_free) | x86_emit_free.oo:54 | KEEP |
+| 22 | 181-185 | fib recursion | FnDecl + ECall(fib, [Ident]) recursive | x86_emit_rec.oo:136 | KEEP-WITH-REASON |
+| 23 | 186-192 | Float const-fold chain | LetBinding(ty=TyFloat, rhs=FloatLit) + ExprStmt(ECall(println, [EBinop])) | x86_emit_float.oo:127,145 | KEEP |
+| 24 | 193-196 | heap_alloc_test | ExprStmt(ECall(heap_alloc, [IntLit])) | x86_emit_heap.oo:61 | KEEP |
+
+24 arms map to 24 rows; arms 2-5 collapse to a single ECall with arity 1..4 (per audit §4 action 3). Arm 18 is dropped; arm 19 stays as the only list path. The implementer must keep arms 11, 12, 22 marked KEEP-WITH-REASON: they have known trigger-shape gaps the typed AST fixes but which still need a fixture in the regression suite.
+
+## 5. Cross-cutting concerns
+
+The AST carries four orthogonal properties alongside the node kind. Each is a separate String suffix on the node so the lowerer can read them without re-walking source.
+
+1. **Source span** — every node carries a `(line, col)` pair as a trailing suffix: `node.span = "<line>:<col>"`. The parser fills this in; the typed-error reporter (ooda/oodac/x86_emit_diag.oo) reads it to format the `-->` line. Empty span means synthesized node (e.g. implicit return).
+2. **Type annotation** — every Expr carries an optional `ty: Ty` suffix, populated by the typer (ooda/oodac/tc_drive.oo). Stmts may carry a `ty` on the LHS of LetBinding/LetMutBinding/Assign. The SSA lowerer (ooda/oodac/x86_ssa_compile.oo) reads the typed AST and emits SSA ops whose result types match.
+3. **Contract** — every FnDecl carries a `contracts: List[(kind, body)]` suffix where kind is `requires | ensures | spec | invariant`. The contract gate at x86_emit.oo:48-57 walks the list. The body is a Bool-typed Expr.
+4. **Capability annotation** — every Expr that calls into std/arch_x86/ (process_exec, write_file, env_get, sys_exec, fetch) carries a `cap: TyCap` suffix naming the required capability. The secret gate (x86_emit.oo:62-72) refuses to emit any call where the argument is SECRET-tainted and the callee is an unsealed sink.
+
+## 6. Must-wire set
+
+The new dispatch must call the following std/arch_x86/ symbols (audit/x86-std-surface.oot §3, 11 items). Each item names the chain arm it replaces so the implementer has a precise target.
+
+1. `elf64_link_executable` (x86_linker.oo:121) — replaces arm 1 fallback and the x86_emit_elf.oo shim.
+2. `x86_encode_mov_rr` (x86_encoder.oo:46) — replaces arm 10 int arith body.
+3. `x86_encode_push` / `x86_encode_pop` (x86_encoder.oo:28, 37) — replaces arm 16 frame prologue.
+4. `x86_encode_add_rr` / `x86_encode_sub_rr` / `x86_encode_xor_rr` (x86_encoder.oo:54, 62, 70) — replaces arm 1 fold body and arm 10 ALU.
+5. `x86_encode_mov_ri64` (x86_encoder.oo:78) — replaces arm 12 typed-let, arm 15 match tag, arm 22 fib base.
+6. `sc_emit_sys_write` / `sc_emit_sys_exit` (x86_syscalls.oo:134, 188) — replaces arms 8, 9 println path.
+7. `abi_arg_count` / `abi_arg_reg` / `abi_ret_reg` (x86_abi.oo:26, 17, 30) — replaces arms 2-7 SysV bodies.
+8. `abi_is_callee_saved` (x86_abi.oo:38) — replaces arm 21 spilled-set.
+9. `abi_stack_aligned` (x86_abi.oo:61) — replaces arm 13 multi-file frame math.
+10. `elf64_default_base` (x86_linker.oo:109) — replaces arm 13 hardcoded 0x400000.
+11. `x86_rax` / `x86_rdi` / `x86_rsi` / `x86_rdx` (x86_regs.oo:13, 20, 19, 15) — replaces arms 2-5 literal register codes.
+
+The implementer must not call `elf64_build_executable` (x86_elf.oo:39-55) per §6.2 of the std-surface audit: it returns Ok with 48 bytes and ignores `text_bytes`. Use `elf64_link_executable` instead.
+
+## 7. Open questions
+
+1. **Where does the typed AST live?** Option A: a new `ooda/oodac/x86_ast_typed.oo` constructor module that wraps `ast_parse.oo` output and adds span + type + cap suffixes. Option B: a separate `ooda/oodac/x86_typed_ast.oo` file that the Turn 1 shim loads. Option A keeps the diff in one file; Option B lets the C path reuse `ast_parse.oo` output unchanged.
+2. **Is `EClosure` in scope for Turn 2 or residual?** First-class fn literals (kind 11) are not exercised by any of the 24 chain arms. The implementer can drop the constructor and add it back when a fixture needs it. The decision affects §3.3 row 11.
+3. **Does `ECast` (kind 10) need a node or is it a typed-AST annotation?** Numeric casts appear in Float↔Int lowering for arm 23. The decision is whether `let f: Float = 1.0; let i: Int = f as Int` carries an `ECast` node or just a `ty` annotation on the EVar. The first is more uniform; the second is cheaper.
+4. **How does the `MatchArm` carry a payload binding?** Arm 15 (match Some/None) currently emits a positional payload read at 8(%rax). The new MatchArm must name the payload local (e.g. `Some(x) => ...`). The implementer must decide whether the pattern is a String or a NodeKind from §2.4.
+5. **Where does the dispatch live after Turn 2?** The current `x86_emit_stream` calls into `x86_emit_stream_typed`. After Turn 2, `x86_emit_stream` becomes a 5-line shim that calls a new `x86_emit_typed_walk(src) -> Result[String, String]`. The implementer must confirm the contract still returns `Result[String, String]` (per the Turn 1 shim) or switch to a typed-error record.
+
+## 8. Status
+
+Open. Closes when §4 has a green smoke for every row (KEEP and KEEP-WITH-REASON both must regress), §6's 11 must-wire items are all called from the new dispatch path, and arm 18 (list_test) is deleted without breaking the arm 19 (list) regression. Companion to RFC 0011 Turn 2; locks the node-kind contract that RFC 0012 (multi-file) and RFC 0011 Phase B (types) will rely on.

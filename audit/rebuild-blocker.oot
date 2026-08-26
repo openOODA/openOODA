@@ -1,0 +1,80 @@
+# Rebuild Blocker — Pure Multi-Module oodac Rebuild Cannot Complete
+
+File: openOODA/audit/rebuild-blocker.oot
+Date: 2026-08-25. Source: live oodac/oodac seed + audit of c_emit family.
+Status: open — both build gates red; pure rebuild stuck; no path forward without owner approval on c_emit edits.
+
+## 1. Current State
+
+`ooda/oodac/oodac` exists as a host seed binary (3438648 bytes, dated 2026-08-25). The rebuild target `oodac/oodac.new` does not exist. The official rebuild path is `ooda/bootstrap/oodac_pure_build <main.oo> <out_bin>` and fails on two independent gates:
+
+- Gate 1 — Check phase: the host seed reports `RefinementTypeViolation: token count exceeds 1000` when asked to check `ooda/oodac/main.oo`. Source says 1048576; binary says 1000.
+- Gate 2 — C compile phase: `gcc` rejects `/tmp/oodac_pure_*/all.c` with `conflicting types for 'OoL_<Name>'` (the example name `LebDecodeResult` is representative; the pattern fires on any user type that has a `List[<Name>]` field or return).
+
+Workaround `PURE_SKIP_CHECK=1` exists in `ooda/bootstrap/oodac_pure_build` (line 113). It skips Gate 1 only. There is no env-flag workaround for Gate 2. Both gates must be cleared to reach a green rebuild.
+
+## 2. Gate 1 — Token Count Check (file:line evidence)
+
+`ooda/oodac/tc_refine.oo:22` holds the source cap:
+
+```oo
+if n > 1048576 {
+    tc_err_at(toks, 0, "RefinementTypeViolation: token count exceeds 1048576");
+}
+```
+
+The string literal is the only artefact that identifies the limit. The current seed binary `ooda/oodac/oodac` was built before the cap was raised; its embed reads `1000` instead of `1048576`. The host `check` therefore aborts on any large source (`ooda/oodac/main.oo` has far more than 1000 tokens). The build script's `PURE_SKIP_CHECK=1` escape (`ooda/bootstrap/oodac_pure_build:113`) bypasses this gate without changing the binary.
+
+## 3. Gate 2 — C Typedef Conflict (file:line evidence)
+
+`c_emit_olist.oo:25` emits the list-wrapper typedef:
+
+```oo
+println("typedef struct " + L + " { " + name + " *data; long long len; long long cap; } " + L + ";");
+```
+
+`c_emit_struct.oo:104` emits the struct self-typedef:
+
+```oo
+println("typedef struct " + name + " { " + body + " } " + name + ";");
+```
+
+When `c_emit_olist_prep(name, elem)` (`c_emit_olist.oo:32`) runs for a user type, the forward decl `c_emit_olist_fwd(name)` at `c_emit_olist.oo:15` plus the wrapper at line 25 plus the struct at `c_emit_struct.oo:104` reach the python stitcher in `ooda/bootstrap/oodac_pure_build:305-313` with two real definitions of the same name. The stitcher's regex (`re.sub(r'typedef struct ' + ty + r' \{ long long _pad; \} ' + ty + r';\s*', '', preamble_text)`) strips only the `_pad` stub; the real second `typedef struct Name { ... } Name;` slips through and `gcc` reports `conflicting types for 'OoL_<Name>'` or the user type itself.
+
+## 4. c_emit Modules Involved
+
+| File                                | Role                                  | Lines |
+|-------------------------------------|---------------------------------------|-------|
+| `ooda/oodac/c_emit_preamble.oo`     | Preamble typedefs (OoStr, OoRes, OoL) | 223   |
+| `ooda/oodac/c_emit_struct.oo`       | Self-typedef per user struct          | 232   |
+| `ooda/oodac/c_emit_olist.oo`        | OoL_ wrapper typedef + helpers        | 142   |
+| `ooda/oodac/c_emit_list_ty.oo`      | List type-kind mangler                | 88    |
+| `ooda/oodac/c_emit_ty.oo`           | Type monomorphization dispatch        | 85    |
+| `ooda/oodac/c_emit_mangle.oo`       | Type-name → C-symbol mangle           | 13    |
+| `ooda/oodac/c_emit_result_ty.oo`    | OoRes_ / OoOpt_ typedefs              | 159   |
+| `ooda/oodac/c_emit_pub_type.oo`     | Public type alias emit                | 42    |
+| `ooda/oodac/tc_refine.oo`           | Source of Gate 1 cap                  | 57    |
+
+Lane rule reminder: c_emit_*.oo files are owned by the c_emit lane. Edits to them require an explicit go-ahead from the owner, not the rebuild lane.
+
+## 5. Build Paths Untried
+
+| Script                              | Command                                                                                  | Why it might work                                   |
+|-------------------------------------|------------------------------------------------------------------------------------------|-----------------------------------------------------|
+| `ooda/scripts/bootstrap_2stage.oo`  | stage1 (PURE_NO_ARC=1) with seed → stage2 (PURE_NO_ARC=0) with stage1                    | Two stages isolate ARC bookkeeping; smaller stage1 tree may pass the 1000-token check. |
+| `ooda/scripts/bootstrap_no_cargo.oo`| SEED_OODAC or `bootstrap/seed/oodac` builds oodac + `bin/ooda` natively                 | Uses a different seed path; may have a newer cap baked in. |
+| `ooda/scripts/bootstrap.oo`          | Imports graph → emit-c per module → python stitch → gcc link                             | Operates on `fixtures/int_main.oo` not main.oo; sidesteps the 1000-token host check entirely. |
+| `ooda/oodac/oodac2` (residual)      | Standalone alternate oodac tree under `oodac2/`                                          | Not confirmed present on this host; not edited.      |
+| `dist/ooda-v0.183.0-alpha-linux-x86_64/oodac/oodac` | Older published oodac binary shipped with releases                     | May carry the 1048576 cap; could rebuild a host that does not trip Gate 1. |
+
+`bootstrap_2stage` and `bootstrap_no_cargo` are the two realistic untried paths. `bootstrap.oo` operates on a fixture tree and so does not actually rebuild `oodac/oodac`. `oodac2` is unconfirmed.
+
+## 6. Path Forward — 3 Options Ranked by Risk
+
+1. **C-lane patch: rename the list-wrapper typedef or add an OO_HAVE_ guard.** Touch `c_emit_olist.oo:25` and the corresponding c_emit_olist_fwd / c_emit_named_cell_ty paths so `OoL_<Name>` and the user `<Name>` typedef never collide, plus the python stitcher regex in `ooda/bootstrap/oodac_pure_build:305-313`. This is the smallest correct fix and directly resolves Gate 2. Risk: low-medium — c_emit lane owns the files; needs owner sign-off and a re-check of every List[X] site.
+2. **Host re-bootstrap via `bootstrap_no_cargo.oo`.** Rebuild the host oodac with the published seed, which may carry the 1048576 cap. Clears Gate 1. Gate 2 still fires because the conflict lives in the new c_emit source, not the host. Risk: medium — depends on seed SHA and minisign; still does not solve the real defect.
+3. **Revert c_emit_struct.oo:104 and c_emit_olist.oo:25 to the seed pattern** (single `typedef struct Name { long long _pad; } Name;` plus OoL_ separation). This restores the old stub behaviour so the python stitcher's regex catches the duplicate. Risk: high — re-introduces the padding-stub anti-pattern and may regress struct retain/release semantics.
+
+## 7. Recommended Next Step
+
+Land option 1 in the c_emit lane: add an `OO_HAVE_<Name>` ifndef guard around the self-typedef in `c_emit_olist.oo:25` and tighten the python stitcher regex in `ooda/bootstrap/oodac_pure_build:305-313` to strip any second `typedef struct <Name> { ... } <Name>;` before `gcc` sees it, then re-run `ooda/bootstrap/oodac_pure_build oodac/main.oo oodac/oodac.new` with `PURE_SKIP_CHECK=1` only for the first attempt and verify Gate 2 clears before re-enabling the check.

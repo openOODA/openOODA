@@ -1,0 +1,100 @@
+# RFC 0012: x86 Multi-File Emit
+
+* **RFC ID**: 0012
+* **Author**: x86 Backend Agent
+* **Status**: Draft
+* **Created**: 2026-08-25
+
+---
+
+## Feature Overview
+
+Multi-file compile for the x86 backend. `oodac emit-x86 main.oo` follows `import "x"` declarations, type-checks each imported file, and emits one `.s` per file plus a link line. The x86 path today refuses any `*_lib.oo` without a `main` (24 fixtures, per `audit/x86-refused-clusters.oot` §4). This RFC proposes the surface, the lower, the import resolver, and the linker glue. The token-based `oodac/x86_emit_multi.oo:84` already proves the multi-file idea works at the token level via `x86_emit_multi_main(a, b, c)`; this RFC replaces the token walk with the AST-based path from RFC 0011 and formalizes the surface.
+
+## Motivation & Problem Statement
+
+`audit/x86-refused-clusters.oot` §4 lists 24 fixtures that fail with `ERR x86_emit residual: need fn main`. They are `*_lib.oo` companion files (e.g. `x86_multi_lib.oo` for `x86_multi_main.oo`) plus the C-emit lib companions `c_line_lib.oo` and `c_line_secret_lib.oo`. The x86 backend today has no import resolution and no `.globl` extern path, so each `*_lib.oo` must compile standalone, which is impossible for files that only define a function library.
+
+This blocks 24 of the 341 REFUSED fixtures (`audit/x86-refused-clusters.oot` §7 projects the post-fix count at 132/6,936 = 1.9%, the production bar). The AArch64 backend has the same shape problem on its 53 fixtures, but the RFC scope is x86; the AArch64 owner can follow this template.
+
+The C backend already handles this via `c_emit_call_ty.oo` and `c_emit_call_arg.oo`: it lowers each imported function to a `.globl` symbol in a separate translation unit. The x86 path should mirror that contract.
+
+## Detailed Specification
+
+### Phases
+
+The plan is staged in `openOODA/ROADMAP.oot` §5.1 row "Tier 6 #29 — multi-file emit" and depends on RFC 0011's typed-AST pipeline.
+
+1. **Phase M1 — import resolver.** `x86_import_resolve.oo` reads the entry file, collects every `import "path"` literal, resolves paths relative to the entry file's directory, and produces a list of source files. Reject duplicate imports and reject cycles with `ERR import cycle: a -> b -> a` at the entry file's line:col.
+2. **Phase M2 — per-file type-check.** Call `ast_parse.oo` + `tc_drive.oo` on every file. Build a single program-level symbol table. Reject unknown cross-file references with `ERR unknown import: foo (not in bar.oo)` at the import site.
+3. **Phase M3 — per-file emit.** For each file, call `x86_ssa_compile.oo` + `x86_ssa_emit.oo` to produce one `.s` file. Functions called from another file are emitted as `.globl name` followed by the standard prologue. Functions only used inside their own file get no `.globl`.
+4. **Phase M4 — call lower.** At each call site whose callee lives in another file, emit `call name` and rely on the linker. No PLT, no dynamic linking — pure static link via `as`+`ld` mirroring the C emit path.
+5. **Phase M5 — linker glue.** `x86_link.oo` writes a top-level `link.sh` (or invokes `as`+`ld` in-process) that assembles each `.s` to `.o` and links them with the x86 runtime. Output: a single executable that runs and prints the expected `println` output.
+6. **Phase M6 — error surface.** Errors carry the source path, line, and column of the import or call site via the typed `diag_json.oo` shape from RFC 0011. No fallback to `ERR x86_emit residual: need fn main` for `*_lib.oo` files when they are imported.
+
+### Backend IR
+
+- AST: `ast_parse.oo` (shared with c_emit; reuses `ty.oo`, `ast.oo`).
+- Types: `tc_drive.oo` per file, then merge into one program-level table.
+- SSA: `x86_ssa_compile.oo` per file (RFC 0011).
+- Emit: `x86_ssa_emit.oo` per file. Symbol resolution uses the merged table; cross-file callees are marked `.globl` and emitted as `call name`.
+
+### Files added
+
+- `ooda/oodac/x86_import_resolve.oo` — the entry point that collects imports and produces a file list.
+- `ooda/oodac/x86_program_tc.oo` — merges per-file `tc_drive` results into a program-level symbol table.
+- `ooda/oodac/x86_multi_emit.oo` — replaces the token-based `x86_emit_multi.oo`; calls `x86_import_resolve` + per-file AST path.
+- `ooda/oodac/x86_link.oo` — `as`+`ld` glue (or in-process link in a later phase).
+- `ooda/scripts/x86_multi_smoke.oo` — locks Phase M3 with the existing `x86_multi_main.oo` + `x86_multi_lib.oo` fixtures.
+- `ooda/scripts/x86_multi_cycle_smoke.oo` — locks Phase M1 cycle detection.
+- `ooda/scripts/x86_multi_secret_smoke.oo` — locks SECRET-taint propagation across imports.
+- `ooda/scripts/x86_multi_link_smoke.oo` — locks Phase M5 end-to-end.
+
+### Files removed
+
+- `ooda/oodac/x86_emit_multi.oo` — the token-based multi-file lower is superseded. The `x86_emit_multi_main(a, b, c)` shape at `x86_emit_multi.oo:64` is preserved as a regression lock for the call-arg count, but the file is no longer called from the main path. Kept on disk until `x86_multi_smoke.oo` passes twice.
+
+### Files unchanged
+
+- All 76 `x86_*_smoke.oo` and 88 `x86_*.oo` fixtures. `x86_multi_main.oo` and `x86_multi_lib.oo` become AST-based regression tests for the new path.
+- The C emit path (`c_emit_call_ty.oo`, `c_emit_call_arg.oo`) is the reference implementation; not modified.
+- All Academy headers on existing x86 files stay.
+
+## Security & Capability Impact
+
+No new ambient authority. The multi-file path continues to require explicit capability tokens per `openOODA/SECURITY.oot` §4.
+
+- **FsReadCap**: each imported `.oo` file is read via the existing `read_file` path that requires `&FsReadCap`. An entry file without `&FsReadCap` is refused with `ERR fs read requires &FsReadCap` at the entry path, not at the import site.
+- **FsWriteCap**: each emitted `.s` and the link line are written via `write_file` which requires `&FsWriteCap`. The output directory is bounded by `OODA_FS_WRITEDIR`; absolute paths and `..` are refused the same way the in-process ELF writer refuses them.
+- **SysCap**: the `as`+`ld` subprocess path requires `&SysCap`. An in-process link (later phase) drops the requirement and only needs `&FsWriteCap`.
+- **NetCap**: unchanged. Multi-file does not introduce network reads.
+- **EnvCap**: unchanged.
+
+**SECRET taint propagation across imports** is the key new rule: if any imported file contains `// SECRET: x`, then any `println(x)` in the main file is refused at emit with `ERR secret sink refuses SECRET x (imported from bar.oo)`. The taint tag is part of the merged symbol table; the same rule applies to `write_file`, `process_exec`, `sys_exec`, `env_get`, and `fetch`. This mirrors `c_emit_secret_*.oo` and is required because the import edge is now a taint channel.
+
+**Sovereign-build path**: `--x86-elf-pure` is unaffected. Multi-file produces N `.s` files plus a single combined `.s` (concatenation order is deterministic by source path); the pure writer handles the combined `.s` the same way it handles a single-file `.s`. No new pure-build surface.
+
+**Diagnostics**: errors carry `-->` path, line, col, and `^` from RFC 0011's typed reporter. Import-cycle errors name every edge. Secret-sink errors name the source file where the SECRET tag was declared. No payload text is revealed.
+
+## Testing & Verification Criteria
+
+RFC 0012 closes when the following smokes pass. Each is one checked row in `openOODA/ROADMAP.oot` §5.1.
+
+- `scripts/x86_multi_smoke.oo` — `emit-x86 fixtures/x86_multi_main.oo` reads `x86_multi_lib.oo` via the new resolver, emits two `.s` files, links them, and runs. Output is the same integer the token-based `x86_emit_multi.oo:64` path produced (e.g. `multiply_add(2, 3, 4)` prints `10`).
+- `scripts/x86_multi_cycle_smoke.oo` — `a.oo` imports `b.oo` and `b.oo` imports `a.oo` is refused with `ERR import cycle: a -> b -> a` at the import site in `a.oo`.
+- `scripts/x86_multi_unknown_smoke.oo` — `main.oo` imports `ghost.oo` (missing) is refused with `ERR unknown import: ghost` at the import site, not a `need fn main` residual.
+- `scripts/x86_multi_secret_smoke.oo` — `lib.oo` declares `// SECRET: token`; `main.oo` does `println(token)`. Refused with `ERR secret sink refuses SECRET token (imported from lib.oo)`. The same test passes for `write_file(fs, path, token)`.
+- `scripts/x86_multi_link_smoke.oo` — end-to-end: import + emit + `as`+`ld` + run. The output binary is byte-equal across two runs (bit-identical reproducibility from RFC 0011 Phase D).
+- `scripts/x86_multi_c_line_smoke.oo` — `c_line_lib.oo` is recognized as a C-emit lib, not x86; the x86 path refuses it with `ERR backend mismatch: c_line_lib.oo is C emit, not x86` (no spurious `need fn main`).
+
+Cross-cutting:
+
+- `scripts/dinner_lint.oo` passes on `ooda/oodac/` (≤256 line limit, Academy headers, forbidden ext).
+- `scripts/verify_all.oo` 10 boards SHIPPED (GENERATED ≤256 lines).
+- The 24 `*_lib.oo` fixtures in `audit/x86-refused-clusters.oot` §4 are no longer REFUSED by the x86 backend when emitted as part of a multi-file program. Single-file emit still refuses them with the same `need fn main` message; that residual is correct.
+- Existing `qa_master.oo` still 22 green.
+- Double-run hostile probe (item 4) on `ooda/fixtures/*.oo` shows the `need fn main` cluster drops from 24 to 0 for multi-file entry points.
+
+## Status
+
+Draft. Phases M1 through M6 are tracked in `openOODA/ROADMAP.oot` §5.1 row "Tier 6 #29 — multi-file emit". RFC 0012 closes when the named smokes pass and the 24-fixture `need fn main` cluster drops to 0 for multi-file entry points. A checked box is not proof; re-run the named smoke.

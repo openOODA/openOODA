@@ -1,0 +1,98 @@
+# openOODA x86 Emit Dead-Arms Audit
+
+File: openOODA/audit/x86-dead-arms.oot
+Status: open — Tier 5 #24 chain audit, Turn 1 refactor candidate inventory.
+Context: Dispatch ladder at ooda/oodac/x86_emit.oo:73-196 spans 24 token-walker arms. Turn 2 plans to replace it with a single call to x86_ast_typed.oo:43.
+
+---
+
+## 1. Inventory
+
+24 arms live in the chain. Each is a `let` + `if` pair, plus an `else`-style return chain on miss.
+
+| #  | Lines    | Trigger gate        | Matcher call             | Emit call                      | Module file               |
+|----|----------|---------------------|--------------------------|--------------------------------|---------------------------|
+| 1  | 074-080  | `chars_len > 0`     | x86_fold_hello           | x86_emit_linux64               | x86_emit_fold.oo          |
+| 2  | 081-085  | `list_len >= 2`     | x86_match_id_call        | x86_emit_id_call               | x86_emit_fn.oo            |
+| 3  | 086-090  | `list_len >= 3`     | x86_match_snd_call       | x86_emit_snd_call              | x86_emit_rsi.oo           |
+| 4  | 091-095  | `list_len >= 4`     | x86_match_thd_call       | x86_emit_thd_call              | x86_emit_rdx.oo           |
+| 5  | 096-100  | `list_len >= 5`     | x86_match_fth_call       | x86_emit_fth_call              | x86_emit_rcx.oo           |
+| 6  | 101-105  | `list_len >= 6`     | x86_match_5th_call       | x86_emit_5th_call              | x86_emit_r89.oo:111       |
+| 7  | 106-110  | `list_len >= 7`     | x86_match_6th_call       | x86_emit_6th_call              | x86_emit_r89.oo:112       |
+| 8  | 111-115  | `list_len >= 3`     | x86_match_cat_call       | x86_emit_cat_call              | x86_emit_str.oo:123       |
+| 9  | 116-120  | `list_len >= 4`     | x86_match_greet_call     | x86_emit_greet_call            | x86_emit_greet.oo:111     |
+| 10 | 121-125  | `list_len >= 1`     | x86_match_int_write      | x86_emit_int_write             | x86_emit_int.oo:15        |
+| 11 | 126-130  | `list_len >= 1`     | x86_match_struct         | x86_emit_struct                | x86_emit_struct.oo:54     |
+| 12 | 131-135  | `list_len >= 2`     | x86_match_typed_let      | x86_emit_typed_let             | x86_emit_typed_let.oo:16  |
+| 13 | 136-140  | `list_len >= 3`     | x86_match_multi_main     | x86_emit_multi_main            | x86_emit_multi.oo:44      |
+| 14 | 141-145  | `list_len >= 2`     | x86_match_mut_local      | x86_emit_mut_local             | x86_emit_mut.oo:16        |
+| 15 | 146-150  | `list_len >= 7`     | x86_match_match_test     | x86_emit_match_test            | x86_emit_match.oo:85      |
+| 16 | 151-155  | `list_len >= 4`     | x86_match_while_loop     | x86_emit_while_loop            | x86_emit_loop.oo:30       |
+| 17 | 156-160  | `list_len >= 2`     | x86_match_for_test       | x86_emit_for_test              | x86_emit_for.oo:19        |
+| 18 | 161-165  | `list_len >= 2`     | x86_match_list_test      | x86_emit_list_test_run         | x86_emit_list.oo:83,87    |
+| 19 | 166-170  | `list_len >= 2`     | x86_match_list           | x86_emit_list_program          | x86_emit_list.oo:28,92    |
+| 20 | 171-175  | `list_len >= 2`     | x86_match_opt            | x86_emit_opt_program           | x86_emit_opt.oo:143       |
+| 21 | 176-180  | `list_len >= 2`     | x86_match_free_test      | x86_emit_free_test             | x86_emit_free.oo:54       |
+| 22 | 181-185  | `list_len >= 1`     | x86_match_fib_test       | x86_emit_fib_test              | x86_emit_rec.oo:136       |
+| 23 | 186-192  | `bool` (true)       | x86_match_float_test     | x86_collect_and_emit_float     | x86_emit_float.oo:127,145 |
+| 24 | 193-196  | `bool` (true)       | x86_match_heap_test      | x86_emit_heap_test             | x86_emit_heap.oo:61       |
+
+Trigger-shape column above is the predicate the dispatcher uses to decide the arm fires. All matchers return either a non-empty `List[String]` (list-style) or a `Bool` (arms 23, 24).
+
+## 2. Shadowed arms
+
+A "shadowed" arm is one whose trigger is a subset of an earlier arm's trigger, so the later arm can never fire in practice.
+
+### 2.1 Arm 19 (x86_match_list) is shadowed by arm 18 (x86_match_list_test)
+
+Evidence: `ooda/oodac/x86_emit_list.oo:83-90`.
+- `x86_match_list_test` is a literal alias: `return x86_match_list(src);` (line 84).
+- `x86_emit_list_test_run` discards all three args and re-tokenizes an empty string: `let src: String = ""; x86_emit_list_program(src);` (lines 88-89).
+- `x86_emit_list_program("")` hits `if list_len(info) < 2 { x86_emit_list_test(); return; }` (line 94) and calls `x86_emit_list_test` which `process_exit(1)` with an ERR (lines 23-26).
+- Net: arm 18 fires for any list-shaped source, ERRs, and never returns. Arm 19 never gets a chance.
+
+### 2.2 No other clear shadowing
+
+The arity-based chain (arms 2-7) is disjoint by trigger: id_call needs 1 String arg returning the param, snd_call needs 2 returning the 2nd, and so on up to 6 args. Different fn arity, different return position, no overlap.
+Arms 8 (cat) and 9 (greet) both produce bump-concat output but their fn return shapes are disjoint: `p1 + p2` (cat) vs `STRING + IDENT + STRING` (greet). They are independent.
+Arms 10-22 each match a different surface keyword (`println(INT)`, `struct`/`KW_TYPE`/`DOT`, `let: Int`, `multiply_add`, `KW_MUT`, `KW_MATCH`, `KW_WHILE`, `KW_FOR`, `list_*`, `opt_*`, `oo_alloc`/`heap_free_test`, fib-style rec), so triggers are token-disjoint.
+
+## 3. Always-empty (broken-emit) arms
+
+### 3.1 `x86_emit_list_test_run` at ooda/oodac/x86_emit_list.oo:87-90
+
+The function body discards the three list-element arguments and re-runs the match against an empty string. The empty match returns `list_new()`, the dispatch falls into the ERR branch, and the process exits with code 1. Effect for any caller: ERR + exit 1, every time. This is the only arm whose emit is a no-op stub.
+
+### 3.2 No matcher is strictly always-empty
+
+All 24 matchers are reachable for at least one fixture: 1 (hello.oo fixture), 2-7 (rsi..r9 SysV tests), 8-9 (cat/greet fixtures), 10 (println literal), 11 (struct field program), 12 (typed let), 13 (multiply_add), 14 (mut local), 15 (match Some/None), 16 (while loop), 17 (for range), 18-19 (list push/get), 20 (opt some/none), 21 (alloc/free), 22 (fib), 23 (Float const-fold), 24 (heap_alloc_test).
+
+## 4. Action list
+
+| #  | Arm                                              | Action               | Reason                                                                                              |
+|----|--------------------------------------------------|----------------------|-----------------------------------------------------------------------------------------------------|
+| 1  | arm 18 (x86_match_list_test, line 161-165)       | **DELETE**           | Emit is a broken stub (x86_emit_list.oo:87-90). Always ERRs. Same matcher as arm 19 anyway.        |
+| 2  | arm 19 (x86_match_list, line 166-170)            | **MERGE** with #1    | After #1 deletion, arm 19 is the only list arm. No code change needed; the action is the cleanup.  |
+| 3  | arms 2-5 (id/snd/thd/fth, lines 081-100)         | **MERGE**            | Four hand-written matchers (fn.oo:142, rsi.oo:166, rdx.oo:163, rcx.oo:135) can be replaced by the existing `x86_match_n_call(src, k)` (r89.oo:68) parameterized by k = 1..4. Arms 6-7 already use this pattern. |
+| 4  | arm 12 (x86_match_typed_let, line 131-135)       | KEEP-WITH-REASON     | Narrowly shadowed by arm 11's broad `DOT+IDENT` trigger for sources with any field access. Reachable for simple `let n: Int = INT; println(n);` fixtures. |
+| 5  | arm 22 (x86_match_fib_test, line 181-185)        | KEEP-WITH-REASON     | x86_match_rec (rec.oo:108) is general; fib_test (rec.oo:136) wraps it but the emit hardcodes base_thresh=1, off1=1, off2=2 (rec.oo:147). Reachable only for fib-shaped sources; non-fib recursions reach this arm and miscompile. |
+| 6  | arm 11 (x86_match_struct, line 126-130)          | KEEP-WITH-REASON     | `>= 1` trigger with broad `KW_TYPE+struct` / `struct+LBRACE` / `DOT+IDENT` clause can false-positive on non-struct sources with a `.` token. Not dead, but a known correctness gap. |
+
+## 5. Estimated lines saved
+
+If actions 1-3 are taken:
+
+| Action                                                          | Lines removed from x86_emit.oo | Lines removed from per-module files |
+|-----------------------------------------------------------------|--------------------------------|-------------------------------------|
+| DELETE arm 18 (x86_match_list_test, line 161-165)               | 5                              | 0                                   |
+| MERGE arms 2-5 into a single x86_match_n_call dispatch          | ~15 (4 arms -> 1)              | ~120 (4 hand-written matchers)      |
+| MERGE arm 19 with #1 (cleanup only, no line change)             | 0                              | 0                                   |
+| **Total**                                                       | **~20**                        | **~120**                            |
+
+Lines saved are best-case upper bounds. The x86_emit.oo dispatch ladder is set to be replaced wholesale by `x86_ast_typed.oo:43` in Turn 2 anyway, so the per-module savings matter more than the dispatch line count. The action list above still has standalone value if the Turn 2 path slips: arm 18 is a known ERR trap today, and arms 2-5 are the largest source of duplicated matcher code in the tree.
+
+---
+
+## 6. Residual
+
+The Tier 5 #24 typed-AST path is the real fix. Once it lands, this audit becomes historical. Until then, the DELETE in §4 item 1 is safe to apply without the Turn 2 refactor: it removes a broken-emit arm and re-enables arm 19, which is correct today.

@@ -1,0 +1,230 @@
+// # X86-SSA-REMAP-BUG — Pre-fix audit of per-block remap in oodac/x86_ssa_emit.oo
+//
+// Logline: Document the two construction bugs in the SSA emitter (duplicate inline labels in x86_ssa_emit_println_int, undefined block labels in br / cond_br) so the in-flight fix and the regression smoke are both correct.
+//
+// Setup: Audit-only, read-only. The full hostile-probe v2 (audit/x86-hostile-probe-v2.oot) reports 6,426 / 6,936 (92.6%) SSA ASM-FAILs; 3,215 are duplicate-label (`.Lxss_pi_*`) and 3,211 are undefined-block-label (`.Lmain_block2`, `.Lmain_block3`). Source files: ooda/oodac/x86_ssa_emit_remap.oo (56 lines, read-only), ooda/oodac/x86_ssa_emit.oo (243 lines, current post-fix shape, read-only), ooda/oodac/x86_ssa_compile.oo (104 lines, read-only), ooda/std/llvm_codegen/{ssa_ir, ssa_lower, ssa_mem2reg, ssa_opt}.oo (read-only). No edits, no compile runs, no /tmp writes.
+//
+// Beats:
+//   1. Inventory the remap helpers and their use sites.
+//   2. Trace Bug #1 (duplicate `.Lxss_pi_*` labels) from definition to inline-expansion to duplicate.
+//   3. Trace Bug #2 (undefined `.Lmain_block2` / `.Lmain_block3`) from definition to use to undefined reference.
+//   4. Sketch the 1-2 line fix for each bug.
+//   5. Specify one regression smoke per bug.
+//   6. Flag adjacent risks in the remap pass that the fix may not cover.
+
+File: openOODA/audit/x86-ssa-remap-bug.oot
+THIS FILE IS GENERATED — DO NOT EDIT. Source: pre-fix audit of x86_ssa_emit 2026-08-25.
+
+---
+
+## 1. Remap function inventory
+
+The SSA emit pass lowers one `SsaFunction` to one assembly string. The remap helpers in `ooda/oodac/x86_ssa_emit_remap.oo` walk the parallel inst arrays to assign per-block slot offsets, and `ooda/oodac/x86_ssa_emit.oo` walks block-by-block to emit one labeled region per block plus the inline expansions of `println_int` and `br` / `cond_br`. Five functions matter for the two ASM-FAILs:
+
+| # | Function | Input | Output | File:line |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | `x86_ssa_block_local_slots` | `SsaFunction`, `block_id` | `List[Int]` of unique SSA reg ids in slot order | x86_ssa_emit_remap.oo:21 |
+| 2 | `x86_ssa_emit_slot_for` | `reg`, `block_id`, `block_local_slots` | per-block `x86_ssa_slot(i)` or fallback `x86_ssa_slot(reg)` | x86_ssa_emit_remap.oo:43 |
+| 3 | `x86_ssa_block_local_slot_count` | `SsaFunction` | sum of per-block slot counts (sizes the frame) | x86_ssa_emit_remap.oo:50 |
+| 4 | `x86_ssa_emit_function` | `SsaFunction` | function body assembly (prologue, per-block label + insts, epilogue) | x86_ssa_emit.oo:27 |
+| 5 | `x86_ssa_format_inst` | `(op, res, imm, lhs, acc, max_reg, fn_name, block_id, block_local_slots, block_names, inst_id)` | one line of assembly for one inst | x86_ssa_emit.oo:78 |
+
+`x86_ssa_emit_function` (4) reads `block_count`, `block_names`, and the five parallel inst arrays at line 30; emits the prologue and frame at lines 28-41; loops over `b in 0..block_count` at line 43 and emits `.L<fn_name>_<bname>:` for each block at line 44. `x86_ssa_format_inst` (5) is the per-instruction dispatch: op 17 (`br`) and op 18 (`cond_br`) emit a `.L<fn_name>_<tbname>` jump where `tbname = list_get(block_names, imm)` at line 83. Op 23 (`println_int`) inlines the `_println_int` body via `x86_ssa_emit_println_int(imm, inst_id.to_string())` at line 101; the helper at line 107-110 hard-codes four internal label definitions (`.Lxss_pi_nz_<suffix>`, `.Lxss_pi_pos_<suffix>`, `.Lxss_pi_loop_<suffix>`, `.Lxss_pi_print_<suffix>`).
+
+## 2. Bug #1: duplicate `.Lxss_pi_*` labels (3,215 fixtures)
+
+`x86_ssa_emit_println_int` inlines the body of `_println_int` for every SSA `println_int` instruction (op 23). The pre-fix body embedded four label definitions — `.Lxss_pi_nz`, `.Lxss_pi_pos`, `.Lxss_pi_loop`, `.Lxss_pi_print` — directly in the returned string. The function has zero per-call-site state: any two `println_int` calls in the same function emit the same global label set. The `as` assembler treats them as a single global symbol and fails with `symbol .Lxss_pi_nz is already defined` on the second occurrence.
+
+The 3,215 failing fixtures are any SSA path that lowers to two or more `println_int` calls inside one function. The hostile-probe v2 found 3,215 of them; the most common shape is a test-harness main with multiple `println` lines (e.g. `println(x); println(y);`).
+
+### 2.1 3-block example (duplicate-label bug)
+
+Source: a 3-block SSA program with two `println_int` calls in distinct blocks.
+
+```
+// entry
+%v1 = const 1
+br if.then.1
+
+// if.then.1
+%v2 = const 42
+println_int %v2
+br if.merge.2
+
+// if.merge.2
+%v3 = const 7
+println_int %v3
+ret %v3
+```
+
+SSA IR (after `ssa_lower_ast` + `mem2reg_promote` + `ssa_opt_const_fold`):
+
+| Field | Value |
+| :--- | :--- |
+| `name` | `"main"` |
+| `block_count` | 3 |
+| `block_names` | `["entry", "if.then.1", "if.merge.2"]` |
+| `inst_opcodes` | `[20, 17, 20, 23, 17, 20, 23, 19]` |
+| `inst_results` | `[1, 0, 2, 3, 0, 4, 5, 0]` |
+| `inst_imm_vals` | `[1, 1, 42, 2, 2, 7, 4, 5]` |
+| `inst_block_ids` | `[0, 0, 1, 1, 1, 2, 2, 2]` |
+
+Pre-fix `x86_ssa_emit_function` output (block labels omitted for clarity; relevant println_int expansions shown):
+
+```
+.Lmain_entry:
+    movq $1, -8(%rbp)
+    jmp .Lmain_if.then.1
+.Lmain_if.then.1:
+    movq $42, -16(%rbp)
+    subq $40, %rsp
+    movq -16(%rbp), %rax
+    ...
+    jnz .Lxss_pi_nz            <-- emitted by 1st println_int call
+    ...
+.Lxss_pi_nz:
+    ...
+.Lxss_pi_print:               <-- emitted by 1st println_int call
+    ...
+.Lmain_if.merge.2:
+    movq $7, -32(%rbp)
+    subq $40, %rsp
+    movq -32(%rbp), %rax
+    ...
+    jnz .Lxss_pi_nz            <-- DUPLICATE: 2nd println_int call
+    ...
+.Lxss_pi_nz:                  <-- DUPLICATE LABEL
+    ...
+.Lxss_pi_print:               <-- DUPLICATE LABEL
+    ...
+```
+
+`as` errors with `symbol .Lxss_pi_nz is already defined` at the second `.Lxss_pi_nz:` (the first one comes from the `if.then.1` expansion, the second from `if.merge.2`). Three more duplicate-label errors follow for `.Lxss_pi_pos`, `.Lxss_pi_loop`, `.Lxss_pi_print`. All four pairs are emitted as global symbols because the pre-fix helper has no per-call-site disambiguator.
+
+## 3. Bug #2: undefined `.Lmain_block2` / `.Lmain_block3` labels (3,211 fixtures)
+
+The pre-fix `x86_ssa_format_inst` for op 17 (`br`) and op 18 (`cond_br`) constructed the jump target as `.L<fn_name>_block<imm>` — literally the string `"block"` concatenated with the target block id. The block label definition at `x86_ssa_emit.oo:44` uses the block name from `block_names`: `.L<fn_name>_<bname>`. The two halves of the link never agree. `as` assembles both sides (the jump target is a textual reference, not a numeric offset), but `ld` errors with `undefined reference to .Lmain_block2` because the def site emits `.Lmain_if.merge.2:`, not `.Lmain_block2:`.
+
+The 3,211 failing fixtures are any SSA path with at least one branch to a non-entry block (3+ blocks total). The most common shape is a one-line `if` (entry, if.then, if.merge = 3 blocks; the merge block at id 2 is never defined under the broken target name).
+
+### 3.1 3-block example (undefined-label bug)
+
+Source: a 3-block SSA program with a conditional branch to a merge block.
+
+```
+// entry
+%v1 = const 1
+cond_br if.then.1, if.merge.2
+
+// if.then.1
+%v2 = const 42
+br if.merge.2
+
+// if.merge.2
+ret 0
+```
+
+SSA IR:
+
+| Field | Value |
+| :--- | :--- |
+| `name` | `"main"` |
+| `block_count` | 3 |
+| `block_names` | `["entry", "if.then.1", "if.merge.2"]` |
+| `inst_opcodes` | `[20, 18, 20, 17, 19]` |
+| `inst_results` | `[1, 1, 2, 0, 0]` |
+| `inst_imm_vals` | `[1, 2, 42, 2, 0]` |
+| `inst_block_ids` | `[0, 0, 1, 1, 2]` |
+
+Pre-fix `x86_ssa_emit_function` output (block labels emitted correctly; jump targets wrong):
+
+```
+.Lmain_entry:                  <-- correct: name + bname
+    movq $1, -8(%rbp)
+    jne .Lmain_block2          <-- WRONG: should be .Lmain_if.merge.2
+.Lmain_if.then.1:              <-- correct
+    movq $42, -16(%rbp)
+    jmp .Lmain_block2          <-- WRONG: should be .Lmain_if.merge.2
+.Lmain_if.merge.2:             <-- correct
+    ret
+```
+
+`as` assembles the file (jump targets are unresolved references at this stage). `ld` errors with `undefined reference to .Lmain_block2` because no symbol `.Lmain_block2` is defined; the only defined symbols at those positions are `.Lmain_if.merge.2` and `.Lmain_entry`. Note: the `cond_br` jump target uses `imm` (the false-target id = 2 = `if.merge.2`); the `br` jump target also uses `imm` (the merge id = 2). Both mis-spell the label as `block2` instead of `if.merge.2`.
+
+## 4. Per-bug fix sketch (1-2 lines each)
+
+### 4.1 Bug #1: per-call-site suffix on println_int inline expansion
+
+Change `x86_ssa_emit_println_int` to take a `suffix: String` parameter and concatenate the suffix into every internal label definition and reference. Caller at `x86_ssa_emit.oo:101` already passes `inst_id.to_string()` as the suffix, and `inst_id` is unique per inst within one function. The two lines that change are the function signature and the label-template literal in the returned string. Sketch:
+
+```
+fn x86_ssa_emit_println_int(arg_slot: Int, suffix: String) -> String {
+    return "    subq $40, %rsp\n    ... jnz .Lxss_pi_nz_" + suffix + "\n    ... .Lxss_pi_nz_" + suffix + ":\n    ... .Lxss_pi_print_" + suffix + ":\n    ...";
+}
+```
+
+The post-fix code at `x86_ssa_emit.oo:107-110` already carries this shape (suffix is concatenated into all four label definitions and into the two forward references plus the one backward edge). The match-path caller at line 240 passes the constant `"match"`, which is safe today (one match per function) but should be a per-call-site suffix if the match path ever emits two match blocks in one function.
+
+### 4.2 Bug #2: resolve `tbname` from `block_names[imm]` before formatting the jump
+
+Change the `br` and `cond_br` branches in `x86_ssa_format_inst` to use `tbname = list_get(block_names, imm)` instead of the literal string `"block" + imm.to_string()`. The def site at `x86_ssa_emit.oo:44` already uses the bname; the two use sites must agree. Sketch:
+
+```
+let tbname: String = list_get(block_names, imm);   // already declared at line 83
+if op == 17 { line = line + "jmp .L" + fn_name + "_" + tbname; }
+else if op == 18 { line = line + "jne .L" + fn_name + "_" + tbname; }
+```
+
+This is the same `tbname` lookup that `x86_ssa_format_inst` already evaluates at line 83 (used unconditionally for both branch and non-branch instructions, which is a minor waste — see §6 issue 1). The fix is a one-line change per branch: replace `imm.to_string()` with `tbname` in the jump-target template.
+
+## 5. Test cases
+
+Two regression smokes, one per bug, each compileable with `ooda/oodac_bin --emit-x86-ssa` and assembleable with `as` + linkable with `ld`. Each test should fail with the pre-fix build and pass with the post-fix build.
+
+### 5.1 Test #1: duplicate-label smoke
+
+Source: a function with two `println_int` calls in two distinct blocks (matches the §2.1 example).
+
+```oo
+pub fn main(): Int {
+    let x: Int = 42;
+    let y: Int = 7;
+    if 1 == 1 {
+        println(x);
+    }
+    println(y);
+    return 0;
+}
+```
+
+Pre-fix expected: `as` fails with `symbol .Lxss_pi_nz is already defined` (or one of the other three labels in the inline expansion). Post-fix expected: `as` and `ld` succeed; running the binary prints `42` then `7` then exits 0.
+
+### 5.2 Test #2: undefined-block-label smoke
+
+Source: a function with one `if` and no `else`, so the merge block (id 2) is the jump target of both the `cond_br` and the `br` (matches the §3.1 example).
+
+```oo
+pub fn main(): Int {
+    let x: Int = 42;
+    if 1 == 1 {
+        x = 0;
+    }
+    return x;
+}
+```
+
+Pre-fix expected: `as` assembles; `ld` fails with `undefined reference to .Lmain_block2`. Post-fix expected: `as` and `ld` succeed; the binary returns 0.
+
+## 6. Risks: what else might break with the fix
+
+The fix touches two narrow sites in `x86_ssa_emit.oo` (suffix on `println_int` body, `tbname` lookup on `br` / `cond_br`). It does not touch the remap helpers in `x86_ssa_emit_remap.oo` or the optimization passes. Three adjacent risks remain:
+
+1. **Per-block slot offset collision (latent, not in this probe).** `x86_ssa_emit_slot_for` at `x86_ssa_emit_remap.oo:43` returns `x86_ssa_slot(i)` where `i` is the per-block slot index. Across two blocks in the same function, both slot 0 map to `0(%rbp)`, both slot 1 map to `-8(%rbp)`, etc. The frame is sized for the total slot count via `x86_ssa_block_local_slot_count`, but the offsets are reused. The hostile-probe v2 skipped the SSA run-probe, so this is silent corruption, not a reported ASM-FAIL. A correct remap must accumulate the per-block offset (start each block at `-8 * (offset_of_first_block + i)`).
+
+2. **`ssa_mem2reg_promote` returns a struct missing `inst_lhs_vals`.** `ssa_mem2reg.oo:144-153` constructs a new `SsaFunction` literal that omits the `inst_lhs_vals` field. The same defect is in `ssa_opt_const_fold` (`ssa_opt.oo:108-117`) and `ssa_opt_dce` (`ssa_opt.oo:198-207`). After either pass, `inst_lhs_vals` is empty, so the remap's `r2: Int = list_get(lhss, i)` always returns 0 and binop lhs operands (op 1-10) are remapped to the empty slot. The hostile-probe v2 SSA run-probe was skipped, so this is also silent. Out of scope for the label fix but the next SSA pass should add `inst_lhs_vals: (fn_data).inst_lhs_vals` to those three struct literals.
+
+3. **Match-path suffix is a constant.** The match-path caller at `x86_ssa_emit.oo:240` always passes the literal `"match"` as the suffix. If a single function ever lowers two distinct match blocks, both would emit the same `.Lxss_pi_*_match` label set and re-trigger Bug #1. Today the IR has at most one match block per function, so the constant suffix is safe. The fix should add a one-line comment at the call site stating the constant-suffix invariant, or promote the suffix to a per-call-site disambiguator if match density ever grows.
+
+## 7. Status
+
+**open** — pre-fix audit, two ASM-FAIL root causes documented with 3-block examples and 1-2 line fix sketches. Fix in flight in background task `bg_e304dd32`. Regression smokes defined in §5. Risks in §6 (per-block slot collision, missing `inst_lhs_vals` in opt passes, match-path constant suffix) are out of scope for this fix but should be tracked.

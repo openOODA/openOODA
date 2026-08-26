@@ -1,0 +1,114 @@
+# RFC 0014: Turn 2 Implementation Plan — x86 Typed-AST Dispatch
+
+File: openOODA/rfcs/0014-turn2-plan.oot
+Status: Draft
+Context: Companion to RFC 0011 (umbrella), 0013 (node kinds), audit/x86-std-surface.oot (must-wire set), and audit/x86-contract-coverage.oot (contract gate state).
+
+* **RFC ID**: 0014
+* **Author**: x86 Backend Agent
+* **Status**: Draft
+* **Created**: 2026-08-25
+
+---
+
+## 1. Goals
+
+Turn 2 replaces the 24-arm token-walker chain in `ooda/oodac/x86_emit.oo:80-202` with a single typed-AST-driven dispatch that walks a typed AST once and lowers each node kind through a per-kind handler. The new path consumes the 11-fn must-wire set from `audit/x86-std-surface.oot` §3 and the 38 NodeKind constructors from RFC 0013 §2. The deleted arms (arm 18 list_test stub; arms 2-5 collapsed into arity 1..4 ECall) leave only the `x86_emit_linux64` harvest fallback for true leftovers. Turn 2 also deletes the now-unused matcher files so the dispatch ladder is the only entry point. A green smoke must pass for every KEEP and KEEP-WITH-REASON row in RFC 0013 §4 before Turn 2 closes.
+
+## 2. Sub-turn 2a: typed-AST node constructors
+
+Scope: Add 38 `mk_*` constructors plus 2 accessors to `ooda/oodac/x86_ast_typed.oo`. Each constructor returns one String with a kind tag and a parenthesised, comma-joined payload (mirroring `ooda/oodac/ast.oo:14-73`). Cover the 7 TopLevel, 10 Stmt, 11 Expr, 7 Literal, and 13 Type kinds from RFC 0013 §2. Add `node_kind(node)` and `node_is(node, tag)` helpers. Add `mk_span(node, line, col)` and `node_span(node)` to carry the cross-cutting span suffix from RFC 0013 §5.1. Reuse `ast.oo:93-137` `list_len_str` and `list_get_str` for payload parsing.
+
+Deliverable: `x86_ast_typed.oo` grows from 31 lines to ≤256 lines with 38 mk_* fns plus the 4 accessors. The existing `x86_emit_stream_typed` at line 17 keeps working. A new `scripts/x86_ast_node_kinds_smoke.oo` runs each constructor, calls `node_kind`, and asserts the tag roundtrips. A new `scripts/x86_ast_payload_parse_smoke.oo` asserts that a comma inside a `StrLit` payload does not break `list_get_str`.
+
+Acceptance: (1) `node_is(mk_module(""), "Module")` returns true. (2) `node_kind(mk_int_lit("42"))` returns "IntLit". (3) `mk_let("x", "TyInt()", mk_int_lit("5"))` roundtrips through `node_kind` as "LetBinding". (4) `node_span(mk_int_lit("42"))` returns "" for a freshly built node. (5) `mk_str_lit("a,b,c")` parses back to "a,b,c" via `list_get_str(node, 0)`.
+
+Risk: A comma inside a `StrLit` payload would break `list_get_str` parsing and silently miscompile every `println("hi, world")`. Severity high because the regression suite has 4 such fixtures. Mitigation: scan-and-escape `,` in StrLit on the way in, or pick a delimiter other than `,` for the v field and document the rule.
+
+Unknowns: (a) Is the String-tagged record encoding from `ast.oo:14-73` the canonical pattern, or does the project prefer a JSON shape for `diag_json.oo` interop? (b) Should `mk_span` be a separate fn or a trailing parameter on every `mk_*`? (c) Should `EBinop.op` carry the operator as the tag text ("Add") or as a `TyInt`-like tag with a payload?
+
+## 3. Sub-turn 2b: per-node-kind handlers
+
+Scope: Add a `x86_handle_<kind>(node) -> Result[String, String]` fn for each NodeKind that has a KEEP or KEEP-WITH-REASON row in RFC 0013 §4 (24 active handlers, 14 residual stubs that return `Err("residual")`). Each active handler reads the payload via `list_get_str`, calls the matching must-wire std/arch_x86/ fn from `audit/x86-std-surface.oot` §3, and returns the asm text fragment. Add a new `x86_emit_typed_walk(src) -> Result[String, String]` fn that calls `ast_parse.oo`, `tc_drive.oo`, then dispatches each top-level node to its handler. Reuse the 11 must-wire fns: `elf64_link_executable`, `x86_encode_mov_rr`, `x86_encode_push`/`pop`, `x86_encode_add_rr`/`sub_rr`/`xor_rr`, `x86_encode_mov_ri64`, `sc_emit_sys_write`/`exit`, `abi_arg_count`/`arg_reg`/`ret_reg`, `abi_is_callee_saved`, `abi_stack_aligned`, `elf64_default_base`, `x86_rax`/`rdi`/`rsi`/`rdx`.
+
+Deliverable: 24 active handlers plus 14 residual stubs in `x86_ast_typed.oo`. A new top-level walk fn. A new `scripts/x86_handler_smoke.oo` that runs one fixture per active kind and asserts the asm contains a known substring (`movq` for `IntLit`, `syscall` for `ExprStmt-println`, `cmpq` for `MatchStmt`). A new `scripts/x86_typed_walk_smoke.oo` that runs `x86_emit_typed_walk(fixtures/hello.oo)` and asserts `Ok`.
+
+Acceptance: (1) `x86_handle_let_binding(mk_let("x", "TyInt()", mk_int_lit("5")))` returns Ok with `movq $5` substring. (2) `x86_handle_e_call(mk_call(mk_ident("println"), [mk_int_lit("42")]))` returns Ok with `syscall` substring. (3) `x86_handle_while_loop(mk_while(mk_binop("Lt", mk_ident("i"), mk_int_lit("10")), block))` returns Ok with `cmpq` substring. (4) `x86_emit_typed_walk(fixtures/hello.oo)` returns Ok. (5) No handler calls a deleted or unimported std fn (grep-test).
+
+Risk: A handler that calls a std fn with the wrong signature (e.g. `x86_encode_mov_ri64(reg, bits)` where the current std fn only accepts 32 bits) trips `as --64` and breaks the whole `as`+`ld` pipeline. Severity high because every fixture hits at least one handler. Mitigation: copy the 11 must-wire signatures into a test-only `std/arch_x86/x86_must_wire_test.oo` that the handler smoke imports; production handlers import the real module.
+
+Unknowns: (a) Does the handler emit SSA opcodes per node, or does it call `x86_ssa_compile_program_source` per block? RFC 0011 says `x86_ssa_compile.oo` already runs the pipeline; the implementer must pick between per-node SSA and per-fn SSA. (b) Does `ECall` lower to a real SSA Call opcode (Phase A) or to a direct `x86_encode_mov_rr` + call sequence (Turn 1 fallback)? (c) For `MatchStmt`, does the handler emit a jump table (Phase B residual) or a chained `cmpq`+`je` (Turn 1 fallback)?
+
+## 4. Sub-turn 2c: replace chain in dispatch ladder
+
+Scope: Replace lines 80-202 of `ooda/oodac/x86_emit.oo` with a single call: `x86_emit_stream(src) { contract_gate(); secret_gate(); let r = x86_emit_typed_walk(src); match r { Ok(s) => println(s), Err(e) => diag_println(e) }; }`. Drop the 24 fold/match/emit_local_* calls. Keep the contract gate (lines 48-57), secret gate (lines 64-71), and the `x86_emit_linux64` harvest fallback only for `toks.is_empty()` programs. The Turn 1 typed-AST shim at line 74 becomes redundant; delete the call site.
+
+Deliverable: `x86_emit.oo` shrinks from 205 lines to ≤80 lines. The 24 imports at lines 16-44 drop to 5: `token_fmt`, `x86_emit_contract`, `x86_emit_secret`, `x86_emit_diag`, `x86_ast_typed`. A new `scripts/x86_chain_replaced_smoke.oo` asserts that `grep -c "x86_match_" ooda/oodac/x86_emit.oo` returns 0 and that `x86_emit_stream(fixtures/hello.oo)` produces the canonical hello output.
+
+Acceptance: (1) `x86_emit.oo` ≤ 80 lines. (2) No import of any `x86_emit_<feature>.oo` matcher file. (3) No `x86_match_*` or `x86_emit_*_test_run` call site in the dispatch body. (4) `x86_emit_stream(fixtures/hello.oo)` exits 0 and prints the canonical hello. (5) `x86_emit_stream(fixtures/x86_fib.oo)` exits 0 and prints the fib result (regression for KEEP-WITH-REASON arm 22).
+
+Risk: A deleted matcher is still reachable from a path the new dispatch does not exercise (e.g. `x86_emit_typed_let.oo` is imported by `x86_emit_walk.oo`, which is also being deleted; the import graph must be walked). Severity medium because the 76 x86_*_smoke.oo fixtures still depend on the import graph being clean. Mitigation: walk the import graph of `x86_emit.oo` and every fixture that mentions an arm shape; any import that becomes unused must be removed in the same commit.
+
+Unknowns: (a) Do the 5 contract-gate additions from `audit/x86-contract-coverage.oot` §4 (KW_LET, KW_IF, KW_WHILE, KW_FN-call, KW_RETURN) land before Turn 2c starts, or do they live in a later turn? (b) Does the harvest fallback (line 203-204) survive as a "I have no AST" path, or is it removed and replaced with a typed diagnostic? (c) Is the typed error from the new dispatch the existing `Result[String, String]` shape or a new `Diag` record (per RFC 0011 Phase A `diag_json.oo`)?
+
+## 5. Sub-turn 2d: delete unused matchers
+
+Scope: Delete the 24 matcher files listed in RFC 0011 §"Files removed": `x86_emit_fold.oo`, `x86_emit_fn.oo`, `x86_emit_rsi.oo`, `x86_emit_rdx.oo`, `x86_emit_rcx.oo`, `x86_emit_r89.oo`, `x86_emit_str.oo`, `x86_emit_greet.oo`, `x86_emit_int.oo`, `x86_emit_list.oo`, `x86_emit_loop.oo`, `x86_emit_mut.oo`, `x86_emit_match.oo`, `x86_emit_multi.oo`, `x86_emit_opt.oo`, `x86_emit_rec.oo`, `x86_emit_free.oo`, `x86_emit_heap.oo`, `x86_emit_float.oo`, `x86_emit_struct.oo`, `x86_emit_typed_let.oo`, `x86_emit_walk.oo`, `x86_emit_for.oo`, `x86_emit_sys.oo`. Also delete `x86_match_list_test.oo` and `x86_match_list.oo` (the arms already removed in the live DELETE pass). Confirm no other file imports them. Keep `x86_emit.oo` (shim), `x86_emit_contract.oo`, `x86_emit_secret.oo`, `x86_emit_diag.oo`, and `x86_emit_elf.oo` (Phase D residual).
+
+Deliverable: 26 files deleted from `ooda/oodac/`. A new `scripts/x86_no_template_smoke.oo` asserts `ls ooda/oodac/x86_emit_*.oo | wc -l` returns the kept-only set. A new `scripts/x86_dead_arm_smoke.oo` asserts `grep -l x86_match_ ooda/ -r` returns empty.
+
+Acceptance: (1) 26 files removed; `git status` shows the deletes. (2) No `.oo` file in the repo imports a deleted module. (3) `scripts/dinner_lint.oo` passes on `ooda/oodac/`. (4) The 76 `x86_*_smoke.oo` fixtures still pass (they compile fixtures, not matchers). (5) `qa_master.oo` still 22 green.
+
+Risk: A deleted matcher is transitively imported by a fixture (e.g. `x86_emit_fold.oo` may be imported by `x86_emit_int.oo` for a const-fold helper, and `x86_emit_int.oo` is also being deleted, but `x86_emit_typed_let.oo` may import a helper from `x86_emit_fold.oo`). Severity medium because the deletions are a chain, not independent. Mitigation: before delete, `grep -l "x86_emit_fold" ooda/ -r` and inspect every result; if any non-matcher file imports the deleted module, port the import to a real module first or keep the deleted file as a stub.
+
+Unknowns: (a) Are the 24 files truly dead, or do some still carry a helper fn the new typed-AST path needs (e.g. `x86_emit_fold.oo` may have a `cg_emit_imm32_mov_rax` alias the SSA path relies on)? (b) Is `x86_emit_elf.oo` (Phase D in-process ELF writer) the only kept `x86_emit_*.oo`, or is it also removed in Turn 2? (c) Do the 24 fixtures under `ooda/fixtures/x86_*.oo` count as imports of the deleted matchers (they should not, but the audit should confirm)?
+
+## 6. Order constraints
+
+Sequential (must be done in order):
+1. **2a then 2b**: 2b's handlers cannot dispatch until 2a's constructors exist. The `mk_*` fns are the input language for 2b; a handler that calls `mk_int_lit("42")` fails to typecheck if 2a has not landed.
+2. **2b then 2c**: 2c's call to `x86_emit_typed_walk` cannot run until 2b defines the walk fn. Reordering 2c before 2b leaves `x86_emit.oo` calling a fn that does not exist.
+3. **2c then 2d**: 2d's deletes must happen after 2c replaces the chain. If 2d runs first, the chain still imports the deleted matchers and `dinner_lint.oo` fails on a dangling import.
+
+Parallelizable:
+1. Within 2a, the 38 `mk_*` fns can be written in any order; each is independent and shares only the `mk_*` naming convention.
+2. Within 2b, the 24 active handlers can be written in any order, but each must follow the 2a constructor it consumes. The 14 residual stubs are placeholders and can land last.
+3. The contract-gate additions from `audit/x86-contract-coverage.oot` §4 (KW_LET, KW_IF, KW_WHILE, KW_FN-call, KW_RETURN) can land in parallel with 2a-2c, but only if they do not touch `x86_emit.oo`'s dispatch body. They live in `x86_emit_contract.oo` and have no import dependency on the new dispatch.
+
+## 7. Risk register
+
+| # | Risk | Severity | Mitigation |
+|---|------|----------|------------|
+| 1 | Comma inside StrLit payload breaks `list_get_str` | High | Use a non-`,` delimiter (e.g. `\|`) for the StrLit v field, or scan-and-escape on the way in. Add a unit test that roundtrips `mk_str_lit("a,b,c")`. |
+| 2 | Contract gate at 1/3 coverage lets unhandled shapes through | High | Land the 5 contract-gate additions from audit §4 (KW_LET/IF/WHILE/RETURN/fn-call) before 2c. The dispatch then refuses shapes the typed AST cannot lower. |
+| 3 | Float `EBinop` silently miscompiles (audit §6.3) | High | Lower Float `EBinop` to a single `fmul`/`fadd` sequence via `x86_avx2.oo` or a new `x86_sse.oo`; do not call `x86_emit_float.oo`'s `List[Int]` path. |
+| 4 | `elf64_build_executable` (`x86_elf.oo:39-55`) returns Ok with 48 bytes and ignores `text_bytes` | High | Use `elf64_link_executable` (`x86_linker.oo:121`) per audit §6.2. Add a smoke that asserts the linked image is > 100 bytes for a non-empty program. |
+| 5 | 256-line limit hit on `x86_ast_typed.oo` after 38 `mk_*` fns plus 24 active handlers plus 14 stubs added | Medium | Split into `x86_ast_typed.oo` (TopLevel + Stmt, 17 kinds) and `x86_ast_typed_expr.oo` (Expr + Literal, 18 kinds) plus a separate `x86_handlers.oo` for the 24 active handlers. Each ≤256 lines. |
+| 6 | Deleted matchers still importable by fixtures under `ooda/fixtures/` | Medium | `grep -l x86_emit_fold ooda/fixtures/ -r` should return empty; if not, port the fixture to the new path before 2d lands. |
+| 7 | The new path regresses the 76 `x86_*_smoke.oo` fixtures | High | Run `scripts/verify_all.oo` after 2c; any regression is a blocker. The KEEP-WITH-REASON arms (11, 12, 22) must regress. |
+| 8 | `EClosure` (kind 11) is needed by a fixture we missed | Low | Stub the handler as `Err("residual: closure not in Turn 2")`; if a fixture hits it, promote the stub. |
+| 9 | `cg_emit_imm64_mov_rax` (`x86_codegen.oo:114`) is an alias of `cg_emit_imm32_mov_rax` and lies about 64-bit emit (audit §6.7) | Medium | Do not call it from any handler; replace with `x86_encode_mov_ri64` from `x86_encoder.oo:78`. Add a grep-test that fails if the alias name appears in the new path. |
+
+## 8. Smoke plan
+
+| Sub-turn | Smoke | Locks |
+|----------|-------|-------|
+| 2a | `scripts/x86_ast_node_kinds_smoke.oo` | Each of the 38 `mk_*` fns roundtrips through `node_kind`; `mk_span` adds the span suffix. |
+| 2a | `scripts/x86_ast_payload_parse_smoke.oo` | `list_get_str(node, 0)` returns the first field; commas in `StrLit` do not break parsing. |
+| 2b | `scripts/x86_handler_smoke.oo` | One fixture per active kind; asm contains the expected substring. |
+| 2b | `scripts/x86_typed_walk_smoke.oo` | `x86_emit_typed_walk(fixtures/hello.oo)` returns Ok. |
+| 2c | `scripts/x86_chain_replaced_smoke.oo` | `grep -c x86_match_ ooda/oodac/x86_emit.oo` returns 0; `x86_emit.oo` ≤ 80 lines. |
+| 2c | `scripts/x86_no_template_smoke.oo` | `x86_emit.oo` imports no `x86_emit_<feature>.oo` matcher. |
+| 2c | `scripts/verify_all.oo` | All 76 `x86_*_smoke.oo` fixtures still pass. |
+| 2d | `scripts/x86_no_template_smoke.oo` | `ls ooda/oodac/x86_emit_*.oo` matches the kept-only set. |
+| 2d | `scripts/x86_dead_arm_smoke.oo` | `grep -l x86_match_ ooda/ -r` returns empty. |
+| 2d | `scripts/dinner_lint.oo` | ≤256 line limit, Academy headers, no forbidden ext. |
+| 2d | `scripts/qa_master.oo` | 22 green. |
+
+## 9. Open questions
+
+1. Does the new dispatch return `Result[String, String]` (Turn 1 contract) or a typed `Diag` record (RFC 0011 Phase A `diag_json.oo` shape)? The decision affects every handler's signature and the dispatch ladder's error branch.
+2. Are the 5 contract-gate additions from `audit/x86-contract-coverage.oot` §4 (KW_LET, KW_IF, KW_WHILE, KW_FN-call, KW_RETURN) prerequisites for Turn 2c, or do they land in a later turn? The audit ranks them 1, 2, 3 by blast radius.
+3. Does Float `EBinop` lower through `x86_avx2.oo` (SIMD), `x86_sse.oo` (scalar, residual), or raw x87? The choice affects which must-wire fn replaces arm 23 and whether the `audit/x86-std-surface.oot` §4 rename set applies.
+4. Is `EClosure` (kind 11 from RFC 0013 §2.3) a Turn 2 deliverable, or is it residual until a fixture needs it? The decision affects the 38-fn constructor count and the 14-stub count.
+5. Does the harvest fallback (`x86_emit.oo:203-204`, `x86_collect_prints(toks); x86_emit_linux64(msgs);`) survive Turn 2c as an "I have no AST" path, or is it removed and replaced with a typed diagnostic? RFC 0013 §7 Q5 asks the same question.

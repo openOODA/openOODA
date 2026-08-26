@@ -1,0 +1,92 @@
+// # x86 contract post-expansion audit
+//
+// Logline: Verify the contract-gate expansion added refine_check fns for fn-call, let, while, return, and if, and that each new fn is wired into x86_emit_contract_test and named in the header Beats.
+//
+// Setup: x86_emit_contract.oo at ooda/oodac/x86_emit_contract.oo (252 lines) is the post-expansion contract gate. The pre-expansion audit at openOODA/audit/x86-contract-coverage.oot (89 lines) established the 16-row matrix with 1/16 coverage (fn decl). The expansion was expected to add 5 new features (fn-call, let, while, return, if) for a target of 6/16.
+//
+// Beats:
+//   1. Verify each new refine_check_<feature> fn exists, is wired into x86_emit_contract_test, and is named in the header Beats.
+//   2. Compute the actual coverage delta from the post-expansion state.
+//   3. List features still uncovered after the expansion.
+//   4. Propose one contract-gate addition per remaining uncovered feature.
+//   5. Flag naming inconsistencies between the header beat and the fn symbols.
+
+File: openOODA/audit/x86-contract-post-expansion.oot
+Status: open — Tier 0 #3 follow-up; expansion landed 4 of 5 planned refine_check fns.
+Context: Read-only audit. No .oo files were modified.
+
+---
+
+## 1. Per-feature verification
+
+The expansion promised 5 new refine_check fns (fn-call, let, while, return, if). The post-expansion source at ooda/oodac/x86_emit_contract.oo contains 4 new fns (x86_refine_check_fn_call, x86_refine_check_return, x86_refine_check_let, x86_refine_check_while). The fn names carry the `x86_` prefix while the header beat uses the unqualified form — a minor naming inconsistency tracked in §5.
+
+| #  | Feature            | fn exists Y/N  | wired Y/N                              | header beat mentions Y/N | file:line                          |
+|----|--------------------|----------------|----------------------------------------|--------------------------|------------------------------------|
+| 1  | fn decl (original) | N/A (KW_FN tracked inline) | Y (x86_contract_walk_records)  | Y (beat 1)               | x86_emit_contract.oo:71-74, 82     |
+| 2  | fn-call            | Y              | Y                                      | Y (beat 3)               | x86_emit_contract.oo:159-187, 247  |
+| 3  | let                | Y              | Y                                      | Y (beat 3)               | x86_emit_contract.oo:205-217, 249  |
+| 4  | while              | Y              | Y                                      | Y (beat 3)               | x86_emit_contract.oo:220-232, 250  |
+| 5  | return             | Y              | Y                                      | Y (beat 3)               | x86_emit_contract.oo:190-202, 248  |
+| 6  | if                 | N              | N                                      | N                        | (not present)                      |
+
+Totals: 4 of 5 new fns landed. 4 of 5 are wired. 4 of 5 are named in the header Beats. The if feature is absent in all three axes.
+
+Notes on the fn-decl row: the original coverage was anchored on the KW_FN scan at x86_emit_contract.oo:71-74 (inside x86_contract_walk_records), which tracks fn_name as a context tag for the next requires/ensures/spec/verify clause. The fn body, parameters, and return type are not validated by the gate — same caveat as audit/x86-contract-coverage.oot:47.
+
+Notes on the fn names: the post-expansion symbols are `x86_refine_check_fn_call`, `x86_refine_check_return`, `x86_refine_check_let`, `x86_refine_check_while` (x86_emit_contract.oo:159, 190, 205, 220). The header beat at x86_emit_contract.oo:10 lists them without the `x86_` prefix. Treat the Y in the "header beat mentions" column as a yes-by-name match, but flag the prefix mismatch in §5.
+
+---
+
+## 2. Coverage delta
+
+The pre-expansion audit (audit/x86-contract-coverage.oot:45) counted 1 feature with the contract cell Y (fn decl). The post-expansion state adds 4 more (fn-call, let, while, return), giving an actual delta of:
+
+  pre:  1/16  (fn decl only)
+  post: 5/16  (fn decl + fn-call + let + while + return)
+
+The target of 6/16 is not reached. The gap is exactly one feature: if. Adding a `x86_refine_check_if` function, wiring it into `x86_emit_contract_test` (x86_emit_contract.oo:245), and naming it in the header Beats (x86_emit_contract.oo:10) would close the gap to 6/16.
+
+The expansion is otherwise complete: the 4 new fns each walk the source for their feature's shape (x86_emit_contract.oo:158-232) and return one error per non-conforming site, matching the contract promised in beat 3 of the post-expansion header. The entry point `x86_emit_contract_test` (x86_emit_contract.oo:245-251) calls `x86_check_contracts` first, then appends the 4 refine_check results via the `append_errs` helper (x86_emit_contract.oo:234-242), matching the dispatch contract from beat 4.
+
+---
+
+## 3. Remaining uncovered features
+
+After the expansion, 11 of 16 features still lack a `x86_refine_check_*` arm. Ordered by post-expansion priority (smallest blast radius first, since the expansion closed the 4 widest-blast-radius rows from audit/x86-contract-coverage.oot:83):
+
+1. **if** — the only feature named in the expansion plan that did not land. KW_IF is not scanned by `x86_contract_walk_records` (x86_emit_contract.oo:62-120) and no `x86_refine_check_if` exists. Closest emit file is `x86_emit_ctl.oo:19, 67, 174` (audit/x86-contract-coverage.oot:31). The 50 silent-miscompile fixtures from `audit/x86-investigations.oot:4` are dominated by `if` shapes that the 22-arm token walker does not recognize.
+2. **match** — no contract arm, no `x86_emit_match.oo` contract check. Closest is `x86_emit_match.oo:40, 86` (audit/x86-contract-coverage.oot:30). Match scrutinees are not validated before the matcher runs.
+3. **for** — no contract arm. Closest is `x86_emit_for.oo:20` (audit/x86-contract-coverage.oot:33). The for-loop shape (`IDENT KW_IN <range>`) is not pre-validated.
+4. **struct** — no contract arm. Closest is `x86_emit_struct.oo:55` (audit/x86-contract-coverage.oot:34). Struct field lists and types are not pre-validated.
+5. **list** — no contract arm. Closest is `x86_emit_list.oo:29` (audit/x86-contract-coverage.oot:35). List literal element types are not pre-validated.
+6. **opt** — no contract arm. Closest is `x86_emit_opt.oo:144` (audit/x86-contract-coverage.oot:36). Optional binding inner types are not pre-validated.
+7. **int** — no contract arm. Closest is `x86_emit_int.oo:16` (audit/x86-contract-coverage.oot:37). Typed-int let-bindings are not pre-validated.
+8. **float** — no contract arm. Closest is `x86_emit_float.oo:91` (audit/x86-contract-coverage.oot:38). Float literals are not pre-validated.
+9. **string** — no contract arm. Closest is `x86_emit_str.oo:20, 82, 124` (audit/x86-contract-coverage.oot:39). String literal chains are not pre-validated.
+10. **rec fn** — no contract arm. Closest is `x86_emit_rec.oo:18, 109` (audit/x86-contract-coverage.oot:42). Recursive call detection inside the body is not pre-validated.
+11. **mut local** — no contract arm. Closest is `x86_emit_mut.oo:17` (audit/x86-contract-coverage.oot:43). `KW_MUT` between `KW_LET` and `IDENT` is not pre-validated.
+
+---
+
+## 4. Recommended next additions
+
+One entry per §3 feature. Each addition names the token to detect and the failure mode it would surface.
+
+1. **if** — add a `x86_refine_check_if` function in `x86_emit_contract.oo` after `x86_refine_check_while` (line 232). Walk tokens for `KW_IF`; require the next token to be `LPAREN` and the condition inside the parens to be one of `INT OP INT`, `IDENT OP INT`, or `INT OP IDENT`. Wire into `x86_emit_contract_test` after the while arm (x86_emit_contract.oo:250). Add the fn name to the header beat at line 10. Closes the 5/16 → 6/16 gap and front-stops the 50 silent-miscompile fixtures from `audit/x86-investigations.oot:4`.
+2. **match** — add a `x86_refine_check_match` function. Walk tokens for `KW_MATCH`; require the scrutinee to be a bare `IDENT` and each arm to be `LITERAL`, `_`, or bare `IDENT`. Wire into `x86_emit_contract_test` and name in the header. Pairs with `x86_emit_match.oo:40`.
+3. **for** — add a `x86_refine_check_for` function. Walk tokens for `KW_FOR`; require `IDENT KW_IN INT DOTDOT INT`. Wire and name. Pairs with `x86_emit_for.oo:20`.
+4. **struct** — add a `x86_refine_check_struct` function. Walk tokens for `KW_STRUCT`; require the field list to be a non-empty `IDENT COLON <type>` sequence where `<type>` is a known KW. Wire and name. Pairs with `x86_emit_struct.oo:55`.
+5. **list** — add a `x86_refine_check_list` function. Walk tokens for `KW_LIST`; require the element type to be `KW_INT`, `KW_FLOAT`, `KW_STRING`, or `KW_BOOL`. Wire and name. Pairs with `x86_emit_list.oo:29`.
+6. **opt** — add a `x86_refine_check_opt` function. Walk tokens for `KW_OPT`; require the inner type to be one of the known KWs or a declared struct. Wire and name. Pairs with `x86_emit_opt.oo:144`.
+7. **int** — add a `x86_refine_check_int` function. Walk tokens for `KW_INT` at a type-position (after `COLON`); require it to be paired with a const-foldable `INT` literal. Wire and name. Pairs with `x86_emit_int.oo:16`.
+8. **float** — add a `x86_refine_check_float` function. Walk tokens for `KW_FLOAT` at a type-position; same shape as int. Wire and name. Pairs with `x86_emit_float.oo:91`.
+9. **string** — add a `x86_refine_check_string` function. Walk tokens for `STRING` at a let-RHS position; require `STRING` or `STRING PLUS STRING`. Wire and name. Pairs with `x86_emit_str.oo:20`.
+10. **rec fn** — add a `x86_refine_check_rec` function. Walk tokens for `KW_FN` + `IDENT` + `{` and flag the same `IDENT` appearing as a callee inside the body. Tag the fn as `rec` and require the body to fold the same way a non-rec fn body would. Wire and name. Pairs with `x86_emit_rec.oo:18`.
+11. **mut local** — add a `x86_refine_check_mut` function. Walk tokens for `KW_MUT` at the let-binding position (between `KW_LET` and `IDENT`); require the right-hand side to be one of the harvest-acceptable shapes AND require the `IDENT` to be re-assigned in the same scope. Wire and name. Pairs with `x86_emit_mut.oo:17`.
+
+---
+
+## 5. Naming inconsistency (follow-up)
+
+The header beat at `x86_emit_contract.oo:10` lists the four new fns as `refine_check_fn_call, refine_check_return, refine_check_let, and refine_check_while` (unqualified). The actual symbols are `x86_refine_check_fn_call`, `x86_refine_check_return`, `x86_refine_check_let`, `x86_refine_check_while` (qualified with the `x86_` prefix at lines 159, 190, 205, 220). This is a cosmetic mismatch: the header reads unqualified while the code is qualified. Either rename the fns to drop the prefix or update the header to include the prefix. Recommend the header update (single line change) over the rename (touches 4 fn signatures and 4 call sites at lines 247-250).

@@ -1,0 +1,112 @@
+// # RFC 0017: Turn 3 Spec — x86 Typed-AST Parity & Regression Gate
+//
+// Logline: Verify that the typed-AST dispatch shipped in Turn 2 produces the same .bin output as the old 24-arm chain for every fixture the old chain could handle, flag every fixture where the new path fails where the old chain would have succeeded, and lock the regression so Turn 4 cannot break a passing fixture.
+//
+// Setup: Binary `ooda/oodac_bin` rebuilt after Turn 2 lands (RFC 0014 sub-turns 2a-2d all closed, 26 matcher files deleted, `x86_emit.oo` shrunk to ≤80 lines, the 14 residual-stub handlers return `Err("residual")`, and the 24 active handlers cover the KEEP rows of RFC 0013 §4). The old chain is preserved at `ooda/oodac_bin_old` (snapshot taken immediately before sub-turn 2c replaces the dispatch) so parity can be measured without re-running the chain. The fixture set is the same 6,936 as `audit/x86-hostile-probe-v2.oot` §1 plus the 16 post-v1 fixtures (adv_algebraic_monomorph, llvm_emit_import_c_smoke, x86_ssa_*_smoke, etc.). Results land in `/tmp/x86probe3/{parity.txt,new_only.txt,old_only.txt,regression.txt}`.
+//
+// Beats:
+//   1. Parity probe — run every fixture through both the old chain and the new typed-AST path, capture `.s` bytes + `.bin` stdout + exit code per fixture, classify into `MATCH` / `NEW_REFUSE` / `NEW_ASCII_DIFF` / `NEW_RUN_DIFF` / `NEW_SILENT_EMPTY` / `OLD_ONLY_FAIL`.
+//   2. Regression lock — re-run the 76 `x86_*_smoke.oo` and 88 `x86_*.oo` fixtures on the new path; any new failure is a blocker for Turn 4.
+//   3. Broken-shape audit — re-run the 5 broken-shape clusters from `x86-hostile-probe-v2.oot` §5 (Float, 3-arm match, Result, struct, List) on the new path; the silent-miscompile rate must be lower or must turn into typed REFUSED errors.
+//   4. Residual-stub check — assert that every one of the 14 residual-stub handlers (RFC 0013 §4) returns `Err("residual")` and that no fixture the old chain handled hits a residual stub.
+//   5. Report — write `audit/x86-turn3-parity.oot` (mirror of `x86-hostile-probe-v2.oot` shape) with the per-category counts, top regressions, and the Turn 4 gate.
+//
+// residual: A future Turn 4 will close the regressions Turn 3 finds; Turn 3 is read-only and never edits a backend file.
+
+File: openOODA/rfcs/0017-turn3-spec.oot
+Status: Draft
+Context: Companion to RFC 0011 (umbrella, Phase A), RFC 0013 (node kinds), RFC 0014 (Turn 2 plan), and `audit/x86-hostile-probe-v2.oot` (current fixture state — 5,750 COMPILED, 45.3% silent-miscompile, 92.6% SSA ASM-FAIL).
+
+* **RFC ID**: 0017
+* **Author**: x86 Backend Agent
+* **Status**: Draft
+* **Created**: 2026-08-25
+
+---
+
+## 1. Goals
+
+Turn 2 swaps the 24-arm token walker for a single typed-AST dispatch; Turn 3 measures whether the swap is a no-op for every fixture the old chain could already handle, and surfaces every fixture where the new path regresses. Turn 3 must produce a signed-off parity report that Turn 4 can read to know exactly which shapes still need a real lowering. The lock-in is three smoke files that run on every commit; the report is a one-shot audit artifact that goes stale after the next backend change and is regenerated as part of Turn 4 closure.
+
+## 2. Verification harness design
+
+Three smoke files run as the live gate. All three use the `scenario` / `expect_*` vocabulary of `std/scenario.oo` (FORMAT.oot §3.3) and exit 0 only when their entire check list passes.
+
+### 2.1 `ooda/scripts/x86_turn3_parity_smoke.oo`
+
+Static-gate + execution hybrid. Reads `/tmp/x86probe3/parity.txt` (produced by the Turn 3 driver, which the smoke invokes through `sh_run(p, "sh -c 'ooda/scripts/x86_turn3_driver.oo > /tmp/x86probe3/parity.txt'")` with a 600s timeout). Asserts: (1) the file is present and non-empty; (2) the `MATCH` count equals the 5,750 COMPILED count from `x86-hostile-probe-v2.oot` §2; (3) the `NEW_SILENT_EMPTY` count is zero (no new silent miscompile introduced); (4) the `OLD_ONLY_FAIL` count is reported (these are regressions — the old chain would have COMPILED but the new path REFUSED or ASM-FAILED); (5) the smoke lists the top 20 `OLD_ONLY_FAIL` fixtures by name in its OK line so a reviewer can spot patterns. The 600s budget mirrors the v2 probe wall clock (300s compile + 300s run).
+
+### 2.2 `ooda/scripts/x86_turn3_regression_smoke.oo`
+
+Walks `ooda/fixtures/x86_*_smoke.oo` and `ooda/fixtures/x86_*.oo`, runs each through `oodac emit-x86` and `oodac emit-x86-ssa`, and asserts the smoke name (e.g. `x86_ssa_match_smoke.oo`) is in the `KEEP-GREEN` set. The smoke refuses to OK if any of the 76+88 fixtures transitions from green to red. The implementation reuses the per-smoke `expect_substring` checks the smokes already declare — the harness inlines the list rather than re-importing each smoke to keep the harness file ≤256 lines.
+
+### 2.3 `ooda/scripts/x86_turn3_no_regression_smoke.oo`
+
+Reads `/tmp/x86probe3/regression.txt` and asserts: (1) no fixture is in the `COMPILED_AND_RAN_OLD → SILENT_EMPTY_NEW` bucket (the worst regression class); (2) the KEEP-WITH-REASON arms 11 (struct), 12 (typed-let), 22 (fib) all remain in the `MATCH` bucket (these are the three arms Turn 2 must not regress per RFC 0013 §4); (3) the empty-stdout rate on the new path is at or below the v2 baseline of 45.3% of COMPILED (any increase is a Turn 2 regression); (4) the 14 residual-stub handlers (RFC 0013 §4, KEEP rows marked residual) return `Err("residual")` on a synthetic call and are not reached by any old-chain-passing fixture.
+
+### 2.4 What the harness does NOT do
+
+Turn 3 does not invoke `oodac` directly inside the smoke main — the driver shell-out happens once and writes a stable artifact, which the three smokes then assert against. This keeps the smokes under 256 lines and prevents the harness from inheriting `oodac` exit-code flakiness. The driver itself is `ooda/scripts/x86_turn3_driver.oo`, a separate `.oo` script that loops the 6,936 fixtures and writes the four result files.
+
+## 3. Regression suite
+
+Seven fixture categories, ordered by impact on the parity claim.
+
+### 3.1 The 24 KEEP arms (RFC 0013 §4)
+
+One fixture per active handler. Each handler must lower its source shape to a `.s` fragment that `as` accepts, links, and runs. The smoke names the canonical fixture for each row (e.g. `x86_int_add` for arm 10, `x86_fib` for arm 22, `x86_match` for arm 15). The fixture list is the same 24 fixtures the v2 hostile probe already covers; Turn 3 just adds the per-fixture `MATCH` check on top of the v2 COMPILED check.
+
+### 3.2 The 3 KEEP-WITH-REASON arms (11, 12, 22)
+
+Arm 11 (struct def + field access), arm 12 (`let n: Int = INT; println(n)`), arm 22 (fib recursion). RFC 0013 §4 marks these KEEP-WITH-REASON because the old chain has known trigger-shape gaps. The new typed-AST path must either (a) match the old behavior exactly (the conservative choice) or (b) fix the gap and turn the gap into a passing fixture (the aggressive choice). The harness reports both; the reviewer picks.
+
+### 3.3 The 76 `x86_*_smoke.oo` and 88 `x86_*.oo` fixtures
+
+Every existing x86 fixture stays green on the new path. The harness runs each through `emit-x86` (the post-Turn-2 path) and asserts exit 0 + non-empty stdout. Any red is a Turn 2 regression and blocks Turn 3 exit.
+
+### 3.4 The 5 broken-shape clusters (Float, 3-arm match, Result, struct, List)
+
+`audit/x86-hostile-probe-v2.oot` §5 names the 5 source shapes that account for 580+ silent miscompiles. Turn 3 re-runs these and reports per-cluster: (i) `MATCH` (the new path emits the same wrong thing as the old — acceptable for Turn 3, blocked for Turn 4); (ii) `NEW_REFUSE` (the new path refuses cleanly — good); (iii) `NEW_FIX` (the new path actually lowers correctly — best); (iv) `NEW_SILENT_EMPTY` (regression — bad). The summary is the headline number of `audit/x86-turn3-parity.oot`.
+
+### 3.5 The 6,936 hostile probe set (full parity)
+
+Every fixture the v2 probe ran. The 5,750 COMPILED-on-old fixtures must all be in `MATCH` + `NEW_REFUSE` + `NEW_FIX` (zero `NEW_SILENT_EMPTY` and zero `OLD_ONLY_FAIL` outside the 14 residual-stub list). The 1,185 REFUSED-on-old fixtures may land anywhere on the new path — the harness does not require parity for REFUSED.
+
+### 3.6 The 14 residual-stub handlers
+
+Per RFC 0013 §4: `TraitDecl`, `ImplDecl`, `EClosure`, `EMethodCall`, `ECast`, `ListLit`, `Box`, `Float` literal type-tag, `ForRange` with non-literal `hi`, multi-`Module` (post-RFC 0012 M2), multi-`Import` paths, `match` over Float, `match` over String, `while` with side-effecting `cond`. The smoke calls each stub via the synthetic `x86_handle_<kind>(mk_<kind>(...))` interface and asserts the return is `Err("residual")` and the error string starts with the prefix `residual:` (so a future stub that returns a real asm is easy to spot).
+
+### 3.7 The 16 post-v1 fixtures
+
+`adv_algebraic_monomorph`, `llvm_emit_import_c_smoke`, `x86_ssa_*_smoke` (10 of them), and 4 others listed in `x86-hostile-probe-v2.oot` §10. The v2 probe excluded these because they post-date the v1 fixture list. Turn 3 includes them and reports a separate row so the new-path coverage gain is visible. These are not required to MATCH the old path (the old path never ran them) but must not ASM-FAIL or silently-empty on the new path.
+
+## 4. Acceptance criteria
+
+1. `ooda/scripts/x86_turn3_parity_smoke.oo` exits 0 and reports `MATCH == 5,750` plus a `NEW_SILENT_EMPTY == 0` line in its OK message.
+2. `ooda/scripts/x86_turn3_regression_smoke.oo` exits 0 and reports a per-fixture count of `KEEP-GREEN` equal to 76 + 88 = 164.
+3. `ooda/scripts/x86_turn3_no_regression_smoke.oo` exits 0 and reports the empty-stdout rate on the new path is ≤ 45.3% of COMPILED (the v2 baseline).
+4. The 3 KEEP-WITH-REASON arms (11 struct, 12 typed-let, 22 fib) are all in the `MATCH` or `NEW_FIX` bucket; none is in `NEW_SILENT_EMPTY` or `OLD_ONLY_FAIL`.
+5. The 14 residual-stub handlers all return `Err("residual: ...")` when called directly; none of the 5,750 old-chain-passing fixtures is classified as `OLD_ONLY_FAIL` because a stub fired.
+6. `audit/x86-turn3-parity.oot` exists, is ≤ 256 lines, has a 4-element Academy header (Title, Logline, Setup, Beats), and reports the per-category counts from §3.4 plus the top 20 regressions.
+7. The 16 post-v1 fixtures are reported in a separate row of `audit/x86-turn3-parity.oot` and none of them is in the `NEW_SILENT_EMPTY` bucket.
+8. `ooda/scripts/dinner_lint.oo` still passes on `ooda/oodac/` (Turn 2's `x86_emit.oo` ≤ 80 lines and the 26 matcher files are gone).
+9. `ooda/scripts/qa_master.oo` still reports 22 green (the Turn 2 chain replacement did not regress a master check).
+
+## 5. Exit criteria
+
+1. All three smoke files exist under `ooda/scripts/`, each is ≤ 256 lines, each has a 4-element Academy header, and each exits 0 when run.
+2. `audit/x86-turn3-parity.oot` exists, is ≤ 256 lines, has a 4-element Academy header, and is committed alongside the smokes.
+3. The driver `ooda/scripts/x86_turn3_driver.oo` exists, is ≤ 256 lines, and produces the four result files under `/tmp/x86probe3/`.
+4. The four result files (`parity.txt`, `new_only.txt`, `old_only.txt`, `regression.txt`) are present, non-empty, and each row identifies the fixture + the two outcomes (old path, new path).
+5. The acceptance criteria §4 items 1-9 are all green; any red is a Turn 2 regression and blocks Turn 3 exit.
+6. A signed-off Turn 4 RFC is drafted (separate document) that names which `OLD_ONLY_FAIL` rows Turn 4 will fix and which `NEW_REFUSE` rows Turn 4 will convert to a real lowering.
+7. The RFC 0011 Phase A acceptance criteria (`x86_ast_typed_smoke.oo`, `x86_no_template_smoke.oo`, `x86_ssa_call_smoke.oo`, `x86_ssa_opt_smoke.oo`, `x86_ssa_block_remap_smoke.oo`) all still pass on the Turn 2 binary — Turn 3 confirms Turn 2 did not regress Phase A.
+8. The 5,750 → `MATCH + NEW_REFUSE + NEW_FIX` split is reported as a percentage in `audit/x86-turn3-parity.oot` §3 so a future audit can compare Turn 4 to Turn 3 without re-reading the v2 probe.
+
+## 6. Unknowns
+
+1. Does Turn 2 preserve the old 24-arm chain at `ooda/oodac_bin_old` for the parity comparison, or does it delete the chain outright? If the chain is deleted, the parity smoke must capture the old-path output for every fixture into `/tmp/x86probe3/old_pre.txt` before sub-turn 2c lands, and the smoke compares the new path to that captured artifact rather than invoking the old binary at smoke time.
+2. Is the comparison at the `.s` byte level, the `.bin` stdout level, or both? The `.s` level catches handler-level divergence (wrong opcode, wrong operand); the `.bin` stdout level catches everything including linker behavior. The conservative choice is both; the cheaper choice is `.bin` stdout only.
+3. Does the new path's typed-error reporter (RFC 0011 Phase A `diag_json.oo`) format REFUSED errors with the same `ERR x86_emit <reason>` prefix as the old chain, or with a new shape? If the shape changes, the `NEW_REFUSE` bucket is inflated by every REFUSED fixture and the parity signal is lost. The implementer must decide whether to keep the old prefix or accept the inflation.
+4. For the 3 KEEP-WITH-REASON arms (11, 12, 22), is the parity target "match the old behavior exactly" (the old chain has a known gap that the new chain inherits) or "fix the gap" (the new chain lowers the shape correctly even if the old chain did not)? The conservative target is match-exact; the aggressive target is fix. Turn 3 reports both and lets the reviewer pick.
+5. Does Turn 3 include the 16 post-v1 fixtures (adv_algebraic_monomorph, llvm_emit_import_c_smoke, x86_ssa_*_smoke, etc.) in the parity set, or only the v1 6,936? Including them raises the fixture count to 6,952 and gives a clearer new-path coverage picture; excluding them keeps the comparison apples-to-apples with v2 hostile-probe.
