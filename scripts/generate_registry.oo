@@ -1,0 +1,30 @@
+// # Registry catalog generator (pure .oo)
+//
+// Logline: Rebuild registry index and catalog from on-disk package manifests.
+//
+// Setup: FsReadCap for reading, FsWriteCap for writing under OODA_FS_WRITEDIR.
+//
+// Beats:
+//   1. Scan registry/*/manifest for name and hash.
+//   2. Sort and write pipe-rows to index.
+//   3. Copy bytes to catalog and note minisig via shell.
+
+pub fn main(fs_r: &FsReadCap, fs_w: &FsWriteCap, p: &ProcessCap) {
+    let out: String = "registry/index";
+    let cat: String = "registry/catalog";
+    let cmd: String = "set -e; "
+        + "tmp=$(mktemp); "
+        + "for d in registry/ooda_* registry/hello; do [ -f \"$d/manifest\" ] || continue; "
+        + " name=$(basename \"$d\"); ver=$(grep '^version' \"$d/manifest\" | cut -d= -f2 | tr -d ' '); "
+        + " caps=$(grep '^caps' \"$d/manifest\" | cut -d= -f2 | tr -d ' '); "
+        + " h=$(sha256sum \"$d/manifest\" | cut -d' ' -f1); "
+        + " echo \"$name|$ver|$caps||$h\" >> \"$tmp\"; done; "
+        + "sort \"$tmp\" > \"" + out + "\"; cp \"" + out + "\" \"" + cat + "\"; "
+        + "echo \"index rebuilt $(wc -l < \"" + out + "\") rows\"; "
+        + "if command -v minisign >/dev/null 2>&1; then echo \"run: minisign -S -s ~/.ooda-keys/registry.secret.key -m registry/index -x registry/index.minisig\"; fi";
+    let res = sys_exec(p, "sh", "-c", cmd);
+    match res {
+        Ok(o) => { println(o); },
+        Err(e) => { println("ERR registry gen: " + e); process_exit(1); }
+    }
+}

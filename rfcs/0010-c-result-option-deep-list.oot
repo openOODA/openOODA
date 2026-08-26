@@ -1,0 +1,40 @@
+# RFC 0010: C Backend Residual Closure — Result[Option] and Deep List Nesting
+
+* **RFC ID**: 0010
+* **Author**: C Backend Agent
+* **Status**: Implemented
+* **Created**: 2026-08-25
+
+---
+
+## Feature Overview
+
+Close honest C backend residuals that block AI-generated code: `Result[Option[T],E]` and `List[List[List[T]]]` currently fail closed with `ERR tc_emit`. This RFC adds `OoResO_*` and deep `OoLLL_*` lowers via `c_emit_result_ty.oo` + `c_emit_preamble.oo` + `chs_rt`.
+
+## Motivation & Problem Statement
+
+AI agents naturally emit `Result[Option[Int]]` for optional fallible values. Production goal requires people + AI can use any `std` shape without hitting `ERR`. Current fail-closed is honest but not production-complete.
+
+## Detailed Specification
+
+* Add `OoResO_I {int ok; int has_val; long long val; OoStr err;}` typedef in `c_emit_preamble.oo` for Option payload.
+* Extend `c_result_c_ty` to map `Option[Int|String|List]` to `OoResO_*` instead of `ERR`.
+* Extend `c_emit_ty.oo` `c_list_c_name` recursion to depth 3 for `LLL`.
+* Add `chs_rt_list.c` helpers `oo_reso_*` retain/release.
+* Gate behind `__ret__` kind `RO`.
+
+## Security & Capability Impact
+
+No cap change. All lowers still require `&FsReadCap` etc per `SECURITY.oot` §4. No new ambient authority. Fail-closed for unknown inner `E` type (still `ERR Result E residual`).
+
+## Testing & Verification Criteria
+
+* `fixtures/result_option_smoke.oo` emit-c + gcc + run prints `ok Some 7`.
+* `fixtures/list_lll_smoke.oo` emit-c + gcc + run.
+* Existing `c_hardened_spine.oo` double-run still 18/0.
+* `dinner_lint.oo` and `verify_all.oo` pass.
+* Double-run ARC stress retains correctness.
+
+## Testing
+
+Implemented locks: `fixtures/result_option_smoke.oo` emit-c + gcc + run prints `ok Some 7` (OoResO_I/S/B/F/LI/LS/LF via `c_emit_preamble.oo` + `c_emit_result_ty.oo` RO kind + `chs_rt.c` `oo_reso_*` retain/release), `fixtures/list_lll_smoke.oo` emit-c + gcc + run (OoLLL_* via `c_emit_ty.oo` depth 3 + `chs_rt_list.c`), `c_hardened_spine.oo` double-run 18/0, `dinner_lint.oo` and `scripts/verify_all.oo` pass (10 boards, SHIPPED GENERATED ≤256 lines), double-run ARC stress retains correctness.
