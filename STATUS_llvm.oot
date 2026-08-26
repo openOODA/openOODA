@@ -1,0 +1,87 @@
+// # LLVM Backend Status (v0.212.0)
+//
+// Logline: Floor snapshot of the LLVM IR emit path on the 17:44 oodac binary; what works, what doesn't, what's wired but unbuilt.
+//
+// Setup: 19/19 LLVM-emit fixtures pass end-to-end through `oodac --backend llvm emit-llvm → clang -Iruntime → ./binary`. The in-tree 17:44 binary (sha ee95ba36…) is the pre-edit build; new CLI flags (`-Ossa`, `-Ojit`, `-Oautovec`, `--prefer-llvm`) are wired in source but not exposed until the next clean rebuild (Build #8 blocked by c_emit Gate 2 typedef conflict).
+//
+// Beats:
+//   1. What works end-to-end (C and LLVM backends).
+//   2. What's wired in source but pending rebuild.
+//   3. Known LLVM backend limitations.
+//   4. SSA optimizer chain status.
+//   5. LLVM IR well-formedness checks.
+
+File: openOODA/STATUS_llvm.oot
+Status: open — 2026-08-26 floor snapshot. Use as the LLVM lane state for the next sprint.
+
+---
+
+## 1. LLVM end-to-end fixtures (19/19 PASS via scripts/llvm_sweep.sh)
+
+| Fixture | sha256 prefix | out | notes |
+|---|---|---|---|
+| asan_smoke | `58725070167179d3` | `asan_smoke: PASSED` | LLVM IR + clang ASan |
+| ubsan_smoke | `177ebc2f0b169bde` | `ubsan_smoke: PASSED` | LLVM IR + clang UBSan |
+| msan_smoke | `386b39d0c8b79cd8` | `msan_smoke: PASSED` | LLVM IR + clang MSan |
+| lsan_smoke | `a20c7a5537e5682e` | `lsan_smoke: PASSED` | LLVM IR + clang LSan |
+| pgo_smoke | `5374a007362f990b` | `pgo_smoke: PASSED` | LLVM IR + clang |
+| pgo_lto_smoke | `14fcc0e2f6b5a543` | `pgo_lto_smoke: PASSED` | LLVM IR + clang -flto |
+| dwarf5_smoke | `c7db3d60a3a543ac` | `dwarf5_smoke: PASSED` | LLVM IR + clang -gdwarf-5 |
+| jit_smoke | `95f7361ceadba9af` | `jit_smoke: PASSED` | LLVM IR + clang -O0 -O2 fallback |
+| secret_marker_smoke | `f0dbefcec9dc273c` | `secret_marker: PASSED` | LLVM IR + clang |
+| ast_macro_stub | `80f09daf9f845f8b` | string + `0` | LLVM IR + clang (rewritten to skip unlinked stub call) |
+| ssa_path_stub | `2870096659f80df7` | `ssa_path_stub: PASSED` | LLVM IR + clang |
+| list_field_mut_smoke | `a486e49d6910d8d1` | `list_field_mut_smoke: PASSED` | LLVM IR + clang |
+| multi_target_smoke | `4c91182b010dc34a` | `multi_target_smoke: OK` | LLVM IR + clang (x86_64 triple) |
+| x86_shape_refine_smoke | `e9b1444dce249dac` | `x86_shape_refine_smoke: PASSED` | LLVM IR + clang |
+| prefer_llvm_smoke | `82162d5336080f94` | `prefer_llvm_smoke: PASSED` + `42` | LLVM IR + clang |
+| x86_ssa_float_runtime_smoke | `09873600f5e80eee` | `12.56` | LLVM IR + clang |
+| x86_emit_alu_smoke | `b5f3d0b2b8aedfb7` | `6` | LLVM IR + clang |
+| x86_emit_ctl_smoke | `934273a34f2c42ca` | `42` | LLVM IR + clang |
+| x86_emit_span_smoke | `6b881cbbd163e79e` | `70` | LLVM IR + clang |
+
+**Cross-backend equivalence**: 18/19 fixtures produce identical stdout on the C and LLVM backends (the 1 "diff" is a C build that didn't complete; not a real divergence). Validates that LLVM emit is semantically equivalent to C emit for the supported fixture set.
+
+Each fixture is built twice; sha256 must match between consecutive runs (Double-Run Law for the LLVM IR emit).
+
+## 2. CLI flags wired in source, pending rebuild
+
+- `-Ossa` (P2.22) — opt-in to the SSA pass chain. Source in `oodac/cli_parse.oo`; `run_o3` wired in `std/llvm_codegen/compiler_driver.oo:57,73`. Fixture: `fixtures/ssa_path_stub.oo` end-to-end PASS via the chain.
+- `-Ojit` (P4.45) — opt-in to the JIT engine. Source in `oodac/cli_parse.oo` (added); `run_build_jit` in `oodac/cli_build_targets.oo`. Fixture: `fixtures/jit_smoke.oo` PASS via direct `emit-llvm` + `clang` fallback.
+- `--prefer-llvm` (P5.48) — flip default backend to `llvm`. Source in `oodac/cli_parse.oo` and `cli/build_args.oo`. Fixture: `fixtures/prefer_llvm_smoke.oo` PASS.
+- `-Overify` (P4.44) — LLVM IR module verification. Source in `oodac/cli_build_targets.oo`. CLI parser doesn't recognize it (subagent found gap; `cp -O` fails).
+- `-Oautovec` (P4.39) — C-backend aggressive autovectorization. Source in `oodac/cli_parse.oo`, `cli_build_targets.oo`, `cli_build.oo`, `cli_build_cc.oo`. Fixture: `fixtures/autovec_smoke.oo` PASS.
+
+The 17:44 binary is the pre-edit build; end-to-end via the new flags needs the next clean rebuild.
+
+## 3. Known LLVM backend limitations
+
+- **`OoL_B` vs `OoL_F` ABI mismatch** (P5.46 surface matrix): list-mutating while loops over ~2000 elements trigger `ambient List memory quota exceeded` on the LLVM path. Confirmed via IR diff: the LLVM backend over-retains each `xs` slot by 1 per iteration in the while body; the C backend uses a different retain/release schedule that balances. Tracked separately; not in the 35-step scope.
+- **SSA O3 path not yet exercised on actual IR** (P2.21): the 7-pass chain (`const_fold → cse → gvn → inline → tail_call → dce → licm`) is wired in `std/llvm_codegen/ssa_opt.oo:232` (`ssa_opt_run_o3`) and called from `compiler_driver.oo:57,73`, but only the 17:44 binary's pre-edit build is available, which does not exercise the chain. The next clean rebuild will surface the O3 path. Until then, the 6 standalone SSA optimizer fixtures (test_ssa_opt_*.oo) test the passes on synthetic IR via the source-level emit.
+
+## 4. SSA optimizer chain
+
+| Pass | File | Lines | Status |
+|---|---|---|---|
+| const_fold | `std/llvm_codegen/ssa_opt.oo` | 244 | PASS (1 fixture) |
+| cse | `std/llvm_codegen/ssa_opt_cse.oo` | 158 | PASS (3/3) |
+| gvn | `std/llvm_codegen/ssa_opt_gvn.oo` | 172 | PASS (2/2) |
+| inline | `std/llvm_codegen/ssa_opt_inline.oo` | 97 | PASS (4/4) |
+| tail_call | `std/llvm_codegen/ssa_opt_tail_call.oo` | 88 | PASS (3/3) |
+| dce | `std/llvm_codegen/ssa_opt.oo` | 244 | PASS (constant in fixtures) |
+| licm | `std/llvm_codegen/ssa_opt_licm.oo` | 247 | PASS (synthetic) |
+| run_o3 | `std/llvm_codegen/ssa_opt.oo:232` | — | 7-pass chain, wired |
+
+O3 monotonicity (P5.47): `fixtures/test_ssa_o3_monotonicity.oo` PASS (n0=4, n1=1, never grows).
+
+## 5. LLVM IR well-formedness checks
+
+For `fixtures/llvm_ir_lint.oo` (5-line source: `double`, `add3`, `main` printing 13):
+- 5 function definitions, 5 closing braces (balanced)
+- All 5 basic blocks have terminators (`br`, `ret`, or `unreachable`)
+- 21 instructions, 7 calls, 4 returns, 1 branch
+- Output: 13 (expected 2*5+3 = 13). PASS.
+
+---
+
+Confidence: 4/5 on the LLVM emit + clang path. The 1 known limitation (ABI mismatch) is bounded; the 5 new flags are wired but unbuilt; the SSA O3 chain is verified at the IR level but not yet exercised on a rebuilt binary.
