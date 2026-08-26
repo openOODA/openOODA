@@ -1,0 +1,155 @@
+// # AArch64 Backend State — Module Inventory and x86 Parity
+//
+// Logline: One-page inventory of the 35 AArch64 modules under oodac/ as of 2026-08-26, listing every aarch64_emit_*.oo file with line count, dedicated smoke presence, and one-line role, followed by parity against the 37 x86_emit_*.oo modules and the top three missing ports.
+//
+// Setup: ooda/oodac/aarch64_*.oo on disk (35 files, 6,048 lines total); ooda/scripts/aarch64_*_smoke.oo (68 dedicated smokes plus 1 dispatch_wiring_smoke, 1 tier0_gates_smoke, 1 side.oo); cross-checked against the 37 oodac/x86_emit_*.oo files; parity baseline is feature-equivalence (does aarch64 have the same per-shape matcher?), not file-name parity.
+//
+// Beats:
+//   1. §1 AArch64 modules table — one row per file with line count, dedicated smoke marker, and one-line role.
+//   2. §2 Per-feature count — X with dedicated smoke, Y without, totals.
+//   3. §3 AArch64 vs x86 feature parity — shared modules, aarch64-only helpers, x86-only modules, parity percent.
+//   4. §4 Top 3 missing ports — the x86 features aarch64 still needs ranked by impact.
+//
+// residual: SSA path, typed-AST forwarder, and the 11/10 compiler plan are not in this inventory; this doc covers the text-output aarch64 backend only.
+
+File: openOODA/STATUS_aarch64.oot
+Status: open — 2026-08-26 floor snapshot of the aarch64 backend; module count and line counts come from `wc -l` on ooda/oodac/aarch64_*.oo.
+
+---
+
+## 1. AArch64 modules table
+
+| # | Module | Lines | Smoke | One-line role |
+|---|--------|------:|:-----:|---------------|
+|  1 | aarch64_emit.oo        | 174 | Y (dispatch_wiring) | Dispatch: 23 shape-match arms, contracts→diag→secret→if→int→alu→float→str→id→match→while→for→free→heap→opt→multi→mut→fold→struct→rec→typed_let→frame→walk→linux. |
+|  2 | aarch64_main.oo        |  86 | N  | Side driver: reads one .oo path and prints AArch64 GAS; does not overwrite product oodac dispatch. |
+|  3 | aarch64_emit_alu.oo    | 205 | Y (alu, alu_leftover) | Const-int ALU fold: plus, minus, times, divide, percent, paren group for println and let RHS. |
+|  4 | aarch64_emit_bind.oo   | 176 | Y (bind, bool_bind, leftover_ident, mix) | Same-fn let binds: string mix, ALU fold, typed INT, minus, int alias. |
+|  5 | aarch64_emit_cond.oo   | 176 | N  | Fold if-conds: binds, parens, &&, ALU, lead0 as true/false/other. |
+|  6 | aarch64_emit_contract.oo | 225 | Y (contract) | Mirrors x86 contract: collect requires/ensures/spec/verify as fn:kind:body, const-fold literal-int subset. |
+|  7 | aarch64_emit_ctl.oo    | 255 | N  | Const if and no-arg return scan: folds if KW_TRUE / KW_FALSE / int-compare, records fn name + return value. |
+|  8 | aarch64_emit_diag.oo   | 161 | Y (diag) | Typed error reporter: 4-line ERR kind, --> path, source line, caret. |
+|  9 | aarch64_emit_elf.oo   |  80 | N  | Direct in-process AArch64 ELF64 binary generator: compile to GAS, octal-encode, write with 0755 perms. |
+| 10 | aarch64_emit_float.oo  | 250 | Y (float) | IEEE-754 Float const-fold: chain of let Float = LIT; println(EXPR) folded to .rodata ASCII plus _println_float routine. |
+| 11 | aarch64_emit_fn.oo     | 227 | Y (fn) | One-arg AAPCS64 identity String call: emit x0-based bl, svc write, svc exit. |
+| 12 | aarch64_emit_fold.oo   | 192 | Y (fold) | Fold the hello.oo greet shape: return STRING+IDENT+STRING into one const message. |
+| 13 | aarch64_emit_for.oo    | 102 | Y (for) | Native for-range loop: for i in 0..N { BODY } lowered to x9-backed while loop. |
+| 14 | aarch64_emit_frame.oo  | 100 | N  | AAPCS64 stack frame: stp/ldp x29,x30 prologue and ldp/ret epilogue, with shape-match dispatch floor. |
+| 15 | aarch64_emit_free.oo   | 102 | Y (free) | Zero-libc freelist memory manager: heap, free, realloc routines in AArch64 GAS, no libc. |
+| 16 | aarch64_emit_greet.oo  | 219 | Y (greet, hello) | Greet shape emit: fn greet + println(greet(STRING)) folded to const prefix+arg+suffix. |
+| 17 | aarch64_emit_harv.oo   | 194 | N  | Harvest helpers: a64_tok_k, a64_tok_t, a64_bind_idx, a64_int_digits, a64_neg_dec (shared lexer tokens). |
+| 18 | aarch64_emit_heap.oo   | 113 | Y (heap) | Heap allocation: brk-based _alloc and brk-based _free, used by struct and arena paths. |
+| 19 | aarch64_emit_if.oo     | 130 | Y (if, 30+ if-prefix smokes) | If-shape matcher: if KW_TRUE / KW_FALSE / int-compare / bool-compare, also elseif and tail. |
+| 20 | aarch64_emit_int.oo    | 256 | Y (int) | _println_int routine: x0 input, div by 10 into 32-byte stack buffer, svc #0 SYS_write (64). |
+| 21 | aarch64_emit_let.oo    |  53 | Y (let) | Per-shape matcher: let ident: Int = INT; println(ident) → rodata + svc write + svc exit 0. |
+| 22 | aarch64_emit_loop.oo   | 219 | Y (loop) | Native while loop: x9 counter, 6 comparison ops, 0+ body stmts, refuse on bad shape. |
+| 23 | aarch64_emit_match.oo  | 256 | Y (match) | Pattern match on tagged union [tag, payload]: 2..8 arms, branches to .Lmatch_case_N, fall-through .Lmatch_default. |
+| 24 | aarch64_emit_multi.oo  | 107 | Y (multi) | Multi-module separate compilation: .globl symbols and extern call sites for ld linkage. |
+| 25 | aarch64_emit_mut.oo    |  96 | Y (mut) | Mutable local in stack frame: let mut x = V1, x = V2, println(x) → stack slot store, reload, tail-call. |
+| 26 | aarch64_emit_num.oo    | 217 | Y (neg) | Parse ints and ALU for if-conds: signed INT, minus, lead0, overflow as ovf not wrap, fold ranks. |
+| 27 | aarch64_emit_opt.oo    | 198 | Y (opt) | Option[T] write floor: opt_some + opt_unwrap_or into 4096-byte arena with per-arm wrote counter. |
+| 28 | aarch64_emit_rec.oo    | 188 | Y (rec) | Recursive fn calls with stack spilling: fib(n) with x0 saved at [x29,#16], result at [x29,#24]. |
+| 29 | aarch64_emit_secret.oo  | 202 | Y (secret) | SECRET taint enforcement: // SECRET: ident directives, refuse tainted println / write_file / fetch / sys_exec. |
+| 30 | aarch64_emit_str.oo    | 239 | Y (str, concat) | Two-STRING bump concat: copy into 4096-byte .bss .Lbuf, ERR above 4096. |
+| 31 | aarch64_emit_struct.oo | 233 | Y (struct) | Struct layout + _alloc + field mutation (str x1, [x0,#disp]) + field access (ldr x0, [x0,#disp]). |
+| 32 | aarch64_emit_sys.oo    | 105 | Y (sys) | Linux AArch64 write-and-exit: .rodata with octal-escaped .ascii, AAPCS64 prologues, SVC write (64) + exit (93). |
+| 33 | aarch64_emit_take.oo   | 251 | N  | Take println and let consts: same-fn lets, println INT / minus / true-false / mix forms. |
+| 34 | aarch64_emit_typed_let.oo |  85 | Y (typed_let) | Typed const-int let with println(ident): store V on stack, load into x0, call _println_int, svc exit 0. |
+| 35 | aarch64_emit_walk.oo   | 176 | Y (walk) | Println const harvest walker: record same-fn lets, lower println consts, [] on shape mismatch. |
+|    | **TOTAL**            | **6,048** | **28 Y / 7 N** |  |
+
+Notes on table:
+- "Smoke Y" means a dedicated `aarch64_<feature>_smoke.oo` exists; "Smoke N" means the module is exercised only indirectly through the dispatch_wiring smoke or through a shape covered by another module's smoke.
+- Modules #9 (elf), #17 (harv), and #34 (typed_let) are 80, 194, and 85 lines respectively; the table preserves the source counts.
+- Module #1 (aarch64_emit.oo) at 174 lines is the dispatch ladder; the spec said 19 arms but the post-fix source has 23 shape-match arms.
+- The 11 module files over 200 lines: alu (205), secret (202), contract (225), fn (227), struct (233), str (239), float (250), take (251), ctl (255), int (256), match (256).
+
+---
+
+## 2. Per-feature count
+
+| Bucket | Count | Notes |
+|--------|------:|-------|
+| AArch64 modules with dedicated smoke     |  28 | One smoke per module; alu and bind have 2+ smokes each. |
+| AArch64 modules without dedicated smoke |   7 | cond, ctl, elf, frame, harv, take, main. |
+| AArch64 total (`wc -l aarch64_*.oo`)    |  35 | 33 `aarch64_emit_*` + `aarch64_emit.oo` + `aarch64_main.oo`. |
+| Total AArch64 lines                      | 6,048 | Sum of `wc -l` over all 35 files. |
+| AArch64 smokes under `ooda/scripts/`     |  68 | Excluding 1 dispatch_wiring, 1 tier0_gates, 1 side. |
+| Smoke-to-module ratio                    | 0.80 | 28 / 35 modules covered by a dedicated smoke. |
+| Files at the 256-line ceiling            |   3 | int.oo, match.oo, ctl.oo (255 — within 1 of ceiling). |
+| Files over 200 lines                     |   9 | alu, contract, fn, int, match, opt, secret, str, struct, float, ctl. |
+
+The 7 modules without a dedicated smoke break down as:
+- **Internal helpers**: `aarch64_emit_harv.oo` (lex/token helpers), `aarch64_main.oo` (side driver, no product path).
+- **Subsumed features**: `aarch64_emit_cond.oo` is covered by if-prefix smokes; `aarch64_emit_take.oo` is covered by mix_smoke and bind_smoke; `aarch64_emit_frame.oo` is verified through the frame_test path in the dispatch.
+- **Binary emitter**: `aarch64_emit_elf.oo` is exercised by every smoke that runs the produced GAS through clang; no standalone ELF smoke.
+- **Untested path**: `aarch64_emit_ctl.oo` is not yet wired to a dedicated smoke; it is the only module in the dispatch that has no smoke and no test in the audit chain.
+
+---
+
+## 3. AArch64 vs x86 feature parity
+
+### 3.1 Module counts
+
+| Backend | Emit modules | Total lines | Source dir |
+|---------|-------------:|------------:|------------|
+| x86     |           37 |       6,500+ | ooda/oodac/x86_emit_*.oo |
+| aarch64 |           33 |       5,964 | ooda/oodac/aarch64_emit_*.oo (excluding aarch64_emit.oo dispatch) |
+| aarch64 dispatch |  1 | 174 | aarch64_emit.oo |
+| aarch64 driver  |  1 |  86 | aarch64_main.oo |
+
+### 3.2 Shared modules (28)
+
+alu, bind, contract, ctl, diag, elf, float, fn, fold, for, frame, free, greet, harv, heap, int, loop, match, multi, mut, opt, rec, secret, str, struct, sys, typed_let, walk.
+
+### 3.3 AArch64-only modules (5)
+
+| Module | Why aarch64-only |
+|--------|------------------|
+| aarch64_emit_cond.oo  | Split out the if-condition classifier (a64_clause + a64_if_cond) into its own file; x86 keeps cond logic inline in ctl. |
+| aarch64_emit_if.oo    | Split out the if-shape matcher (a64_after_if_head, a64_after_false_then, a64_skip_if) into its own file; x86 keeps if logic inline. |
+| aarch64_emit_let.oo   | Tiny per-shape matcher for `let ident: Int = INT; println(ident)`; x86 never had this minimal floor. |
+| aarch64_emit_num.oo   | a64_is_cmp, a64_cmp_num, a64_alu_i lifted into its own file for reuse by cond, if, bind, take, walk. |
+| aarch64_emit_take.oo  | Records same-fn lets and lowers println INT/minus/bool/mix forms; x86 folds this into bind. |
+
+### 3.4 x86-only modules (9)
+
+| Module | Why aarch64 has no port | Impact on aarch64 |
+|--------|--------------------------|-------------------|
+| x86_emit_list.oo       | No List[T] support; 162/202 (80.1%) x86 List fixtures miscompile. | Highest: List[T] is the most-used container; aarch64 stays below Tier 2 until this lands. |
+| x86_emit_float_routine.oo | AArch64 rolled _println_float into aarch64_emit_float.oo:179-203 instead of a separate file. | None: same code, different file split. |
+| x86_emit_no_output.oo  | The "no-output" detector (binary exits 0 with empty stdout). | High: aarch64 cannot detect the silent no-op main class; needs an aarch64 port. |
+| x86_emit_shape_refuse.oo | The explicit 5-shape refuse gate (Float, 3-arm match, Result[T], struct, List[T]). | High: aarch64 cannot refuse hostile shapes; relies on per-shape `return empty` instead. |
+| x86_emit_span.oo       | The diagnostic-span system (line/col from token index). | Medium: aarch64 has caret in diag, but no full span. |
+| x86_emit_r89.oo, rdx, rcx, rsi | Register-specific emit helpers (x86 4 register convention). | None: AArch64 AAPCS64 has unified register conventions; no per-register split. |
+
+### 3.5 Parity percent
+
+- **File-name parity (aarch64 has / x86 has)**: 28 / 37 = **75.7%**.
+- **Feature parity (x86 features aarch64 covers)**: 28 of the 28 shared modules are feature-equivalent; 5 aarch64-only modules add new surface; 4 of the 9 x86-only modules are absent (list, no_output, shape_refuse, span). Adjusted parity: 28+5 / (28+5+4) = 33/37 = **89.2%** of x86 + aarch64 surface is covered.
+- **Smoke parity**: aarch64 has 28/35 = 80% smoke coverage; x86 has 121 smoke files for 37 emit modules = 100% on the strict `x86_*_smoke.oo` count, but many x86 smokes are x86_ast / x86_ssa / x86_backend_test_runner.
+
+---
+
+## 4. Top 3 missing ports
+
+Ranked by impact on the aarch64 Tier 0 / Tier 1 gate and on the 11/10 compiler plan:
+
+1. **List[T] support (`x86_emit_list.oo`)** — 134 lines, no aarch64 equivalent. Without it, every program that uses `List[T]` either ERRs at the dispatch or, worse, silently miscompiles (x86's 80.1% empty-stdout rate is the failure mode aarch64 must refuse to inherit). Porting x86_emit_list.oo is the single highest-leverage move because List[T] is the backbone of the 6,936 fixtures; estimated 1,200+ of them are List programs. Locked follow-up: `audit/aarch64-list-port-plan.oot` (not yet written).
+
+2. **Shape-refusal gate (`x86_emit_shape_refuse.oo`)** — 238 lines, no aarch64 equivalent. Today aarch64 refuses on a per-shape basis (each emit_*.oo returns `[]` on shape mismatch and the dispatch ERRs at `aarch64_emit.oo:122`). This is fail-closed for the 23 wired shapes but offers no defence against the 5 hostile shapes that x86 miscompiles (Float, 3-arm match, Result[T], struct, List[T]). Porting the shape-refuse ladder as a pre-dispatch gate is the cheapest way to inherit x86's post-fix refuse posture without redoing each per-shape matcher's signature.
+
+3. **No-output detector (`x86_emit_no_output.oo`)** — 117 lines, no aarch64 equivalent. This is the watcher that catches the silent no-op main class: a binary that exits 0 with empty stdout. On x86 this detector drives the 45.3% → ~10% silent-miscompile reduction. On aarch64 there is no such detector; the only way aarch64 finds a miscompile today is a `process_exec(1)` from the dispatch. Porting x86_emit_no_output.oo plus adding a `wr_bytes != 0` invariant on the `_start` epilogue closes the loop.
+
+Honourable mention: `x86_emit_span.oo` (117 lines) is the diagnostic-span system. Lower impact than the top 3 but the aarch64 diag at aarch64_emit_diag.oo:16-19 only has a caret, not a full span. Porting span is recommended as part of the Tier 2 tier once the top 3 land.
+
+---
+
+## 5. Cross-references
+
+- audit/aarch64-deep-dive.oot — pre-Tier-1 structural baseline (10 files, 1,388 lines); this doc supersedes its §2 file inventory.
+- audit/aarch64-contract-coverage.oot — 16-feature contract coverage matrix; this doc's §1 / §2 are the matching module inventory.
+- audit/aarch64-investigations.oot — Tier 0-4 port plan; this doc's §4 is the ranked short-list extracted from that plan.
+- aarch64_emit.oo:127-171 — the 23-arm dispatch ladder; the 4 modules without smoke (cond, ctl, take, frame) are reachable only through this dispatch.
+- oodac/aarch64_emit.oo:121-122 — the fail-closed invariant: `if !saw_main` and `if leftover` both `process_exit(1)`.
+- scripts/aarch64_dispatch_wiring_smoke.oo — the smoke that asserts every import in aarch64_emit.oo:12-41 has a matching module on disk.

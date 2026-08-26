@@ -1,0 +1,93 @@
+# Rebuild Blocker v2 — Pure Multi-Module oodac Rebuild, Re-Audited
+
+File: openOODA/audit/rebuild-blocker-v2.oot
+Date: 2026-08-26. Source: live oodac/oodac seed + c_emit family + tc_refine.oo + scripts/.
+Status: partial — Gate 2 largely resolved by ifndef guards; Gate 1 source is correct; host seed value is unverified; three forward decls still missing.
+
+## 1. Original Blocker Recap
+
+The original `openOODA/audit/rebuild-blocker.oot` (2026-08-25, 80 lines) named two gates that stopped `ooda/bootstrap/oodac_pure_build` on `ooda/oodac/main.oo`:
+
+- Gate 1 — `tc_refine.oo:22` source cap is 1048576 tokens; the seed binary bakes 1000, aborting on any large source.
+- Gate 2 — `c_emit_olist.oo:25` and `c_emit_struct.oo:104` both emit a real `typedef struct Name { ... } Name;` for the same user name; the python stitcher regex in `ooda/bootstrap/oodac_pure_build:305-313` only strips a `_pad` stub, so the second real typedef reaches `gcc` and trips `conflicting types for 'OoL_<Name>'` (or the user type itself).
+- Three c_emit forward decls were also flagged: `SsaLoopInfo`, `GpuKernelArtifact`, `GpuBufferDesc` are user types defined in `ooda/std/llvm_codegen/ssa_opt_licm.oo` and `ooda/oodac/gpu_driver.oo` but have no prototype in `c_emit_preamble.oo`.
+- Build paths in `ooda/scripts/bootstrap*.oo` and `ooda/oodac/oodac2` were listed as untried.
+
+The seed was 3438648 bytes dated 2026-08-25. The current host seed is now 3573128 bytes dated 2026-08-26 03:13 (`ooda/oodac/oodac`); a parallel build `ooda/oodac_bin` (also 3573128 bytes, 2026-08-26 03:28) exists. Both are dynamically linked ELF x86-64 with debug info.
+
+## 2. New Evidence
+
+### 2.1 Gate 2 — Resolved by ifndef guards (with one residual risk)
+
+`ooda/oodac/c_emit_olist.oo:23-32` now wraps the wrapper typedef in two layers:
+
+```oo
+pub fn c_emit_olist_ty(name: String) {
+    let L: String = "OoL_" + name;
+    println("#ifndef OO_TY_" + L);
+    println("#define OO_TY_" + L);
+    println("#ifndef OO_HAVE_" + L);
+    println("#define OO_HAVE_" + L);
+    println("typedef struct " + L + " { " + name + " *data; long long len; long long cap; } " + L + ";");
+    println("#endif");
+    println("#endif");
+}
+```
+
+`ooda/oodac/c_emit_struct.oo:90-96` mirrors the guard with `OO_HAVE_OoL_<name>` around the OoL typedef. With both guards present, the second real typedef is skipped, so the stitcher regex becomes a no-op and `gcc` no longer sees a duplicate. `c_emit_mono.oo:22-24`, `:120-122`, `:166-168` also wrap list, option, and result typedefs in `OO_TY_` ifndef. The python stitcher regex in `ooda/bootstrap/oodac_pure_build:305-313` is now dead code for typedef dedup; it only matters for the `c_emit_olist_fwd` forward decl at `c_emit_olist.oo:19`, which is itself guarded by `OO_FWD_<name>`.
+
+Residual risk: the two emit sites differ in the data-pointer spelling — `c_emit_olist` writes `<name> *data`, `c_emit_struct` writes `struct <name> *data`. Both forms are valid C, but a future edit that reorders guards or drops one layer would re-introduce the original `conflicting types` failure. Lane discipline must keep both emit sites in sync.
+
+Verdict: Gate 2 is closed in the current source. Re-open if either guard is removed.
+
+### 2.2 Gate 1 — Source correct, host seed unverified
+
+`ooda/oodac/tc_refine.oo:21-24` still reads:
+
+```oo
+let n = list_len(toks);
+if n > 1048576 {
+    tc_err_at(toks, 0, "RefinementTypeViolation: token count exceeds 1048576");
+}
+```
+
+The source cap is correct (1048576). The original blocker said the host seed bakes 1000; the current seed `ooda/oodac/oodac` (3573128 bytes, 2026-08-26 03:13) is 134480 bytes larger than the old seed, so it was rebuilt. We did not run the build, so we cannot prove the new seed bakes 1048576. The build script `ooda/bootstrap/oodac_pure_build` still supports `PURE_SKIP_CHECK=1` (referenced in the original blocker) to bypass Gate 1 entirely.
+
+### 2.3 Forward decls — Still missing
+
+`grep` for `SsaLoopInfo|GpuKernelArtifact|GpuBufferDesc` in `c_emit_preamble.oo` returns zero hits. The user types are defined in:
+
+- `ooda/std/llvm_codegen/ssa_opt_licm.oo:16` — `pub type SsaLoopInfo = struct { header_bb, preheader_bb, backedge_bb, body_blocks }`.
+- `ooda/oodac/gpu_driver.oo:23` — `pub type GpuBufferDesc`.
+- `ooda/oodac/gpu_driver.oo:40` — `pub type GpuKernelArtifact`.
+
+None of these are pre-declared in the C preamble. If `ooda/oodac/main.oo` uses any of them in a context that needs the C name before the struct body, `gcc` will fail with `incomplete type` or `undeclared identifier`. This was true in v1 and is still true in v2.
+
+### 2.4 New artefact — `ooda/oodac_bin`
+
+A second ELF sits at `ooda/oodac/oodac_bin` (3573128 bytes, 2026-08-26 03:28). It is the same size as the in-tree seed, so it is a sibling build, not a separate version. Treat both as candidate hosts; the SHA of `ooda/oodac_bin` is not pinned in `bootstrap/seed/oodac.sha256`.
+
+## 3. Alternative Build Paths
+
+The task asked for 5-10 paths. The audit found eight concrete paths, four of which exist on this host and four of which do not.
+
+| # | Path                                                | Status  | One-line description                                                                                                |
+|---|-----------------------------------------------------|---------|---------------------------------------------------------------------------------------------------------------------|
+| 1 | `ooda/bootstrap/oodac_pure_build`                   | present | Original failing path; supports `PURE_SKIP_CHECK=1` to bypass Gate 1 but not Gate 2 (now moot).                     |
+| 2 | `ooda/scripts/bootstrap.oo`                         | present | Per-module emit-c against `fixtures/int_main.oo`; sidesteps the 1000-token host check by not touching `main.oo`.    |
+| 3 | `ooda/scripts/bootstrap_2stage.oo`                  | present | Two-stage build; stage1 with `PURE_NO_ARC=1`, stage2 with `PURE_NO_ARC=0`; isolates ARC bookkeeping.                 |
+| 4 | `ooda/scripts/bootstrap_no_cargo.oo`                | present | Cold-seed emit-host rebuild; accepts `SEED_OODAC`, `bootstrap/seed/oodac`, `oodac/oodac2`, dist, or tree oodac.      |
+| 5 | `ooda/bootstrap/seed/oodac` (+ `.sha256.minisig`)   | present | Pinned seed with sidecar; used by both 2-stage and no-cargo paths.                                                  |
+| 6 | `ooda/oodac/oodac_bin`                              | present | Sibling ELF (3573128 bytes); same shape as in-tree seed, no SHA sidecar; not yet wired into any script.            |
+| 7 | `ooda/oodac/oodac2`                                 | absent  | Listed in v1 as a residual; not present on this host; would need to be re-seeded.                                    |
+| 8 | `dist/ooda-v0.183.0-alpha-linux-x86_64/oodac/oodac` | absent  | Older published oodac; no `dist/` directory exists on this host.                                                    |
+
+Path 2 is the only one that has actually sidestepped Gate 1 in prior runs because it operates on a fixture tree, not `ooda/oodac/main.oo`. Paths 3 and 4 carry the seed audit (sha256 + minisign) and are the realistic options for a fresh host. Paths 7 and 8 are the residual paths from v1; both are dead on this host.
+
+## 4. Recommended Fix Order
+
+1. **Verify the host seed cap.** Run `strings ooda/oodac/oodac | grep -F 'token count exceeds'` once on a non-build machine. If the literal is `1000`, rebuild the host from a current source (paths 3 or 4). If it is `1048576`, Gate 1 is closed on this host too.
+2. **Add the three missing forward decls to `ooda/oodac/c_emit_preamble.oo`.** Insert one `typedef struct SsaLoopInfo SsaLoopInfo;`, one `typedef struct GpuKernelArtifact GpuKernelArtifact;`, and one `typedef struct GpuBufferDesc GpuBufferDesc;` block, each wrapped in its own `OO_FWD_<Name>` ifndef. The c_emit lane owns the preamble, so this needs owner sign-off; the change is small and additive.
+3. **Re-run the original build path.** `ooda/bootstrap/oodac_pure_build oodac/main.oo oodac/oodac.new` with `PURE_SKIP_CHECK=1` for the first attempt, then without. Confirm Gate 2 stays green (typedef dedup now happens in C, not in the python stitcher) and Gate 1 is green if the host seed has the 1048576 cap.
+
+Owner sign-off is required only for step 2 (c_emit lane). Steps 1 and 3 are rebuild-lane work and need no code change.

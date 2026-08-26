@@ -1,0 +1,100 @@
+// # 11/10 Gap Analysis — openOODA Compiler Production Readiness
+//
+// Logline: Identify the critical, important, and nice-to-have gaps between the current PARTIAL state and a 11/10 production-capable compiler, with file:line evidence and a 3-action next step.
+//
+// Setup: Reads STATUS_v2.oot (67 lines, post-fix TL;DR), audit/x86-post-fixes-summary.oot (96 lines, 9 fixes plus 9 residual issues), audit/x86-contract-post-expansion.oot (92 lines, contract gate coverage 5/16), and audit/rebuild-blocker.oot (80 lines, c_emit Gate 1 and Gate 2). audit/aarch64-final-state.oot and audit/rebuild-blocker-v2.oot are referenced in the brief as in flight but were not present at write time. No .oo file was modified. No compiler was run. Confidence label: 2/5 (static projections, no re-run).
+//
+// Beats:
+//   1. Name the current state in two paragraphs.
+//   2. Enumerate the critical gaps with file:line evidence.
+//   3. Enumerate the important gaps.
+//   4. Enumerate the nice-to-have gaps.
+//   5. Recommend the next 3 actions.
+//   6. Estimate the work to reach 11/10.
+
+File: openOODA/audit/11-10-gap-analysis.oot
+Status: open — 2026-08-26 floor snapshot; supersedes nothing yet. Use as the post-fix backlog for the next sprint.
+
+---
+
+## 1. Current state
+
+The x86 backend is **fail-closed at the gate** after 9 fixes landed across 2026-08-25: silent-miscompile rate projects to ~0.4% central (range 0.4-7.4%) per `STATUS_v2.oot:29-30` and `audit/x86-post-fixes-summary.oot:88-96`, SSA ASM-FAIL projects from 92.6% to ~0% per `STATUS_v2.oot:31`, and Float empty-stdout dropped 98.7% to ~0% per `STATUS_v2.oot:32`. The AArch64 backend grew from 0 to 12+ Tier 0/1 ports per `STATUS_v2.oot:37-40`, but the AArch64 shape-gate and wrote-counter are not ported, leaving a HIGH silent-fall-through risk flagged at `audit/x86-ast-typed-shim.oot:74`. Overall posture is **PARTIAL**: central estimates are encouraging, but confidence is 2/5 because the projections are static and no full 6,936-fixture re-run has confirmed them; the residual classes named in `audit/x86-post-fixes-summary.oot:62-79` plus the c_emit rebuild blocker at `audit/rebuild-blocker.oot:9-13` and the unsound LLVM SSA pipeline at `STATUS_v2.oot:48` together gate any 11/10 claim.
+
+---
+
+## 2. Critical gaps (must-fix)
+
+1. **Channel / while / for / parallel no-op main is still ungated.** 221 fixtures affected per `STATUS_v2.oot:49` and `audit/x86-post-fixes-summary.oot:63`; not in the 5-shape refuse gate (Float, 3-arm match, Result[T], struct, List[T]) and not in the per-arm wrote counter (6 arms). Realistic upper bound on silent-miscompile is 7.4% not 0.4% if this stays open. Evidence: `audit/x86-post-fixes-summary.oot:52` row 9 in the attribution table; `audit/x86-hostile-probe-v2.oot:104` (channel 35/46, while 79/105, for 103/151, parallel 4/4).
+
+2. **LLVM SSA pipeline is unsound.** `std/llvm_codegen/ssa_mem2reg.oo` (57 lines) keeps a single `cur_val` across every store/load, does not track slot identity, does not insert Phi, does not rename; `std/llvm_codegen/ssa_opt.oo` (100 lines) `ssa_opt_dce` is an identity transform. CSE is not in the file. LICM, strength reduction, O3 driver are never called from any product path. Marked P0.3 residual in `audit/library_status.oot` per `STATUS_v2.oot:48` and `SHIPPED.oot:33-36, 41-42`.
+
+3. **c_emit rebuild blocker (Gate 2) is still red.** Pure multi-module oodac rebuild cannot complete: `c_emit_olist.oo:25` and `c_emit_struct.oo:104` both emit a real `typedef struct <Name> { ... } <Name>;` for the same name; `gcc` rejects `/tmp/oodac_pure_*/all.c` with `conflicting types for 'OoL_<Name>'`. The python stitcher regex in `ooda/bootstrap/oodac_pure_build:305-313` only strips the `_pad` stub. `PURE_SKIP_CHECK=1` clears Gate 1 only; no env flag clears Gate 2. Evidence: `audit/rebuild-blocker.oot:9-13, 28-42`; `STATUS_v2.oot:61`. Without Gate 2 the compiler cannot self-host, which is the floor of any 11/10 claim.
+
+4. **Confidence label is 2/5 with no re-run.** Every central estimate in the post-fix table (`audit/x86-post-fixes-summary.oot:88-96`) is a static projection. A 100-fixture smoke probe or full 6,936-fixture re-run is required to move to 4-5/5 per `audit/x86-post-fixes-summary.oot:96`. Without empirical confirmation, the 0.4% and 0.0% central numbers are best-case, not measured.
+
+5. **9 of 10 SIMD / Float gaps remain.** Only the `-0.0` atom sign gap was closed by the SIMD/FP fix (`audit/x86-post-fixes-summary.oot:29`); gaps #2-#10 — SSA sci-notation overflow, SSA divide-by-zero, STAR overflow, sci-exp overflow, 32-bit `cvttsd2si` truncation for `|value| > 2^31`, NaN/Inf detection, stack overrun for very large integers, rounding mode, bad char — are all open per `audit/x86-post-fixes-summary.oot:69` and `audit/simd-deep.oot:§3, §4`. Each is a high-severity silent-wrong-answer class; the SSA Float path is also still un-tested by the smoke per `audit/x86-post-fixes-summary.oot:28`.
+
+6. **3 over/under-refusal smells in the 5-shape gate.** Shape 1 real-handler accepts only `println(ident)`, refusing `println(a+b)`. Shape 4 misses the bare `struct S { ... }` form. Shape 5 misses `list_get` / `list_set`. Each is a small 5-15 line pattern extension; together they over-refuse ~10-20% of programs that the legacy 22-arm chain can handle per `audit/x86-post-fixes-summary.oot:65` and `audit/x86-5shape-refuse-post-fix.oot:§2` Issues 1-3.
+
+---
+
+## 3. Important gaps (should-fix)
+
+1. **Contract gate covers only 5 of 16 features.** The post-expansion audit at `audit/x86-contract-post-expansion.oot:46-48` confirms 5/16 (fn decl, fn-call, let, while, return) — the `if` arm was planned and did not land. 11 features still have no `x86_refine_check_*` arm: match, for, struct, list, opt, int, float, string, rec fn, mut local, and if per `audit/x86-contract-post-expansion.oot:54-69`. The 50 silent-miscompile fixtures in `audit/x86-investigations.oot:4` are dominated by `if` shapes that the 22-arm walker does not recognize.
+
+2. **22-arm chain is still the legacy path.** The typed-AST shim at `x86_emit.oo:87-91` is the only thing keeping the 22-arm chain at `x86_emit.oo:93-205` from being bypassed. Turn 2 collapse (the `x86_emit_stream_typed` swap at `x86_emit.oo:94` TODO) has not landed per `audit/x86-post-fixes-summary.oot:73` and `x86_emit_final.oot` Issue 3.
+
+3. **AArch64 has no wrote counter and no 5-shape gate.** Tier 0 ports (contract 225, diag 161, secret 202) and Tier 1 ports (let 53, int 256, string 239, fn 227, while-loop 219) are wired at `aarch64_emit.oo:18-26` per `STATUS_v2.oot:38-39`, but the per-arm wrote counter and the 5-shape refuse gate have not been ported. The HIGH risk at `audit/x86-ast-typed-shim.oot:74-78` (silent fall-through to a parallel 22-arm chain) applies identically to AArch64.
+
+4. **3 of 42 x86 modules have no direct smoke.** `x86_emit_alu.oo`, `x86_emit_ctl.oo`, and `x86_emit_span.oo` are exercised only meta-cited per `audit/x86-post-fixes-summary.oot:75` and `audit/x86-smoke-coverage.oot:§2`. The chain arms they protect are still in the 22-arm fallback; no direct smoke means a regression here would not be caught.
+
+5. **16 newer fixtures are not in the 6,936-fixture hostile probe set.** Including `adv_algebraic_monomorph`, `x86_ssa_*_smoke`, `llvm_emit_import_c_smoke` and 13 others per `audit/x86-post-fixes-summary.oot:77` and `audit/x86-hostile-probe-v2.oot:§10`. The post-fix projection does not cover them, so the central 0.4% number applies only to the pre-fix fixture set.
+
+6. **V1 `movq` 64-bit operand-widening bug status is unknown.** The SSA per-block remap fix does not address the 64-bit operand widening for opcode 21. If unfixed, SSA ASM-FAIL lands at 0.2% not 0.0% per `audit/x86-post-fixes-summary.oot:67` and `audit/x86-ssa-post-fix-projection.oot:§3.1, §5`.
+
+7. **12 residual "real write, wrong string" binaries.** The probe §10 caveat names ~12 binaries that produce a real write syscall but write the wrong string. None of the 9 fixes addresses this; it requires typed-AST Turn 2 to route those programs through a verified emission path per `audit/x86-post-fixes-summary.oot:79`.
+
+---
+
+## 4. Nice-to-have gaps (could-fix)
+
+1. **Naming inconsistency in the contract header.** The header beat at `x86_emit_contract.oo:10` lists the four new fns unqualified (`refine_check_fn_call, refine_check_return, refine_check_let, refine_check_while`); the actual symbols carry the `x86_` prefix per `audit/x86-contract-post-expansion.oot:90-92`. Single-line header fix preferred over a 4-fn rename.
+
+2. **Typed-AST shim has a misleading name.** `x86_emit_stream_typed` does not type-check; the Academy header says "typed-AST dispatch shim" but `tc_check` is aspirational. Rename to `x86_emit_stream_ssa` or rewrite the Logline per `audit/x86-post-fixes-summary.oot:71` and `audit/x86-ast-typed-shim.oot:§5` risk 3.
+
+3. **AArch64 ladder count full enumeration is pending.** 12+ features are known to be ported (3 Tier 0 + 5 Tier 1 + 1 if-shape + 3+ contracted ladder) per `STATUS_v2.oot:40`, but the full enumeration lands in `audit/aarch64-investigations.oot:115` only once Tier 5 ships.
+
+4. **Contract gate and empty-source check overlap by design.** This is defense-in-depth per `x86_emit_final.oot` Issue 4 and `audit/x86-post-fixes-summary.oot:32`, not a defect; documenting the overlap in a one-paragraph note would clean up the smell.
+
+5. **SSA Float path lacks a runtime smoke.** The smoke at `x86_ssa_float_runtime_smoke.oo:56-98` only checks SSE asm, not the runtime. Adding a 20-line runtime smoke (load `0.1`, add `0.2`, assert non-empty output) would close the un-tested risk at `audit/x86-post-fixes-summary.oot:28`.
+
+6. **Dead arms in the 22-arm chain are not deleted.** The dead-import fix (#8) removed the import surface but not the arm bodies per `audit/x86-post-fixes-summary.oot:30` and `x86_emit_final.oot` row 9. The chain still has 22 arms; deleting the dead ones reduces file size and removes a no-op-main failure mode until Turn 2.
+
+---
+
+## 5. Recommended next 3 actions
+
+1. **Land the 4th refuse gate for channel / while / for / parallel.** Add a refuse gate between the per-arm wrote counter and the 22-arm chain at `x86_emit.oo:85-92` that scans for `KW_CHANNEL` / `KW_WHILE` / `KW_FOR` / `KW_PARALLEL` and either refuses or routes to a real emitter per `STATUS_v2.oot:65` and `audit/x86-post-fix-projection.oot:133`. Expected impact: silent-miscompile upper bound drops from 7.4% to ~0.5%.
+
+2. **Clear c_emit Gate 2 (rebuild blocker).** Add an `OO_HAVE_<Name>` ifndef guard around the self-typedef in `c_emit_olist.oo:25` and tighten the python stitcher regex in `ooda/bootstrap/oodac_pure_build:305-313` per `audit/rebuild-blocker.oot:74`. Sign-off required from the c_emit lane owner. Once Gate 2 clears, re-run the full 6,936-fixture probe and move the confidence label from 2/5 to 4-5/5.
+
+3. **Port the per-arm wrote counter and the 5-shape refuse gate to AArch64.** Mirror `aarch64_emit_shape_refuse.oo` from `x86_emit_shape_refuse.oo:21-30+` and add the wrote counter to the AArch64 arms parallel to `x86_emit_free.oo:85, x86_emit_list.oo:88, x86_emit_match.oo:184, x86_emit_opt.oo:173, x86_emit_struct.oo:116, x86_emit_typed_let.oo:62`. Wire at `aarch64_emit.oo:18-26` per `STATUS_v2.oot:66`. Closes the HIGH silent-fall-through risk at `audit/x86-ast-typed-shim.oot:74-78`.
+
+---
+
+## 6. Estimated work to 11/10
+
+11/10 means **fail-closed with measured confidence**: every silent-miscompile class named in the projection tables is empirically closed, the 6,936-fixture probe (plus the 16 newer fixtures) shows ≤0.1% silent-miscompile, the c_emit rebuild is green, the LLVM SSA pipeline has at least a working mem2reg or a documented decision to drop SSA in favour of direct x86 emission, and AArch64 inherits the same fail-closed posture as x86. Estimate in three phases:
+
+- **Phase 1 — Close the critical gaps (1-2 sprints, ~6-10 engineer-days).** Land the 4th refuse gate (action 1): ~1 day for the gate, ~1 day for the smoke, ~0.5 day for the regression probe. Clear c_emit Gate 2 (action 2): ~1-2 days c_emit lane owner, ~0.5 day for the python stitcher regex, ~0.5 day for the rebuild verification. Add the missing `x86_refine_check_if` contract arm: ~0.5 day. Add 6 SIMD/Float gap fixes (3 priority gaps from `audit/simd-deep.oot:§3`): ~2-3 days. Close the V1 `movq` bug: ~0.5 day. Close the 3 over/under-refusal smells: ~0.5-1 day.
+
+- **Phase 2 — Empirical confirmation + AArch64 parity (1-2 sprints, ~5-8 engineer-days).** Re-run the full 6,936-fixture probe (now 6,952 with the 16 newer fixtures) and move confidence from 2/5 to 4-5/5: ~1 day to wire the probe, ~1 day to triage the residual. Port the wrote counter and 5-shape gate to AArch64 (action 3): ~2-3 days. Delete the 6 dead arms in the 22-arm chain: ~0.5 day. Land the Turn 2 typed-AST collapse at `x86_emit.oo:94`: ~2-3 days. Add the 3 missing direct smokes for `x86_emit_alu.oo`, `x86_emit_ctl.oo`, `x86_emit_span.oo`: ~0.5 day.
+
+- **Phase 3 — LLVM SSA decision + nice-to-haves (1 sprint, ~2-3 engineer-days).** Decide LLVM SSA fate: either implement a real `mem2reg` with slot identity and Phi insertion (~3-5 days) or document the decision to drop SSA in favour of direct x86 emission and remove the LLVM lane (~0.5 day). Land the nice-to-haves (rename `x86_emit_stream_typed`, add the SSA Float runtime smoke, document the contract/empty-source overlap, add AArch64 ladder enumeration): ~1 day.
+
+- **Total estimate: 3-5 sprints, ~13-21 engineer-days**, depending on the LLVM SSA decision. The single largest variable is the LLVM SSA pipeline: implementing a correct mem2reg is 3-5 days; dropping the lane is 0.5 day. The single largest fixed cost is the Turn 2 typed-AST collapse (2-3 days), which is on the critical path for closing the 12 residual "real write, wrong string" silent-miscompile class. After Phase 3, the compiler is 11/10: fail-closed, empirically confirmed, AArch64-parity, and self-hostable.
+
+---
+
+Gap count: 6 critical, 7 important, 6 nice-to-have. Total: 19. Confidence: 2/5 (static projection only).

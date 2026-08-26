@@ -1,0 +1,77 @@
+// # x86 Backend v3 Final Audit — post-9-fixes, post-oodac.new build
+//
+// Logline: One-shot read-only audit of the x86 backend as of 2026-08-26 after the 9 fixes of this turn and the oodac.new build (3.5MB), confirming file-shape, gate wiring, arm count, and per-fix evidence; superseded audits are x86_emit_post_fixes_final.oot and x86-final.oot.
+//
+// Setup: Sources are openOODA/STATUS_v3.oot (in-flight floor snapshot), openOODA/audit/x86-post-fixes-summary.oot (96 lines, v2 consolidated table), openOODA/audit/x86_emit_post_fixes_final.oot (55 lines, prior post-fix final), ooda/oodac/x86_emit.oo (209 lines, dispatch), and the 28 sibling import targets under ooda/oodac/. No compiler run. No .oo file modified. No /tmp write. oodac.new was built once on 2026-08-26 and is the 3.5MB artifact that this audit takes as input.
+//
+// Beats:
+//   1. Tabulate the 9 fixes with file:line evidence and source citation.
+//   2. List the remaining issues, ordered by severity.
+//   3. State the final verdict with one line of reasoning.
+//   4. Name the next 3 actions.
+//
+// residual: A 6,936-fixture re-run against oodac.new to convert central estimates into measured numbers (STATUS_v3.oot:23, x86-post-fixes-summary.oot §4).
+
+File: openOODA/audit/x86-backend-v3.oot
+Status: smoke — read-only v3 final audit, 2026-08-26
+Scope: x86 backend only; AArch64 lives in aarch64-final-state.oot; SSA stays inside this scope
+Supersedes: x86_emit_post_fixes_final.oot (55 lines), x86-final.oot
+
+---
+
+## 1. Final state — 9 fixes, file:line evidence
+
+| # | Fix | Pre-fix state | Post-fix state | Evidence | Source |
+|---|-----|---------------|----------------|----------|--------|
+| 1 | Silent fall-through | Typed-AST shim `Err(_) => { }` swallowed errors and fell through to the 22-arm chain, producing wrong assembly. | `x86_emit.oo:90` does `Err(typed_e) => { println(typed_e); process_exit(1); }`. Call at `:87`, import at `:44`, match at `:88-91`. | `x86_emit.oo:90`; `STATUS_v3.oot:29`; `x86_emit_post_fixes_final.oot:7, 32-33, 49` | x86-post-fixes-summary.oot §1 row 1 |
+| 2 | 5-shape refuse gate | Float, 3-arm match, Result[T], struct, List[T] reached the 22-arm chain and produced no-op main or hardcoded bodies. | `x86_emit_shape_refuse.oo` (238 lines) refuses the 5 shapes; wired at `x86_emit.oo:76`, comment at `:73-75` names the 5 shapes, loop and `process_exit(1)` at `:77-84`. 5/5 ERRs clear. | `x86_emit.oo:73-84`; `STATUS_v3.oot:28, 51`; `x86_emit_post_fixes_final.oot:6, 31` | x86-post-fixes-summary.oot §1 row 2 |
+| 3 | Per-arm wrote counter | 7 dedicated arms (struct, list, opt, free, typed_let, match, fib, heap) emitted a syscall skeleton with zero writes. 2,595 / 2,607 empty-stdout binaries. | `let mut wrote: Int = 0;` at the top of each refactored arm; `if wrote == 0 { ... }` after the body loop. 6 files updated. | `x86_emit_free.oo:85,95,97`; `x86_emit_list.oo:88,118,126,129`; `x86_emit_match.oo:184,214,216`; `x86_emit_opt.oo:173,207,222,225`; `x86_emit_struct.oo:116,228,233`; `x86_emit_typed_let.oo:62,75,77`; `STATUS_v3.oot:52` | x86-post-fixes-summary.oot §1 row 3 |
+| 4 | SSA per-block remap | 92.6% ASM-FAIL: 3,215 duplicate `.Lxss_pi_*` labels + 3,211 undefined `.Lmain_block*` forward refs. | Bug #1: `x86_ssa_emit_println_int` now 2-arg with `suffix` carried through 4 labels and 3 edges at `:107, 109`. Bug #2: `tbname = list_get(block_names, imm)` at `:83` with `block_names: List[String]` param at `:78`, forwarded at `:30, 52`, used at `:96-97`. File grew 230 to 243 lines. | `x86_ssa_emit.oo:30, 52, 78, 83, 96-97, 107, 109`; `STATUS_v3.oot:30, 53` | x86-post-fixes-summary.oot §1 row 4 |
+| 5 | SSA Float gaps | `parse_v` at `x86_ssa_emit_float.oo:25-37` had no `e/E` exponent branch. `op_v` at `:58` returned 0 silently on `b == 0`. | Sci-notation branch copied from `x86_float_parse:46-61`. SSA divide-by-zero now fail-closed. File grew 129 to 145 lines; exports `x86_ssa_emit_float_routine_text`, `x86_ssa_emit_float_op`, `x86_ssa_emit_float_program`. | `x86_ssa_emit_float.oo:129-145`; `STATUS_v3.oot:31, 54` | x86-post-fixes-summary.oot §1 row 5 |
+| 6 | SIMD Float fix | `x86_float_fold_atom` at `x86_emit_float.oo:117-134` lost the sign on `-0.0` literals. `x86_collect_and_emit_float:200-218` only set `neg_zero` on chain MINUS, not on atom sign. | Atom sign propagates into `neg_zero`; `-0.0` literal now emits `.double -0.0`. File grew 228 to 250 lines; covers sci-notation, 0/0, and -0.0. | `x86_emit_float.oo:228-250`; `STATUS_v3.oot:31, 54` | x86-post-fixes-summary.oot §1 row 6 |
+| 7 | Dead-arm DELETEs | Arms 18 (`x86_match_list_test`) and 19 (`x86_match_list`) were broken-emit stubs with empty bodies that fell through to harvest. | Both arms removed from `x86_emit.oo:161-165` (was 24, now 22). Chain count matches STATUS_v3.oot:27. | `x86_emit.oo:161-165`; `STATUS_v3.oot:31, 46`; `x86-dead-arms.oot:11-39, 46-52, 62-64` | x86-post-fixes-summary.oot §1 row 7 |
+| 8 | Dead imports removed | `x86_emit_list.oo` (5 pub fn, 0 callers from `x86_emit.oo`) and `x86_emit_diag.oo` (7 pub fn, 0 callers) imported but never referenced. | Both removed from `x86_emit.oo:16-44`. File shrank 211 to 209 lines. 31 to 29 imports. | `x86_emit.oo:16-44`; `STATUS_v3.oot:31, 46`; `x86-post-fixes-summary.oot §1 row 8` | x86-post-fixes-summary.oot §1 row 8 |
+| 9 | Contract gate expansion | Contract gate at `x86_emit.oo:48-57` ran with 4 clauses; float-typed and struct-shaped sources passed. | New clauses added; covers 4 conditions; rejects float-typed, struct-shaped, and several ad-hoc violations. Wired at top of `x86_emit_stream` at `:49`, before secret at `:64`, shape at `:76`, typed at `:87`. | `x86_emit.oo:48-57, 49, 64, 76, 87`; `x86_emit_contract.oo:160, 175`; `x86_emit_final.oot row 11-12`; `x86-smoke-coverage.oot row 05` | x86-post-fixes-summary.oot §1 row 9 |
+
+Row count: 9 (one per fix). Acceptance: ≥9. **MET.**
+
+Build artifact: `oodac.new` is 3.5MB and was produced by the same `x86_emit.oo` and 28 sibling modules cited above. No source changes between the 9 fixes and the build, per the in-flight STATUS_v3.oot floor snapshot.
+
+---
+
+## 2. Remaining issues
+
+Numbered, severity-ordered (correctness first, coverage second, smell third).
+
+1. **Channel / while / for / parallel no-op main not caught.** 221 empty-stdout sources (probe §5: channel 35, while 79, for 103, parallel 4) are not refused by the 5-shape gate or the wrote counter. The post-fix silent-miscompile rate rises to 221 + 12 = 233 / 3,143 = 7.4% in the upper bound vs. the 0.4% central estimate. Counter must extend to `x86_emit_loop.oo`, `x86_emit_for.oo`, and the channel and parallel emitters; or Turn 2 must subsume them. Source: `x86-post-fixes-summary.oot §3 Issue 1`; `STATUS_v3.oot:23`.
+2. **3 over/under-refusal smells in the 5-shape gate.** Shape 1 real-handler accepts only `println(ident)`, refusing `println(a+b)`. Shape 4 misses bare `struct S { ... }`. Shape 5 misses `list_get` / `list_set`. Estimated over-refusal: 10 to 20% of programs the chain can handle. Source: `x86-5shape-refuse-post-fix.oot §2 Issues 1-3`; `x86-post-fixes-summary.oot §3 Issue 2`.
+3. **V1 14-fixture `movq` operand-widening status unknown.** The SSA per-block remap fix (#4) does not address 64-bit operand widening for opcode 21. If not also fixed, SSA ASM-FAIL lands at 0.2% instead of the 0.0% central. Source: `x86-ssa-post-fix-projection.oot §3.1, §5`; `x86-post-fixes-summary.oot §3 Issue 3`.
+4. **9 of 10 SIMD/Float gaps remain.** #6 (Float real const-fold) fixed only gap #1 (`-0.0` atom sign). Gaps #2-#10 (SSA sci-notation overflow, SSA divide-by-zero residual, STAR overflow, sci-exp positive overflow, 32-bit `cvttsd2si` truncation for `|value| > 2^31`, NaN/Inf detection, stack overrun for very large integers, rounding mode, bad-char handling) are open. Source: `simd-deep.oot §3, §4`; `x86-post-fixes-summary.oot §3 Issue 4`.
+5. **22-arm chain still legacy; Turn 2 collapse pending.** The 22-arm chain at `x86_emit.oo:93-205` is the legacy path. The Turn 2 TODO at `:92` says to replace it with `x86_emit_stream_typed`. Until that lands, two emission paths exist and the silent-fall-through fix (#1) is the only thing keeping the typed shim from being bypassed. Source: `x86_emit_post_fixes_final.oot §2 Issue 2`; `x86-final.oot §2 Item 3`; `x86-post-fixes-summary.oot §3 Issue 6`.
+6. **3 of 42 x86 modules have no direct smoke.** `x86_emit_alu.oo`, `x86_emit_ctl.oo`, `x86_emit_span.oo` are exercised only meta-cited. Contract gate (#9) and per-arm wrote counter (#3) are not in the no-smoke list, but the chain arms they protect are. Source: `x86-smoke-coverage.oot §2`; `x86-post-fixes-summary.oot §3 Issue 7`.
+7. **16 newer fixtures not in hostile probe set.** `adv_algebraic_monomorph`, `x86_ssa_*_smoke`, `llvm_emit_import_c_smoke` and 13 others are not in the 6,936-fixture set; post-fix projection does not cover them. Source: `x86-hostile-probe-v2.oot §10`; `x86-post-fixes-summary.oot §3 Issue 8`.
+8. **The 12 "real write, wrong string" residual.** Probe §10 caveat notes ~12 binaries have a real write syscall but write the wrong string. None of the 9 fixes addresses this; Turn 2 must route those programs through a verified emission path. Source: `x86-hostile-probe-v2.oot §10`; `x86-post-fixes-summary.oot §3 Issue 9`.
+9. **Typed-AST shim still has a misleading name.** `x86_emit_stream_typed` does not type-check; the Academy header says "typed-AST dispatch shim" but `tc_check` is aspirational. Rename to `x86_emit_stream_ssa` or rewrite the Logline. Source: `x86-ast-typed-shim.oot §5 risk 3`; `x86-post-fixes-summary.oot §3 Issue 5`.
+10. **Doc drift in the dispatch comment.** `x86_emit.oo:75` comment still says "Fails closed before the 24-arm chain"; chain is 22. Cosmetic. Source: `x86_emit_post_fixes_final.oot §2 Issue 3`.
+
+Issue count: 10. Acceptance: ≥1. **MET.**
+
+---
+
+## 3. Final verdict
+
+**PARTIAL.** The 9 fixes converted the dominant silent-miscompile class (no-op main, 2,595 / 2,607 = 99.5% of empty-stdout binaries) into clean REFUSED, and they converted the dominant SSA failure class (duplicate labels + undefined block refs, 6,426 / 6,426 = 100% of SSA ASM-FAIL) into COMPILED. The `oodac.new` build (3.5MB) produced and the 209-line file-shape of `x86_emit.oo` plus the 22-arm chain plus the 4-gate order (contract `:49`, secret `:64`, shape `:76`, typed `:87`) plus the 29 resolving imports are all consistent with the post-fix floor in `STATUS_v3.oot:27, 28-31, 46`. The two headline numbers (silent-miscompile 0.4% central, SSA ASM-FAIL 0.0% central) are estimates; realistic ranges are 0.4-7.4% and 0.0-0.2% respectively. The 7.4% upper bound is the channel / while / for / parallel no-op main class that none of the 9 fixes catches (Issue 1), and the 0.2% upper bound is the v1 14-fixture `movq` operand bug (Issue 3). Confidence 2/5; a 6,936-fixture re-run against `oodac.new` is required to move to 4-5/5. Not PASS (Turn 2 collapse and 221-source wrote-counter extension are real work) and not FAIL (the dominant classes are caught and the build is clean).
+
+---
+
+## 4. Next 3 actions
+
+1. **Extend the per-arm wrote counter to channel / while / for / parallel emitters.** Open `x86_emit_loop.oo`, `x86_emit_for.oo`, and the channel and parallel emitters; add `let mut wrote: Int = 0;` and the `if wrote == 0 { println("ERR empty stdout"); process_exit(1); }` tail to each arm. Expected: drops the 221-source upper bound to the 0.4% central. Source: Issue 1; `x86-post-fixes-summary.oot §3 Issue 1`. Lock with `scripts/x86_loop_counter_smoke.oo`, `scripts/x86_for_counter_smoke.oo`, `scripts/x86_channel_counter_smoke.oo`, `scripts/x86_parallel_counter_smoke.oo`.
+2. **Land Tier 5 #24 Turn 2 chain collapse.** Replace the 22-arm chain at `x86_emit.oo:93-205` with a single call to `x86_emit_stream_typed` at `x86_ast_typed.oo:17`. Removes the dual-path risk, retires the `Err(typed_e) => process_exit(1)` guard as a defense-in-depth line, and unblocks the 12 "real write, wrong string" residual. Source: `x86_emit.oo:92` TODO; `x86_emit_post_fixes_final.oot §2 Issue 2`; Issue 8. Lock with `scripts/x86_turn2_chain_collapse_smoke.oo` and a 100-fixture probe.
+3. **Re-run the 6,936-fixture hostile probe v3 against `oodac.new`.** Convert the central estimates in §3 into measured numbers for silent-miscompile, SSA ASM-FAIL, empty-stdout, and real-write-wrong-string. Publish the deltas in `openOODA/STATUS_v4.oot`. If silent-miscompile is ≤0.4% measured and SSA ASM-FAIL is ≤0.0% measured, move confidence to 4/5. If silent-miscompile is >2.0%, open Issue 1 work as P0. Source: `x86-post-fixes-summary.oot §4`; `STATUS_v3.oot:23`.
+
+Action count: 3. Acceptance: 3. **MET.**
+
+---
+
+End of audit. v3 is the floor; STATUS_v4.oot will own the next floor.
