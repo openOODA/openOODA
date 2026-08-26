@@ -1,0 +1,99 @@
+// # openOODA WebAssembly Sovereign Application Engine
+//
+// Logline: Main entry point and runtime controller for the openOODA WebAssembly web interface.
+//
+// Setup: Connects theme controller, SPA route dispatcher, and playground evaluator.
+//
+// Beats:
+//   1. Initialize application state.
+//   2. Handle route transition events.
+//   3. Handle theme switching cycles.
+//   4. Execute playground presets and return execution logs.
+//   5. Verify WebAssembly application invariants.
+
+import "theme.oo";
+import "routes.oo";
+import "playground.oo";
+
+pub type AppState = struct {
+    current_route_id: Int,
+    current_theme_id: Int,
+    active_preset_id: Int,
+    init_timestamp: Int
+};
+
+pub fn app_create_state() -> AppState {
+    return AppState {
+        current_route_id: 1, // Home
+        current_theme_id: 0, // Night
+        active_preset_id: 1, // Hello
+        init_timestamp: 1724688000
+    };
+}
+
+pub fn app_set_route(state: &mut AppState, route_id: Int) -> Int {
+    if route_id >= 1 && route_id <= 15 {
+        (*state).current_route_id = route_id;
+        return route_id;
+    } else {
+        (*state).current_route_id = 1;
+        return 1;
+    }
+}
+
+pub fn app_cycle_theme(state: &mut AppState) -> Int {
+    let next_id: Int = theme_next((*state).current_theme_id);
+    (*state).current_theme_id = next_id;
+    return next_id;
+}
+
+pub fn app_set_preset(state: &mut AppState, preset_id: Int) -> Int {
+    if preset_id >= 1 && preset_id <= 5 {
+        (*state).active_preset_id = preset_id;
+        return preset_id;
+    } else {
+        (*state).active_preset_id = 1;
+        return 1;
+    }
+}
+
+pub fn ooda_app_init() -> Int {
+    return 1;
+}
+
+pub fn ooda_app_route(route_id: Int) -> Int {
+    if route_id >= 1 && route_id <= 15 {
+        return route_id;
+    } else {
+        return 1;
+    }
+}
+
+pub fn ooda_app_theme_next(theme_id: Int) -> Int {
+    return theme_next(theme_id);
+}
+
+pub fn ooda_app_eval(preset_id: Int) -> Int {
+    if preset_id >= 1 && preset_id <= 5 {
+        return preset_id;
+    } else {
+        return 1;
+    }
+}
+
+pub fn main() {
+    let mut state: AppState = app_create_state();
+    let r1: Int = app_set_route(&mut state, 2);
+    let t1: Int = app_cycle_theme(&mut state);
+    let p1: Int = app_set_preset(&mut state, 3);
+    println("openOODA WebAssembly Engine Initialized.");
+}
+
+verify app_create_state {
+    let mut st: AppState = app_create_state();
+    assert_eq!(st.current_route_id, 1);
+    assert_eq!(st.current_theme_id, 0);
+    assert_eq!(app_set_route(&mut st, 6), 6);
+    assert_eq!(app_cycle_theme(&mut st), 1);
+    assert_eq!(app_set_preset(&mut st, 4), 4);
+}
