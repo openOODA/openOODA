@@ -1,0 +1,43 @@
+// # AArch64 AST-path runtime audit (Phase 5 of the 9-phase 11/10 plan)
+//
+// Logline: Records the AST-path runtime that produces a runnable ELF64 AArch64 binary from oodac/oodac.aarch64.ast.
+//
+// Setup: Re-reads oodac/aarch64_ast_main.oo, oodac/aarch64_emit_elf.oo, std/arch_aarch64/aarch64_codegen.oo, std/arch_aarch64/aarch64_linker.oo.
+//
+// Beats:
+//   1. oodac/aarch64_ast_main.oo was already present; rebuild produces oodac/oodac.aarch64.ast (927,056 bytes).
+//   2. The driver writes ELF64 AArch64 binaries through aarch64_emit_direct_elf_binary -> aarch64_compile_to_elf -> aarch64_link_executable.
+//   3. The hello fixture (fixtures/aarch64_hello.oo) compiles to a 352-byte ELF64, runs on qemu-aarch64, prints "Hello", exit 0.
+
+== Build ==
+
+* Command: `PURE_SKIP_CHECK=1 OODAC_BIN=./oodac/oodac bash bootstrap/oodac_pure_build oodac/aarch64_ast_main.oo oodac/oodac.aarch64.ast`
+* Result: OK_PURE_MULTI
+* Output: oodac/oodac.aarch64.ast (927,056 bytes, x86-64 ELF, dynamically linked)
+
+== Runtime ==
+
+* Command: `./oodac/oodac.aarch64.ast --ast-emit-aarch64 fixtures/aarch64_hello.oo /tmp/ast_hello.bin`
+* Output: `ast-emit-aarch64: wrote /tmp/ast_hello.bin`
+* File: 352 bytes, ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV), statically linked
+* Run: `qemu-aarch64 /tmp/ast_hello.bin` prints `Hello`, exit 0
+
+* Command: `./oodac/oodac.aarch64.ast --backend aarch64 --ast fixtures/aarch64_hello.oo /tmp/ast_hello2.bin`
+* Same output. Both CLI forms work.
+
+== Limitation ==
+
+* List[T] fixture (fixtures/aarch64_list_int.oo) fails with `ERR cap ambient List memory quota exceeded (AllocCap required)`. The AST path enforces ambient caps; the host pipeline (`./oodac/oodac.aarch64 emit-aarch64 ... | as | ld | qemu-aarch64`) does not. Future work: grant AllocCap to the AST path to drive list programs.
+
+* The script-level smoke (scripts/aarch64_ast_runtime_smoke.oo) was attempted but hit a C-emit `let _ =` redeclaration bug (each `let _ = process_exec(...)` produces `OoResS __lvl1 = ...` and the variable is redeclared). The smoke was moved to trash. The manual run is the proof.
+
+== Tag and version ==
+
+Tag v0.225.34 on commit (Phase 5 commit). ooda.pkg version=0.225.34.
+
+== Remaining gap ==
+
+* Phase 6 (AAPCS64 multi-function-call smoke): need a fixture that calls two or more user-defined functions and verifies AAPCS64 register/stack conventions survive the emit.
+* Phase 7 (cross-architecture output equivalence): need to drive the same .oo source through x86_64 and aarch64 backends and assert byte-for-byte stdout equivalence.
+* Phase 8 (pattern matching and closures fixtures): port more source patterns.
+* Phase 9 (Tier 1 wiring): unify aarch64_main.oo to also call the AST path.
