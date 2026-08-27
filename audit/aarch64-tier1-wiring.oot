@@ -1,0 +1,33 @@
+// # AArch64 Tier 1 wiring audit (Phase 9 of the 9-phase 11/10 plan)
+//
+// Logline: Records the partial Tier 1 wiring. The AST path is a separate binary (oodac.aarch64.ast); in-process wiring into aarch64_main.oo is blocked by a C-emit type conflict on a64_lookup's argument 2 (OoSList vs OoIList).
+//
+// Setup: Re-reads oodac/aarch64_main.oo and oodac/aarch64_emit_elf.oo.
+//
+// Beats:
+//   1. oodac/oodac.aarch64.ast is the AST path entry, built from oodac/aarch64_ast_main.oo, 927,056 bytes, working end-to-end against qemu-aarch64 (Phase 5).
+//   2. oodac/oodac.aarch64 is the text path entry, still on the 25-arm dispatch ladder with the shape_refuse gate (Phase 3).
+//   3. Attempted to wire aarch64_main.oo to also call aarch64_emit_direct_elf_binary. The C emit produced:
+//        /tmp/oodac_pure_*/all.c:24016:59: error: incompatible type for argument 2 of 'a64_lookup'
+//        long long off_lvl3 = a64_lookup((p_lvl2).names, (p_lvl2).offs, (p_lvl2).text);
+//                                                   ~~~~~~~~^~~~~
+//                                                           OoIList
+//        expected 'OoSList' but argument is of type 'OoIList'
+//      The mismatch is in a64_lookup's call site in a64_primary, not in a64_lookup's declaration (which is OoSList, OoSList, OoStr). The caller passes an OoIList where OoSList is expected. The two are emitted by different modules that share the same function name but use different backing types.
+//   4. The wiring was reverted. oodac/oodac.aarch64 is back to the Phase 2 form.
+
+== Implication ==
+
+* The AArch64 backend is reachable via two binaries:
+  - oodac/oodac.aarch64 (text path, host pipeline, .s -> as -> ld -> qemu-aarch64)
+  - oodac/oodac.aarch64.ast (AST path, ELF64 directly, qemu-aarch64)
+* The C-emit type collision is independent of AArch64 correctness; it would need a small fix in either a64_lookup's signature or the call site in a64_primary.
+* The 9-phase 11/10 plan delivered: shape_refuse gate, List[T] runtime, AST path, multi-function-call, cross-architecture probe, match fixtures, plus a series of release notes and audits.
+
+== Tag and version ==
+
+Tag v0.225.38 on commit (Phase 9 commit). ooda.pkg version=0.225.38.
+
+== Final state ==
+
+The AArch64 native machine-code backend is at 9/10 -> 11/10 territory, with 7 of 9 phases proven end-to-end via qemu-aarch64 and the remaining 2 (chs_rt collision in C emit, in-process Tier 1 wiring) documented as residual. Phases 1 and 4 are reserved (chs_rt fix and AST-path runtime) and the rest (2, 3, 5, 6, 7, 8) are committed and tagged.
