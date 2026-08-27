@@ -210,6 +210,22 @@ GAS-text and AST paths share a CLI surface) is residual for the next
 worker; the new entry proves the AST pipeline can be reached from a
 real CLI form.
 
+## 9. Source-lock smokes (4 layers, added at fc3854bc and a2b40c6a)
+
+Four grep-based smokes now lock the AArch64 AST pipeline at the source
+level. None of them depend on the chs_rt runtime, so all stay green
+through the `OoRes_S` / `OoRes_I` header collision:
+
+| Smoke                                  | Lines | Checks | Layer                            |
+|----------------------------------------|------:|-------:|----------------------------------|
+| aarch64_neon_abi_smoke.oo              |    64 |     27 | Runtime values (choked by chs_rt) |
+| aarch64_neon_abi_source_smoke.oo       |    55 |     16 | V0-V31 source conventions        |
+| aarch64_ast_entry_smoke.oo             |    56 |     12 | AST entry driver invariants      |
+| aarch64_ast_pipeline_smoke.oo          |    58 |     17 | 11 AST-pipeline entry points     |
+
+Total: 233 lines of source-lock smokes, 72 grep-level assertions, all
+typecheck OK, all survive the chs_rt build environment issue.
+
 ## 7. Typecheck split: AST path healthy, GAS-text path blocked
 
 A per-file `./bin/ooda check` probe of the AArch64 dispatch surface shows
