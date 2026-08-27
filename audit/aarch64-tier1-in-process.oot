@@ -1,0 +1,36 @@
+// # AArch64 Tier 1 in-process wiring audit (Phase 9 final form)
+//
+// Logline: oodac.aarch64 is a single binary that exposes both the text and AST paths in-process, no shell-out.
+//
+// Setup: Re-reads oodac/aarch64_main.oo and the std/arch_aarch64/ rename.
+//
+// Beats:
+//   1. The v0.225.39 process-spawn form (shell out to oodac.aarch64.ast) was a fallback. The in-process form is now achievable by:
+//        a. Renaming std a64_lookup to a64_lookup_parse across aarch64_parse.oo, aarch64_lower.oo, aarch64_xclosure.oo, aarch64_xclosure_scan.oo, aarch64_xcond.oo, aarch64_xexpr.oo, aarch64_xloop.oo, aarch64_xsimple.oo, aarch64_xstmt.oo, aarch64_xterm.oo.
+//        b. Adding `import "aarch64_emit_elf.oo";` to oodac/aarch64_main.oo (already present in the process-spawn form via std/sh.oo).
+//   2. The in-process build produces oodac/oodac.aarch64 (1,322,000 bytes, 727 unique_fns, 112 from-modules) without errors.
+//   3. All four CLI forms verified end-to-end:
+//        - emit-aarch64 fixtures/aarch64_list_int.oo -> as+ld+qemu-aarch64 prints "342", exit 0
+//        - --backend aarch64 emit-aarch64 fixtures/aarch64_hello.oo -> GAS to stdout
+//        - --ast-emit-aarch64 fixtures/aarch64_hello.oo /tmp/h.bin -> ELF64, qemu-aarch64 prints "Hello", exit 0
+//        - --backend aarch64 --ast fixtures/aarch64_hello.oo /tmp/h2.bin -> same
+//   4. The in-process binary is the canonical form going forward. oodac.aarch64.ast (v0.225.34) is kept for backward compatibility but is no longer required.
+
+== Why the rename was needed ==
+
+The std/arch_aarch64/ a64_lookup (in aarch64_parse.oo) has the signature `fn a64_lookup_parse(names: List[String], offs: List[Int], name: String) -> Int` and is used heavily in the AST path (aarch64_lower.oo, aarch64_xclosure.oo, etc.). When oodac/aarch64_main.oo imports aarch64_emit_elf.oo (which transitively imports aarch64_codegen.oo -> aarch64_lower.oo -> aarch64_parse.oo), all 10+ callers of a64_lookup_parse are pulled in. Without the rename, a C-emit duplicate-symbol error or type-collision was possible.
+
+== Tag and version ==
+
+Tag v0.225.43 on commit (in-process wiring commit). ooda.pkg version=0.225.43.
+
+== Final state of 9-phase 11/10 plan ==
+
+* Phase 1: cancelled (chs_rt residual, never on critical path)
+* Phase 2: v0.225.32 List[T] (proven)
+* Phase 3: v0.225.33 shape_refuse gate (proven)
+* Phase 5: v0.225.34 AST-path runtime (proven, AST binary now redundant but kept)
+* Phase 6: v0.225.35 AAPCS64 multi-fn (proven)
+* Phase 7: v0.225.40 cross-arch + x86 cvttsd2si fix (proven)
+* Phase 8: v0.225.41 3-arm match, v0.225.42 IDENT-body match (proven)
+* Phase 9: v0.225.43 in-process Tier 1 wiring (proven, no shell-out)
