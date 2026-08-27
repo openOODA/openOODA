@@ -144,3 +144,22 @@ features ported to aarch64:
 The 8 enforcer gates are green. The AAPCS64 X0-X31 plus V0-V31 register
 set is now fully named. The dispatch wiring smoke `aarch64_dispatch_wiring_smoke.oo`
 still asserts the 23-arm ladder.
+
+## 6. Neon-ABI lock smoke (added at 5224a83b)
+
+`ooda/scripts/aarch64_neon_abi_smoke.oo` (64 lines, 27 assertions) directly
+imports `std/arch_aarch64/aarch64_abi.oo` and locks the V0-V31 rules:
+
+  - abi_fp_arg_count is 8 and abi_fp_arg_reg clamps to 0..7.
+  - abi_fp_ret_reg and abi_fp_ret_hi_reg are 0 and 1.
+  - abi_is_fp_callee_saved marks only V16..V31 callee-saved.
+  - abi_valid_fp_reg accepts V0..V31, rejects out-of-range.
+  - abi_fp_indirect_result_reg is 8.
+  - abi_is_fp_arg_reg returns true for V0..V7 only.
+  - Integer callee-saved (X19..X28) and stack alignment stay unchanged.
+
+The smoke typechecks OK on the current build. Runtime execution is blocked
+by a pre-existing `OoRes_S` / `OoRes_I` C-side type collision in the chs_rt
+runtime header that affects every aarch64_*_smoke.oo the same way; not
+introduced by this smoke. The lock fires once the host build environment
+is repaired.
