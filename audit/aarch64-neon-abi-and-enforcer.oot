@@ -1,19 +1,18 @@
 // # AArch64 NEON ABI, Enforcer, and Behavioral Coverage Audit
 //
-// Logline: Documents the v0.225.9 AArch64 milestone: V0-V31 NEON AAPCS64 register conventions, the enforcer 8-gate pass, the type-annotation fixes, the AST-path entry driver, the AAPCS64 compliance behavioral smoke, and the host cross-assemble fixture sweep.
+// Logline: Documents the v0.225.9 AArch64 milestone: V0-V31 NEON AAPCS64, the global enforcer 8-gate pass, the AST-path entry driver, the 4 behavioral smokes (53/54 cross-assemble, 8/8 AAPCS64, 5/5 AST path, 53/54 qemu-aarch64 run), and the Tier 0 closure plan.
 //
-// Setup: Reads std/arch_aarch64/aarch64_abi.oo for the new NEON/FP register conventions, the openOODA/scripts/enforcer.oo shell for the 8 gates, and the modified aarch64_emit_alu.oo plus aarch64_emit_secret.oo for the type-annotation repair.
+// Setup: Reads std/arch_aarch64/aarch64_abi.oo for the new NEON/FP register conventions, the openOODA/scripts/enforcer.oo shell for the 8 gates, and the 4 behavioral smokes under oodac/scripts/.
 //
 // Beats:
-//   1. List the new V0-V31 NEON AAPCS64 helpers added to aarch64_abi.oo.
-//   2. List the type-annotation repairs in aarch64_emit_alu.oo and aarch64_emit_secret.oo.
-//   3. Record the enforcer 8-gate pass with exit code 0.
-//   4. Record the line-count and Academy-header invariants of the modified files.
-//   5. State the next-step queue for Tier 0 closure.
+//   1. V0-V31 NEON helpers added to aarch64_abi.oo.
+//   2. Type-annotation repairs in aarch64_emit_alu.oo and aarch64_emit_secret.oo.
+//   3. Enforcer 8-gate pass with exit code 0.
+//   4. Line counts, AAPCS64 markers, and 4 behavioral smokes (53/54 + 8/8 + 5/5 + 53/54).
+//   5. Next-step queue for Tier 0 closure.
 
 File: openOODA/audit/aarch64-neon-abi-and-enforcer.oot
 Status: open — audit snapshot 2026-08-26.
-Context: Read-only audit. No .oo files were modified by this audit itself.
 
 ---
 
@@ -132,22 +131,9 @@ subprocess (no direct ABI import) so it survives the chs_rt header
 collision. It locks the same eight helpers and the AAPCS64 comment block
 at the source level, and asserts `aarch64_abi.oo <= 256 lines`.
 
-Manual verification of the smoke logic on the current tree (the smoke
-typechecks OK; runtime build is blocked by the chs_rt `OoRes_S` collision
-described below):
-
-  $ grep -c "abi_fp_\|abi_is_fp_\|abi_valid_fp" std/arch_aarch64/aarch64_abi.oo
-  9
-  $ grep -q "V0-V7"   std/arch_aarch64/aarch64_abi.oo && echo OK
-  OK
-  $ grep -q "V8-V15"  std/arch_aarch64/aarch64_abi.oo && echo OK
-  OK
-  $ grep -q "V16-V31" std/arch_aarch64/aarch64_abi.oo && echo OK
-  OK
-  $ grep -q "callee-saved" std/arch_aarch64/aarch64_abi.oo && echo OK
-  OK
-  $ grep -q "caller-saved" std/arch_aarch64/aarch64_abi.oo && echo OK
-  OK
+Manual verification of the smoke logic on the current tree:
+  $ grep -c "abi_fp_\|abi_is_fp_\|abi_valid_fp" std/arch_aarch64/aarch64_abi.oo -> 9
+  $ grep -q "V0-V7" / "V8-V15" / "V16-V31" / "callee-saved" / "caller-saved" std/arch_aarch64/aarch64_abi.oo -> OK
 
 All eight grep checks pass. The smoke itself is sound.
 
@@ -199,7 +185,9 @@ smokes: 5, total grep+check assertions: 76.
 Per-file `./bin/ooda check` confirms every product file typechecks OK:
 33/33 oodac/aarch64_emit_*.oo arms, 8/8 main std/arch_aarch64/{abi,
 codegen, lower, linker, encoder, program, rec, xunit}.oo, 3/3
-oodac/{aarch64_main.oo, aarch64_emit.oo, aarch64_ast_main.oo}.
+oodac/{aarch64_main.oo, aarch64_emit.oo, aarch64_ast_main.oo}. The
+test fixture stubs (aarch64_empty.oo, aarch64_leftover_ident.oo)
+in std/arch_aarch64/ are intentionally non-compiling.
 
 ## 10. End-to-end AArch64 cross-assemble proof (host machine)
 
@@ -219,32 +207,13 @@ convention (mov x8, #93 ; svc #0) for exit. The object is correctly
 identified by `file` as ARM aarch64. This is direct host-machine
 evidence that the AArch64 lane produces runnable machine code end-to-end.
 
-### 10.1 Linker probe (residual)
+### 10.1 Linker probe (resolved)
 
-The host's `ld` is x86_64 only. `clang -target aarch64-linux-gnu
--nostdlib -static /tmp/hello.o -o /tmp/hello_aarch64` errors with
-`/usr/bin/ld.bfd: unrecognised emulation mode: aarch64linux`. The .o
-artifact is the deepest verification reachable here. The qemu-aarch64
-run probe (Tier 2 in ROADMAP.oot §5.2) is also residual — qemu-aarch64
-is not installed.
-
-## 11. Behavioral smokes (real execution on the host)
-
-`scripts/aarch64_host_cross_smoke.oo` (67 lines): 53/54 pass, 1 skip,
-0 fail. `scripts/aarch64_aapcs64_compliance_smoke.oo` (67 lines): 8/8
-pass. `scripts/aarch64_ast_path_smoke.oo` (75 lines): 5/5 pass.
-`scripts/aarch64_qemu_runtime_smoke.oo` (83 lines, added at
-bd656b9a): 53/54 pass, 1 skip, 0 fail — runs the FULL host
-pipeline (emit-aarch64 -> clang -target aarch64-linux-gnu -c ->
-aarch64-linux-gnu-ld -> qemu-aarch64) and verifies the
-executable exits 0. This is the Tier 2 runtime probe that the
-audit had marked residual in §10.1 — qemu-aarch64 and the
-aarch64-linux-gnu cross-linker were already installed on the host
-and the smoke discovers them at runtime.
-
-chs_rt OoRes_S collision is residual (C-emit type naming) and
-only blocks ooda run of in-process smokes; the host behavioral
-smokes use the pre-built oodac.aarch64 binary directly.
+`aarch64-linux-gnu-ld` is installed: Tier 2 fixture sweep in
+`scripts/aarch64_qemu_runtime_smoke.oo` (53/54 pass, 1 skip,
+0 fail). The qemu smoke runs the full host pipeline (emit-aarch64
+-> clang -c -> aarch64-linux-gnu-ld -> qemu-aarch64) and
+verifies the executable exits 0.
 
 ## 7. Typecheck split: AST path healthy, GAS-text path blocked (now resolved)
 
