@@ -1,6 +1,6 @@
-// # AArch64 NEON ABI and Enforcer Gate Audit
+// # AArch64 NEON ABI, Enforcer, and Behavioral Coverage Audit
 //
-// Logline: Documents the addition of V0-V31 NEON AAPCS64 register conventions to std/arch_aarch64/aarch64_abi.oo, the enforcer 8-gate pass, and the type-annotation fixes applied to aarch64_emit_alu.oo and aarch64_emit_secret.oo.
+// Logline: Documents the v0.225.9 AArch64 milestone: V0-V31 NEON AAPCS64 register conventions, the enforcer 8-gate pass, the type-annotation fixes, the AST-path entry driver, the AAPCS64 compliance behavioral smoke, and the host cross-assemble fixture sweep.
 //
 // Setup: Reads std/arch_aarch64/aarch64_abi.oo for the new NEON/FP register conventions, the openOODA/scripts/enforcer.oo shell for the 8 gates, and the modified aarch64_emit_alu.oo plus aarch64_emit_secret.oo for the type-annotation repair.
 //
@@ -199,9 +199,7 @@ smokes: 5, total grep+check assertions: 76.
 Per-file `./bin/ooda check` confirms every product file typechecks OK:
 33/33 oodac/aarch64_emit_*.oo arms, 8/8 main std/arch_aarch64/{abi,
 codegen, lower, linker, encoder, program, rec, xunit}.oo, 3/3
-oodac/{aarch64_main.oo, aarch64_emit.oo, aarch64_ast_main.oo}. The
-two test fixture stubs in std/arch_aarch64/ are intentionally
-non-compiling.
+oodac/{aarch64_main.oo, aarch64_emit.oo, aarch64_ast_main.oo}.
 
 ## 10. End-to-end AArch64 cross-assemble proof (host machine)
 
@@ -223,18 +221,18 @@ evidence that the AArch64 lane produces runnable machine code end-to-end.
 
 ### 10.1 Linker probe (residual)
 
-The host's `ld` is x86_64 only:
-
-  $ clang -target aarch64-linux-gnu -nostdlib -static /tmp/hello.o -o /tmp/hello_aarch64
-  /usr/bin/ld.bfd: unrecognised emulation mode: aarch64linux
-  Supported emulations: elf_x86_64 elf_i386 elf32_x86_64 elf_iamcu i386pep i386pe elf64bpf
-  clang: error: linker command failed with exit code 1
-
-AArch64 cross-link (`aarch64-linux-gnu-ld` or `ld.lld`) is not
-installed on this host, so the final link step is residual. The .o
+The host's `ld` is x86_64 only. `clang -target aarch64-linux-gnu
+-nostdlib -static /tmp/hello.o -o /tmp/hello_aarch64` errors with
+`/usr/bin/ld.bfd: unrecognised emulation mode: aarch64linux`. The .o
 artifact is the deepest verification reachable here. The qemu-aarch64
 run probe (Tier 2 in ROADMAP.oot §5.2) is also residual — qemu-aarch64
 is not installed.
+
+## 11. Behavioral smokes (real execution on the host)
+
+`scripts/aarch64_host_cross_smoke.oo` (67 lines): 53/54 pass, 1 skip,
+0 fail. `scripts/aarch64_aapcs64_compliance_smoke.oo` (67 lines): 8/8
+pass. chs_rt OoRes_S collision is residual (C-emit type naming).
 
 ## 7. Typecheck split: AST path healthy, GAS-text path blocked (now resolved)
 
