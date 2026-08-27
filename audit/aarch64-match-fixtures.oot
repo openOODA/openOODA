@@ -1,0 +1,36 @@
+// # AArch64 pattern-matching fixtures audit (Phase 8 of the 9-phase 11/10 plan)
+//
+// Logline: Records the pattern-matching fixtures and the proven 2-arm Some/None and Ok/Err shape on aarch64.
+//
+// Setup: Re-reads fixtures/aarch64_match_oe2.oo and fixtures/open_match_option_ok.oo.
+//
+// Beats:
+//   1. The Ok/Err 2-arm match with println-in-arm body compiles to running code on aarch64.
+//   2. The Some/None 2-arm match (pre-existing) also runs.
+//   3. The 3-arm shape (Some/None/Ok) and IDENT-body arm form remain unwired.
+
+== Verified ==
+
+* `fixtures/aarch64_match_oe2.oo`: main binds `Ok(99)`, matches `Ok(x) => println(99), Err(_) => println(-1)`, prints the match unit. Output: "99", exit 0.
+* `fixtures/open_match_option_ok.oo`: main binds `Some(1)`, matches `Some(v) => v, None => 0`, prints `y`. Output: "1", exit 0.
+
+== Pipeline ==
+
+* Emit: `./oodac/oodac.aarch64 emit-aarch64 <file.oo>`
+* Assemble: `aarch64-linux-gnu-as -o <file>.o <file>.s`
+* Link: `aarch64-linux-gnu-ld -o <file> <file>.o`
+* Run: `qemu-aarch64 <file>`
+
+== Unwired ==
+
+* 3-arm matches (Some/None/Ok) fall through to aarch64_match_frame_test, which emits a no-output floor. The aarch64_match_match requires each arm body to be `println(INT)`; the `Ok(x) => x` IDENT-body form is not handled.
+* Closures: no closure support in the AArch64 backend today.
+
+== Tag and version ==
+
+Tag v0.225.37 on commit (Phase 8 commit). ooda.pkg version=0.225.37.
+
+== Remaining gap ==
+
+* Phase 9 (Tier 1 wiring): unify aarch64_main.oo to also call the AST path; add a general user-function codegen.
+* The 3-arm match shape and IDENT-body arm form would need a small aarch64_match_one_arm extension.
