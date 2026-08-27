@@ -1,7 +1,7 @@
 # QUICKREF — Universal AI Quick Reference Guide
 
 File: openOODA/QUICKREF.oot
-Syntax cheat sheet, token economy, and behavioral steering for LLM agents.
+Syntax cheat sheet, capability matrix, 7 deadly traps, and 5-step loop.
 
 ## 1. Syntax and Grammar Cheat Sheet
 
@@ -73,75 +73,77 @@ Syntax cheat sheet, token economy, and behavioral steering for LLM agents.
 
 ---
 
-## 4. Capability Security Reference
+## 4. Capability Security Grant Matrix (14 Tokens)
 
-Pass explicit capability tokens. Never use ambient authority.
+Pass explicit unforgeable capability tokens. Zero ambient authority permitted.
 
-| Op             | Required Token      | Fail-closed on |
-|----------------|--------------------|-----------------------|
-| read_file      | &FsReadCap          | missing token |
-| write_file     | &FsWriteCap         | no OODA_FS_WRITEDIR |
-| sys_exec       | &ProcessCap         | forged token |
-| env_get        | &EnvCap             | non-OODA_ key |
-| fetch          | &HttpCap            | missing token |
-| tcp_connect    | &TcpCap             | missing token |
-| now_ms/sleep   | &TimeCap            | missing token |
-| thread_spawn   | &ThreadCap          | missing token |
+| Token             | Scope & Operations                 | Fail-Closed Trigger         |
+|-------------------|------------------------------------|-----------------------------|
+| `&AllocCap`       | Linear arenas, alloc, bulk reset   | Quota exceed / memory leak  |
+| `&FsReadCap`      | read_file, file_size, fs_read_dir  | Path escape / missing token |
+| `&FsWriteCap`     | write_file, fs_mkdir, remove_file  | No OODA_FS_WRITEDIR / leak  |
+| `&ProcessCap`     | sys_exec, sys_spawn, sys_wait      | Forged token / invalid env  |
+| `&SysCap`         | OS primitives, Landlock, rlimit    | Forged token / missing cap  |
+| `&NetCap`         | Generic network socket operations  | Unauthorized network access |
+| `&TcpCap`         | tcp_connect, tcp_listen, tcp_accept| Missing token / denied port |
+| `&UdpCap`         | udp_bind, udp_send, udp_recv       | Missing token / bad address |
+| `&BindCap`        | Socket port binding privileges     | Privileged port / no grant  |
+| `&TimeCap`        | now_ms, sleep_ms, timers           | Missing token               |
+| `&RandCap`        | random_bytes, seed, entropy        | Missing token / weak entropy|
+| `&ThreadCap`      | mutex_lock, thread_spawn, channels | Missing token / thread limit|
+| `&GpuCap`         | gpu_launch, compute shader dispatch| Hardware access denied      |
+| `&UnsafeFFICap`   | oo_import_c, oo_dlopen, raw C ABI  | Sandbox escape / bad symbol |
 
 ---
 
 ## 5. Token Economy — Sparing Ingress Protocol
 
-Context is finite. Use the product CLI to minimize token consumption.
-
-  # Understand a file (costs ~1.3% of raw source volume)
-  ./bin/ooda outline <file.oo>
-
-  # Inspect one symbol (tiny JSON)
-  ./bin/ooda reflect <file.oo> [sym]
-
-  # Typecheck only
-  ./bin/ooda check <file.oo>
-
-NEVER load these into agent context:
-  - ~/.cache/ooda-tmp/**/all*.c     (~700 KB emit dump)
-  - Full ROADMAP.oot                (use digest slice)
-  - Long gcc error walls            (use ooda err-digest)
-  - Full emit-c stdout              (use ooda health)
+Context is finite. Use the product CLI to minimize token consumption:
+- Understand a file: `./bin/ooda outline <file.oo>` (~1.3% of raw source volume).
+- Inspect one symbol: `./bin/ooda reflect <file.oo> [sym]` (tiny JSON).
+- Typecheck only: `./bin/ooda check <file.oo>`.
+NEVER load into context: `~/.cache/ooda-tmp/**/all*.c`, full `ROADMAP.oot`, raw gcc walls, or emit dumps.
 
 ---
 
 ## 6. The 7 Deadly Traps (Zero Tolerance)
 
-Violating any of these causes immediate fail-closed rejection.
-
-  1. No .md, .py, .js, .sh files. Only .oo and .oot.
-  2. All files <= 256 lines. No exceptions.
-  3. Every .oo file has a 4-element Academy header.
-  4. No trailing comma after the last struct field.
-  5. No ambient authority. Explicit capability tokens only.
-  6. Never copy bin/ooda onto oodac/oodac (fork bomb).
-  7. Always double-run tests to prove live execution.
-
----
-
-## 7. The 5-Step Agent Execution Loop
-
-Execute this loop every turn. Do not skip steps.
-
-  1. OBSERVE   ./bin/ooda outline <target.oo>
-  2. CHECK     ./bin/ooda check <target.oo>
-  3. ACT       Edit (<=256 lines, Academy header, no trailing commas)
-  4. LOCK      ./bin/ooda run <test_smoke.oo>   (run twice)
-  5. SHIP      ./bin/ooda run openOODA/scripts/enforcer.oo && commit
+Violating any of these causes immediate fail-closed rejection:
+1. File Law: Pure .oo and .oot only. No .md, .py, .js, .sh outside whitelists.
+2. Line Budget: All files strictly <= 256 lines without exception.
+3. Academy Header: 4-element Academy header on every product .oo file.
+4. Struct Syntax: Zero trailing commas in struct types and struct literals.
+5. Capability Law: Zero ambient authority. Explicit unforgeable capability tokens only.
+6. Binary Identity: Never copy bin/ooda onto oodac/oodac (fork bomb).
+7. Double-Run Verification: Always execute `./bin/ooda run <test.oo>` twice for deterministic memory safety.
 
 ---
 
-## 8. Zero-Trust Verification Laws
+## 7. The Refreshed 5-Step Agent Execution Loop
 
-1. Pure Modules: Keep logic pure. Isolate I/O behind explicit caps.
+Execute this loop sequentially every turn. Never skip steps:
+1. OBSERVE: Inspect `./bin/ooda outline <target.oo>` and current git/disk state.
+2. CHECK: Typecheck with `./bin/ooda check <target.oo>`.
+3. ACT: Apply minimal edits (<= 256 lines, Academy header, no trailing commas, ASD-STE100).
+4. LOCK: Run `./bin/ooda run <test_smoke.oo>` with sequential double-run proof.
+5. SHIP: Validate `./bin/ooda run openOODA/scripts/enforcer.oo` and commit to Git.
+
+---
+
+## 8. Strategic Pillars & Zero-Trust Verification Laws
+
+### 8.1 The 6 Strategic Pillars
+1. Pillar 1 (First Principles): Derive algorithms/invariants from hardware physics, IEEE 754, NIST KATs, RFCs.
+2. Pillar 2 (Boyd's E-M Engine): $E-M = ((T - D) / W) \cdot V$. Maximize instruction thrust $T$, eliminate heap/ARC drag $D$, minimize weight $W$, maximize rebuild velocity $V$.
+3. Pillar 3 (Adversarial Validation & Negative Trust): Active falsification, corrupted inputs, hostile probing, sequential double-run law.
+4. Pillar 4 (Power Law 80/20 Leverage): Focus on high-leverage 20% primitives (SSA mem2reg, flat closures, direct ELF64 emission) delivering 80% capability.
+5. Pillar 5 (Blue Ocean Strategy & Moat): Compile-time SMT check elision, zero ambient authority capabilities, zero-toolchain bootstrapping.
+6. Pillar 6 (Multi-Agent Concurrent Swarm Protocol): Live git/disk sync, cooperative non-clobbering integration, version checkpoints.
+
+### 8.2 Zero-Trust Verification Laws
+1. Pure Modules: Keep logic pure. Isolate I/O behind explicit unforgeable caps.
 2. Fail-Closed Returns: Return Result[T, String] with Err on all failures.
 3. No Trailing Commas in structs or struct literals.
 4. Line Budget: <= 256 lines per file. Split at clean domain seams.
-5. Double-Run Mandate: Execute test suites twice to catch non-determinism.
-6. Negative Trust: Treat all green passes as suspects until proved live.
+5. Double-Run Mandate: Execute test suites twice to catch state leakage and non-determinism.
+6. Negative Trust: Treat all green passes as hypotheses until proved live under adversarial probing.

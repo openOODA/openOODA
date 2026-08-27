@@ -1,14 +1,14 @@
 # FORMAT — Code Academy, Document Standards & Scripting Specification
 
 File: openOODA/FORMAT.oot
-Consolidates DINNER.oot, DINNER_CREATIVE.oot, and SCRIPTING.oot into the canonical formatting standard.
-Every source file in the repository must read as a clear story, not a receipt.
+Canonical formatting standard for code academy headers, process documents, and test harnesses.
+Every source file in the repository must read as a clear narrative structure.
 All human text follows ASD-STE100 Simplified Technical English (RULES.oot 1.10).
 
 ## 0. Repository File Laws
 
 The repository enforces strict zero-tolerance file rules (RULES.oot & START.oot):
-  1. `.oo` ONLY  — All product code, compiler, standard library, CLI, and test scripts.
+  1. `.oo` ONLY  — All product code, compiler, standard library, CLI, tools, and test scripts.
   2. `.oot` ONLY — All documentation, process boards, RFCs, and specifications.
 
 Forbidden extensions:
@@ -18,7 +18,7 @@ Forbidden extensions:
   - No `.md`  — All documentation must use `.oot`.
 
 Line limit: Every `.oo` and `.oot` file must not exceed 256 lines. Comments count.
-Generated `.oot` files are still bounded by 256 and carry `THIS FILE IS GENERATED — DO NOT EDIT` as the status line after `File:`.
+Generated `.oot` files are bounded by 256 and carry `THIS FILE IS GENERATED — DO NOT EDIT`.
 Constraints breed craft. Filth breeds at infinity.
 
 ---
@@ -42,7 +42,7 @@ Every product `.oo` file (compiler, stdlib, CLI, scripts) begins with an Academy
 //
 // residual: <Optional: features wanted but not yet built>
 
-### 1.2 Header Rules
+### 1.2 ASD-STE100 Header Rules
 - Title: Identifies the job of the file, not its file name.
 - Logline: Exactly one honest sentence in ASD-STE100. Present tense. Active voice. End with a period.
 - Setup: Declares what must be true before execution (required capabilities, environment).
@@ -78,7 +78,7 @@ File: openOODA/<NAME>.oot
 ### 2.2 Section Structure & Formatting
 - Title & Markers: H1 heading with board name and domain, followed by file path and context marker.
 - Numbered & Topic Headings: Use `## 1.`, `### 1.1` or topic headers to maintain visual hierarchy.
-- Language (ASD-STE100, RULES.oot 1.10): Required for all boards, RFCs, the public guide, and agent handoffs.
+- Language (ASD-STE100, RULES.oot 1.10): Required for all boards, RFCs, guides, and handoffs.
   Use short sentences. Put one thought in each sentence. Use simple words.
   Use the active voice. Do not use slang, jokes, or metaphors.
   Explain a technical term the first time you use it.
@@ -93,9 +93,9 @@ File: openOODA/<NAME>.oot
 
 ---
 
-## 3. Part 3: .oo Script & Smoke Test Conventions
+## 3. Part 3: .oo Script, Smoke Test & Adversarial Verification Conventions
 
-All test scripts, proof-of-work harnesses, and maintenance tools live under `ooda/scripts/` as pure `.oo` files.
+All test scripts, proof harnesses, and maintenance tools live under `ooda/scripts/` as pure `.oo` files.
 
 ### 3.1 Five-Part File Structure
 Every `.oo` script follows five parts in order:
@@ -109,14 +109,25 @@ Every `.oo` script follows five parts in order:
 Scripts execute within the capability security model (SECURITY.oot). The runtime injects tokens directly into `main`:
 - `pub fn main(p: &ProcessCap)` — For executing subprocesses and commands.
 - `pub fn main(p: &ProcessCap, fs: &FsReadCap)` — For reading files and directories.
-- `pub fn main(p: &ProcessCap, fs: &FsReadCap, fsW: &FsWriteCap)` — For workspace mutation/cleanup.
+- `pub fn main(p: &ProcessCap, fs: &FsReadCap, fsW: &FsWriteCap)` — For workspace mutation and cleanup.
 - `pub fn main(p: &ProcessCap, fs: &FsReadCap, env: &EnvCap)` — For inspecting environment variables.
+- `pub fn main(alloc: &AllocCap)` — For linear arena allocations and bulk memory management.
+- `pub fn main(net: &NetCap, tcp: &TcpCap)` — For network communications and socket tests.
+- `pub fn main(t: &TimeCap, r: &RandCap)` — For monotonic time checks and PRNG testing.
+- `pub fn main(th: &ThreadCap)` — For concurrency, mutex locks, and thread dispatch tests.
 
 Rules:
 - Never mint capabilities inside a script. Rely strictly on runtime injection.
 - Request only the minimum capability tokens required (least privilege).
 
-### 3.3 Test Scenario Vocabulary
+### 3.3 Adversarial Validation & Negative Trust Probing (Pillar 3)
+- Hostile Boundary Probing: Test suites must actively probe invalid inputs, corrupted tokens, and boundary overflows.
+- Negative Trust Verification: Test fail-closed paths with mutated tags, forged capability tokens, and unauthorized syscalls.
+- Sequential Double-Run Execution Law:
+  Always execute test targets twice sequentially in fresh process instances (`./bin/ooda run <test.oo>`).
+  This proves deterministic memory safety, absence of uninitialized memory leaks, and zero ambient state contamination.
+
+### 3.4 Test Scenario Vocabulary
 Scripts use the assertion vocabulary provided by `std/scenario.oo`:
 - `scenario(p, fs, name)` — Opens a named test story and warms the runner.
 - `check(p, cmd, within)` — Executes a command with timeout and fails closed on error.
@@ -133,7 +144,7 @@ Scripts use the assertion vocabulary provided by `std/scenario.oo`:
   - `expect_equal(a, b)` — Asserts string equality.
   - `expect_lt(a, b)` — Asserts integer less-than relationship.
 
-### 3.4 Script Anti-Patterns (Strictly Forbidden)
+### 3.5 Script Anti-Patterns (Strictly Forbidden)
 - DO NOT create `.oos` or `.sh` scripts. All scripts are pure `.oo`.
 - DO NOT write `if r.is_err() { fail = 1; }` chains in `main`; use `expect_*` helpers.
 - DO NOT invoke raw `process_exec` outside `main` when higher-level helpers (`sh_*`) exist.
@@ -141,9 +152,9 @@ Scripts use the assertion vocabulary provided by `std/scenario.oo`:
 - DO NOT print "Test 1:", "Test 2:"; use descriptive scenario names.
 - DO NOT write test scripts exceeding 256 lines; split complex harnesses into distinct smoke files.
 
-### 3.5 Automated Verification
+### 3.6 Automated Verification
 Run `ooda/scripts/script_lint.oo` and `openOODA/scripts/enforcer.oo` before committing:
-- Validates Academy headers (Title, Logline, Beats).
-- Enforces zero forbidden files (`.py`, `.sh`).
+- Validates Academy headers (Title, Logline, Setup, Beats).
+- Enforces zero forbidden files (`.py`, `.sh`, `.md`, `.js`).
 - Checks that `process_exec` is not called outside `main`.
 - Enforces strict <= 256 line limit on all `.oo` and `.oot` files.

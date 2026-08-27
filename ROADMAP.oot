@@ -1,17 +1,20 @@
-# ROADMAP — Release Pin and Rebuild
+# ROADMAP — Release Pin, Rebuild & Multi-Agent Staged Sprint Plan
 
 File: openOODA/ROADMAP.oot
-This board is the plan. It is not proof.
+Active sprint plan, rebuild verification gates, and feature milestone locks.
+All engineering execution aligns with the 6 Strategic Pillars, Boyd's E-M performance engine, and Power Law 80/20 leverage.
+This board is the plan. Proof of completion lives in SHIPPED.oot (produced by `scripts/generate_shipped.oo`).
 
-## 1. Pin
+## 1. Release Pin & State
 
 Release: v0.211.3. Product libraries: `ooda/std`. GitHub `openOODA/std` archived.
 Product tip (ooda): main. Boards tip: main.
-Named emit+gcc+run still required. A folder on disk is not a volume cert.
+Named emit+gcc+run still required. A folder on disk is not a volume certification.
 Live pin, timings, and backend locks: SHIPPED.oot after `scripts/generate_shipped.oo`.
 
-## 2. Rebuild
+## 2. Rebuild Velocity (Pillar 2 Boyd's E-M Performance Engine)
 
+Microsecond rebuild velocity ($V$) is verified through the pure self-hosted bootstrap:
 From `ooda/`:
   export PURE_NO_ARC=0
   OODAC_BIN=./bootstrap/seed/oodac bash bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
@@ -19,30 +22,31 @@ From `ooda/`:
   ./oodac/oodac check oodac/main.oo
 Official rebuild is `bootstrap/oodac_pure_build`. `PURE_SKIP_CHECK=1` is opt-in only.
 
-## 3. Status Words
+## 3. Status Vocabulary
 
-done — works, proved on disk by a named lock
-smoke — small check passes
-partial — part works
-residual — wanted in NORTHSTAR, not yet built
-open — active sprint task
-stale — old leftover words; a later proof closed them
+- `done` — Works, proved on disk by a named lock.
+- `smoke` — Small verification check passes cleanly.
+- `partial` — Partially implemented and compiling.
+- `residual` — Wanted in NORTHSTAR or MOONSHOTS, not yet built.
+- `open` — In progress during active multi-agent sprint.
+- `stale` — Leftover words; a later proof closed them.
 
-## 4. Product Path
+## 4. Product Path & Strategic Pillars Alignment
 
-C emit + gcc + `chs_rt` is the product path.
+- Product Path: C emit + gcc + `chs_rt` runtime is the primary product path.
+- Pillar 1 (First Principles): Derive AST nodes and compiler transforms directly from hardware invariants and RFCs.
+- Pillar 2 (Boyd's E-M Engine): $E-M = ((T - D) / W) \cdot V$. Maximize instruction thrust ($T$), eliminate ARC/heap drag ($D$), minimize binary weight ($W$), and accelerate rebuild velocity ($V$).
+- Pillar 3 (Adversarial Validation): All features must pass the sequential Double-Run execution law (`./bin/ooda run <test.oo>`) in fresh processes.
+- Pillar 4 (Power Law 80/20): Concentrate compiler architecture on high-leverage primitives (SSA mem2reg, flat closures, direct ELF64 emission, linear arena memory).
+- Pillar 5 (Blue Ocean Strategy): Defend zero ambient authority capability security model and zero-toolchain self-bootstrapping.
+- Pillar 6 (Multi-Agent Swarm Protocol): Coordinate multi-agent development with continuous git awareness and non-clobbering integration.
 
-## 5. Active Sprint
+## 5. Active Sprint: Staged Backend Execution Plan
 
-These `[ ]` rows are the active sprint. A checked box is not proof; re-run the named lock.
-The x86 staged plan now locks per language feature rather than per emit-x86 template. Per-template
-locks (the 76 `x86_*_smoke.oo` files) fold into the feature they implement and become regression
-tests, not gates. A feature is shipped only when its row's smoke passes on both `emit-x86` (token
-path) and `emit-x86-ssa` (SSA path).
+Each feature row requires a named smoke lock. A checked box is not proof; re-run the smoke test.
+A feature is certified only when its row's smoke passes on both `emit-x86` (token path) and `emit-x86-ssa` (SSA path) under double-run execution.
 
-### 5.1 x86 Backend staged plan (per-language-feature)
-
-Each language feature has one row with one named smoke that locks the feature across BOTH emit-x86 (token path) and emit-x86-ssa (SSA path). Per-template locks are folded into the feature they implement.
+### 5.1 x86 Backend Staged Plan (Per-Language-Feature)
 
 #### Phase A — Foundation (Tier 5)
 - [ ] Tier 5 #24 — RFC 0011: AST-based pipeline using std/arch_x86/x86_codegen.oo → `scripts/x86_ast_typed_smoke.oo` [RFC 0011]
@@ -50,67 +54,64 @@ Each language feature has one row with one named smoke that locks the feature ac
 - [ ] Tier 5 #26 — per-block register remap in x86_ssa_emit.oo → `scripts/x86_ssa_block_remap_smoke.oo`
 - [ ] Tier 5 #27 — delete 22-token-matcher ladder in x86_emit.oo → `scripts/x86_no_template_smoke.oo` [RFC 0011]
 
-#### Phase B — Language features (per-feature)
-For each feature, one row:
-- [ ] **Int** println (basic Int arg, signed Int arg, simple Int arith) → `scripts/x86_ssa_int_smoke.oo` + `scripts/x86_int_smoke.oo` (already passes)
-- [ ] **Float** IEEE-754 arith (real, not the hardcoded x*y+1.0) → `scripts/x86_ssa_float_runtime_smoke.oo` + `scripts/x86_ssa_float_smoke.oo`
+#### Phase B — Language Features (Per-Feature)
+- [ ] **Int** println (basic Int arg, signed Int arg, simple Int arith) → `scripts/x86_ssa_int_smoke.oo` + `scripts/x86_int_smoke.oo` (passes)
+- [ ] **Float** IEEE-754 arith (real, not hardcoded x*y+1.0) → `scripts/x86_ssa_float_runtime_smoke.oo` + `scripts/x86_ssa_float_smoke.oo`
 - [ ] **String** println of literal → `scripts/x86_ssa_string_smoke.oo`
 - [ ] **List[T]** list_new/list_push/list_get/list_set/list_len → `scripts/x86_ssa_list_smoke.oo`
 - [ ] **Struct** field init + field read + field write → `scripts/x86_ssa_struct_smoke.oo`
-- [ ] **Option/Result** 2-8 arm match → `scripts/x86_ssa_match_smoke.oo` (3-arm at minimum)
-- [ ] **While** 6 OPs (< <= > >= == !=) → `scripts/x86_while_general_smoke.oo` (already exists; assert 6 OPs)
+- [ ] **Option/Result** 2-8 arm match → `scripts/x86_ssa_match_smoke.oo` (3-arm minimum)
+- [ ] **While** 6 OPs (< <= > >= == !=) → `scripts/x86_while_general_smoke.oo`
 - [ ] **For** for x in 0..N → `scripts/x86_for_smoke.oo`
 - [ ] **Function call** 1-6 arg SysV → `scripts/x86_ssa_call_smoke.oo`
-- [ ] **Bitwise** & | ^ << >> → `scripts/x86_bitwise_smoke.oo` (new)
-- [ ] **Capability** &SysCap, &FsCap, &ThreadCap → `scripts/x86_cap_smoke.oo` (new)
+- [ ] **Bitwise** & | ^ << >> → `scripts/x86_bitwise_smoke.oo`
+- [ ] **Capability** &SysCap, &FsCap, &AllocCap, &ThreadCap → `scripts/x86_cap_smoke.oo`
 - [ ] **Contract** requires/ensures/spec/verify → `scripts/x86_ssa_contract_smoke.oo`
 - [ ] **SECRET** taint on 6 sinks → `scripts/x86_ssa_secret_smoke.oo`
 
-#### Phase C — Production glue (Tier 6/7)
+#### Phase C — Production Glue (Tier 6/7)
 - [ ] Tier 6 #29 — multi-file emit → `scripts/x86_ssa_multi_smoke.oo` [RFC 0012]
-- [ ] Tier 6 #31 — typed error reporter (-->, ^) → `scripts/x86_diag_smoke.oo`
+- [ ] Tier 6 #31 — typed error reporter (--> , ^) → `scripts/x86_diag_smoke.oo`
 - [ ] Tier 7 #32 — `--x86-elf-pure` CLI flag → `scripts/x86_direct_elf_smoke.oo`
 - [ ] Tier 7 #33 — x86 runtime registry consolidation → `scripts/x86_runtime_registry_smoke.oo`
 - [ ] Tier 7 #34 — bit-identical reproducibility → `scripts/x86_bit_identical_smoke.oo`
 
-#### Phase D — Parallel backends (AArch64)
+#### Phase D — Parallel Backends (AArch64)
 - [ ] AArch64 0-matcher gap closure (Tier 0 in audit/aarch64-investigations.oot) → reuses audit/aarch64-investigations.oot §6 plan
 - [ ] Deprecate hand-written GAS path; call std/arch_aarch64/aarch64_codegen.oo directly
 
 #### Phase E — Quality (Tier 8/9)
-- [ ] Tier 8 #35 — Academy headers (already passing per Subagent B; just keep `dinner_lint` running)
-- [ ] Tier 8 #36 — dinner_lint clean (already passing per Subagent K)
+- [ ] Tier 8 #35 — Academy headers (keep `dinner_lint` running)
+- [ ] Tier 8 #36 — dinner_lint clean
 - [ ] Tier 8 #39 — convert all 88 x86 fixtures + 76 smokes to AST-based regression
 - [ ] Tier 8 #42 — AArch64 parallel investigation complete
 - [ ] Tier 9 #45 — C-vs-x86 run parity smoke
-- [ ] Tier 9 #46 — simd smoke (mulsd/addsd/subsd/divsd on battery of FP inputs)
-- [ ] Tier 9 #47 — threads/cap smoke (real ThreadCap wiring)
+- [ ] Tier 9 #46 — SIMD smoke (mulsd/addsd/subsd/divsd on battery of FP inputs)
+- [ ] Tier 9 #47 — threads/capability smoke (real ThreadCap/AllocCap wiring)
 - [ ] Tier 9 #50 — bit-identical cross-host smoke
 
-After the lock: a feature is shipped when its row's smoke passes on both emit-x86 and emit-x86-ssa. The per-template locks (the 76 `x86_*_smoke.oo` files) become regression tests, not gates.
+Out of scope until later: full general symbolic SMT, hardware enclaves (SGX/TDX/SEV), device GPU dispatch, browser WASM host. C emit + gcc + chs_rt stays the everyday product path.
 
-Out of scope until later: full general symbolic SMT, hardware enclaves (SGX/TDX/SEV), device GPU dispatch, browser WASM host, full gcc-parity LLVM oodac. C emit + gcc + chs_rt stays the everyday product path.
+### 5.2 AArch64 Backend Staged Plan (Per-Language-Feature)
 
-### 5.2 AArch64 Backend staged plan (per-language-feature)
+Plan and analysis: `audit/aarch64-investigations.oot`. AArch64 features 0% silent-miscompile by static analysis.
+The std-level `std/arch_aarch64/aarch64_codegen.oo` is wired into `aarch64_emit_elf.oo`.
 
-Plan and analysis: `audit/aarch64-investigations.oot` (generated 2026-08-25 by Subagent S). AArch64 is in a structurally better state than x86: 0% silent-miscompile by static analysis (no hardcoded bodies, no missing field validation, every ERR site is fail-closed), the std-level `std/arch_aarch64/aarch64_codegen.oo` is already wired into `aarch64_emit_elf.oo:13` (vs. x86 where `std/arch_x86/` is NOT wired into `oodac emit-x86`), and there is no SSA path so the 14 SSA ASM-FAILs from the x86 plan do not apply.
+Tier 0 — Close 0-matcher gap across all emit modules — refuse-don't-miscompile.
+Tier 1 — Deprecate hand-written GAS path in `aarch64_emit_sys.oo`; call `aarch64_compile_to_elf` directly.
+Tier 2 — Host probe: `qemu-aarch64 -L /usr/aarch64-linux-gnu ./a.bin` on 53 fixtures.
+Tier 3 — Move 53 aarch64 fixtures to `ooda/fixtures-aarch64/`.
+Tier 4 — Close 0-matcher gap to documented ladder.
 
-The AArch64 owner's plan is parallel to the x86 §5.1:
-
-Tier 0 — close the 0-matcher gap (aarch64_emit_int.oo, _struct.oo, _list.oo, _float.oo, _match.oo, _loop.oo, _for.oo, _rec.oo, _free.oo, _heap.oo, _opt.oo, _typed_let.oo, _mut.oo, _multi.oo, _fold.oo, _greet.oo) — refuse-don't-miscompile.
-Tier 1 — deprecate the hand-written GAS path in `aarch64_emit_sys.oo:60`; call `aarch64_compile_to_elf` from `aarch64_emit_elf.oo` directly.
-Tier 2 — host probe: `qemu-aarch64 -L /usr/aarch64-linux-gnu ./a.bin` on each of the 53 aarch64_*.oo fixtures. Categorize as COMPILED / REFUSED / ASM-FAIL / RUN-OK. Expected 0% silent-miscompile.
-Tier 3 — move 53 aarch64_*.oo fixtures from `ooda/fixtures/` to `ooda/fixtures-aarch64/` (parallel to the x86 `*_lib.oo` fix in §5.1).
-Tier 4 — close the 0-matcher gap to a documented ladder. Enumerate in `audit/aarch64-investigations.oot` after Tier 0 ships.
-
-Out of scope: device GPU dispatch, hardware enclaves, browser WASM, full general symbolic SMT. C emit + gcc + chs_rt stays the everyday product path.
+Out of scope: device GPU dispatch, hardware enclaves, browser WASM, full general symbolic SMT.
 
 ## 6. Cross References
 
 - Law: `openOODA/RULES.oot`
 - Proof: `openOODA/SHIPPED.oot` via `scripts/generate_shipped.oo`
 - Architecture: `openOODA/NORTHSTAR.oot`
-- Later: `openOODA/MOONSHOTS.oot`
+- Horizons: `openOODA/MOONSHOTS.oot`
+- Security & Capabilities: `openOODA/SECURITY.oot`
 - Smokes: `../ooda/scripts/*_smoke.oo`
 - x86 deep-dive: `audit/x86-investigations.oot`
 - x86 std audit: `audit/x86-std-audit.oot`
