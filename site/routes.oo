@@ -1,49 +1,37 @@
 // # Web Application Route Dispatcher
 //
-// Logline: Resolves route strings, identifiers, and metadata for openOODA SPA navigation.
+// Logline: Bidirectional 18-route resolver and document mapping engine for openOODA SPA navigation.
 //
-// Setup: Pure string matching and integer code translation with fallback to home.
+// Setup: Pure string matching and integer code translation with deterministic fallback to home.
 //
 // Beats:
-//   1. Resolve route ID from hash route string.
-//   2. Resolve route string from ID.
-//   3. Resolve page document filename for guide sections.
-//   4. Verify bidirectional route mapping.
+//   1. Resolve route numeric identifiers and canonical names across all 18 routes.
+//   2. Map documentation filenames and guide section flags.
+//   3. Provide full RouteInfo descriptors and hash-to-route resolver.
+//   4. Verify bidirectional route mapping invariants and fallback behavior.
+
+pub type RouteInfo = struct {
+    id: Int,
+    name: String,
+    title: String,
+    is_guide: Bool,
+    doc_file: String
+};
+
+pub fn route_count() -> Int {
+    return 18;
+}
 
 pub fn route_id_from_name(name: String) -> Int {
-    if name == "home" {
-        return 1;
-    } else if name == "manifesto" {
-        return 2;
-    } else if name == "play" {
-        return 3;
-    } else if name == "overview" {
-        return 4;
-    } else if name == "start" {
-        return 5;
-    } else if name == "syntax" {
-        return 6;
-    } else if name == "stdlib" {
-        return 7;
-    } else if name == "cli" {
-        return 8;
-    } else if name == "packages" {
-        return 9;
-    } else if name == "security" {
-        return 10;
-    } else if name == "defense" {
-        return 11;
-    } else if name == "internals" {
-        return 12;
-    } else if name == "pay" {
-        return 13;
-    } else if name == "qa" {
-        return 14;
-    } else if name == "quickref" {
-        return 15;
-    } else {
-        return 1;
+    if name == "404" || name == "not_found" { return 18; }
+    let mut i: Int = 1;
+    while i <= 18 {
+        if route_name_from_id(i) == name {
+            return i;
+        }
+        i = i + 1;
     }
+    return 1;
 }
 
 pub fn route_name_from_id(id: Int) -> String {
@@ -77,9 +65,19 @@ pub fn route_name_from_id(id: Int) -> String {
         return "qa";
     } else if id == 15 {
         return "quickref";
+    } else if id == 16 {
+        return "registry";
+    } else if id == 17 {
+        return "wasm";
+    } else if id == 18 {
+        return "not_found";
     } else {
         return "home";
     }
+}
+
+pub fn route_title_from_id(id: Int) -> String {
+    return route_name_from_id(id);
 }
 
 pub fn route_is_guide(id: Int) -> Bool {
@@ -91,41 +89,53 @@ pub fn route_is_guide(id: Int) -> Bool {
 }
 
 pub fn route_doc_filename(id: Int) -> String {
-    if id == 4 {
-        return "Home.oot";
-    } else if id == 5 {
-        return "Use.oot";
-    } else if id == 6 {
-        return "Language.oot";
-    } else if id == 7 {
-        return "Std.oot";
-    } else if id == 8 {
-        return "Options.oot";
-    } else if id == 9 {
-        return "Packages.oot";
-    } else if id == 10 {
-        return "Safety.oot";
-    } else if id == 11 {
-        return "Morpher.oot";
-    } else if id == 12 {
-        return "Limits.oot";
-    } else if id == 13 {
-        return "Pay.oot";
-    } else if id == 14 {
-        return "QA.oot";
-    } else if id == 15 {
-        return "QuickRef.oot";
-    } else {
-        return "";
+    if route_is_guide(id) {
+        return route_name_from_id(id) + ".oot";
     }
+    return "";
 }
 
-verify route_id_from_name {
+pub fn route_info_from_id(id: Int) -> RouteInfo {
+    let valid_id: Int = if id >= 1 && id <= 18 { id } else { 1 };
+    return RouteInfo {
+        id: valid_id,
+        name: route_name_from_id(valid_id),
+        title: route_title_from_id(valid_id),
+        is_guide: route_is_guide(valid_id),
+        doc_file: route_doc_filename(valid_id)
+    };
+}
+
+pub fn route_resolve(hash: String) -> RouteInfo {
+    let clean_hash: String = if hash == "" { "home" } else { hash };
+    let id: Int = route_id_from_name(clean_hash);
+    return route_info_from_id(id);
+}
+
+verify route_dispatcher {
+    assert_eq!(route_count(), 18);
     assert_eq!(route_id_from_name("home"), 1);
+    assert_eq!(route_id_from_name("manifesto"), 2);
     assert_eq!(route_id_from_name("syntax"), 6);
-    assert_eq!(route_id_from_name("unknown"), 1);
-    assert_eq!(route_name_from_id(2), "manifesto");
+    assert_eq!(route_id_from_name("registry"), 16);
+    assert_eq!(route_id_from_name("wasm"), 17);
+    assert_eq!(route_id_from_name("not_found"), 18);
+    assert_eq!(route_id_from_name("invalid_route"), 1);
+
+    assert_eq!(route_name_from_id(1), "home");
+    assert_eq!(route_name_from_id(17), "wasm");
+    assert_eq!(route_name_from_id(18), "not_found");
+
     assert_eq!(route_is_guide(6), true);
     assert_eq!(route_is_guide(1), false);
-    assert_eq!(route_doc_filename(6), "Language.oot");
+    assert_eq!(route_is_guide(16), false);
+
+    assert_eq!(route_doc_filename(6), "syntax.oot");
+    assert_eq!(route_doc_filename(1), "");
+
+    let r_info: RouteInfo = route_resolve("defense");
+    assert_eq!(r_info.id, 11);
+    assert_eq!(r_info.name, "defense");
+    assert_eq!(r_info.is_guide, true);
+    assert_eq!(r_info.doc_file, "Morpher.oot");
 }

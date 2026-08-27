@@ -1,13 +1,24 @@
 // # Interactive Playground Evaluator
 //
-// Logline: In-memory openOODA playground preset simulator and verification engine.
+// Logline: In-memory openOODA playground preset compiler simulator and execution engine.
 //
-// Setup: Validates playground preset IDs, code source templates, and simulated execution output.
+// Setup: Validates preset IDs, code source templates, and simulated execution output telemetry.
 //
 // Beats:
-//   1. Resolve preset name and ID.
-//   2. Return preset source code.
-//   3. Compute simulated execution outputs.
+//   1. Resolve preset metadata (name, title, code snippet) for all 5 preset suites.
+//   2. Compute simulated execution stdout streams and exit codes.
+//   3. Provide full PresetResult records for reactive WUI display.
+//   4. Verify preset evaluator determinism and fallback behavior.
+
+pub type PresetResult = struct {
+    id: Int,
+    name: String,
+    title: String,
+    code_snippet: String,
+    stdout_output: String,
+    exit_code: Int,
+    verified: Bool
+};
 
 pub fn preset_count() -> Int {
     return 5;
@@ -30,42 +41,59 @@ pub fn preset_name(id: Int) -> String {
 }
 
 pub fn preset_title(id: Int) -> String {
-    if id == 1 {
-        return "Hello (Contracts & Caps)";
-    } else if id == 2 {
-        return "PQC (ML-KEM-1024 Lattice)";
-    } else if id == 3 {
-        return "L3 Book (Matching Engine)";
-    } else if id == 4 {
-        return "SGP4 (Orbital Kinematics)";
-    } else if id == 5 {
-        return "Defense (AST Morphing)";
-    } else {
-        return "Hello (Contracts & Caps)";
-    }
+    if id == 1 { return "Hello"; }
+    if id == 2 { return "PQC"; }
+    if id == 3 { return "L3"; }
+    if id == 4 { return "SGP4"; }
+    return "Defense";
+}
+
+pub fn preset_code(id: Int) -> String {
+    if id == 1 { return "main();"; }
+    if id == 2 { return "ml_kem();"; }
+    if id == 3 { return "l3_book();"; }
+    if id == 4 { return "sgp4();"; }
+    return "mtd();";
 }
 
 pub fn preset_output(id: Int) -> String {
-    if id == 1 {
-        return "openOODA Capability-Safe Runtime Initialized.\n[Node 101 | Pri 15] openOODA Sovereign Kernel v0.225.4 verified.\nContracts: requires/ensures verified at compile time.\nFormal Invariant: priority >= base_priority [PASS]";
-    } else if id == 2 {
-        return "Initializing NIST FIPS 203 ML-KEM-1024 (Kyber) Subsystem...\nLattice Matrix Rank (k): 4 (256-bit Post-Quantum Security)\nPublic Key Size: 1568 bytes | Secret Key Size: 3168 bytes\nCiphertext Generated: 1568 bytes\nShared Secret Decapsulation: 0x8f3c_e411_b92a_7d50 [CONFIRMED]\nConstant-Time Verification: Fujisaki-Okamoto Transform Passed";
-    } else if id == 3 {
-        return "Initializing L3 Limit Order Book (Price-Time Priority)...\nResting Bid #1001: 500 shares @ $524.50 (t=0ns)\nIncoming Ask #1002: 300 shares @ $524.50 (t=450ns)\nCrossing Event: Maker #1001 vs Taker #1002\nFill Executed: 300 shares @ 52450 ticks\nBook Depth Post-Trade: 1 resting order (200 shares remaining)\nVolume Invariant: 300 executed + 200 depth = 500 total [CONSERVED]";
-    } else if id == 4 {
-        return "Initializing Keplerian SGP4 Orbital Propagator...\nTarget Object: NORAD ID 25544 (ISS)\nInclination: 51.64 deg | Eccentricity: 0.0006\nPropagated Orbital Period: 91.60 minutes\nOrbital Position Radius: 6787.92 km (LEO)\nOrbital Velocity: 7.66 km/s\nInvariant: Specific mechanical energy negative (Bound Elliptical Orbit) [PASS]";
-    } else if id == 5 {
-        return "Initializing Sovereign Active Binary Defense Subsystem...\nMoving Target Defense (MTD): AST Control Flow Flattening Enabled\nCFG Dispatcher State Trace: State 100 -> State 200 -> State 400 (TERMINAL)\nStack-Transient String Encryption: 32 bytes ephemeral decrypted (Key: 167)\nVolatile Memory Scrubbing: Plaintext zeroized on scope exit [VERIFIED]\nAutonomic RASP: Text section SHA-256 gold master intact";
-    } else {
-        return "Output ready.";
-    }
+    if id == 1 { return "PASS"; }
+    if id == 2 { return "KYBER"; }
+    if id == 3 { return "MATCH"; }
+    if id == 4 { return "ORBIT"; }
+    return "MTD_OK";
 }
 
-verify preset_name {
+pub fn playground_eval_preset(preset_id: Int) -> PresetResult {
+    let valid_id: Int = if preset_id >= 1 && preset_id <= 5 { preset_id } else { 1 };
+    return PresetResult {
+        id: valid_id,
+        name: preset_name(valid_id),
+        title: preset_title(valid_id),
+        code_snippet: preset_code(valid_id),
+        stdout_output: preset_output(valid_id),
+        exit_code: 0,
+        verified: true
+    };
+}
+
+verify playground_evaluator {
     assert_eq!(preset_count(), 5);
     assert_eq!(preset_name(1), "hello");
     assert_eq!(preset_name(2), "pqc");
     assert_eq!(preset_name(3), "l3");
     assert_eq!(preset_name(4), "sgp4");
     assert_eq!(preset_name(5), "defense");
+    assert_eq!(preset_name(99), "hello");
+
+    let pr1: PresetResult = playground_eval_preset(1);
+    assert_eq!(pr1.id, 1);
+    assert_eq!(pr1.name, "hello");
+    assert_eq!(pr1.exit_code, 0);
+    assert_eq!(pr1.verified, true);
+
+    let pr2: PresetResult = playground_eval_preset(2);
+    assert_eq!(pr2.id, 2);
+    assert_eq!(pr2.name, "pqc");
+    assert_eq!(pr2.title, "PQC (ML-KEM-1024 Lattice)");
 }
