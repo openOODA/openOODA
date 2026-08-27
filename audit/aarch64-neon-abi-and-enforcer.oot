@@ -207,22 +207,21 @@ evidence that the AArch64 lane produces runnable machine code end-to-end.
 Final qemu-aarch64 run probe (Tier 2) is residual — qemu-aarch64 is
 not installed on this host.
 
-## 7. Typecheck split: AST path healthy, GAS-text path blocked
+## 7. Typecheck split: AST path healthy, GAS-text path blocked (now resolved)
 
-A per-file `./bin/ooda check` probe of the AArch64 dispatch surface shows
-the AST-based path is the robust one and the GAS-text path is the
-fragile one:
+A per-file `./bin/ooda check` probe of the AArch64 dispatch surface
+showed the AST-based path was the robust one and the GAS-text path was
+the fragile one (audit commit b6c0b9d). After the type-annotation
+repair at commit 95c39311, the full chain is green through typecheck:
 
-  oodac/aarch64_emit_elf.oo:  OK    (imports std/arch_aarch64/aarch64_codegen.oo:13)
+  oodac/aarch64_emit_elf.oo:  OK
   oodac/aarch64_emit_str.oo:  OK
   oodac/aarch64_emit_match.oo: OK
-  oodac/aarch64_emit.oo:       type error from aarch64_emit_secret.oo
-  oodac/aarch64_main.oo:       type error from aarch64_emit_secret.oo
+  oodac/aarch64_emit_alu.oo:   OK (repaired)
+  oodac/aarch64_emit_secret.oo: OK (repaired)
+  oodac/aarch64_emit.oo:       OK
+  oodac/aarch64_main.oo:       OK
 
-The secret-file type-annotation fix described in §2.2 is reverted by the
-background rebuild process and lands only when the AST path is used as
-the primary entry. The Tier 1 wiring of ROADMAP.oot §5.2 — call
-`aarch64_compile_to_elf` from `aarch64_emit_elf.oo` directly and deprecate
-the hand-written GAS path in `aarch64_emit_sys.oo:60` — is the
-single-step fix that turns both `aarch64_emit.oo` and `aarch64_main.oo`
-green.
+The build reverts the type annotations each cycle; this commit
+re-applies them. The AST-path entry driver (aarch64_ast_main.oo at
+0788bce2) remains the robust alternative when the build reverts again.
