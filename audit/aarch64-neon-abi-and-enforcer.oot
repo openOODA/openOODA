@@ -1,0 +1,146 @@
+// # AArch64 NEON ABI and Enforcer Gate Audit
+//
+// Logline: Documents the addition of V0-V31 NEON AAPCS64 register conventions to std/arch_aarch64/aarch64_abi.oo, the enforcer 8-gate pass, and the type-annotation fixes applied to aarch64_emit_alu.oo and aarch64_emit_secret.oo.
+//
+// Setup: Reads std/arch_aarch64/aarch64_abi.oo for the new NEON/FP register conventions, the openOODA/scripts/enforcer.oo shell for the 8 gates, and the modified aarch64_emit_alu.oo plus aarch64_emit_secret.oo for the type-annotation repair.
+//
+// Beats:
+//   1. List the new V0-V31 NEON AAPCS64 helpers added to aarch64_abi.oo.
+//   2. List the type-annotation repairs in aarch64_emit_alu.oo and aarch64_emit_secret.oo.
+//   3. Record the enforcer 8-gate pass with exit code 0.
+//   4. Record the line-count and Academy-header invariants of the modified files.
+//   5. State the next-step queue for Tier 0 closure.
+
+File: openOODA/audit/aarch64-neon-abi-and-enforcer.oot
+Status: open — audit snapshot 2026-08-26.
+Context: Read-only audit. No .oo files were modified by this audit itself.
+
+---
+
+## 1. New V0-V31 NEON AAPCS64 helpers
+
+The file `ooda/std/arch_aarch64/aarch64_abi.oo` grew from 97 lines to 162 lines after
+the addition of eight new public functions. Each function is a pure constant per the
+existing 4-element Academy header.
+
+| #  | Function                          | Register file          | AAPCS64 rule                            |
+|----|-----------------------------------|------------------------|-----------------------------------------|
+|  1 | abi_fp_arg_count()                | V0-V7                  | Eight FP/vector argument slots.         |
+|  2 | abi_fp_arg_reg(i)                 | V0-V7                  | Clamp i to the 0..7 range.              |
+|  3 | abi_fp_ret_reg()                  | V0                     | Primary FP/vector return.               |
+|  4 | abi_fp_ret_hi_reg()               | V1                     | High half of 128-bit return.            |
+|  5 | abi_is_fp_arg_reg(reg)            | V0-V7                  | Argument register predicate.            |
+|  6 | abi_is_fp_callee_saved(reg)       | V16-V31                | Upper NEON file is callee-saved.        |
+|  7 | abi_valid_fp_reg(reg)             | V0-V31                 | Range predicate for the FP file.        |
+|  8 | abi_fp_indirect_result_reg()      | V8                     | AAPCS64 indirect-result location.       |
+
+The full callee-saved set is now: integer X19-X28 plus FP/LR X29-X30, and NEON V16-V31.
+V0-V7 are caller-saved (arguments and scratch). V8-V15 are caller-saved (lower NEON
+and indirect result). V16-V31 are callee-saved (upper NEON). The 16-byte stack
+alignment helper stays at `abi_stack_aligned(size)`.
+
+## 2. Type-annotation repairs
+
+Two files had `let` statements missing the mandatory type annotation required by
+QUICKREF §1.4 (Mandatory Type Annotation Law). Both repairs restored the type
+annotations and kept the file under the 256-line cap.
+
+### 2.1 oodac/aarch64_emit_alu.oo
+
+| Line | Old binding                       | New binding                |
+|------|-----------------------------------|----------------------------|
+|  22  | let n = bytes_len(s);             | let n: Int = bytes_len(s); |
+|  24  | let mut i = 0;                    | let mut i: Int = 0;        |
+|  25  | let mut neg = false;              | let mut neg: Bool = false; |
+|  28  | let v = a64_int_digits(...);      | let v: Int = a64_int_digits(...); |
+|  30  | let mut acc = v;                  | let mut acc: Int = v;      |
+|  75  | let mut e = p + 1 + ...;          | let mut e: Int = ...;      |
+| 114  | let p = j + list_get(w, 0);       | let p: Int = ...;          |
+| 132  | let mut e = p + 1 + ...;          | let mut e: Int = ...;      |
+| 161  | let n = list_len(toks);           | let n: Int = list_len(toks); |
+| 163  | let mut i = 0;                    | let mut i: Int = 0;        |
+| 166  | let p = i + 2;                    | let p: Int = i + 2;        |
+| 168  | let mut q = p + 5;                | let mut q: Int = p + 5;    |
+| 169  | let mut neg = false;              | let mut neg: Bool = false; |
+| 176  | let mut acc_v = a_v;              | let mut acc_v: Int = a_v;  |
+
+The repair also added the missing `import "aarch64_emit_int.oo";` at line 17 so
+the call to `aarch64_emit_int_write(folded)` resolves. File stayed at 206 lines.
+
+### 2.2 oodac/aarch64_emit_secret.oo
+
+| Line | Old binding                       | New binding                |
+|------|-----------------------------------|----------------------------|
+|  23  | let needle = "// " + "SECRET:";   | let needle: String = ...;  |
+|  24  | let nn = chars_len(needle);       | let nn: Int = ...;         |
+|  25  | let sn = chars_len(src);          | let sn: Int = ...;         |
+|  26  | let mut env = "";                 | let mut env: String = ""; |
+|  27  | let mut i = 0;                    | let mut i: Int = 0;        |
+|  29  | let mut at_line = false;          | let mut at_line: Bool = false; |
+|  34  | let mut ok = true;                | let mut ok: Bool = true;   |
+|  35  | let mut j = 0;                    | let mut j: Int = 0;        |
+|  45  | let mut k = i + nn;               | let mut k: Int = i + nn;   |
+|  47  | let c = char_at(src, k);          | let c: String = ...;       |
+|  54  | let start = k;                    | let start: Int = k;        |
+|  56  | let c = char_at(src, k);          | let c: String = ...;       |
+|  57  | let is_al = c == "_" || ...;      | let is_al: Bool = ...;     |
+|  76  | let name = str_slice(...);        | let name: String = ...;    |
+|  95  | let needle = "__sec__" + ...;     | let needle: String = ...;  |
+| 105  | let env = aarch64_collect_secret_env(src); | let env: String = ...; |
+| 112  | let n = list_len(toks);           | let n: Int = ...;          |
+| 167  | let m = list_len(uses);           | let m: Int = ...;          |
+| 176  | let ulen = chars_len(u);          | let ulen: Int = ...;       |
+
+The repair removed the `incompatible operand types in assignment to 'k'`
+type error at line 49. File stayed at 202 lines.
+
+## 3. Enforcer 8-gate pass
+
+The 8-gate enforcer was run with `ooda run openOODA/scripts/enforcer.oo` and
+returned exit code 0 with the success line:
+
+  Format & 10-Board Master Governance Lint OK: zero forbidden files,
+  all line counts <= 256, zero intermediate files in std/, all 4-element
+  Academy headers compliant, zero trailing commas in structs,
+  RFCs template-clean.
+
+| Gate | Subject                                | Result |
+|------|----------------------------------------|--------|
+| 1    | Forbidden file extensions              | OK     |
+| 2    | 256-line cap on .oo and .oot          | OK     |
+| 3    | No intermediate files in ooda/std/     | OK     |
+| 4    | 4-element Academy headers on .oo      | OK     |
+| 5    | No loose unheaded files in ooda/ root | OK     |
+| 6    | No trailing commas in struct types    | OK     |
+| 7    | RFC template compliance               | OK     |
+| 8    | Compiler binary identity (oodac vs CLI)| OK     |
+
+## 4. Line counts after repairs
+
+| File                                        | Lines | Cap  | Status |
+|---------------------------------------------|------:|-----:|--------|
+| oodac/aarch64_emit_alu.oo                   |   206 |  256 | OK     |
+| oodac/aarch64_emit_secret.oo                |   202 |  256 | OK     |
+| std/arch_aarch64/aarch64_abi.oo             |   162 |  256 | OK     |
+| std/arch_aarch64/aarch64_codegen.oo         |   105 |  256 | OK     |
+| std/arch_aarch64/aarch64_lower.oo           |   236 |  256 | OK     |
+| std/arch_aarch64/aarch64_linker.oo          |   142 |  256 | OK     |
+| std/arch_aarch64/aarch64_encoder.oo         |   198 |  256 | OK     |
+
+## 5. Next-step queue for Tier 0 closure
+
+The 0-matcher gap closure (Tier 0 in ROADMAP.oot §5.2) still needs these
+features ported to aarch64:
+
+  1. aarch64_emit_list.oo — List[T] is the highest-impact missing port.
+  2. aarch64_emit_no_output.oo — silent no-op main detector.
+  3. aarch64_emit_shape_refuse.oo — 5-shape refuse gate.
+  4. Tier 1 wiring: deprecate the hand-written GAS path in
+     aarch64_emit_sys.oo:60 and call aarch64_compile_to_elf from
+     aarch64_emit_elf.oo directly.
+  5. End-to-end probe: qemu-aarch64 run on each of the 53 aarch64_*.oo
+     fixtures, categorized as COMPILED / REFUSED / ASM-FAIL / RUN-OK.
+
+The 8 enforcer gates are green. The AAPCS64 X0-X31 plus V0-V31 register
+set is now fully named. The dispatch wiring smoke `aarch64_dispatch_wiring_smoke.oo`
+still asserts the 23-arm ladder.
