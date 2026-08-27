@@ -1,0 +1,111 @@
+// # AArch64 Tier 0 Closure Plan
+//
+// Logline: Identifies the three concrete ports needed to close the Tier 0 0-matcher gap, with file shape, line budget, dependencies, and named lock for each.
+//
+// Setup: Reads ROADMAP.oot §5.2 Tier 0 row and the existing x86_emit_list.oo / oodac/aarch64_emit_*.oo sources to derive the porting surface.
+//
+// Beats:
+//   1. List[T] port — the highest-impact missing port.
+//   2. no_output detector — closes the silent no-op main class.
+//   3. 5-shape refuse gate — refuses hostile shapes before emit.
+//   4. The chs_rt OoRes_S collision blocker.
+//   5. Verification plan.
+
+File: openOODA/audit/aarch64-tier0-closure.oot
+Status: open — 2026-08-26 plan for the next worker.
+Context: Read-only audit. No .oo files were modified by this audit itself.
+
+---
+
+## 1. List[T] port (highest impact)
+
+The 54 aarch64_*.oo fixtures do not use List[T], so the missing port
+does not break current tests. But the 0-matcher gap closure requires
+List[T] to match the x86 parity per ROADMAP.oot §5.2.
+
+Source to port: `oodac/x86_emit_list.oo` (134 lines).
+
+Target: `oodac/aarch64_emit_list.oo` (cap 256 lines).
+
+Required changes:
+- Replace SysV `call list_new@PLT` with AAPCS64 `bl list_new` (x0
+  return, no args).
+- Replace `mov %rdi, %rsi` arg sequencing with `mov x0, x1` AAPCS64
+  arg passing.
+- Replace `x86_runtime_text()` AT&T prologue with AArch64 frame
+  prologue `stp x29, x30, [sp, #-N]!; mov x29, sp; ...; ldp x29, x30,
+  [sp], #N; ret`.
+- Reuse `aarch64_emit_heap.oo`'s brk-based `_alloc` / `_free` for
+  any heap needs (or rely on `.bss` for the static list_oob_msg).
+
+Lock: `scripts/aarch64_list_smoke.oo` that runs oodac.aarch64 on
+fixtures/aarch64_list_int.oo (new fixture) and asserts the
+`println(list_len(xs))` output equals the expected length.
+
+## 2. no_output detector
+
+The x86 backend has `x86_emit_no_output.oo` (117 lines) that
+detects the silent no-op main class (binary exits 0 with empty
+stdout). The aarch64 backend has no equivalent. Without it, a
+correctly-typed main that prints nothing is indistinguishable from
+a miscompile.
+
+Target: `oodac/aarch64_emit_no_output.oo` (cap 256 lines).
+
+Required changes: re-shape the x86 `wr_bytes != 0` invariant to
+the AArch64 `svc #0, x8, SYS_write` exit-check invariant. After
+the new `svc #0` for exit, check that `_start` contains a `mov x0,
+#1; mov x1, address; mov x2, length; mov x8, #64; svc #0` write
+sequence to stdout. If absent and the user has a `println` in main,
+the detector fails closed.
+
+Lock: `scripts/aarch64_no_output_smoke.oo` that runs oodac.aarch64
+on a no-println fixture and asserts the post-`_start` invariant
+fires.
+
+## 3. 5-shape refuse gate
+
+The x86 backend has `x86_emit_shape_refuse.oo` (238 lines) that
+detects the 5 silent-miscompile shapes (Float usage, 3-arm match,
+Result[T], struct field/type, List[T]) and fails closed before
+emit. The aarch64 backend relies on per-shape `return []` and the
+final `leftover` check in `a64_collect_prints`.
+
+Target: `oodac/aarch64_emit_shape_refuse.oo` (cap 256 lines).
+
+Required changes: port the 5-shape signature scan. Each shape
+gets one `pub fn aarch64_emit_shape_refuse_test(src) -> List<String>`
+that returns an ERR list. The dispatch in aarch64_emit.oo calls all
+5 before the dispatch ladder, `process_exit(1)` on any non-empty
+err.
+
+Lock: `scripts/aarch64_shape_refuse_smoke.oo` that runs the 5
+test shapes (5 fixtures) through the gate and asserts all 5 ERR.
+
+## 4. chs_rt OoRes_S collision (blocker for in-process smokes)
+
+The C emit at `oodac/c_emit_preamble.oo:52` emits
+`typedef OoResS OoRes_S;` as an alias, but a downstream C emit
+file generates `typedef struct OoRes_S { ... } OoRes_S;` which
+conflicts. The two typedefs must be reconciled: either drop the
+alias when the struct is defined later in the same translation
+unit, or rename the struct consistently to `OoResS` everywhere.
+
+Fix lives in `oodac/c_emit_*.oo` and affects every `ooda run`
+compilation.
+
+## 5. Verification plan
+
+After each port:
+1. `ooda/scripts/<name>_smoke.oo` typechecks OK.
+2. The smoke runs the new fixture and reports pass.
+3. `./bin/ooda run ../openOODA/scripts/enforcer.oo` returns
+   8/8 green.
+4. The audit `openOODA/audit/aarch64-neon-abi-and-enforcer.oot`
+   gets a new section recording the port and the lock.
+
+After all 3 ports + chs_rt fix:
+- 54/54 aarch64 fixtures run through the no_output detector.
+- 54/54 aarch64 fixtures pass the 5-shape refuse gate.
+- 3+ List[T] fixtures compile and run via qemu-aarch64.
+- 8/8 enforcer gates green.
