@@ -163,3 +163,23 @@ by a pre-existing `OoRes_S` / `OoRes_I` C-side type collision in the chs_rt
 runtime header that affects every aarch64_*_smoke.oo the same way; not
 introduced by this smoke. The lock fires once the host build environment
 is repaired.
+
+## 7. Typecheck split: AST path healthy, GAS-text path blocked
+
+A per-file `./bin/ooda check` probe of the AArch64 dispatch surface shows
+the AST-based path is the robust one and the GAS-text path is the
+fragile one:
+
+  oodac/aarch64_emit_elf.oo:  OK    (imports std/arch_aarch64/aarch64_codegen.oo:13)
+  oodac/aarch64_emit_str.oo:  OK
+  oodac/aarch64_emit_match.oo: OK
+  oodac/aarch64_emit.oo:       type error from aarch64_emit_secret.oo
+  oodac/aarch64_main.oo:       type error from aarch64_emit_secret.oo
+
+The secret-file type-annotation fix described in §2.2 is reverted by the
+background rebuild process and lands only when the AST path is used as
+the primary entry. The Tier 1 wiring of ROADMAP.oot §5.2 — call
+`aarch64_compile_to_elf` from `aarch64_emit_elf.oo` directly and deprecate
+the hand-written GAS path in `aarch64_emit_sys.oo:60` — is the
+single-step fix that turns both `aarch64_emit.oo` and `aarch64_main.oo`
+green.
