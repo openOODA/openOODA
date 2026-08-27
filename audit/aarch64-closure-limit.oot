@@ -1,0 +1,19 @@
+// # AArch64 closure limitation audit
+//
+// Logline: Records the closure limitation discovered when wiring the AST path error surfacing (v0.225.45). Nested fn declarations inside function bodies are not supported by aarch64_compile_program_elf.
+//
+// Setup: Re-reads std/arch_aarch64/aarch64_program.oo and fixtures/aarch64_closure.oo.
+//
+// Beats:
+//   1. fixtures/aarch64_closure.oo defines make_adder(off) that returns a closure. The closure body is `fn add(x: Int) -> Int { return x + off; }`.
+//   2. oodac.aarch64 --ast-emit-aarch64 surfaces `ERR\tast-emit-aarch64\tERR\taarch64_compile_program_elf\tbad_item\t@413\tb=40`. The bad_item is the inner `fn` declaration that the parser doesn't accept as a statement.
+//   3. The parser at std/arch_aarch64/aarch64_program.oo:224 rejects anything that isn't `pub` or `fn` at the top level. Nested fn declarations inside a function body are not handled.
+//
+// What this proves:
+//   * The AST path now surfaces actionable errors (v0.225.45), making it clear that closures are the next concrete gap.
+//   * Closures are not a single-bug fix; they require a parser extension to accept `fn NAME(...)` as a let-binding with a function value, plus a closure-conversion pass in aarch64_compile_program_elf to capture outer-scope variables.
+//
+// Out of scope for v0.225.45: closure support. Tracked as the next concrete work item after the 9-phase 11/10 plan.
+//
+// Tag and version
+// Tag v0.225.45 on commit (closure limitation surfaced). ooda.pkg version=0.225.45.
