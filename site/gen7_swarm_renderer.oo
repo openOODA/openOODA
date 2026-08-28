@@ -1,0 +1,95 @@
+// # Gen 7 Quantum Swarm 2D Canvas and Glow VFX Renderer
+//
+// Logline: Renders nine-orb quantum swarm constellation canvas visuals, glow effects, and singularity beams.
+//
+// Setup: UI canvas renderer requiring explicit WuiCap capability token.
+//
+// Beats:
+//   1. Project nine quantum globes to 2D screen coordinates with dynamic glow radii.
+//   2. Render fused singularity field visual effects based on morph charge percentage.
+//   3. Draw resonant super-cannon beam discharge when charging threshold is reached.
+
+
+import "openOODA/site/dogfight_canvas.oo";
+import "std/aero/gen7_swarm.oo";
+import "std/aero/singularity_cannon.oo";
+
+pub type GlobeRenderPoint = struct {
+    screen_x: Float,
+    screen_y: Float,
+    radius: Float,
+    is_primary: Bool,
+    charge_glow: Float
+};
+
+pub type SwarmRenderFrame = struct {
+    globe_count: Int,
+    is_fused: Bool,
+    singularity_charge_pct: Float,
+    beam_active: Bool,
+    beam_start_x: Float,
+    beam_start_y: Float,
+    beam_target_x: Float,
+    beam_target_y: Float
+};
+
+pub fn compute_globe_render_point(
+    world_x: Float,
+    world_y: Float,
+    is_primary: Bool,
+    charge_pct: Float,
+    center_x: Float,
+    center_y: Float,
+    scale: Float
+) -> GlobeRenderPoint {
+    let pt: CanvasPoint = world_to_canvas(world_x, world_y, center_x, center_y, scale);
+    let mut base_rad: Float = 6.0;
+    if is_primary {
+        base_rad = 12.0;
+    }
+    let glow: Float = charge_pct / 100.0;
+    return GlobeRenderPoint {
+        screen_x: (pt).x,
+        screen_y: (pt).y,
+        radius: base_rad,
+        is_primary: is_primary,
+        charge_glow: glow
+    };
+}
+
+pub fn render_swarm_scene(
+    cap: &WuiCap,
+    morph_state: SwarmMorphState,
+    center_x: Float,
+    center_y: Float
+) -> SwarmRenderFrame {
+    let is_cap_valid: Bool = (*cap).granted;
+    if !is_cap_valid {
+        return SwarmRenderFrame {
+            globe_count: 0,
+            is_fused: false,
+            singularity_charge_pct: 0.0,
+            beam_active: false,
+            beam_start_x: 0.0,
+            beam_start_y: 0.0,
+            beam_target_x: 0.0,
+            beam_target_y: 0.0
+        };
+    }
+
+    let mut globe_cnt: Int = 9;
+    if (morph_state).is_fused {
+        globe_cnt = 1;
+    }
+
+    return SwarmRenderFrame {
+        globe_count: globe_cnt,
+        is_fused: (morph_state).is_fused,
+        singularity_charge_pct: (morph_state).charge_pct,
+        beam_active: (morph_state).beam_discharged,
+        beam_start_x: center_x,
+        beam_start_y: center_y,
+        beam_target_x: center_x + 600.0,
+        beam_target_y: center_y
+    };
+}
