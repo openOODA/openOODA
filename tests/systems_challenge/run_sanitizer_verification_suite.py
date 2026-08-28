@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 BUILD_DIR = os.path.join(ROOT, "build", "sanitizers")
 OODAC_BIN = os.path.join(ROOT, "oodac_bin")
 CHS_RT = os.path.join(ROOT, "ooda", "runtime", "chs_rt.c")
