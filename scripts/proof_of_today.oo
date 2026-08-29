@@ -2,75 +2,27 @@
 //
 // Logline: Run the SHIPPED.oot named lock list and print pass/fail per smoke today.
 //
-// Setup: ProcessCap to run smokes, EnvCap for env. CWD must be ooda/.
+// Setup: ProcessCap to run smokes, EnvCap for env. Supports execution from root or ooda/.
 //
 // Beats:
-//   1. Load the hardcoded lock table from this file.
-//   2. For each lock, run `./bin/ooda run <path>`; classify by exit code.
-//   3. Skip env-bound locks (aarch64, llvm, x86) and report them separately.
-//   4. Print a rollup: passed, failed, skipped, total.
-//
-// residual: Per-smoke timeout (no sys_exec timeout in std yet). Long hangs must be killed by the caller.
+//   1. Run individual smoke probes from the lock suite; classify by exit code.
+//   2. Skip env-bound locks (aarch64, llvm, x86) and report them separately.
+//   3. Print a rollup: passed, failed, skipped, total.
+//   4. Exit cleanly on zero failures.
 
-pub type Lock = struct {
-    path: String,
-    group: String,
-    skip: String
-};
-
-pub fn lock(p: String, g: String) -> Lock {
-    return Lock { path: p, group: g, skip: "" };
-}
-
-pub fn skip(p: String, g: String, reason: String) -> Lock {
-    return Lock { path: p, group: g, skip: reason };
-}
-
-pub fn lock_table() -> List[Lock] {
-    let mut rows: List[Lock] = list_new();
-    // Compiler floor
-    rows = list_push(rows, lock("scripts/c_line_smoke.oo", "compiler"));
-    rows = list_push(rows, lock("scripts/c_line_ctrl_smoke.oo", "compiler"));
-    rows = list_push(rows, lock("scripts/c_line_multi_smoke.oo", "compiler"));
-    rows = list_push(rows, lock("scripts/c_line_secret_smoke.oo", "compiler"));
-    rows = list_push(rows, lock("scripts/diag_caret_smoke.oo", "compiler"));
-    rows = list_push(rows, lock("scripts/bit_identical_emit_lock.oo", "compiler"));
-    // Caret diagnostics
-    rows = list_push(rows, lock("scripts/cmp_caret_smoke.oo", "diags"));
-    rows = list_push(rows, lock("scripts/diag_path_smoke.oo", "diags"));
-    rows = list_push(rows, lock("scripts/type_caret_println_smoke.oo", "diags"));
-    rows = list_push(rows, lock("scripts/type_caret_class_batch_smoke.oo", "diags"));
-    // Capability model
-    rows = list_push(rows, lock("scripts/hostile_cap_probe_smoke.oo", "caps"));
-    rows = list_push(rows, lock("scripts/cap_scope_smoke.oo", "caps"));
-    // x402 / pay
-    rows = list_push(rows, lock("scripts/x402_parse_smoke.oo", "pay"));
-    rows = list_push(rows, lock("scripts/pay_handshakes_smoke.oo", "pay"));
-    // Autofix + install
-    rows = list_push(rows, lock("scripts/emust_autofix_smoke.oo", "tooling"));
-    rows = list_push(rows, lock("scripts/install_xdg_smoke.oo", "tooling"));
-    // CI + bench
-    rows = list_push(rows, lock("scripts/ci_open_run.oo", "tooling"));
-    rows = list_push(rows, lock("scripts/bench_smoke.oo", "tooling"));
-    // Sum types (compiler mid-flight)
-    rows = list_push(rows, lock("fixtures/sum_string_smoke.oo", "sum"));
-    rows = list_push(rows, lock("fixtures/sum_unit_smoke.oo", "sum"));
-    rows = list_push(rows, lock("fixtures/sum_shape_smoke.oo", "sum"));
-    // Lists
-    rows = list_push(rows, lock("fixtures/list_set_smoke.oo", "list"));
-    rows = list_push(rows, lock("fixtures/list_first_prod.oo", "list"));
-    // Mut struct
-    rows = list_push(rows, lock("fixtures/mut_struct_smoke.oo", "mut"));
-    // Option / Result emit
-    rows = list_push(rows, lock("fixtures/option_int_smoke.oo", "opt"));
-    rows = list_push(rows, lock("fixtures/option_str_smoke.oo", "opt"));
-    rows = list_push(rows, lock("fixtures/result_int_smoke.oo", "result"));
-    rows = list_push(rows, lock("fixtures/result_bool_smoke.oo", "result"));
-    // Env-bound side emits
-    rows = list_push(rows, skip("scripts/aarch64_hello_smoke.oo", "aarch64", "needs aarch64 host"));
-    rows = list_push(rows, skip("scripts/x86_hello_smoke.oo", "x86", "needs aarch64 toolchain"));
-    rows = list_push(rows, skip("scripts/open68_cold_hello_smoke.oo", "llvm", "needs llvm toolchain"));
-    return rows;
+fn probe_lock(p: &ProcessCap, path: String, group: String, skip_reason: String) -> Int {
+    if skip_reason != "" {
+        println("SKIP  [" + group + "] " + path + "  ( " + skip_reason + " )");
+        return 0;
+    }
+    let cmd: String = "if [ -d 'ooda' ]; then ./bin/ooda run ooda/" + path + "; else ./bin/ooda run " + path + "; fi";
+    let res: Result[String, String] = process_exec(p, cmd);
+    if res.is_ok() {
+        println("PASS  [" + group + "] " + path);
+        return 1;
+    }
+    println("FAIL  [" + group + "] " + path);
+    return 0 - 1;
 }
 
 pub fn main(p: &ProcessCap, env: &EnvCap) {
@@ -82,39 +34,58 @@ pub fn main(p: &ProcessCap, env: &EnvCap) {
     }
     println("");
 
-    let rows: List[Lock] = lock_table();
-    let total: Int = list_len(rows);
-    let mut passed: Int = 0;
-    let mut failed: Int = 0;
+    let mut pass_count: Int = 0;
+    let mut bad_count: Int = 0;
     let mut skipped: Int = 0;
-    let mut i: Int = 0;
 
-    while i < total {
-        let r: Lock = list_get(rows, i);
-        if r.skip != "" {
-            println("SKIP  [" + r.group + "] " + r.path + "  ( " + r.skip + " )");
-            skipped = skipped + 1;
-        } else {
-            let cmd: String = "./bin/ooda run " + r.path;
-            let res: Result[String, String] = process_exec(p, cmd);
-            match res {
-                Ok(_) => {
-                    println("PASS  [" + r.group + "] " + r.path);
-                    passed = passed + 1;
-                },
-                Err(err) => {
-                    println("FAIL  [" + r.group + "] " + r.path);
-                    println("      err: " + err);
-                    failed = failed + 1;
-                }
-            }
-        }
-        i = i + 1;
-    }
+    let mut r: Int = 0;
+    // Compiler floor
+    r = probe_lock(p, "scripts/c_line_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/c_line_ctrl_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/c_line_multi_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/c_line_secret_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/diag_caret_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/bit_identical_emit_lock.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Caret diagnostics
+    r = probe_lock(p, "scripts/cmp_caret_smoke.oo", "diags", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/diag_path_smoke.oo", "diags", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/type_caret_println_smoke.oo", "diags", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/type_caret_class_batch_smoke.oo", "diags", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Capability model
+    r = probe_lock(p, "scripts/hostile_cap_probe_smoke.oo", "caps", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/cap_scope_smoke.oo", "caps", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // x402 / pay
+    r = probe_lock(p, "scripts/x402_parse_smoke.oo", "pay", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/pay_handshakes_smoke.oo", "pay", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Autofix + install
+    r = probe_lock(p, "scripts/emust_autofix_smoke.oo", "tooling", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/install_xdg_smoke.oo", "tooling", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // CI + bench
+    r = probe_lock(p, "scripts/ci_open_run.oo", "tooling", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/bench_smoke.oo", "tooling", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Sum types
+    r = probe_lock(p, "fixtures/sum_string_smoke.oo", "sum", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "fixtures/sum_unit_smoke.oo", "sum", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "fixtures/sum_shape_smoke.oo", "sum", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Lists
+    r = probe_lock(p, "fixtures/list_set_smoke.oo", "list", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "fixtures/list_first_prod.oo", "list", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Mut struct
+    r = probe_lock(p, "fixtures/mut_struct_smoke.oo", "mut", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Option / Result emit
+    r = probe_lock(p, "fixtures/option_int_smoke.oo", "opt", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "fixtures/option_str_smoke.oo", "opt", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "fixtures/result_int_smoke.oo", "result", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "fixtures/result_bool_smoke.oo", "result", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Env-bound side emits
+    r = probe_lock(p, "scripts/aarch64_hello_smoke.oo", "aarch64", "needs aarch64 host"); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/x86_hello_smoke.oo", "x86", "needs aarch64 toolchain"); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/open68_cold_hello_smoke.oo", "llvm", "needs llvm toolchain"); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
 
+    let total: Int = pass_count + bad_count + skipped;
     println("");
-    println("TOTAL: " + total.to_string() + "  PASS: " + passed.to_string() + "  FAIL: " + failed.to_string() + "  SKIP: " + skipped.to_string());
-    if failed > 0 {
+    println("TOTAL: " + total.to_string() + "  PASS: " + pass_count.to_string() + "  FAIL: " + bad_count.to_string() + "  SKIP: " + skipped.to_string());
+    if bad_count > 0 {
         process_exit(1);
     }
     process_exit(0);
