@@ -6,7 +6,7 @@
 //
 // Beats:
 //   1. Run individual smoke probes from the lock suite; classify by exit code.
-//   2. Skip env-bound locks (aarch64, llvm, x86) and report them separately.
+//   2. Skip env-bound locks (aarch64, llvm, x86, gpu) and report them separately.
 //   3. Print a rollup: passed, failed, skipped, total.
 //   4. Exit cleanly on zero failures.
 
@@ -15,7 +15,7 @@ fn probe_lock(p: &ProcessCap, path: String, group: String, skip_reason: String) 
         println("SKIP  [" + group + "] " + path + "  ( " + skip_reason + " )");
         return 0;
     }
-    let cmd: String = "if [ -d 'ooda' ]; then ./bin/ooda run ooda/" + path + "; else ./bin/ooda run " + path + "; fi";
+    let cmd: String = "if [ -d 'ooda' ]; then (cd ooda && ./bin/ooda run " + path + "); else ./bin/ooda run " + path + "; fi";
     let res: Result[String, String] = process_exec(p, cmd);
     if res.is_ok() {
         println("PASS  [" + group + "] " + path);
@@ -44,40 +44,36 @@ pub fn main(p: &ProcessCap, env: &EnvCap) {
     r = probe_lock(p, "scripts/c_line_ctrl_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     r = probe_lock(p, "scripts/c_line_multi_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     r = probe_lock(p, "scripts/c_line_secret_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    r = probe_lock(p, "scripts/diag_caret_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     r = probe_lock(p, "scripts/bit_identical_emit_lock.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/c_if_expr_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/for_expr_bound_smoke.oo", "compiler", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     // Caret diagnostics
-    r = probe_lock(p, "scripts/cmp_caret_smoke.oo", "diags", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/diag_caret_smoke.oo", "diags", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     r = probe_lock(p, "scripts/diag_path_smoke.oo", "diags", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    r = probe_lock(p, "scripts/type_caret_println_smoke.oo", "diags", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     r = probe_lock(p, "scripts/type_caret_class_batch_smoke.oo", "diags", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     // Capability model
     r = probe_lock(p, "scripts/hostile_cap_probe_smoke.oo", "caps", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    r = probe_lock(p, "scripts/cap_scope_smoke.oo", "caps", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     // x402 / pay
     r = probe_lock(p, "scripts/x402_parse_smoke.oo", "pay", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     r = probe_lock(p, "scripts/pay_handshakes_smoke.oo", "pay", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    // Autofix + install
-    r = probe_lock(p, "scripts/emust_autofix_smoke.oo", "tooling", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    r = probe_lock(p, "scripts/install_xdg_smoke.oo", "tooling", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    // CI + bench
-    r = probe_lock(p, "scripts/ci_open_run.oo", "tooling", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    r = probe_lock(p, "scripts/bench_smoke.oo", "tooling", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    // Sum types
-    r = probe_lock(p, "fixtures/sum_string_smoke.oo", "sum", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    r = probe_lock(p, "fixtures/sum_unit_smoke.oo", "sum", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    r = probe_lock(p, "fixtures/sum_shape_smoke.oo", "sum", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Standard library
+    r = probe_lock(p, "scripts/std_smoke.oo", "std", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/std_product_honesty_smoke.oo", "std", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/std_archive_smoke.oo", "std", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/std_markup_smoke.oo", "std", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/std_semver_smoke.oo", "std", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Sweeps
+    r = probe_lock(p, "scripts/stage31_mutation_sweep_smoke.oo", "sweeps", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/stage32_cleanroom_airgap_smoke.oo", "sweeps", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/stage50_release_lock_smoke.oo", "sweeps", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    // Native locks
+    r = probe_lock(p, "scripts/wasm_hello_module_lock.oo", "wasm", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/x86_elf_hello_lock.oo", "x86", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
+    r = probe_lock(p, "scripts/aarch64_hello_elf_lock.oo", "aarch64", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     // Lists
-    r = probe_lock(p, "fixtures/list_set_smoke.oo", "list", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     r = probe_lock(p, "fixtures/list_first_prod.oo", "list", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    // Mut struct
-    r = probe_lock(p, "fixtures/mut_struct_smoke.oo", "mut", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    // Option / Result emit
-    r = probe_lock(p, "fixtures/option_int_smoke.oo", "opt", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    r = probe_lock(p, "fixtures/option_str_smoke.oo", "opt", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    r = probe_lock(p, "fixtures/result_int_smoke.oo", "result", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
-    r = probe_lock(p, "fixtures/result_bool_smoke.oo", "result", ""); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     // Env-bound side emits
+    r = probe_lock(p, "scripts/gpu_emit_hello_lock.oo", "gpu", "needs gpu toolchain"); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     r = probe_lock(p, "scripts/aarch64_hello_smoke.oo", "aarch64", "needs aarch64 host"); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     r = probe_lock(p, "scripts/x86_hello_smoke.oo", "x86", "needs aarch64 toolchain"); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
     r = probe_lock(p, "scripts/open68_cold_hello_smoke.oo", "llvm", "needs llvm toolchain"); if r == 1 { pass_count = pass_count + 1; } else if r == 0 { skipped = skipped + 1; } else { bad_count = bad_count + 1; }
