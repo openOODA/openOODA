@@ -1,0 +1,110 @@
+# v0.216.0 Release Notes
+
+File: openOODA/audit/release_notes/RELEASE_NOTES_v0.216.0.oot
+
+Release: v0.216.0
+Date: 2026-08-26
+Tag: v0.216.0
+
+## Product Path
+
+LLVM lane source-only release. No CLI surface change. The next clean
+`oodac` rebuild will surface these changes; until then, the in-tree
+binary at 07:34 (with C lane uncommitted work) is the build under
+verification.
+
+## LLVM Lane Fixes
+
+1. **`std/compile/llvm_codegen/ssa_mem2reg.oo:144-153`** — `ssa_mem2reg_promote`
+   now passes `inst_lhs_vals: new_lhss` through the returned `SsaFunction`
+   literal and builds `new_lhss` in parallel with `new_ops / new_res /
+   new_imms / new_bids`. **Root cause** of the `slist_get OOB` at value
+   `8101242398333468672` that crashed `ooda run` of any script importing
+   `std/compile/llvm_codegen/ssa_ir.oo` and calling `ssa_mem2reg_promote`
+   (including `scripts/llvm_dump_ir.oo` and the x86 lane's SSA IR dump
+   investigation).
+
+2. **`std/compile/llvm_codegen/ssa_opt_test.oo:26-35, 49-58, 72-81, 95-104`** —
+   Four SsaFunction literals in the const-fold test suite now include
+   `inst_lhs_vals: tN_lhss`. Without the field, the C emit read
+   uninitialized memory as a `List[Int>` slist header, same OOB root
+   cause as #1.
+
+3. **`std/compile/llvm_codegen/llvm_text_emitter.oo:49-146`** — `llvm_format_inst`
+   now handles all 55 SSA opcodes (was: 7 opcodes, fell through to
+   `"; nop"` for the other 48). Added:
+   - Bitwise: and, or, xor, shl, shr (6-10)
+   - Extended integer compare: ult, ule, sgt, sge, ne (36-40)
+   - Phi (13)
+   - Memory: alloca, load, store, store_lit (14-16, 21)
+   - Control flow: br, cond_br, ret, switch, unreachable (17-19, 53-54)
+   - Const + const_forced (20, 22)
+   - Print: println_int, println_str (23-24)
+   - Float arithmetic: fadd, fsub, fmul, fdiv, frem (25-29)
+   - Float compare: oeq, olt, ole, ogt, oge, une (30-35)
+   - Integer casts: sext, zext, trunc (41-43)
+   - Float casts: sitofp, fptosi (44-45)
+   - Call (46)
+   - GEP (47)
+   - Aggregate: extractvalue, insertvalue (48-49)
+   - Bitcast (50)
+   - Pointer/int casts: ptrtoint, inttoptr (51-52)
+   - Landingpad stub (55)
+
+   Function signature changed from `(op, res, imm)` to `(op, res, lhs, imm)`
+   to emit real SSA-value references via `%v<lhs>`. Single call site at
+   `llvm_text_emitter.oo:37` (in `llvm_emit_module`) updated.
+
+## New Coverage Tool
+
+4. **`scripts/llvm_emit_opcode_smoke.oo` (55 lines)** — Synthesises an
+   `SsaFunction` with one instruction per opcode 1..55, calls
+   `llvm_emit_module`, asserts no `"; nop"` marker appears in the IR.
+   Prints `PASS` if all 55 opcodes formatted. **Regression guard** for
+   the "6 nops in x86 SSA emit for `println(1+2)`" symptom the x86 lane
+   reported.
+
+## Lane Discipline
+
+No C, WASM, or x86 files were touched. All changes are in
+`std/compile/llvm_codegen/` (3 files) and `scripts/` (1 new file). LLVM lane
+owns these paths.
+
+## End-to-End Status
+
+The v0.216.0 source changes are in lane. End-to-end run of
+`scripts/llvm_emit_opcode_smoke.oo` and `scripts/llvm_dump_ir.oo` is
+**blocked** by the C lane's uncommitted work (28 modified files
+including `c_emit_match_stmt.oo`, `c_emit_arc.oo`, `c_emit_ops.oo`)
+which breaks the in-tree build with `unsat requires at 20:5`. After
+the C lane's work is committed (or stashed), the next clean rebuild
+will exercise the new code paths.
+
+Expected output of `scripts/llvm_dump_ir.oo` after rebuild:
+
+```
+AST:
+...
+---
+Functions lowered: 1
+--- Function 0 (pre-opt) — block_count=1 ---
+; ModuleID = 'openOODA_ssa_module'
+target datalayout = "..."
+target triple = "x86_64-unknown-linux-gnu"
+
+define i64 @main() {
+entry:
+  %v1 = add i64 0, 1
+  %v2 = add i64 0, 2
+  %v3 = add nsw i64 %v1, 2
+  call void @print_int(i64 %v3)
+  ret i64 0
+}
+---
+After mem2reg + const-fold:
+--- Function 0 (post-opt) — block_count=1 ---
+... (const-folded: %v3 = add i64 0, 3; call @print_int(3))
+```
+
+The "6 nops" symptom disappears because opcode 1 (add) is now
+formatted as `add nsw i64 %v1, 2` instead of `"; nop"`.

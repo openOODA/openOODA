@@ -89,7 +89,12 @@ pub fn count_lines(fs: &FsReadCap, path: String) -> Int {
 }
 
 pub fn audit_size_report(fs: &FsReadCap) {
-    let files: List[String] = oo_fs_read_dir(fs, "audit");
+    let mut audit_dir: String = "audit";
+    let mut files: List[String] = oo_fs_read_dir(fs, audit_dir);
+    if list_len(files) == 0 {
+        audit_dir = "openOODA/audit";
+        files = oo_fs_read_dir(fs, audit_dir);
+    }
     if list_len(files) == 0 {
         println("  [INFO] no audit/ directory found");
         return;
@@ -102,7 +107,7 @@ pub fn audit_size_report(fs: &FsReadCap) {
     while i < n {
         let name: String = list_get(files, i);
         if str_ends_with(name, ".oot") {
-            let path: String = "audit/" + name;
+            let path: String = audit_dir + "/" + name;
             let lc: Int = count_lines(fs, path);
             total = total + 1;
             if lc > 256 {

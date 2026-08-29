@@ -50,7 +50,7 @@ fn count_locks(text: String) -> Int {
     let len: Int = text.len();
     while i < len {
         let slice: String = str_slice(text, i, i + 6);
-        if slice == "Lock: " {
+        if slice == "Lock: " || slice == "Locks:" {
             n = n + 1;
         }
         i = i + 1;
@@ -59,29 +59,15 @@ fn count_locks(text: String) -> Int {
 }
 
 fn verify_present(fs: &FsReadCap, path: String) -> Bool {
-    let r1: Result[String, String] = read_file(fs, path);
-    match r1 {
-        Ok(_) => return true,
-        Err(_) => {}
+    if read_file(fs, path).is_ok() { return true; }
+    if read_file(fs, "openOODA/" + path).is_ok() { return true; }
+    if read_file(fs, "../openOODA/" + path).is_ok() { return true; }
+    if read_file(fs, "../" + path).is_ok() { return true; }
+    if str_starts_with(path, "../") {
+        let stripped: String = str_slice(path, 3, path.len());
+        if read_file(fs, stripped).is_ok() { return true; }
     }
-    let alt1: String = "openOODA/" + path;
-    let r2: Result[String, String] = read_file(fs, alt1);
-    match r2 {
-        Ok(_) => return true,
-        Err(_) => {}
-    }
-    let alt2: String = "../openOODA/" + path;
-    let r3: Result[String, String] = read_file(fs, alt2);
-    match r3 {
-        Ok(_) => return true,
-        Err(_) => {}
-    }
-    let alt3: String = "../" + path;
-    let r4: Result[String, String] = read_file(fs, alt3);
-    match r4 {
-        Ok(_) => return true,
-        Err(_) => return false
-    }
+    return false;
 }
 
 fn count_lines(text: String) -> Int {
@@ -89,26 +75,17 @@ fn count_lines(text: String) -> Int {
     let mut n: Int = 1;
     let mut i: Int = 0;
     while i < len {
-        let c: String = char_at(text, i);
-        if c == "\n" {
-            n = n + 1;
-        }
+        if char_at(text, i) == "\n" { n = n + 1; }
         i = i + 1;
     }
     return n;
 }
 
 fn try_read(fs: &FsReadCap, a: String, b: String, c: String) -> Result[String, String] {
-    let got: Result[String, String] = read_file(fs, a);
-    match got {
-        Ok(_) => { return got; },
-        Err(_) => {}
-    }
-    let got2: Result[String, String] = read_file(fs, b);
-    match got2 {
-        Ok(_) => { return got2; },
-        Err(_) => {}
-    }
+    let r1: Result[String, String] = read_file(fs, a);
+    if r1.is_ok() { return r1; }
+    let r2: Result[String, String] = read_file(fs, b);
+    if r2.is_ok() { return r2; }
     return read_file(fs, c);
 }
 

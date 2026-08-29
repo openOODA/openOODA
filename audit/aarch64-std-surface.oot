@@ -1,0 +1,166 @@
+# openOODA AArch64 std Surface Audit
+
+Logline: Catalog of std/hw/arch_aarch64/ public fns, the oodac/ callers, the must-wire set for the AArch64 AST shim Turn 2, the rename set, and dead symbols.
+
+Setup: Static analysis only. Counts derived from `wc -l` and `grep -l`. No .oo file was modified.
+
+Beats:
+  1. Inventory every .oo in std/hw/arch_aarch64/ with line count and one-line role.
+  2. Build the external call graph: which std fns are called from oodac/, scripts/, or tests/.
+  3. List the must-wire set the AArch64 AST shim Turn 2 will call, citing the emit-ladder arm each replaces.
+  4. List the rename set: fns whose names should change in the shim layer for consistency.
+  5. List dead symbols: pub fns in std/hw/arch_aarch64/ with zero external callers.
+  6. Surface the cross-file risks a shim must navigate.
+
+File: openOODA/audit/aarch64-std-surface.oot
+Static analysis only. Inventory 2026-08-25.
+
+---
+
+## 1. std/hw/arch_aarch64/ file inventory
+
+125 .oo files, 10,541 lines total (`wc -l std/hw/arch_aarch64/*.oo`, verified 2026-08-25). The directory exists at `ooda/std/hw/arch_aarch64/`. The pre-existing audit `aarch64-investigations.oot:60` claims 394,829 lines; the deep-dive at `audit/aarch64-deep-dive.oot:38` already flags this as 37x drift.
+
+| File | Lines | Role |
+|---|---|---|
+| `aarch64_abi.oo` | 97 | AAPCS64 arg/ret/callee-saved/align constants |
+| `aarch64_assembler.oo` | 52 | `Arm64Assembler` struct + append/finish, unused by main path |
+| `aarch64_codegen.oo` | 105 | Public `aarch64_compile_*` entry, `_start`+`_prologue`+`_epilogue` |
+| `aarch64_encoder.oo` | 198 | Fixed-width ALU/logic/compare word encoders |
+| `aarch64_encode_mem.oo` | 177 | B/BL/B.cond, STP/LDP pre/post, LDR/STR uns-offset, ADR |
+| `aarch64_encode_fp.oo` | 61 | FP MOV/SCVTF/FADD/FSUB/FMUL/FDIV/FNEG/FSQRT/FCMP/STR/LDR-D |
+| `aarch64_linker.oo` | 142 | ELF64 ET_EXEC EM_AARCH64=183 packer |
+| `aarch64_lower.oo` | 236 | Constrained .oo source -> AArch64 word stream (single-fn main) |
+| `aarch64_neon.oo` | 113 | NEON 2D/16B/4S encoders and field extractors, unused by main path |
+| `aarch64_parse.oo` | 209 | Constrained-source scanner + 64-byte stack-frame builder |
+| `aarch64_program.oo` | 253 | Multi-fn program compiler, mmap heap, BL/ADR patcher |
+| `aarch64_regs.oo` | 38 | `arm64_x0..x30` register and condition constants |
+| `aarch64_syscalls.oo` | 94 | Linux AArch64 sys_read/write/close/mmap/exit + svc #0 |
+| `aarch64_elf_check.oo` | 97 | ELF64 183 magic + STP/SVC + PASS tag verifier |
+| `aarch64_qemu_exec.oo` | 193 | qemu-aarch64 runner, octal-esc write, cache dir |
+| `aarch64_disasm.oo` | 196 | Word -> "mnemonic Rd, Rn, Rm" disassembler |
+| `aarch64_suite.oo` | 187 | Suite gate (PASS line, has_main, _elf compile) |
+| `aarch64_rec.oo` | 116 | Frame alignment + recursive/match/struct-array body fns |
+| `aarch64_reg_coalesce.oo` | 120 | Union-find, interference, copy-coalesce |
+| `aarch64_reg_graph.oo` | 181 | Chaitin/Briggs-style coloring, `A64Alloc` result |
+| `aarch64_leaf_scan.oo` | 76 | Corpus leaf path enumeration |
+| `aarch64_matrix_names.oo` | 73 | 23-row matrix index -> tag/path/qemu_req |
+| `aarch64_xarith.oo` | 122 | AST x-pipeline integer ALU |
+| `aarch64_xclosure.oo` | 357 | AST x-pipeline closure capture |
+| `aarch64_xcond.oo` | 224 | AST x-pipeline `if` + `match` |
+| `aarch64_xexpr.oo` | 250 | AST x-pipeline expression term |
+| `aarch64_xfloat.oo` | 168 | AST x-pipeline float |
+| `aarch64_xfn.oo` | 229 | AST x-pipeline fn header/prologue/epilogue |
+| `aarch64_xloop.oo` | 171 | AST x-pipeline break/continue/for |
+| `aarch64_xmark.oo` | 228 | AST x-pipeline name/type/result/struct mark |
+| `aarch64_xsimple.oo` | 122 | AST x-pipeline let/println/return/pexit |
+| `aarch64_xstate.oo` | 166 | AST x-pipeline `A64X` state record + bind/bl/fields |
+| `aarch64_xstmt.oo` | 215 | AST x-pipeline `if`/`match`/stmt/stmts |
+| `aarch64_xterm.oo` | 258 | AST x-pipeline term: call/struct/dots/prefix/alu/term |
+| `aarch64_xtypes.oo` | 122 | AST x-pipeline type scan, name-in, rewind |
+| `aarch64_xunit.oo` | 209 | AST x-pipeline compile-unit ELF |
+| `aarch64_xscan.oo` | 248 | AST x-pipeline import/type/skip helpers |
+| `aarch64_xrt.oo` | 222 | AST x-pipeline runtime registry + strlen/puts/concat/isok |
+| `aarch64_xrt_*.oo` (16) | 1k+ | Runtime stubs: list/str/bytes/cstr/cstr2/cstr3/affix/itoa/host/host2/host3/heap/exec/fmath/fexp/fln/split/case + 16 sha256 stages + 2 hmac |
+| `aarch64_if_*.oo` (50) | ~17 each | 50 single-`verify_aarch64_*` test fixtures (if-true, if-false, if-gt, hello, int, bind, bool, mix, multi, neg, esc, utf8, etc.) |
+
+`aarch64_xterm.oo` is 258 lines and exceeds the 256-line law in FORMAT.oot §0; that violation pre-dates this audit.
+
+## 2. External call graph
+
+The oodac/ files that import from std/hw/arch_aarch64/ are exactly one: `oodac/aarch64_emit_elf.oo:13` imports `std/hw/arch_aarch64/aarch64_codegen.oo`. The `cli_build_sovereign.oo:15` chain reaches std via `aarch64_emit_elf.oo`. All other oodac/ files stop at the aarch64_emit ladder (`aarch64_emit.oo`, `aarch64_emit_harv.oo`, `aarch64_emit_cond.oo`, `aarch64_emit_take.oo`, `aarch64_emit_if.oo`, `aarch64_emit_sys.oo`, `aarch64_emit_fold.oo`, `aarch64_emit_num.oo`, `aarch64_emit_secret.oo`, `aarch64_emit_diag.oo`, `aarch64_emit_secret.oo`, `aarch64_main.oo`) and call nothing from std/hw/arch_aarch64/.
+
+Each std fn with at least one external caller (file:line). "External" excludes files inside `std/hw/arch_aarch64/`.
+
+| std fn (file:line) | External callers |
+|---|---|
+| `aarch64_compile_to_elf` (`aarch64_codegen.oo:67`) | `oodac/aarch64_emit_elf.oo:71`; `tests/test_challenger_pipeline.oo:25`; `scripts/std_qa/std_qa_aarch64_gas_codegen.oo:126`; `scripts/std_qa/std_qa_aarch64_torture.oo:222`; `scripts/std_qa/std_qa_aarch64_native_compiler.oo:127`; `scripts/std_qa/std_qa_aarch64_matrix_validate.oo:166` |
+| `aarch64_compile_unit_to_elf` (`aarch64_codegen.oo:81`) | `scripts/std_qa/std_qa_aarch64_compiler_lock.oo:54`; `scripts/std_qa/std_qa_aarch64_leaf_validate.oo`; `scripts/std_qa/std_qa_aarch64_leaf_one.oo:34`; `scripts/std_qa/std_qa_aarch64_leaf_probe.oo:23`; `scripts/std_qa/std_qa_a64c_stress_m3.oo:143`; `scripts/std_qa/std_qa_a64c_stackargs.oo:122`; `scripts/std_qa/std_qa_a64c_matchgen.oo:197`; `scripts/std_qa/std_qa_a64c_m3_oracle.oo:95,108,134,144`; `scripts/std_qa/std_qa_a64c_heap_stress.oo:147`; `scripts/std_qa/std_qa_a64c_heap_reg_integrity.oo:116`; `scripts/std_qa/std_qa_a64c_heap_adversarial.oo:106`; `scripts/std_qa/std_qa_a64c_heap.oo:158`; `scripts/std_qa/std_qa_a64c_closure.oo:179`; `scripts/std_qa/std_qa_a64c_adv_test_bug.oo:17`; `scripts/std_qa/std_qa_a64c_adv_runner.oo:23`; `scripts/std_qa/std_qa_a64c_adv_failclosed.oo:39,42,45,48,51`; `scripts/std_qa/std_qa_aarch64_matrix_validate.oo:119` |
+| `aarch64_compile_source` (`aarch64_codegen.oo:51`) | `scripts/std_qa/std_qa_aarch64_gas_codegen.oo:84`; `scripts/std_qa/std_qa_aarch64_native_compiler.oo:84,127` |
+| `aarch64_compile_text_to_elf` (`aarch64_codegen.oo:85`) | `scripts/std_qa/std_qa_aarch64_torture.oo:210` |
+| `aarch64_compile_recursive_elf` (`aarch64_codegen.oo:95`) | `scripts/std_qa/std_qa_aarch64_torture.oo:207` |
+| `aarch64_compile_match_elf` (`aarch64_codegen.oo:99`) | `scripts/std_qa/std_qa_aarch64_torture.oo:208` |
+| `aarch64_compile_array_elf` (`aarch64_codegen.oo:103`) | `scripts/std_qa/std_qa_aarch64_torture.oo:209` |
+| `aarch64_compile_program_elf` (`aarch64_codegen.oo:172`) | `scripts/std_qa/std_qa_aarch64_concat_order.oo` (only) |
+| `aarch64_emit_prologue/epilogue/start/sample_src` (`aarch64_codegen.oo:23,30,37,47`) | `scripts/std_qa/std_qa_aarch64_native_compiler.oo:160` (start only); `scripts/std_qa/std_qa_aarch64_native_compiler.oo:83,126` (sample_src only) |
+| `aarch64_lower_main` (`aarch64_lower.oo:199`) | 0 external callers; called only from `aarch64_codegen.oo:52` |
+| `aarch64_link_executable` (`aarch64_linker.oo:114`) | `scripts/std_qa/std_qa_aarch64_chunk_stress.oo:50`; `scripts/std_qa/std_qa_aarch64_emit_elf_stress.oo:50` |
+| `aarch64_check_elf` (`aarch64_elf_check.oo:56`) | 30+ callers in `scripts/std_qa/adv_test_a64_*.oo` and `scripts/std_qa/std_qa_a64c_*.oo` (e.g. `adv_test_a64_challenger_m3_2.oo:161`, `std_qa_a64c_m3_oracle.oo:98`); oodac has zero direct callers |
+| `a64_elf_to_octal/write_and_chmod/elf_dir` (`aarch64_qemu_exec.oo:20,53,57`) | `scripts/std_qa/std_qa_aarch64_chunk_stress.oo:105,127`; `scripts/std_qa/std_qa_aarch64_compiler_lock.oo:59,79,117`; 24 `adv_test_a64_*.oo` files (e.g. `adv_test_a64_heap_1.oo:155`); `std_qa_aarch64_matrix_validate.oo:127`; `std_qa_aarch64_leaf_one.oo:42`; `std_qa_aarch64_leaf_validate.oo:25`; `std_qa_a64_leaf_probe.oo:27` |
+| `a64_qemu_once/twice/pass_text/bin/require_qemu` (`aarch64_qemu_exec.oo:131,153,163,35,39`) | `scripts/std_qa/std_qa_aarch64_chunk_stress.oo:115` (once); 24 `adv_test_a64_*.oo` and `std_qa_a64c_*.oo` files (twice); `std_qa_aarch64_compiler_lock.oo:60,116`; `std_qa_aarch64_matrix_validate.oo:132`; `std_qa_aarch64_leaf_one.oo:50`; `std_qa_a64_leaf_probe.oo:32`; `std_qa_aarch64_gas_codegen.oo:133`; `std_qa_a64c_m3_oracle.oo:101,114` |
+| `aarch64_disasm_inst` (`aarch64_disasm.oo:174`) | `scripts/std_qa/std_qa_aarch64_gas_codegen.oo:29,31,33,35,37,39,41,43,45,51,53,55,57,59,61,67,69,71,73,75,77` (21 call sites in one file) |
+| `aarch64_disasm_stream` (`aarch64_disasm.oo:186`) | `scripts/std_qa/std_qa_aarch64_gas_codegen.oo:99` |
+| `aarch64_suite_has_main/pass_line/compile_suite_elf` (`aarch64_suite.oo:41,80,166`) | 0 external callers; all three are only called within `aarch64_suite.oo` and `aarch64_codegen.oo` |
+| `aarch64_alloc_color/color_of/is_spilled` (`aarch64_reg_graph.oo:156,173,179`) | `scripts/std_qa/std_qa_aarch64_torture.oo:83,86,87,107,111,112,131,137,153,156,157` |
+| `aarch64_reg_k` (`aarch64_reg_graph.oo:21`) | `scripts/std_qa/std_qa_aarch64_torture.oo:83,107` |
+| `aarch64_matrix_count/tag/path/qemu_req/is_orch` (`aarch64_matrix_names.oo:13,17,44,52,65`) | `scripts/std_qa/std_qa_aarch64_matrix_validate.oo:108,109,131,181`; `scripts/std_qa/std_qa_aarch64_leaf_validate.oo:92,94,95`; `scripts/std_qa/std_qa_aarch64_compiler_lock.oo:24,26,27` |
+| `aarch64_aligned_push/rec_align/body_frame` (`aarch64_rec.oo:17,29,114`) | `scripts/std_qa/std_qa_aarch64_torture.oo:191,199,205` |
+| `aarch64_emit_recursive_body/match_body/struct_array_body` (`aarch64_rec.oo:57,74,95`) | 0 external callers; only `aarch64_codegen.oo:96,100,104` |
+| `aarch64_sys_read/write/close/mmap/exit` (`aarch64_syscalls.oo:16,20,24,28,32`) | `scripts/std_qa/std_qa_aarch64_native_compiler.oo:98-102` |
+| `aarch64_emit_svc0/sys_write/sys_read/sys_close/sys_mmap/sys_exit/stdout_write` (`aarch64_syscalls.oo:36,48,57,66,73,85,92`) | `scripts/std_qa/std_qa_aarch64_native_compiler.oo:103,107,110,112,114` |
+| `abi_arg_count/arg_reg/ret_reg/ret_hi_reg/fp_reg/lr_reg/sp_reg/sys_reg/is_callee_saved/align_up/stack_aligned/is_arg_reg/scratch_reg/valid_reg` (`aarch64_abi.oo:13-89`) | 0 external callers in oodac/; 9 in `scripts/std_qa/std_qa_aarch64_native_compiler.oo:53-63` |
+| `arm64_word_ret/movz/svc/bl/sub_imm/stp_pre/ldp_post/add_imm/str/ldr/cmp_reg/mov_reg/b_cond/b/neg/words_to_bytes/concat/u32_to_le/add_reg/sub_reg/mul/sdiv/and_reg/orr_reg/eor_reg/lsl_reg/lsr_reg/asr_reg/subs_reg/movk` (`aarch64_encoder.oo:13-194`) | 0 external callers in oodac/; used in `scripts/std_qa/std_qa_aarch64_gas_codegen.oo:29-99` and `scripts/std_qa/std_qa_aarch64_chunk_stress.oo:26-35` and `scripts/std_qa/std_qa_aarch64_emit_elf_stress.oo:26-35` |
+| `neon_*` (16 fns in `aarch64_neon.oo:15-113`) | only `scripts/std_qa/std_qa_aarch64_torture.oo:48-60` |
+| `arm64_asm_new/emit_inst/byte_count/finish` (`aarch64_assembler.oo:18,26,43,47`) | only `scripts/std_qa/std_qa_compiler_triad.oo:59,60,64,68` and `scripts/std_qa/std_qa_arch_native.oo:70,71,74` |
+| `a64x_*` (140+ fns in `aarch64_x*.oo`) | 0 external callers; the entire x-pipeline is internal to `aarch64_program.oo` |
+| `a64rt_*` (30+ fns in `aarch64_xrt*.oo`) | 0 external callers; called only from `aarch64_program.oo:153-166` |
+
+## 3. Must-wire set (for AST shim Turn 2)
+
+Turn 2 of the deep-dive plan (`audit/aarch64-deep-dive.oot:101-105`) replaces the text-output ladder arm with a direct `aarch64_compile_to_elf` call. The AST shim will live in `oodac/` and must wire to:
+
+1. `aarch64_compile_to_elf` (`aarch64_codegen.oo:67`) replaces the .text+ELF emit arm. The current `aarch64_emit_linux` (`aarch64_emit_sys.oo:60`) is called from `aarch64_emit.oo:144` and prints GAS `.ascii` strings; the shim must instead call `aarch64_compile_to_elf` to return an ELF byte list.
+2. `aarch64_compile_source` (`aarch64_codegen.oo:51`) replaces the source-to-text arm. The shim can call this to get just `.text` bytes (used as a building block by `aarch64_compile_to_elf`); the shim should reach this fn directly to avoid the linker when the caller only needs text.
+3. `aarch64_link_executable` (`aarch64_linker.oo:114`) replaces the hand-rolled `printf '...' > out` ELF packer in `aarch64_emit_elf.oo:42-65`. The shim must call this to assemble a valid ELF header + program header.
+4. `aarch64_lower_main` (`aarch64_lower.oo:199`) replaces the per-token `a64_collect_prints` harvest in `aarch64_emit.oo:143`. The shim must call this fn when the source matches the constrained `fn main` shape; it returns the lowered word list that `aarch64_compile_source` expects.
+5. `aarch64_emit_prologue` + `aarch64_emit_epilogue` + `aarch64_emit_start` (`aarch64_codegen.oo:23,30,37`) replace the hand-rolled STP/MOV/RET/SVC sequence in `aarch64_emit_linux` (`aarch64_emit_sys.oo:77-104`). The shim must compose these to build a frame-correct `_start`+`main` block when not going through `aarch64_compile_to_elf`.
+6. `aarch64_check_elf` (`aarch64_elf_check.oo:56`) replaces `aarch64_emit_diag_test` (`aarch64_emit.oo:129`) as the verification arm. The shim must call this on the produced byte list before passing it to the writer; the diag gate today is shape-level, not byte-level.
+7. `arm64_words_to_bytes` + `arm64_concat` (`aarch64_encoder.oo:33,22`) are the byte-packing utilities. The shim must use these when composing the prologue+main+epilogue byte stream from individual word lists.
+8. `abi_fp_reg`/`abi_lr_reg`/`abi_sp_reg`/`abi_sys_reg` (`aarch64_abi.oo:35-47`) are the AAPCS64 constants. The shim must use these instead of hard-coded register indices when building prologue/epilogue/start so a future ABI bump does not break the shim.
+9. `aarch64_disasm_inst` (`aarch64_disasm.oo:174`) is the word -> mnemonic disassembler. The shim must call this in the verification path; today `aarch64_emit_linux` has no disassembly self-check, so a wrong opcode silently ships as GAS text.
+10. `aarch64_suite_has_main` + `aarch64_suite_pass_line` + `aarch64_compile_suite_elf` (`aarch64_suite.oo:41,80,166`) are the suite gate. The shim must call these when the input source has a "PASS" string marker, so the suite's "expected exit 0" assertion is enforced by the shim rather than by the hand-rolled `_start`.
+
+## 4. Rename set
+
+The shim layer should rewrite calls to use a consistent `a64_*` prefix matching `aarch64_syscalls.oo`, `aarch64_elf_check.oo`, and `aarch64_qemu_exec.oo`, instead of the `aarch64_*` prefix used in `aarch64_codegen.oo`, `aarch64_lower.oo`, `aarch64_disasm.oo`, `aarch64_rec.oo`, `aarch64_reg_graph.oo`, `aarch64_suite.oo`, `aarch64_matrix_names.oo`. The x86 audit (`audit/x86-std-audit.oot:51`) confirms the same pattern: x86 uses `x86_*` and short `x86_*`; aarch64 should settle on `a64_*`.
+
+1. `aarch64_compile_to_elf` -> `a64_compile_to_elf` (called at `aarch64_emit_elf.oo:71`, `tests/test_challenger_pipeline.oo:25`).
+2. `aarch64_compile_source` -> `a64_compile_source` (called at `aarch64_codegen.oo:58,68,84`).
+3. `aarch64_compile_program_elf` -> `a64_compile_program_elf` (called at `aarch64_codegen.oo:76`; today 1 external caller).
+4. `aarch64_compile_unit_to_elf` -> `a64_compile_unit_to_elf` (called at `aarch64_codegen.oo:82`; 18+ external callers).
+5. `aarch64_compile_text_to_elf` -> `a64_compile_text_to_elf` (called at `aarch64_codegen.oo:90,96,100,104`).
+6. `aarch64_compile_recursive_elf` / `_match_elf` / `_array_elf` -> `a64_compile_recursive_elf` / `_match_elf` / `_array_elf` (1 external caller each).
+7. `aarch64_emit_prologue` / `_epilogue` / `_start` / `_sample_src` -> `a64_emit_prologue` / `_epilogue` / `_start` / `_sample_src`.
+8. `aarch64_lower_main` -> `a64_lower_main` (called at `aarch64_codegen.oo:52`).
+9. `aarch64_link_executable` -> `a64_link_executable` (called at `aarch64_codegen.oo:72,92`).
+10. `aarch64_disasm_inst` / `aarch64_disasm_stream` -> `a64_disasm_inst` / `a64_disasm_stream` (called at `aarch64_disasm.oo:192`; 21+ external sites).
+11. `aarch64_sys_read` / `_write` / `_close` / `_mmap` / `_exit` -> `a64_sys_read` / `_write` / `_close` / `_mmap` / `_exit`.
+12. `aarch64_emit_svc0` / `aarch64_emit_sys_write` / `_read` / `_close` / `_mmap` / `_exit` / `aarch64_emit_stdout_write` -> `a64_emit_svc0` / `a64_emit_sys_*` / `a64_emit_stdout_write`.
+13. `aarch64_emit_recursive_body` / `_match_body` / `_struct_array_body` -> `a64_emit_recursive_body` / `_match_body` / `_struct_array_body`.
+14. `aarch64_aligned_push` / `aarch64_rec_align` / `aarch64_body_frame` -> `a64_aligned_push` / `a64_rec_align` / `a64_body_frame`.
+15. `aarch64_alloc_color` / `aarch64_color_of` / `aarch64_is_spilled` / `aarch64_reg_k` -> `a64_alloc_color` / `a64_color_of` / `a64_is_spilled` / `a64_reg_k`.
+16. `aarch64_matrix_count` / `_tag` / `_path` / `_qemu_req` / `_is_orch` -> `a64_matrix_count` / `_tag` / `_path` / `_qemu_req` / `_is_orch`.
+17. `aarch64_suite_has_main` / `_pass_line` / `aarch64_compile_suite_elf` -> `a64_suite_has_main` / `_pass_line` / `a64_compile_suite_elf`.
+
+## 5. Dead symbols (zero external callers)
+
+The following pub fns in `std/hw/arch_aarch64/` have zero callers outside the std directory itself. They are kept for self-consistency or for tests.
+
+1. `arm64_asm_new` (`aarch64_assembler.oo:18`) plus `arm64_asm_emit_inst` (`aarch64_assembler.oo:26`), `arm64_asm_byte_count` (`aarch64_assembler.oo:43`), `arm64_asm_finish` (`aarch64_assembler.oo:47`). The `Arm64Assembler` struct and all 4 ops are touched only by `std_qa_compiler_triad.oo:59-68` and `std_qa_arch_native.oo:70-76`; the main codegen path uses `arm64_words_to_bytes` directly. The struct is dead weight in the emit hot path.
+2. `neon_word_add_2d`/`sub_2d`/`mul_2d`/`and_16b`/`eor_16b`/`fmla_4s`/`ldp_q`/`stp_q` and 8 `neon_encode_*`/`neon_rd`/`neon_rn`/`neon_rm`/`neon_rt`/`neon_rt2`/`neon_is_vreg` (`aarch64_neon.oo:15-113`). All 17 pub fns are called only from `std_qa_aarch64_torture.oo:48-60`. No x-pipeline or main-codegen path uses NEON.
+3. `aarch64_compile_program_elf` (`aarch64_codegen.oo:172`). The 253-line `aarch64_program.oo` is reachable only from this fn; external callers = 1 (a stress test).
+4. `aarch64_compile_suite_elf` (`aarch64_suite.oo:166`) plus `aarch64_suite_has_main` (`aarch64_suite.oo:41`) and `aarch64_suite_pass_line` (`aarch64_suite.oo:80`). 0 external callers; `aarch64_compile_suite_elf` is the only consumer of the other two.
+5. `aarch64_emit_recursive_body` (`aarch64_rec.oo:57`), `aarch64_emit_match_body` (`aarch64_rec.oo:74`), `aarch64_emit_struct_array_body` (`aarch64_rec.oo:95`), `aarch64_body_frame` (`aarch64_rec.oo:114`). 0 external callers; the only consumer is `aarch64_codegen.oo:96,100,104`.
+6. `a64_elf_to_octal` (`aarch64_qemu_exec.oo:20`) and `a64_write_and_chmod` (`aarch64_qemu_exec.oo:57`). Only `aarch64_qemu_exec.oo:73,59` call these internally; no external caller imports `aarch64_qemu_exec.oo` for octal/write. (`a64_elf_to_octal` has a twin at `oodac/aarch64_emit_elf.oo:19` that is the only oodac consumer; the std one is a parallel duplicate.)
+7. The full `a64x_*` (aarch64_xarith, xclosure, xcond, xexpr, xfloat, xfn, xloop, xmark, xsimple, xstate, xstmt, xterm, xtypes, xunit, xscan) and `a64rt_*` (aarch64_xrt + 16 xrt_*.oo) families: 0 external callers. The 22 x-pipeline files and 19 xrt-runtime files exist only to feed `aarch64_program.oo:146-170`. The shim is the first oodac/ caller; today the whole AST pipeline is dormant.
+
+## 6. Surface-area risks
+
+1. **Single import path between oodac/ and std/hw/arch_aarch64/**. Only `oodac/aarch64_emit_elf.oo:13` imports from std today. The shim will become the second import edge. Risk: a refactor that moves `aarch64_compile_to_elf` into a new module forces the shim to follow; a follow-up that splits `aarch64_codegen.oo` into a thin facade + a multi-fn compiler leaves the shim holding a stale import path.
+2. **Two naming conventions in the same std tree** (`aarch64_*` in `aarch64_codegen.oo`, `aarch64_lower.oo`, `aarch64_rec.oo`, `aarch64_reg_graph.oo`, `aarch64_suite.oo`, `aarch64_matrix_names.oo`, `aarch64_disasm.oo`; `a64_*` in `aarch64_syscalls.oo`, `aarch64_elf_check.oo`, `aarch64_qemu_exec.oo`, `aarch64_linker.oo`). The shim must pick one; the rename set in §4 is the recommendation.
+3. **Two parallel ELF packers** (`aarch64_link_executable` in std vs `a64_write_elf_bytes` + `a64_elf_to_octal` in `oodac/aarch64_emit_elf.oo:34,19`). The shim must not import the oodac twin. Today both packers emit `EM_AARCH64=183`; if a future patch changes `e_machine` to `e_machine_aarch64()` lookup (an ELF-helper constant added in `aarch64_linker.oo:86`), the oodac twin will not see it.
+4. **Dual-path codegen drift** (per `audit/aarch64-deep-dive.oot:74-88`). `aarch64_compile_source` (`aarch64_codegen.oo:51`) and `aarch64_emit_linux` (`aarch64_emit_sys.oo:60`) emit `.text` independently. A 64-bit-immediate fix to one is invisible to the other. The shim must close this gap by calling only `aarch64_compile_to_elf` and dropping `aarch64_emit_linux` entirely (Turn 2 acceptance).
+5. **`aarch64_xterm.oo` 258 lines**. The file law is `<= 256`. The x-pipeline is the AST shim's biggest target; a shim edit will need to either split `aarch64_xterm.oo` first or never re-export its `a64x_*` symbols.
+6. **No qemu gate in the text path**. `aarch64_emit_linux` has no `aarch64_check_elf` call and no `aarch64_disasm_inst` call. The shim's §3 must add both; otherwise a wrong opcode ships as GAS text that is then assembled and qemu-tested downstream only, where the failure is harder to localize.
+7. **`aarch64_emit_prologue` is unused outside `aarch64_codegen.oo`** (called only at `aarch64_codegen.oo:25`). Once the shim calls it directly, it becomes a stable surface; today it is internal-by-convention only.
+8. **258 lines in `aarch64_xterm.oo` and the file law**. Splitting risk. Not blocking, but a shim that grows a new arm may push a second file over the line.

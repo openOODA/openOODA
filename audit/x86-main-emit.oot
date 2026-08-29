@@ -1,0 +1,215 @@
+# x86 main emit — fn-level deep audit
+
+File: openOODA/audit/x86-main-emit.oot
+Status: smoke — read-only static trace, no compiler invocation
+Scope: ooda/oodac/x86_emit_*.oo (x86_emit_sys.oo, x86_emit.oo, x86_emit_float.oo, x86_emit_list.oo, x86_emit_struct.oo, x86_emit_frame.oo, x86_emit_walk.oo, x86_emit_fold.oo, x86_emit_int.oo, x86_emit_fn.oo, x86_emit_str.oo, x86_emit_greet.oo, x86_emit_rsi.oo, x86_ast_typed.oo, x86_emit_elf.oo), 2026-08-25
+
+---
+
+## 1. Main emit fn location
+
+The fn that emits the assembly for the `main` function in the simple-println path is `x86_emit_linux64`, defined in `ooda/oodac/x86_emit_sys.oo:36-67`. The `main:` label is emitted at line 51, the `_start:` label at line 52.
+
+This fn is the FALLBACK arm of the 22-arm dispatch chain in `x86_emit_stream` (x86_emit.oo:46-196). It runs only after the typed-AST shim (x86_ast_typed.oo:17), the contract gate, the secret gate, and all 22 specific matchers have refused the source. The dispatch reaches `x86_emit_linux64` at x86_emit.oo:194-195 through `x86_collect_prints`.
+
+`x86_emit_linux64` is the right answer to "the fn that emits main for the simple case." Each elaborate matcher (Float, List, struct, loop, match, opt, etc.) also has its own main-emit prologue, but `x86_emit_linux64` is the canonical harvest fallback.
+
+Location: `ooda/oodac/x86_emit_sys.oo:36` (function), `:51-52` (main/_start labels).
+
+## 2. Call chain
+
+| Caller | Callee | Contract | Location |
+|---|---|---|---|
+| `cli_emit.oo:cli_emit_x86` (CLI entry) | `x86_emit_stream` (dispatcher) | Reads source from path, calls stream | cli_emit.oo:80-82 |
+| `x86_emit_stream` | `x86_emit_contract_test` | Reject contract violations, exit 1 | x86_emit.oo:49-57 |
+| `x86_emit_stream` | self, empty-source guard | Reject `chars_len(src)==0`, exit 1 | x86_emit.oo:58-61 |
+| `x86_emit_stream` | `x86_emit_secret_test` | Reject SECRET taint, exit 1 | x86_emit.oo:64-72 |
+| `x86_emit_stream` | `x86_emit_stream_typed` (typed-AST shim) | Ok → print + return; Err → print + exit 1 | x86_emit.oo:75-79 → x86_ast_typed.oo:17-31 |
+| `x86_emit_stream` | `x86_fold_hello` | Return pre+arg+suf; non-empty → `x86_emit_linux64` | x86_emit.oo:81-87 → x86_emit_fold.oo:177-192 |
+| `x86_emit_stream` | 22-arm chain: id, snd, thd, fth, 5th, 6th, cat, greet, int, struct, typed_let, multi, mut, match, while, for, opt, free, fib, float, heap | First match wins, returns immediately | x86_emit.oo:88-193 |
+| `x86_emit_stream` (fallback) | `x86_collect_prints` | Walk tokens, require fn main + at least one const-println; ERR on unresolved | x86_emit.oo:194-195 → x86_emit_walk.oo:13-213 |
+| `x86_emit_stream` (fallback) | `x86_emit_linux64` | Emit AT&T main+_start that writes each msg then SYS_exit 0 | x86_emit.oo:195 → x86_emit_sys.oo:36-67 |
+| `x86_emit_linux64` | `x86_ascii_esc` (per string) | Escape \ " \n \t for .ascii | x86_emit_sys.oo:14-34, used at :44 |
+
+**Note:** The typed-AST shim is reached FIRST. If it returns Ok, the 22-arm chain is skipped entirely. If it returns Err, the compiler ERRs and exits 1 — the 22-arm chain never runs. So for any source the typed-AST shim accepts, the main emit comes from `x86_ssa_emit_program` (x86_ssa_emit.oo), NOT from `x86_emit_linux64`.
+
+## 3. Per-source-type emit
+
+### 3.1 hello-world source: `fn main() { println("Hello, World!"); }`
+
+Dispatch: typed-AST shim may accept (Ok path → x86_ssa_emit.oo:16 with main+push/mov). If typed-AST ERRs, the chain falls through all 22 matchers to `x86_collect_prints` (x86_emit_walk.oo:13) which extracts `["Hello, World!"]`, then `x86_emit_linux64` (x86_emit_sys.oo:36) emits:
+
+```
+    .section .rodata
+.Lstr0:
+    .ascii "Hello, World!\n"
+    .section .text
+    .globl _start
+    .globl main
+    .p2align 4
+main:
+_start:
+    mov $1, %rax
+    mov $1, %rdi
+    lea .Lstr0(%rip), %rsi
+    mov $14, %rdx
+    syscall
+    mov $60, %rax
+    xor %rdi, %rdi
+    syscall
+```
+
+Emitted by `x86_emit_sys.oo:36-67`. NO `push %rbp` / `mov %rsp, %rbp` / `sub $N, %rsp` — the main is flat (no frame).
+
+### 3.2 empty source: `""` (zero bytes)
+
+Dispatch: `x86_emit.oo:60-62` rejects at the top with `ERR\tx86_emit\tempty` and `process_exit(1)`. NO assembly is emitted. The compiler ERRs before reaching any matcher, the typed-AST shim, or `x86_emit_linux64`. Source: `ooda/oodac/x86_emit.oo:60-62`.
+
+For a source with content but no `fn main`, the typed-AST shim ERRs. For a source with `fn main() {}` and no println, the harvest walker ERRs with `ERR\tx86_emit\tresidual: need println("...") (not emit-c)` at x86_emit_walk.oo:209-212.
+
+### 3.3 Float-using source: `let x: Float = 1.5; println(x);`
+
+Dispatch: `x86_match_float_test` (x86_emit_float.oo:143) returns true on Float IDENT or FLOAT token. `x86_collect_and_emit_float` (x86_emit_float.oo:161-249) emits:
+
+```
+    .section .rodata
+    .p2align 3
+.Lconst_100:
+    .double 100.0
+.Lconst_half:
+    .double 0.5
+.Lf_result:
+    .double 1.5
+    .section .text
+    .globl _start
+    .globl main
+    [followed by x86_emit_float_routine body]
+main:
+_start:
+    push %rbp
+    mov %rsp, %rbp
+    sub $32, %rsp
+    movsd .Lf_result(%rip), %xmm0
+    call _println_float
+    add $32, %rsp
+    pop %rbp
+    mov $60, %rax
+    xor %rdi, %rdi
+    syscall
+```
+
+The frame prologue is at `x86_emit_float.oo:235-237` (push/mov/sub $32). Frame is required because the body holds SSE state in `%xmm0` and needs the stack for `_println_float`'s locals. If the println arg is not const-foldable, `x86_collect_and_emit_float` returns false and the harvest walker ERRs with `float not const-foldable` (x86_emit.oo:187-188).
+
+### 3.4 List-using source: `let mut xs: List[Int] = list_new(); xs = list_push(xs, 7); println(list_len(xs));`
+
+Dispatch: `x86_match_list` (x86_emit_list.oo:28-81) exists and would return a spec, but the dispatch chain in `x86_emit.oo:88-193` has NO `x86_match_list` arm. Grep confirms zero callers of `x86_match_list` or `x86_emit_list_program` outside the list file itself. Today a List source falls through the 22 matchers to `x86_collect_prints`, which sets `leftover_unresolved = true` (because `list_new`, `list_push`, `list_len` are not const-foldable) and ERRs with `leftover println(ident)` (x86_emit_walk.oo:205-207).
+
+If the dispatch DID wire `x86_emit_list_program` (x86_emit_list.oo:87), the emitted main would be:
+
+```
+    .section .text
+    .globl _start
+    .globl main
+    .p2align 4
+main:
+_start:
+    push %rbp
+    mov %rsp, %rbp
+    sub $64, %rsp
+    call list_new
+    movq %rax, -8(%rbp)
+    movq -8(%rbp), %rdi
+    movq $7, %rsi
+    call list_push
+    movq %rax, -8(%rbp)
+    movq -8(%rbp), %rdi
+    call list_len
+    movq %rax, %rdi
+    call _println_int
+    add $64, %rsp
+    pop %rbp
+    mov $60, %rax
+    xor %rdi, %rdi
+    syscall
+```
+
+The frame prologue would be at `x86_emit_list.oo:102` (single-line println). The fn is dead code in the current dispatch — List programs today ERR rather than emit. **This is a real wiring gap.**
+
+### 3.5 struct-using source: `type Point = struct { x: Int, y: Int }; let p = Point { x: 1, y: 2 }; println(p.x);`
+
+Dispatch: `x86_match_struct` (x86_emit_struct.oo:54) returns true on KW_TYPE+struct, struct+LBRACE, or DOT+IDENT. `x86_emit_struct` (x86_emit_struct.oo:115-231) emits:
+
+```
+    .section .data
+    .p2align 3
+.Lheap_start:
+    .quad 0
+    .section .text
+    .globl _start
+    .globl main
+    [followed by _alloc and _println_int routines]
+main:
+_start:
+    push %rbp
+    mov %rsp, %rbp
+    sub $64, %rsp
+    mov $16, %rdi
+    call _alloc
+    movq $1, 0(%rax)
+    movq $2, 8(%rax)
+    movq %rax, -8(%rbp)
+    movq -8(%rbp), %rdi
+    movq 0(%rdi), %rax
+    movq %rax, %rdi
+    call _println_int
+    add $64, %rsp
+    pop %rbp
+    mov $60, %rax
+    xor %rdi, %rdi
+    syscall
+```
+
+The frame prologue is at `x86_emit_struct.oo:133` (single-line println: `push %rbp\n    mov %rsp, %rbp\n    sub $64, %rsp`). Frame is required because the body holds locals at negative `%rbp` offsets (e.g. `-8(%rbp)` for `p`).
+
+## 4. No-op main source
+
+The "no-op main" — a `main:` label whose body writes nothing and exits 0 — is emitted by `x86_emit_linux64` in `ooda/oodac/x86_emit_sys.oo:36-67`. The `main:` and `_start:` labels are at lines 51-52. When the harvest walker returns an empty `msgs` list, the body collapses to:
+
+```
+main:
+_start:
+    mov $60, %rax
+    xor %rdi, %rdi
+    syscall
+```
+
+This fn does NOT emit `push %rbp / mov %rsp, %rbp / sub $N, %rsp`. The frame prologue is absent by design — `x86_emit_linux64` is the no-frame, write-and-exit main for simple println-only programs.
+
+The `push %rbp / mov %rsp, %rbp / sub $N, %rsp` pattern is emitted ONLY by the elaborate matchers, each at a different single line (most use a one-line `println` to emit all three lines together):
+
+| Funder | Line | Frame sub |
+|---|---|---|
+| `x86_emit_float.oo:x86_collect_and_emit_float` | 235-237 (three println) | `sub $32, %rsp` |
+| `x86_emit_list.oo:x86_emit_list_program` (dead) | 102 (one println) | `sub $64, %rsp` |
+| `x86_emit_struct.oo:x86_emit_struct` | 133 (one println) | `sub $64, %rsp` |
+| `x86_emit_loop.oo:x86_emit_while_loop` | 160-162 (three println) | `sub $16, %rsp` |
+| `x86_emit_match.oo:x86_emit_match_test` | 190 (one println) | `sub $48, %rsp` |
+| `x86_emit_opt.oo:x86_emit_opt_program` | 185-188 (four println) | `sub $64, %rsp` |
+| `x86_emit_typed_let.oo:x86_emit_typed_let` | 69-71 (three println) | `sub $16, %rsp` |
+| `x86_emit_mut.oo:x86_emit_mut_local` | 80-82 (three println) | `sub $8, %rsp` |
+| `x86_emit_multi.oo:x86_emit_multi_main` | 72-73 (two println) | push/mov only, no sub |
+| `x86_emit_heap.oo:x86_emit_heap_test` | 84-85 | no frame, calls `oo_x86_alloc` directly |
+
+The frame-prologue helper `x86_emit_frame_enter` (x86_emit_frame.oo:13-16) emits `push %rbp` and `mov %rsp, %rbp` for CALLEE fns (e.g. `id`, `snd`, `greet`, `cat`), not for the main label.
+
+**Conclusion:** The no-op main (flat, no frame) comes from `x86_emit_sys.oo:51-52`. The frame pattern is NOT in the no-op main — it lives in the elaborate matcher fns, each emitting a one-line or three-line println block at the line cited above. The closest "frame with no body" is what the elaborate fns WOULD emit if matched with an empty body, but in practice those fns require real body tokens (e.g. `x86_collect_and_emit_float` needs a Float println arg) so the no-body case is rejected by the matcher, not by an empty body check.
+
+## 5. Recommended fix
+
+Detect an empty/no-op main BEFORE `x86_emit_linux64` runs and refuse it. The three actionable fixes, ordered by leverage:
+
+1. **Empty-source guard (already present, keep it):** `x86_emit.oo:60-62` ERRs on `chars_len(src)==0` with `ERR\tx86_emit\tempty` and exits 1. This is correct. No change needed.
+
+2. **Empty-main-body guard (missing — highest leverage):** Add a check in `x86_emit.oo` immediately AFTER the contract gate (after line 57) and BEFORE the secret gate (before line 62). Tokenize the source, locate `fn main() { ... }`, count `println(STRING|INT)` and `println(-INT)` calls inside the body. If the count is 0, print `ERR\tx86_emit\tno-op main: fn main body has no println` and `process_exit(1)`. The harvest walker `x86_collect_prints` ERRs on this case (x86_emit_walk.oo:209-212), but only after the typed-AST shim and 22 matchers have all refused. Move the check earlier so no asm is emitted. The line that today emits `main:` / `_start:` for the no-op case is `x86_emit_sys.oo:51-52` — gate the call to `x86_emit_linux64` at `x86_emit.oo:194-195` on a non-zero println count.
+
+3. **Wire the List matcher (medium leverage):** `x86_emit_list_program` is defined at `x86_emit_list.oo:87-127` but NEVER called from `x86_emit.oo`. Add an arm to the 22-arm chain (between `x86_match_typed_let` at x86_emit.oo:138-142 and `x86_match_multi_main` at :143-147) that calls `x86_match_list_test` (x86_emit_list.oo:83) and dispatches to `x86_emit_list_program`. Today List programs ERR with `leftover println(ident)` from the harvest walker — the real problem is the dispatcher does not handle List, and the user sees a misleading "leftover" error. Same audit applies to any other defined-but-unwired matcher.

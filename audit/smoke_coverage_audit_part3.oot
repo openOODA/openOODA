@@ -1,0 +1,237 @@
+# Smoke Coverage Audit — Part 3: Physical Domains & Core Math/Crypto Priority
+
+File: openOODA/audit/smoke_coverage_audit_part3.oot
+Logline: Surveys domain modules from Life Sciences to Misc and defines top-priority test targets for Crypto, Math, Collections, and Hash.
+
+Setup: Enumerates physical and engineering domain subtrees, assigning concrete test strategies (KAT, RT, PROP, ALGO, PILLAR).
+
+Beats:
+  1. Domain rollup: Life sciences, finance, quantum, robotics, signal, GIS, embedded, test infra.
+  2. Top-priority crypto and security modules (28 modules with test kinds).
+  3. Top-priority math and extended math modules (16 modules).
+  4. Top-priority collections and hash modules (15 modules).
+
+================================================================
+BEAT 3 — DOMAIN ROLLUP (PART B: PHYSICAL & APPLIED DOMAINS)
+================================================================
+
+  3.9  Life sciences, chemistry, biology (235 modules)
+       std/bio ............................. 26
+       std/bio_advanced .................... 50
+       std/bioinformatics .................. 28
+       std/chem ............................  2
+       std/crispr_cas ...................... 50
+       std/protein_folding ................. 50
+       std/genomics_advanced ............... 50
+       std/synthetic_biology ............... 50
+       std/molecular .......................  2
+       std/reactions .......................  2
+
+  3.10 Finance, fintech, defi (231 modules)
+       std/fin ............................. 54
+       std/fintech ......................... 25
+       std/fintech_defi .................... 50
+       std/fintech_l3_book ................. 56
+       std/fin_quant .......................  3
+       std/fin_trading .....................  3
+       std/fin_wire ........................  1
+       std/fin_blockchain ..................  1
+       std/defi_derivatives ................ 51
+       std/hft_alpha ....................... 50
+       std/econ ............................  1
+       std/governance ......................  1
+       std/evm .............................  8
+
+  3.11 Quantum, topological, advanced math (126 modules)
+       std/quantum ......................... 26
+       std/quantum_advanced ................ 50
+       std/quantum_open_systems ............ 50
+       std/quantum_tensor_nets ............. 50
+       std/quantum_topological ............. 50
+       std/physics ........................ 48
+       std/physics_advanced ................ 50
+       std/astrodynamics ................... 26
+       std/astrophysics_relativity ......... 50
+       std/astro_advanced .................. 50
+
+  3.12 Robotics, UAV, control, autonomous (264 modules)
+       std/robot ........................... 37
+       std/robotics ........................  8
+       std/robotics_ros2 ................... 51
+       std/robotics_auv .................... 50
+       std/auto ............................ 35
+       std/auto_robot ...................... 25
+       std/auto_mpc_control ................ 50
+       std/uav_flight ...................... 50
+       std/digital_twin .................... 50
+       std/space_propulsion ................ 50
+       std/aero ............................ 78
+       std/gnc .............................  1
+       std/swarm ...........................  5
+
+  3.13 Signal, audio, media DSP (110 modules)
+       std/audio (in std/media) ............  -
+       std/sdr (in std/signal_dsp) .........  -
+       std/signal_dsp ......................  3
+       std/signal ..........................  1
+       std/media ........................... 11
+       std/media_dsp ....................... 58
+       std/media_codecs ....................  2
+       std/multimedia ...................... 32
+       std/optics ..........................  3
+
+  3.14 GIS, geo, spatial (90 modules)
+       std/gis_spatial ..................... 28
+       std/gis_topo ........................ 50
+       std/geo (in std/gis_spatial) ........  -
+       std/spatial (in std/gis_spatial) ....  -
+       std/grid ............................ 40
+
+  3.15 Embedded, hardware, drivers (110 modules)
+       std/embedded_hal .................... 54
+       std/hardware ........................  1
+       std/drivers_hal .....................  5
+       std/peripheral (in std/embedded_hal)  -
+       std/bare_metal ......................  3
+       std/unikernel .......................  4
+       std/reproducible_build ..............  4
+
+  3.16 Test infrastructure & meta (197 modules)
+       std/test ............................  6
+       std/testing (in std/test) ...........  -
+       std/qa (in std/test) ................  -
+       std/test_gen (in std/test_gen) ......  -
+       std/bench (in std/perf) .............  -
+       std/perf ............................ 37
+       std/prof (in std/perf) ..............  -
+       std/diag ............................ 22
+       std/fuzz_engine ..................... 32
+       std/hostile_fuzzer (in std/sec) .....  -
+       std/mcdc_coverage (in std/sec) ......  -
+       std/soak ............................  2
+       std/code_hygiene ....................  2
+       std/ooda ............................  2
+       std/lsp (workspace root, not std/) ..  -
+
+  3.17 Misc / single-file (49 modules)
+       std/byte.oo, std/str.oo, std/option.oo, std/result.oo,
+       std/macro.oo, std/scenario.oo, std/result.oo, std/semver.oo,
+       std/test.oo, std/sh.oo, std/math.oo, std/core_floor_suite.oo,
+       std/core_master_suite.oo, std/byte_out.oo, std/_template.oo,
+       std/photonics, std/continuum, std/kinetics, std/thermo,
+       std/reactions, std/molecular, std/em, std/chaos, std/cognition,
+       std/cybernetics, std/ephemeris, std/econ, std/governance,
+       std/hardware, std/algebra, std/geometry, std/math_core,
+       std/math_exact, std/optics, std/photonics
+
+================================================================
+BEAT 4 — TOP-PRIORITY MODULES PER DOMAIN (PART A)
+================================================================
+
+Each row gives: module path * top 1-3 public functions * test kind.
+Test kind codes:
+    KAT      Known-Answer Test (RFC / FIPS / Wycheproof vector)
+    RT       Round-trip (encode->decode equals identity)
+    PROP     Property-based (commutativity, idempotence, associativity)
+    EDGE     Edge / boundary value (empty, zero, max-int, overflow)
+    ALGO     Algorithm-specific (LAPACK residue, BER, polynomial eval)
+    STREAM   Streaming / chunked behaviour
+    CAP      Capability-gated (test the &Net/&Fs/&HttpCap path)
+    PILLAR   Adversarial (Pillar 3 of START.oot: VALID+NT+ADV+DRY)
+
+4.1  std/crypto  (52 modules — pick 14)
+
+    Path                                         Top 1-3 fns                                  Test
+    std/crypto/aes.oo                            aes_encrypt, aes_decrypt                     KAT (NIST AES-128 ECB)
+    std/crypto/aes_gcm.oo                        aead_seal, aead_open                         KAT (RFC 5288 A.1)
+    std/crypto/aes_inv.oo                        aes_inv_block                                KAT (inverse-cipher round trip)
+    std/crypto/aead.oo                           aead_seal, aead_open                         KAT (variant selector)
+    std/crypto/ecdsa.oo                          ecdsa_sign, ecdsa_verify                     KAT (RFC 6979 vector)
+    std/crypto/ed25519.oo                        ed25519_sign, ed25519_verify                  KAT (RFC 8032 7.1 test 1)
+    std/crypto/x25519.oo                         x25519_scalarmult                            KAT (RFC 7748 5.2)
+    std/crypto/curve25519.oo                     curve25519_scalarmult                        KAT (RFC 7748 5.2 alt)
+    std/crypto/kyber.oo                          kyber_keygen, kyber_encaps, kyber_decaps      KAT (FIPS 203 vector)
+    std/crypto/hkdf.oo                           hkdf_extract, hkdf_expand                    KAT (RFC 5869 vector)
+    std/crypto/hmac.oo                           hmac_sha256, hmac_sha512                     KAT (RFC 4231 vector)
+    std/crypto/merkle.oo                         merkle_root, merkle_proof                    PROP (insertion + proof)
+    std/crypto/poly1305.oo                       poly1305_mac                                 KAT (RFC 8439 2.5.2)
+    std/crypto/argon2.oo                         argon2_hash                                  KAT (PHC string roundtrip)
+
+4.2  std/crypto_advanced + std/crypto_pqc + std/pqc_nist (112 modules — pick 8)
+
+    Path                                         Top 1-3 fns                                  Test
+    std/crypto/advanced/ml_kem_*.oo              ml_kem_keygen/encaps/decaps                  KAT (FIPS 203)
+    std/crypto/advanced/ml_dsa_sign.oo           ml_dsa_keygen, ml_dsa_sign                   KAT (FIPS 204)
+    std/crypto/advanced/falcon_sign.oo           falcon_keygen, falcon_sign                   KAT (Falcon reference)
+    std/crypto/advanced/dilithium_verify.oo      dilithium_verify                             KAT (Round 3)
+    std/crypto/advanced/sphincs_plus_fors.oo     sphincs_fors_nodehash                        KAT (FIPS 205)
+    std/crypto/advanced/shamir_secret.oo         shamir_split, shamir_combine                 PROP (3-of-5 quorum)
+    std/crypto/advanced/ed25519_*.oo             ed25519_pubkey_from_priv                     KAT (RFC 8032)
+    std/crypto/advanced/totp_rfc6238.oo          totp_at, totp_verify                         KAT (RFC 6238 Appendix B)
+
+4.3  std/crypto_secrets (105 modules — pick 5)
+
+    Path                                         Top 1-3 fns                                  Test
+    std/crypto/secrets/constant_time.oo          ct_select, ct_memequal                       PILLAR (timing-bypass)
+    std/crypto/secrets/secret_alloc_bytes.oo     secret_alloc, secret_free                    PILLAR (redact-on-free)
+    std/crypto/secrets/secret_fetch.oo           secret_fetch                                 PILLAR (secret redaction)
+    std/crypto/secrets/secret_env_get.oo         secret_env_get                               PILLAR (redact on stderr)
+    std/crypto/secrets/secret_assign.oo          secret_assign                                PILLAR (no copy to log)
+
+4.4  std/fhe_lattices + sec/crypto + zk_rollup (257 modules — pick 6)
+
+    Path                                         Top 1-3 fns                                  Test
+    std/crypto/fhe_lattices/bfv_*.oo                    bfv_encrypt, bfv_decrypt                     KAT (OpenFHE test vector)
+    std/crypto/zk_rollup/merkle_patricia_trie.oo        mpt_insert, mpt_proof                        PROP (inclusion/exclusion)
+    std/crypto/zk_rollup/groth16_verifier.oo            groth16_verify                               KAT (gnark test vector)
+    std/crypto/zk_rollup/poseidon_hash.oo               poseidon_hash                                KAT (Filecoin/Poseidon param)
+    std/sec/crypto/chacha20.oo                   chacha20_block                               KAT (RFC 8439 2.3.1)
+    std/sec/crypto/ed25519.oo                    ed25519_verify_pub                           KAT (RFC 8032)
+
+4.5  std/math (61 modules — pick 12)
+
+    Path                                         Top 1-3 fns                                  Test
+    std/math/bigint.oo                           bigint_add, bigint_mul                       ALGO (Knuth vol 2 4.3.1)
+    std/math/bigint_str.oo                       bigint_to_str, str_to_bigint                 RT
+    std/math/bigdecimal.oo                       bigdecimal_add, bigdecimal_mul               ALGO (dec-shift precision)
+    std/math/complex.oo                          complex_add, complex_mul                     PROP
+    std/math/matrix.oo                           mat_mul, mat_add                             ALGO (3x3 LAPACK residue)
+    std/math/matrix_inversion.oo                 mat_inv                                      ALGO (A*A^-1 = I check)
+    std/math/matrix_decomp_lu.oo                 lu_decompose                                 ALGO (PA = LU verify)
+    std/math/matrix_decomp_qr.oo                 qr_decompose                                 ALGO (Q*Q^T = I check)
+    std/math/matrix_decomp_svd.oo                svd_decompose                                ALGO (U*Sigma*V^T = A check)
+    std/math/matrix_determinant.oo               mat_det                                      ALGO (3x3 vs cofactor)
+    std/math/prime_sieve_atkin.oo                sieve_atkin, is_prime                        EDGE (<=10^6 range)
+    std/math/galois_field.oo                     gf_add, gf_mul, gf_inv                       ALGO (GF(2^8) AES field)
+
+4.6  std/math_extended (105 modules — pick 4)
+
+    Path                                         Top 1-3 fns                                  Test
+    std/math/extended/exact_rational.oo          rat_add, rat_mul, rat_inv                     ALGO
+    std/math/extended/float_extended.oo          f80_add, f80_mul                             EDGE (rounding modes)
+    std/math/extended/for_range.oo               for_range_iter                               EDGE (empty, single, large)
+    std/math/extended/libfloor_gpu_launch.oo     gpu_launch                                   PILLAR (capability gate)
+
+4.7  std/collections (64 modules — pick 12)
+
+    Path                                         Top 1-3 fns                                  Test
+    std/collections/avl_tree.oo                  avl_insert, avl_search, avl_delete           PROP (balance invariant)
+    std/collections/btree_map.oo                 btm_insert, btm_get                          PROP (order, len)
+    std/collections/btree_set.oo                 bts_insert, bts_contains                     PROP (uniqueness)
+    std/collections/binary_heap.oo               heap_push, heap_pop                          PROP (heap order)
+    std/collections/linked_list.oo               ll_push, ll_pop                              EDGE (head/tail)
+    std/collections/linked_list_doubly.oo        dll_push, dll_pop                            PROP (symmetric links)
+    std/collections/bloom_filter.oo              bf_insert, bf_contains                       PROP (no false negatives)
+    std/collections/cuckoo_filter.oo             cf_insert, cf_contains                       PROP (no false negatives)
+    std/collections/disjoint_set.oo              ds_union, ds_find                            PROP (path compression)
+    std/collections/concurrent_hashmap.oo        chm_put, chm_get                             PROP (concurrent inserts)
+    std/collections/interval_tree.oo             it_insert, it_overlap                        PROP
+    std/collections/order_statistic_tree.oo      ost_rank, ost_select                         ALGO (rank/select inverse)
+
+4.8  std/hash (30 modules — pick 3)
+
+    Path                                         Top 1-3 fns                                  Test
+    std/hash/sha1.oo                             sha1_hex                                     KAT (RFC 3174)
+    std/hash/xxhash.oo                           xxh64                                        KAT (xxHash test vector)
+    std/hash/xxh64.oo                            xxh64_finalize                               KAT (single-block)
+    std/hash/murmur3.oo                          murmur3_32                                   KAT (smhasher vector)

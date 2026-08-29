@@ -1,0 +1,27 @@
+# Release notes for v0.225.47
+
+File: openOODA/audit/release_notes/RELEASE_NOTES_v0.225.47.oot
+
+Logline: Fixes the AST path's __puts_int newline write (missing mov_reg x1, x0 between a64x_str_ref and the fd=1 movz), splitting it out of aarch64_xrt.oo into aarch64_xrt_puts_int.oo to respect the 256-line cap, and adds a top-level cross-fn smoke that exercises the fix end-to-end via qemu-aarch64.
+
+Setup: ooda.pkg version=0.225.47. Tag v0.225.47. Built oodac/oodac.aarch64 with bootstrap/oodac_pure_build (1.3 MB; unique_fns=728; from_modules=113).
+
+Beats:
+  1. std/hw/arch_aarch64/aarch64_xrt.oo: removed the inlined a64rt_puts_int body (49 lines) and replaced it with a one-line redirect to the new file. Now 224 lines.
+  2. std/hw/arch_aarch64/aarch64_xrt_puts_int.oo (new, 66 lines): carries the same __puts_int emit logic, but with the correct newline-write prologue: a64x_intern(x, "\n"); a64x_str_ref(x); mov_reg(1, 0); movz(0, 1); movz(2, 1); movz(8, 64); svc. Without the mov_reg(1, 0), x1 retained the int-buffer heap address from the prior int write and the newline svc emitted a duplicate digit.
+  3. std/hw/arch_aarch64/aarch64_program.oo: added import "std/hw/arch_aarch64/aarch64_xrt_puts_int.oo" so a64p_emit_rt can still call a64rt_puts_int on demand. Now 255 lines.
+  4. fixtures/aarch64_topfn.oo (already present): top-level fn add(x) + main calling add(5). qemu-aarch64 now prints "6" followed by a newline (previously "66" because the missing mov_reg made the second svc re-emit the int).
+
+What this proves:
+  * The AST path now correctly prints a single int with a trailing newline. Before: "66\n". After: "6\n".
+  * The xrt.oo file is back under the 256-line cap, with the int-puts code isolated for future maintenance.
+  * All 7 integration smoke paths pass on two consecutive runs (Double-Run Mandate):
+    - P2 list text = 342
+    - P5 hello AST = Hello
+    - P6 multiply_add = 53
+    - P8 3-arm match = 7
+    - P8 IDENT-body match = 42
+    - P8 Ok/Err match = 99
+    - P9 topfn AST = 6 (new, exercises the fix)
+
+Out of scope: closures (still rejected as bad_item). The aarch64_xclosure.oo modules exist in std/ but the AST path does not yet lower them.

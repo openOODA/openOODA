@@ -65,15 +65,17 @@ pub fn dogfight_canvas_new() -> DogfightCanvasState {
 pub fn altitude_from_y(canvas_y: Float, canvas_height: Float) -> Float {
     if canvas_height <= 0.0 { return 0.0; }
     let ratio: Float = 1.0 - (canvas_y / canvas_height);
-    let clamped: Float = if ratio < 0.0 { 0.0 } else if ratio > 1.0 { 1.0 } else { ratio };
-    return clamped * 100000.0;
+    if ratio < 0.0 { return 0.0; }
+    if ratio > 1.0 { return 100000.0; }
+    return ratio * 100000.0;
 }
 
 pub fn y_from_altitude(alt_ft: Float, canvas_height: Float) -> Float {
     if canvas_height <= 0.0 { return 0.0; }
     let ratio: Float = alt_ft / 100000.0;
-    let clamped: Float = if ratio < 0.0 { 0.0 } else if ratio > 1.0 { 1.0 } else { ratio };
-    return (1.0 - clamped) * canvas_height;
+    if ratio < 0.0 { return canvas_height; }
+    if ratio > 1.0 { return 0.0; }
+    return (1.0 - ratio) * canvas_height;
 }
 
 pub fn canvas_barometric_density(alt_ft: Float) -> Float {
@@ -163,6 +165,67 @@ pub fn render_em_hud(cap: &WuiCap, ps: Float, g_load: Float, mach: Float) -> Boo
         return false;
     }
     return ps >= -1000.0 && g_load >= 0.0 && mach >= 0.0;
+}
+
+pub fn canvas_int_to_float(n: Int) -> Float {
+    let mut f: Float = 0.0;
+    let mut count: Int = if n < 0 { 0 - n } else { n };
+    while count >= 10000 { f = f + 10000.0; count = count - 10000; }
+    while count >= 1000 { f = f + 1000.0; count = count - 1000; }
+    while count >= 100 { f = f + 100.0; count = count - 100; }
+    while count >= 10 { f = f + 10.0; count = count - 10; }
+    while count >= 1 { f = f + 1.0; count = count - 1; }
+    if n < 0 { return 0.0 - f; }
+    return f;
+}
+
+pub fn debris_fade_alpha(death_timer: Int, max_frames: Int) -> Float {
+    if max_frames <= 0 { return 0.0; }
+    if death_timer <= 0 { return 0.0; }
+    if death_timer >= max_frames { return 1.0; }
+    return canvas_int_to_float(death_timer) / canvas_int_to_float(max_frames);
+}
+
+pub fn boyd_energy_height(alt_ft: Float, velocity_fps: Float) -> Float {
+    let g: Float = 32.174;
+    let kinetic: Float = (velocity_fps * velocity_fps) / (2.0 * g);
+    return alt_ft + kinetic;
+}
+
+pub fn boyd_energy_rate_tradeoff(ps_fps: Float, velocity_fps: Float, h_dot_fps: Float) -> Float {
+    if velocity_fps <= 0.0001 { return 0.0; }
+    let g: Float = 32.174;
+    return (g * (ps_fps - h_dot_fps)) / velocity_fps;
+}
+
+pub fn low_altitude_pitch_clamp(alt_ft: Float, requested_theta: Float) -> Float {
+    if alt_ft <= 2000.0 {
+        if requested_theta > -0.10 { return -0.10; }
+        if requested_theta < -0.20 { return -0.20; }
+        return requested_theta;
+    }
+    if alt_ft <= 5000.0 {
+        if requested_theta > 0.0 { return 0.0; }
+        return requested_theta;
+    }
+    if alt_ft <= 12000.0 {
+        if requested_theta > 0.25 { return 0.25; }
+        if requested_theta < -0.10 { return -0.10; }
+        return requested_theta;
+    }
+    return requested_theta;
+}
+
+pub fn floor_clearance_clamp(alt_ft: Float, min_floor_ft: Float) -> Float {
+    if alt_ft < min_floor_ft { return min_floor_ft; }
+    return alt_ft;
+}
+
+pub fn gpws_progressive_pullup_angle(vy_fps: Float) -> Float {
+    if vy_fps <= 0.0 { return 0.0; }
+    let calculated: Float = (0.0 - vy_fps) / 150.0;
+    if calculated < -0.40 { return -0.40; }
+    return calculated;
 }
 
 pub fn dogfight_canvas_step(cap: &WuiCap, state: &mut DogfightCanvasState, dt: Float) -> Bool {

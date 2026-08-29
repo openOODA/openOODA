@@ -1,0 +1,18 @@
+# Release notes for v0.225.36
+
+File: openOODA/audit/release_notes/RELEASE_NOTES_v0.225.36.oot
+
+Logline: Phase 7 of the 9-phase 11/10 plan. Cross-architecture equivalence probe identifies the aarch64 int-write path is correct and the x86 path has a cvttsd2si regression that blocks byte-for-byte equivalence.
+
+Setup: ooda.pkg version=0.225.36. Tag v0.225.36.
+
+Beats:
+  1. fixtures/aarch64_xarch_equiv.oo: a single println(12345) main.
+  2. AArch64 pipeline: oodac.aarch64 emit-aarch64 -> as -> ld -> qemu-aarch64 prints "12345", exit 0.
+  3. x86 pipeline: oodac emit-x86 -> as fails on cvttsd2si / subsd / mulsd / addsd operand type mismatch at _println_int. The x86 emit produces AT&T with wrong operand types for the double-to-int conversion.
+
+What this proves:
+  * The AArch64 side of cross-arch equivalence works for a single int literal.
+  * The x86 side has a regression in _println_int's double-to-int conversion path (the function is generated unconditionally even for an Int input, then mixed with the int-write path, producing mixed Int/double code that doesn't assemble).
+
+Out of scope: closing the x86 _println_int regression so the byte-for-byte equivalence test can be run. This is a regression in the x86 emit and is independent of the AArch64 work.

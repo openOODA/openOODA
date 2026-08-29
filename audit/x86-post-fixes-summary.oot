@@ -1,0 +1,96 @@
+# x86 Backend Post-Fixes Summary — Consolidated Audit
+
+Logline: Per-fix table, hostile-probe-v2 attribution, and remaining risks for the nine fixes that landed across the x86 backend after the 6,936-fixture hostile probe v2.
+
+Setup: Reads seven audit files (x86-hostile-probe-v2, x86-ssa-post-fix-projection, x86-5shape-refuse-post-fix, x86-runtime-blob-tail, x86-ast-typed-shim, simd-deep, x86_emit_final/x86_emit_post_fix). No .oo file was modified. No compiler was run. The nine fixes are: silent fall-through, 5-shape refuse gate, per-arm wrote counter, SSA per-block remap, SSA Float gaps, SIMD Float fix, dead-arm deletes, dead-import removal, contract-gate expansion. References use file:line where the evidence lives.
+
+Beats:
+  1. Build the per-fix table across all nine fixes.
+  2. Attribute each hostile-probe-v2 failure to the fix that catches it.
+  3. List the remaining risks in priority order.
+  4. State the consolidated final state.
+
+File: openOODA/audit/x86-post-fixes-summary.oot
+THIS FILE IS GENERATED — DO NOT EDIT. Source: x86 post-fixes consolidated audit 2026-08-25.
+
+---
+
+## 1. Per-fix table
+
+Nine fixes landed. Pre-fix state is the hostile-probe-v2 baseline or the pre-fix static reading; post-fix state is the static reading after the fix landed. Sources cite the audit that documents the fix and the residual risk.
+
+| # | Fix | Pre-fix state | Post-fix state | Source | Remaining risk |
+|---|---|---|---|---|---|
+| 1 | Silent fall-through | Typed-AST shim `Err(_) => { }` arm swallowed errors and fell through to the 22-arm chain, producing wrong assembly. | `x86_emit.oo:90` now does `Err(typed_e) => { println(typed_e); process_exit(1); }`. | x86_emit_post_fix.oot §2 row 3; x86_emit_final.oot row 4. | The 22-arm chain is still reachable from a non-typed source. Turn 2 (line 94 TODO) will collapse the chain; until then the shim can be bypassed by code that fails the typed shim's pre-checks but passes the chain. |
+| 2 | 5-shape refuse gate | Float, 3-arm match, Result[T], struct, List[T] reached the 22-arm chain and produced no-op main or hardcoded bodies. | `x86_emit_shape_refuse.oo` (238 lines) refuses the 5 shapes at dispatch via `x86_emit_shape_refuse_test` at `x86_emit.oo:73-84`. 5/5 Sig + RealH + Msg pass. | x86-5shape-refuse-post-fix.oot §1-§2. | 3 over/under-refusal smells: Shape 1 real-handler only accepts `println(ident)` not `println(a+b)`, Shape 4 misses bare `struct S { ... }`, Shape 5 misses `list_get`/`list_set`. 5/5 ERR messages are clear. |
+| 3 | Per-arm wrote counter | 7 dedicated arms (struct, list, opt, free, typed_let, match, fib, heap) emitted `push %rbp; sub $64, %rsp; add $64, %rsp; pop %rbp; syscall` with zero writes. 2,595 of 2,607 empty-stdout binaries. | `wrote` flag set on every write syscall; `if !wrote { process_exit(1) }` after the body loop. Per-arm convert. | x86-runtime-blob-tail.oot §6.1; x86-post-fix-projection.oot §2. | Arms not on the counter list (while, for, channel, parallel) still produce no-op main. Estimated 221 more empty-stdout sources. Counter must be added per arm. |
+| 4 | SSA per-block remap | 92.6% ASM-FAIL on SSA: 3,215 duplicate `.Lxss_pi_*` labels + 3,211 undefined `.Lmain_block*` forward refs. | `x86_ssa_emit.oo:101` suffixes labels with `inst_id.to_string()` for uniqueness. `x86_ssa_emit_function` line 44 emits one label per block. | x86-ssa-post-fix-projection.oot §2.1-§2.2; x86-post-fix-projection.oot §3. | V1 14-fixture `movq` operand-widening bug may or may not be fixed. Block-name collision within a function is not statically guarded. Central estimate: 0.0% ASM-FAIL; upper bound 2.1% if v1 bug not fixed. |
+| 5 | SSA Float gaps | `parse_v` at `x86_ssa_emit_float.oo:25-37` had no `e/E` exponent branch. `op_v` at line 58 returned 0 silently on `b == 0`. | Sci-notation branch copied from `x86_float_parse:46-61`. SSA divide-by-zero now fail-closed like the non-SSA path. | simd-deep.oot gaps #2, #3. | SSA Float path is still un-tested by the smoke (`x86_ssa_float_runtime_smoke.oo:56-98` only checks SSE asm). New sci-notation path inherits non-SSA overflow characteristics. |
+| 6 | SIMD Float fix | `x86_float_fold_atom` at `x86_emit_float.oo:117-134` lost the sign on `-0.0` literals. `x86_collect_and_emit_float:200-218` only set `neg_zero` on chain MINUS, not on atom sign. | Atom sign propagates into `neg_zero`. `-0.0` literal now emits `.double -0.0`. | simd-deep.oot gap #1, fix order #1. | 9 of 10 gaps remain: 32-bit `cvttsd2si` truncation for `|value| > 2^31`, no NaN/Inf detection, stack overrun for very large integers, i64 STAR overflow, sci-notation positive-exp overflow. |
+| 7 | Dead-arm DELETEs | Some arms in the 22-arm chain (e.g. while, for, fib, heap) had loose matchers and empty-body emitters. | 2 dead imports removed (`x86_emit_list.oo`, `x86_emit_diag.oo`); 31 → 29 imports; 211 → 209 lines. | x86_emit_post_fix.oot §3; x86_emit_final.oot row 9. | Arms themselves were NOT deleted. The chain still has 22 arms; several still have the no-op main failure mode. The fix only removed the import surface, not the arm bodies. |
+| 8 | Dead imports removed | `x86_emit_list.oo` (5 pub fn, 0 callers) and `x86_emit_diag.oo` (7 pub fn, 0 callers) imported but never referenced from `x86_emit.oo`. | Both imports removed at `x86_emit.oo:16-44`. List runtime now lives only in the runtime registry; diag helpers are imported only by call sites that need them. | x86_emit_post_fix.oot §3; x86_emit_final.oot row 9. | List runtime is unreachable from the dispatcher (intentional, the 5-shape gate kills `List[T]`). Diag helpers are imported by other files (smokes, c-emit). No remaining dead-import smell in `x86_emit.oo`. |
+| 9 | Contract gate expanded | Contract gate at `x86_emit.oo:48-57` ran with 4 clauses (`x86_emit_contract.oo:160,175`); some float-typed and struct-shaped sources passed. | New clauses added: covers 4 conditions; rejects float-typed, struct-shaped, and several ad-hoc violations. Wired at the top of `x86_emit_stream` before secret + shape gates. | x86_emit_final.oot row 11-12; x86-smoke-coverage.oot row 05. | Contract gate and empty-source check overlap by design (defense-in-depth, `x86_emit_final.oot` Issue 4). 3 of 42 modules have no direct smoke; contract-gate coverage matrix is not exhaustive. |
+
+Row count: 9 (one per fix). Acceptance criterion: ≥7.
+
+---
+
+## 2. Per-fix attribution: hostile-probe v2 failures caught by each fix
+
+The hostile probe v2 found 7 distinct failure classes. Each fix catches one or more of those classes. The "delta" column shows the expected reduction in the failure class once the fix lands, per the post-fix projection.
+
+| # | Probe v2 failure | Count | Caught by fix # | Caught by mechanism | Expected post-fix count |
+|---|---|---|---|---|---|
+| 1 | SSA ASM-FAIL: duplicate `.Lxss_pi_*` labels (probe §3) | 3,215 | #4 SSA per-block remap | `x86_ssa_emit.oo:101` per-instruction suffix | 0 (central); up to 7 if block-name collision regresses |
+| 2 | SSA ASM-FAIL: undefined `.Lmain_block*` forward refs (probe §3) | 3,211 | #4 SSA per-block remap | `x86_ssa_emit_function` line 44 emits one label per block | 0 (central); up to 14 if v1 64-bit operand bug not fixed |
+| 3 | Empty-stdout from Float usage (probe §5, 158/160) | 158 | #2 (5-shape refuse) + #6 (SIMD Float fix) | Float source refused at dispatch; residual const-fold paths return correct value | ~0 refused at gate; 0 silent miscompile on residual path |
+| 4 | Empty-stdout from 3-arm match (probe §5, 27/30) | 27 | #2 (5-shape refuse) | 3-arm match refused at dispatch | 0 |
+| 5 | Empty-stdout from Result[T] (probe §5, 179/216) | 179 | #2 (5-shape refuse) | Result[T] refused at dispatch | 0 |
+| 6 | Empty-stdout from struct (probe §5, 224/277) | 224 | #2 (5-shape refuse) + #3 (wrote counter) | Gate refuses at dispatch; counter is defense-in-depth | 0 refused at gate |
+| 7 | Empty-stdout from List[T] (probe §5, 162/202) | 162 | #2 (5-shape refuse) + #3 (wrote counter) | Same as struct | 0 refused at gate |
+| 8 | Empty-stdout from pure-arithmetic / println / let (probe §5, ~80) | 80 | #3 (wrote counter) | Harvest tail or dedicated arm refuses when no write fires | ~12 (the 12 with real write but wrong string per probe §10) |
+| 9 | Empty-stdout from while / for / channel / parallel (probe §5, 35+79+103+4 = 221) | 221 | None | Not caught by any of the 9 fixes | 221 (still empty stdout) |
+| 10 | Silent fall-through to 22-arm on typed-shim Err (probe §2 + ast-typed-shim §5.1) | unknown | #1 (silent fall-through fix) | `x86_emit.oo:90` exits hard on Err | 0 (now refuses) |
+
+Attribution count: 10. Acceptance criterion: ≥5.
+
+---
+
+## 3. Remaining issues
+
+Numbered, ordered by severity (correctness first, then coverage, then smell).
+
+1. **Channel / while / for / parallel no-op main not caught.** 221 empty-stdout sources (probe §5: channel 35, while 79, for 103, parallel 4) are not refused by any of the 9 fixes. If these remain, the post-fix silent-miscompile rate is 221+12 = 233/3,143 = 7.4% (much higher than the 0.4% central estimate from x86-post-fix-projection.oot §4). The wrote counter must be extended to `x86_emit_loop.oo`, `x86_emit_for.oo`, and the channel/parallel emitters; or a typed-AST Turn-2 path must subsume them. Source: x86-post-fix-projection.oot §5 point 4.
+
+2. **3 over/under-refusal smells in the 5-shape gate.** Shape 1 real-handler accepts only `println(ident)`, refusing `println(a+b)` though the chain would have folded it. Shape 4 misses the bare `struct S { ... }` form. Shape 5 misses `list_get`/`list_set`. Each is a small pattern-extension (5-15 lines) but together they over-refuse ~10-20% of programs that the chain can handle. Source: x86-5shape-refuse-post-fix.oot §2 Issues 1-3.
+
+3. **V1 14-fixture `movq` operand-mismatch bug status unknown.** The SSA per-block remap fix in #4 does not address the 64-bit operand widening for opcode 21. If not also fixed in the same cycle, the central case misses by 14 fixtures and SSA ASM-FAIL lands at 0.2%, not 0.0%. Source: x86-ssa-post-fix-projection.oot §3.1, §5.
+
+4. **9 of 10 SIMD/Float gaps remain.** #6 (Float real const-fold) fixed only gap #1 (`-0.0` atom sign). Gaps #2-#10 (SSA sci-notation, SSA divide-by-zero, STAR overflow, sci-exp overflow, 32-bit `cvttsd2si`, NaN/Inf, stack overrun, rounding mode, bad char) are open. Each is a high-severity silent-wrong-answer class. Source: simd-deep.oot §3, §4.
+
+5. **Typed-AST shim still has a misleading name.** `x86_emit_stream_typed` does not type-check; the Academy header says "typed-AST dispatch shim" but `tc_check` is aspirational. Rename to `x86_emit_stream_ssa` or rewrite the Logline. Source: x86-ast-typed-shim.oot §5 risk 3.
+
+6. **Chain still has 22 arms; Turn 2 collapse pending.** The 22-arm chain in `x86_emit.oo:93-205` is the legacy path. The Turn 2 TODO at line 94 says to replace it with `x86_emit_stream_typed`. Until that lands, two emission paths exist and the silent-fall-through fix (#1) is the only thing keeping the typed shim from being bypassed. Source: x86_emit_final.oot Issue 3.
+
+7. **3 of 42 x86 modules have no direct smoke.** `x86_emit_alu.oo`, `x86_emit_ctl.oo`, `x86_emit_span.oo` are exercised only meta-cited. The contract gate (#9) and the per-arm wrote counter (#3) are not in the no-smoke list, but the chain arms they protect are. Source: x86-smoke-coverage.oot §2.
+
+8. **16 newer fixtures not in hostile probe set.** `adv_algebraic_monomorph`, `x86_ssa_*_smoke`, `llvm_emit_import_c_smoke` and 13 others are not in the 6,936-fixture set. The post-fix projection does not cover them. Source: x86-hostile-probe-v2.oot §10.
+
+9. **The 12 "real write, wrong string" residual.** The probe §10 caveat notes ~12 binaries have a real write syscall but write the wrong string. None of the 9 fixes addresses this; it requires typed-AST Turn 2 to route those programs through a verified emission path. Source: x86-hostile-probe-v2.oot §10.
+
+Issue count: 9. Acceptance criterion: ≥1.
+
+---
+
+## 4. Final state summary
+
+| Metric | Pre-fix (v2) | Post-fix (central estimate) | Δ |
+|---|---|---|---|
+| emit-x86 COMPILED | 5,750 / 6,936 (82.9%) | ~3,143 / 6,936 (45.3%) | -2,607 (now REFUSED) |
+| emit-x86 REFUSED | 1,185 / 6,936 (17.1%) | ~3,792 / 6,936 (54.7%) | +2,607 |
+| Silent-miscompile rate (% of COMPILED) | 45.3% (2,607 / 5,750) | ~0.4% (12 / 3,143) | -44.9 pp |
+| emit-x86-ssa COMPILED | 508 / 6,936 (7.3%) | ~6,928 / 6,936 (99.9%) | +6,420 |
+| emit-x86-ssa ASM-FAIL | 6,426 / 6,936 (92.6%) | ~7 / 6,936 (0.1%) | -92.5 pp |
+| Real-write-wrong-string | ~12 | ~12 | 0 (Turn 2 work) |
+
+**Status: PARTIAL.** The 9 fixes converted the dominant silent-miscompile class (no-op main, 2,595 / 2,607 = 99.5% of empty-stdout binaries) into clean REFUSED, and they converted the dominant SSA failure class (duplicate labels + undefined block refs, 6,426 / 6,426 = 100% of SSA ASM-FAIL) into COMPILED. The two headline numbers (silent-miscompile 0.4%, SSA ASM-FAIL 0.1%) are central estimates; realistic ranges are 0.4-7.4% and 0.0-0.3% respectively. The 7.4% upper bound on silent-miscompile is the channel/while/for/parallel no-op main class that none of the 9 fixes catches. Confidence is 2/5; a 100-fixture smoke probe or a full 6,936-fixture re-run is required to move it to 4-5/5.

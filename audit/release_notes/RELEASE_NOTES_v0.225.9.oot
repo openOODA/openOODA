@@ -1,0 +1,117 @@
+# v0.225.9 Release Notes
+
+File: openOODA/audit/release_notes/RELEASE_NOTES_v0.225.9.oot
+
+Release: v0.225.9
+Date: 2026-08-26
+Tag: v0.225.9
+Lane: AArch64 backend (Sovereign Native Compiler)
+Worker: Mavis
+
+## Product Path
+
+AArch64 source-only release. No CLI surface change. The next clean
+`oodac` rebuild will surface these changes; until then, the in-tree
+binary at 19:32 (LLVM lane + this AArch64 lane) is the build under
+verification. The 8-gate enforcer is green (byte-identical double-run).
+
+## AArch64 Lane: AAPCS64 V0-V31 NEON Register Conventions
+
+1. **`ooda/std/hw/arch_aarch64/aarch64_abi.oo`** — grew from 97 to 162 lines.
+   Added eight public functions for the NEON/FP register file:
+   `abi_fp_arg_count`, `abi_fp_arg_reg`, `abi_fp_ret_reg`, `abi_fp_ret_hi_reg`,
+   `abi_is_fp_arg_reg`, `abi_is_fp_callee_saved`, `abi_valid_fp_reg`,
+   `abi_fp_indirect_result_reg`.
+
+   AAPCS64 rules now fully named for both register files:
+   - **Integer file** (existing): X0-X7 args, X19-X28 callee-saved,
+     X29 FP, X30 LR, X31 SP, 16-byte stack alignment.
+   - **NEON/FP file** (new): V0-V7 args + scratch (caller-saved),
+     V8 indirect result (caller-saved), V8-V15 lower NEON (caller-saved),
+     V16-V31 upper NEON (callee-saved).
+
+   The 4-element Academy header is updated to 6 beats, all in
+   ASD-STE100 Simplified Technical English.
+
+## AArch64 Lane: Two Lock Smokes for the NEON Conventions
+
+2. **`ooda/scripts/aarch64_neon_abi_smoke.oo`** (64 lines, 27 assertions) —
+   runtime smoke that directly imports `aarch64_abi.oo` and asserts the
+   values of every NEON helper. Typechecks OK. Runtime execution is
+   blocked by a pre-existing `OoRes_S` / `OoRes_I` C-side type collision
+   in the chs_rt runtime header that affects every `aarch64_*_smoke.oo`
+   on the current host; not introduced by this smoke.
+
+3. **`ooda/scripts/aarch64_neon_abi_source_smoke.oo`** (55 lines) —
+   source-lock smoke that uses grep + subprocess instead of importing
+   the ABI module. Locks the eight helpers, the AAPCS64 comment block,
+   and the `aarch64_abi.oo <= 256` line cap. Manual grep verification
+   on the current tree:
+
+       grep -c "abi_fp_\|abi_is_fp_\|abi_valid_fp" std/hw/arch_aarch64/aarch64_abi.oo
+       9
+       grep -q "V0-V7"   std/hw/arch_aarch64/aarch64_abi.oo && echo OK  -> OK
+       grep -q "V8-V15"  std/hw/arch_aarch64/aarch64_abi.oo && echo OK  -> OK
+       grep -q "V16-V31" std/hw/arch_aarch64/aarch64_abi.oo && echo OK  -> OK
+       grep -q "callee-saved" std/hw/arch_aarch64/aarch64_abi.oo && echo OK -> OK
+       grep -q "caller-saved" std/hw/arch_aarch64/aarch64_abi.oo && echo OK -> OK
+
+## AArch64 Lane: Type-Annotation Repairs
+
+4. **`oodac/aarch64_emit_alu.oo`** (commit 95c39311) — added 14 type
+   annotations to satisfy QUICKREF §1.4 mandatory type-annotation law.
+   Restored the missing `import "aarch64_emit_int.oo";` so
+   `aarch64_emit_int_write` resolves. File grew 205 to 206 lines (cap 256).
+
+5. **`oodac/aarch64_emit_secret.oo`** (commit 95c39311) — added 19 type
+   annotations to satisfy the same law. File stayed at 202 lines.
+
+After commit 95c39311, the full GAS-text dispatch chain
+(`aarch64_main.oo` -> `aarch64_emit.oo` -> all 23 arms) typechecks OK.
+The in-flight background `oodac_pure_build` second stage reverts
+these annotations on each cycle; the AST-path entry driver
+(`aarch64_ast_main.oo` at commit 0788bce2) is the robust alternative
+when the build reverts again. The typecheck lock smoke
+(`aarch64_dispatch_typecheck_smoke.oo` at commit 32b4e3d1) catches any
+regression.
+
+## Audit and Documentation
+
+6. **`openOODA/audit/aarch64-neon-abi-and-enforcer.oot`** (211 lines) —
+   records the AAPCS64 changes, the type-annotation repairs, the
+   enforcer 8-gate pass, the line counts, the next-step queue, the
+   two lock smokes, the AST-vs-GAS-text typecheck split, and the
+   manual source-smoke verification transcript.
+
+## Verification
+
+- 8-gate enforcer (`openOODA/scripts/enforcer.oo`) — green,
+  byte-identical across two consecutive runs.
+- 5 AArch64 AST codegen modules typecheck OK:
+  `aarch64_abi.oo`, `aarch64_codegen.oo`, `aarch64_lower.oo`,
+  `aarch64_linker.oo`, `aarch64_encoder.oo`.
+- `aarch64_emit_elf.oo`, `aarch64_emit_str.oo`, `aarch64_emit_match.oo`
+  typecheck OK.
+- Full GAS-text dispatch chain typechecks OK (after 95c39311):
+  `aarch64_main.oo` -> `aarch64_emit.oo` -> 23 arms.
+- AST-path entry driver `aarch64_ast_main.oo` typechecks OK.
+- 5 source-lock smokes committed:
+  `aarch64_neon_abi_smoke.oo`, `aarch64_neon_abi_source_smoke.oo`,
+  `aarch64_ast_entry_smoke.oo`, `aarch64_ast_pipeline_smoke.oo`,
+  `aarch64_dispatch_typecheck_smoke.oo`.
+- End-to-end cross-assemble proof (host machine):
+  `oodac/oodac.aarch64 emit-aarch64 fixtures/aarch64_hello.oo > hello.s`
+  -> `clang -target aarch64-linux-gnu -c hello.s -o hello.o` produces
+  a valid ARM aarch64 ELF64 object.
+
+## Residual
+
+- Tier 0 closure (ROADMAP.oot §5.2): List[T] port, no_output detector,
+  5-shape refuse gate.
+- Tier 1 wiring: deprecate the hand-written GAS path in
+  `aarch64_emit_sys.oo:60` and call `aarch64_compile_to_elf` from
+  `aarch64_emit_elf.oo` directly.
+- Tier 2 probe: `qemu-aarch64 -L /usr/aarch64-linux-gnu` run on each
+  of the 53 aarch64 fixtures.
+- Host environment: repair the `OoRes_S` / `OoRes_I` chs_rt header
+  collision so all `aarch64_*_smoke.oo` can run.

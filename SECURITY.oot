@@ -1,199 +1,184 @@
 # SECURITY — Capability Taxonomy, Permission Token Model & Op Lookup Matrix
-
+Floor: 2
+Thrust: 5
+Patch: 4
 File: openOODA/SECURITY.oot
-Capability security model, permission token catalog, and opcode grant matrix.
-Defines 14 unforgeable capability tokens, DINNER CAPs, and the complete 28-row opcode lookup.
-All software in openOODA enforces Pillar 5 (Blue Ocean Strategy) and Pillar 3 (Adversarial Validation).
-Read SECURITY.oot §1-2 on first onboarding for sovereign binary defense.
+
+This document defines the capability security model, permission token catalog, and opcode grant matrix.
+It specifies 14 unforgeable capability tokens, DINNER CAPs header format, and the complete 28-row opcode table.
+All software in openOODA enforces capability security and adversarial validation.
 
 ## 0. Board Scope
 
-This board maps every capability token to its lowered operations and runtime gates.
-Section 1 defines the zero ambient authority model, fail-closed mechanics, and escape probing.
+This board maps each capability token to its lowered runtime operations and security gates.
+Section 1 defines zero ambient authority, fail-closed mechanics, and adversarial probing.
 Section 2 catalogs the 14 unforgeable capability tokens and linear arena allocations.
 Section 3 defines the DINNER CAPs header specification.
 Section 4 provides the complete 28-row capability opcode lookup table.
-Section 5 defines CAP-G3 residuals and ambient exclusions.
+Section 5 defines CAP-G3 residual capabilities and ambient operations.
 Section 6 defines argument-flow rules (F01) and runtime seal verification.
-Binary defense (Landlock, rlimit, HMAC attenuation, measured isolate) is product (see SHIPPED.oot).
-Metamorphic, Merkle, and zero-knowledge compute are future tracks (see MOONSHOTS.oot).
 
-## 1. Core Principles, Blue Ocean Moat & Adversarial Escape Probing
+## 1. Security Principles & Capability Validation
 
-Pillar 5 (Blue Ocean Strategy — Zero Ambient Authority):
-  - Zero Ambient Authority: Functions possess zero ambient I/O, process, or memory privileges.
-  - Capability-Passing Security: Every privileged operation requires an unforgeable capability token parameter (`&CapName`).
-  - Compile-Time Verification: Static analysis (`oodac/check_caps.oo`) validates token flow at compile time.
-  - Runtime Seal Verification: Native runtime gates (`runtime/chs_rt_*.c`) verify process-local token seals.
-  - Fail-Closed by Construction: Missing, forged, null, or mismatched tokens fail closed immediately (`ERR\tcap\t...`).
-  - SMT Invariant Check Elision: Valid capability proofs allow the compiler to elide redundant runtime checks.
+Pillar 5 (Capability Security & Zero Ambient Authority):
+- Zero Ambient Authority: Functions possess no default I/O, process, or memory permissions.
+- Explicit Capability Tokens: Every privileged operation requires an unforgeable capability token argument (`&CapName`).
+- Compile-Time Analysis: The compiler (`oodac/check_caps.oo`) validates capability arguments during type checking.
+- Runtime Seal Verification: Runtime gates (`runtime/chs_rt_*.c`) verify token authenticity before execution.
+- Fail-Closed Execution: Missing, forged, null, or invalid tokens terminate execution immediately with an error (`ERR\tcap\t...`).
+- SMT Check Elision: Compile-time capability proofs allow the compiler to remove redundant runtime checks.
 
-Pillar 3 (Adversarial Validation & Capability Escape Probing):
-  - Escape Probing Across Optimization Tiers: Functions without explicit capability tokens cannot perform ambient I/O under all optimization levels (`-O0`, `-O1`, `-O2`, `-O3`).
-  - Active Hostile Falsification: Continuous adversarial fuzzing tests all gates against forged token pointers, corrupted memory addresses, and inverted capability bits.
-  - Linear Arena Quota Enforcement: All dynamic memory allocations require `&AllocCap` with strict boundary checks to eliminate heap fragmentation and memory leaks.
+Pillar 3 (Adversarial Validation & Capability Probing):
+- Optimization Resistance: Functions without explicit capability tokens cannot perform ambient I/O under any optimization level.
+- Active Falsification: Adversarial tests evaluate security gates against forged pointers and corrupted memory addresses.
+- Linear Arena Quotas: Dynamic memory allocations require `&AllocCap` with boundary checks to prevent memory leaks.
 
 ## 2. The 14 Unforgeable Capability Tokens Catalog
 
-1. `&FsReadCap` (Granular Filesystem Read):
+1. `&FsReadCap` (Filesystem Read):
    - Operations: `read_file`, `path_exists`, `file_size`, `fs_read_dir`, `fs_is_dir`.
-   - Security Boundary: Read-only access confined to `OODA_FS_READDIR`.
-   - Fail-Closed Reason: Denies path traversal, unauthorized directory reads, or missing token (`ERR_CAP_FS_READ`).
+   - Security Boundary: Read access confined to `OODA_FS_READDIR`.
+   - Fail-Closed Reason: Denies path traversal or unauthorized directory reads (`ERR_CAP_FS_READ`).
 
-2. `&FsWriteCap` (Granular Filesystem Write):
+2. `&FsWriteCap` (Filesystem Write):
    - Operations: `write_file`, `fs_mkdir`, `remove_file`, `rmdir`, `hardlink`, `symlink`.
-   - Security Boundary: Write operations strictly confined to `OODA_FS_WRITEDIR` sandbox overlay.
-   - Fail-Closed Reason: Denies writes outside write directory, disk mutation without token (`ERR_CAP_FS_WRITE`).
+   - Security Boundary: Write operations strictly confined to `OODA_FS_WRITEDIR` sandbox.
+   - Fail-Closed Reason: Denies writes outside write directory or disk mutation without token (`ERR_CAP_FS_WRITE`).
 
-3. `&FsCap` (Legacy Broad Filesystem Token):
+3. `&FsCap` (Broad Filesystem Token):
    - Operations: Supersedes `&FsReadCap` and `&FsWriteCap` for backward compatibility.
    - Fail-Closed Reason: Denies ungranted filesystem operations (`ERR_CAP_FS`).
 
-4. `&ProcessCap` (Granular Process Lifecycle):
+4. `&ProcessCap` (Process Lifecycle):
    - Operations: `sys_exec`, `process_exec`, `sys_spawn`, `sys_wait`, `sys_kill`.
-   - Security Boundary: Subprocesses run with scrubbed environment allowlist (`OODA_*`, `OO_*`, minimal PATH).
-   - Fail-Closed Reason: Denies unauthorized binary execution, child process spawning (`ERR_CAP_PROCESS`).
+   - Security Boundary: Subprocesses run with sanitized environment variables (`OODA_*`, `OO_*`, minimal PATH).
+   - Fail-Closed Reason: Denies unauthorized binary execution and process spawning (`ERR_CAP_PROCESS`).
 
-5. `&SysCap` (Legacy Broad Operating System Token):
+5. `&SysCap` (Broad Operating System Token):
    - Operations: `python_embed`, `sys_epoll_create`, `sys_inotify_init`, `sys_prctl`, `landlock_restrict`, `rlimit_set_*`.
-   - Fail-Closed Reason: Denies raw OS syscalls, ungranted kernel control (`ERR_CAP_SYS`).
+   - Fail-Closed Reason: Denies raw OS syscalls and ungranted kernel operations (`ERR_CAP_SYS`).
 
-6. `&NetCap` (Legacy Broad Network Token):
-   - Operations: Supersedes granular network tokens; exclusively required for `sock_raw`.
-   - Fail-Closed Reason: Denies raw network socket creation or ungranted packet dispatch (`ERR_CAP_NET`).
+6. `&NetCap` (Broad Network Token):
+   - Operations: Supersedes granular network tokens; required for `sock_raw`.
+   - Fail-Closed Reason: Denies raw socket creation or ungranted packet dispatch (`ERR_CAP_NET`).
 
-7. `&HttpCap` (Granular HTTP Client):
+7. `&HttpCap` (HTTP Client):
    - Operations: `fetch` (HTTP/1.0 GET client).
    - Fail-Closed Reason: Denies outbound HTTP network access without token (`ERR_CAP_HTTP`).
 
-8. `&TcpCap` (Granular TCP Network Socket):
+8. `&TcpCap` (TCP Network Socket):
    - Operations: `tcp_connect`, `tcp_read`, `tcp_write`, `tcp_close`, `tls_connect`.
    - Fail-Closed Reason: Denies unauthorized outbound TCP sockets and TLS streams (`ERR_CAP_TCP`).
 
-9. `&UdpCap` (Granular UDP Network Socket):
+9. `&UdpCap` (UDP Network Socket):
    - Operations: `bind_udp`, `udp_recv`, `resolve_ipv4` (DNS queries).
    - Fail-Closed Reason: Denies unauthorized UDP datagrams or DNS resolution (`ERR_CAP_UDP`).
 
-10. `&BindCap` (Granular Network Listening Socket):
-    - Operations: `tcp_bind` (server socket listening ports).
+10. `&BindCap` (Network Listening Socket):
+    - Operations: `tcp_bind` (server listening ports).
     - Fail-Closed Reason: Denies unauthorized port binding or server socket creation (`ERR_CAP_BIND`).
 
 11. `&EnvCap` (Environment Variable Access):
     - Operations: `env_get`.
-    - Security Boundary: Access restricted to `OODA_*` and `OO_*` environment keys; host getenv is denied.
-    - Fail-Closed Reason: Denies host environment disclosure or secret leak (`ERR_CAP_ENV`).
+    - Security Boundary: Access restricted to `OODA_*` and `OO_*` environment keys.
+    - Fail-Closed Reason: Denies host environment disclosure or secret leakage (`ERR_CAP_ENV`).
 
-12. `&TimeCap` (System Clock & Monotonic Timer):
+12. `&TimeCap` (System Clock & Timer):
     - Operations: `now_ms`, `sleep_ms`.
-    - Fail-Closed Reason: Denies side-channel timing analysis or unauthorized sleep delays (`ERR_CAP_TIME`).
+    - Fail-Closed Reason: Denies unauthorized sleep delays or timing measurement (`ERR_CAP_TIME`).
 
 13. `&RandCap` (Cryptographic Entropy & PRNG):
     - Operations: `random`, `seed`.
-    - Fail-Closed Reason: Denies unauthorized entropy depletion or deterministic RNG tampering (`ERR_CAP_RAND`).
+    - Fail-Closed Reason: Denies unauthorized entropy depletion or RNG manipulation (`ERR_CAP_RAND`).
 
 14. `&AllocCap` (Linear Arena & Dynamic Allocation):
     - Operations: `alloc_bytes`, `free_bytes`, `realloc`, `arena_create`, `alloc`, `reset`.
-    - Security Boundary: Linear arenas provide zero-heap fast paths with bulk resets and quota tracking.
-    - Fail-Closed Reason: Denies out-of-quota allocation, memory exhaustion, or memory leak (`ERR_CAP_ALLOC`).
+    - Security Boundary: Linear arenas provide zero-heap fast paths with bulk resets.
+    - Fail-Closed Reason: Denies out-of-quota allocation or memory exhaustion (`ERR_CAP_ALLOC`).
 
-Additional Concurrency & Hardware Tokens:
-  - `&ThreadCap`: `mutex_lock`, `mutex_unlock`, `thread_spawn`, `thread_join`, `channel_new`, `channel_send`, `channel_recv`.
-  - `&GpuCap`: `gpu_launch` (CPU fallback is product; unauthorized device shaders fail closed).
-  - `&UnsafeFFICap` / `&FfiCap`: `import_c`, `oo_dlopen` (restricted to `/usr/include` jail).
+Additional Tokens:
+- `&ThreadCap`: `mutex_lock`, `mutex_unlock`, `thread_spawn`, `thread_join`, `channel_new`, `channel_send`, `channel_recv`.
+- `&GpuCap`: `gpu_launch` (CPU fallback executes; unauthorized hardware shaders fail closed).
+- `&UnsafeFFICap` / `&FfiCap`: `import_c`, `oo_dlopen` (restricted to `/usr/include` jail).
 
-## 3. DINNER CAPs Section Specification & Signatures
+## 3. DINNER CAPs Header Specification
 
-The `// ## CAPs` header provides an auditable bridge between function signatures and runtime gates.
+The `// ## CAPs` header provides an auditable link between function signatures and runtime security gates.
 
-Format Specification:
-  // ## CAPs
-  //   <CapName>:    <one-line purpose description in ASD-STE100>
+Format:
+```
+// ## CAPs
+//   <CapName>:    <one-line purpose description in ASD-STE100>
+```
 
-Rules & Integration:
-  - 1:1 Signature Mirror: Every `&CapName` parameter in function signatures must appear in the section.
-  - Granular First: Prefer `&FsReadCap` over `&FsCap`, `&ProcessCap` over `&SysCap`, `&HttpCap` over `&NetCap`.
-  - No Ambient Minting: Helper functions receive tokens passed down from `main`; helpers cannot mint tokens.
-  - Zero Tolerance: Phantom capabilities, missing capabilities, or signature mismatch fails compilation.
-  - Ordering Standard: Process, Fs, Env, Net, Time, Rand, Alloc, Thread, Gpu, Ffi.
-
-Example:
-  pub fn main(p: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, alloc: &AllocCap) {
-  // ## CAPs
-  //   ProcessCap:    spawn child processes and await exit status
-  //   FsReadCap:     load configuration files and fixture inputs
-  //   FsWriteCap:    persist build artifacts under OODA_FS_WRITEDIR
-  //   AllocCap:      allocate linear arena memory for fast AST transforms
+Rules:
+- Mirror Every Token: Every `&CapName` in the parameter list must appear in the header.
+- Prefer Granular Tokens: Use `&FsReadCap` instead of `&FsCap`; use `&ProcessCap` instead of `&SysCap`.
+- No Ambient Minting: Helper functions receive tokens from caller functions; helpers cannot mint tokens.
+- Strict Compilation Check: Missing capabilities or parameter mismatches terminate compilation with error.
 
 ## 4. Capability Opcode Lookup Table
 
-| Opcode | Required Cap | Check (`check_caps`) | Lowered Emit (`c_emit_lower`) | Runtime Gate / Symbol | Status |
+| Opcode | Required Cap | Typecheck Gate | Lowered C Function | Runtime Gate / Symbol | Status |
 |---|---|---|---|---|---|
-| `read_file` | `&FsReadCap` (or `&FsCap`) | sealed free call | `oo_read_file(cap, path)` | `oo_cap_require_fsread` (`chs_rt_fs.c`) | Real (CAP-G2) |
-| `write_file` | `&FsWriteCap` (or `&FsCap`) | sealed free call | `oo_write_file(cap, path, str)`| `oo_cap_require_fswrite` + `OODA_FS_WRITEDIR` | Real (CAP-G2) |
-| `path_exists` | `&FsReadCap` (or `&FsCap`) | sealed free call | `oo_path_exists(cap, path)` | `oo_cap_require_fsread` (`chs_rt_fs.c`) | Real (CAP-G2) |
-| `file_size` | `&FsReadCap` (or `&FsCap`) | sealed free call | `oo_file_size(cap, path)` | `oo_cap_require_fsread` (`chs_rt_fs.c`) | Real (CAP-G2) |
-| `fs_read_dir` / `fs_is_dir` | `&FsReadCap` (or `&FsCap`) | sealed free call | `oo_fs_read_dir` / `oo_fs_is_dir` | `oo_cap_require_fsread` (`chs_rt_fs.c`) | Real (CAP-G2) |
-| `fs_mkdir` / `remove_file` / `rmdir` | `&FsWriteCap` (or `&FsCap`) | sealed free call | `oo_fs_mkdir` / `oo_remove_file` | `oo_cap_require_fswrite` (`chs_rt_fs.c`) | Real (CAP-G2) |
-| `hardlink` / `symlink` | `&FsWriteCap` (or `&FsCap`) | sealed free call | `oo_hardlink` / `oo_symlink` | `oo_cap_require_fswrite` (`chs_rt_fs.c`) | Real (CAP-G2) |
-| `sys_exec` | `&ProcessCap` (or `&SysCap`) | sealed free call + arg-flow | `oo_sys_exec` / `oo_sys_exec1` | `oo_cap_require_process` (`chs_rt_sys.c`) | Real (CAP-G4) |
-| `sys_spawn` / `wait` / `kill` | `&ProcessCap` (or `&SysCap`) | sealed free call + arg-flow | `oo_sys_spawn` / `wait` / `kill` | `oo_cap_require_process` (`chs_rt_libfloor.c`) | Real |
-| `env_get` | `&EnvCap` | sealed free call | `oo_env_get(cap, key)` | `oo_process_policy_getenv` (`OODA_`/`OO_`) | Real |
-| `fetch` | `&HttpCap` (or `&NetCap`) | sealed free call | `oo_fetch(cap, url)` | `oo_cap_require_http` (`chs_rt_sys.c`) | Real (HTTP/1.0 GET) |
-| `tcp_connect` | `&TcpCap` (or `&NetCap`) | sealed free call + arg-flow | `oo_tcp_connect(cap, h, p)` | `oo_cap_require_tcp` (`chs_rt_netfloor.c`) | Real (M162/M166) |
-| `tcp_bind` | `&BindCap` (or `&NetCap`) | sealed free call + arg-flow | `oo_tcp_bind(cap, port)` | `oo_cap_require_bind` (`chs_rt_netfloor.c`)| Real (M162/M166) |
-| `tcp_read` / `write` / `close` | `&TcpCap` (or `&NetCap`) | sealed free call + arg-flow | `oo_tcp_read` / `write` / `close` | `oo_cap_require_tcp` (`chs_rt_netfloor.c`) | Real (M166) |
-| `bind_udp` / `udp_recv` | `&UdpCap` (or `&NetCap`) | sealed free call + arg-flow | `oo_bind_udp` / `oo_udp_recv` | `oo_cap_require_udp` (`chs_rt_netfloor.c`) | Real (M166) |
-| `resolve_ipv4` | `&UdpCap` (or `&NetCap`) | sealed free call + arg-flow | `oo_resolve_ipv4(cap, host)` | `oo_cap_require_udp` (`chs_rt_netfloor.c`) | Real (M166) |
-| `tls_connect` | `&TcpCap` (or `&NetCap`) | sealed free call + arg-flow | `oo_tls_connect(cap, h, p)` | `chs_rt_tls.c` (OpenSSL or residual) | Real / Residual |
-| `sock_raw` | `&NetCap` only | sealed free call | `oo_sock_raw(cap, ...)` | `oo_cap_require_net` -> always Err | Fail-closed Residual |
-| `now_ms` / `sleep_ms` | `&TimeCap` | sealed free call | `oo_now_ms` / `oo_sleep_ms` | `chs_rt_sys.c` (`CLOCK_REALTIME`, nanosleep) | Real (M12) |
-| `random` / `seed` | `&RandCap` | sealed free call | `oo_random` / `oo_seed` | `chs_rt_time_rand.c` (host entropy / LCG) | Real (M12) |
-| `alloc_bytes` / `free_bytes` | `&AllocCap` | sealed free call | `oo_alloc_bytes` / `oo_free` | `chs_rt_alloc.c` (quota tokens) | Real (M17/M166) |
-| `arena_create` / `alloc` / `reset` | `&AllocCap` | sealed free call | `oo_arena_create` / `alloc` / `reset` | `oo_cap_require_alloc` (`chs_rt_arena.c`) | Real (M166) |
-| `mutex_lock` / `unlock` | `&ThreadCap` | sealed free call | `oo_mutex_lock` / `unlock` | `chs_rt_libfloor.c` (pthread mutex) | Real (M162) |
-| `thread_spawn` / `join` | `&ThreadCap` | sealed free call | `oo_thread_spawn` / `join` | `chs_rt_thread.c` (pthread joinable slots)| Real (M163) |
-| `channel_new` / `send` / `recv` | `&ThreadCap` | sealed free call | `oo_channel_new` / `send` / `recv`| `chs_rt_channel.c` (bounded string queue)| Real (M164) |
-| `gpu_launch` | `&GpuCap` | sealed free call | `oo_gpu_launch(cap, ...)` | `chs_rt_sys.c` (CPU fallback: Ok; GPU: Err) | Path-A Real (M165) |
-| `sys_epoll_create` / `prctl` | `&SysCap` | sealed free call + arg-flow | `oo_sys_epoll` / `oo_sys_prctl` | `chs_rt_sys.c` -> Err residual | Fail-closed Residual |
-| `python_embed` | `&SysCap` only | sealed free call + arg-flow | `oo_python_embed` | `chs_rt_sys.c` -> Err residual | Fail-closed Residual |
-| `import_c` / `ffi_gen` | `&UnsafeFFICap` | sealed free call + arg-flow | `oo_import_c(cap, hdr)` | `oo_cap_require_ffi` + `/usr/include` jail | Real |
-| `lto_xlang_link` | `&ProcessCap` (or `&SysCap`) | sealed free call + arg-flow | `oo_lto_xlang_link(cap, a, b)` | `oo_cap_require_process` + `execvp gcc` | Real |
+| `read_file` | `&FsReadCap` | sealed call | `oo_read_file(cap, path)` | `oo_cap_require_fsread` (`chs_rt_fs.c`) | Real (CAP-G2) |
+| `write_file` | `&FsWriteCap` | sealed call | `oo_write_file(cap, path, str)` | `oo_cap_require_fswrite` + `OODA_FS_WRITEDIR` | Real (CAP-G2) |
+| `path_exists` | `&FsReadCap` | sealed call | `oo_path_exists(cap, path)` | `oo_cap_require_fsread` (`chs_rt_fs.c`) | Real (CAP-G2) |
+| `file_size` | `&FsReadCap` | sealed call | `oo_file_size(cap, path)` | `oo_cap_require_fsread` (`chs_rt_fs.c`) | Real (CAP-G2) |
+| `fs_read_dir` / `fs_is_dir` | `&FsReadCap` | sealed call | `oo_fs_read_dir` / `oo_fs_is_dir` | `oo_cap_require_fsread` (`chs_rt_fs.c`) | Real (CAP-G2) |
+| `fs_mkdir` / `remove_file` / `rmdir` | `&FsWriteCap` | sealed call | `oo_fs_mkdir` / `oo_remove_file` | `oo_cap_require_fswrite` (`chs_rt_fs.c`) | Real (CAP-G2) |
+| `hardlink` / `symlink` | `&FsWriteCap` | sealed call | `oo_hardlink` / `oo_symlink` | `oo_cap_require_fswrite` (`chs_rt_fs.c`) | Real (CAP-G2) |
+| `sys_exec` | `&ProcessCap` | sealed call + arg | `oo_sys_exec` / `oo_sys_exec1` | `oo_cap_require_process` (`chs_rt_sys.c`) | Real (CAP-G4) |
+| `sys_spawn` / `wait` / `kill` | `&ProcessCap` | sealed call + arg | `oo_sys_spawn` / `wait` / `kill` | `oo_cap_require_process` (`chs_rt_libfloor.c`) | Real |
+| `env_get` | `&EnvCap` | sealed call | `oo_env_get(cap, key)` | `oo_process_policy_getenv` (`OODA_`/`OO_`) | Real |
+| `fetch` | `&HttpCap` | sealed call | `oo_fetch(cap, url)` | `oo_cap_require_http` (`chs_rt_sys.c`) | Real (HTTP/1.0) |
+| `tcp_connect` | `&TcpCap` | sealed call + arg | `oo_tcp_connect(cap, h, p)` | `oo_cap_require_tcp` (`chs_rt_netfloor.c`) | Real |
+| `tcp_bind` | `&BindCap` | sealed call + arg | `oo_tcp_bind(cap, port)` | `oo_cap_require_bind` (`chs_rt_netfloor.c`) | Real |
+| `tcp_read` / `write` / `close` | `&TcpCap` | sealed call + arg | `oo_tcp_read` / `write` / `close` | `oo_cap_require_tcp` (`chs_rt_netfloor.c`) | Real |
+| `bind_udp` / `udp_recv` | `&UdpCap` | sealed call + arg | `oo_bind_udp` / `oo_udp_recv` | `oo_cap_require_udp` (`chs_rt_netfloor.c`) | Real |
+| `resolve_ipv4` | `&UdpCap` | sealed call + arg | `oo_resolve_ipv4(cap, host)` | `oo_cap_require_udp` (`chs_rt_netfloor.c`) | Real |
+| `tls_connect` | `&TcpCap` | sealed call + arg | `oo_tls_connect(cap, h, p)` | `chs_rt_tls.c` (OpenSSL or residual) | Real / Residual |
+| `sock_raw` | `&NetCap` only | sealed call | `oo_sock_raw(cap, ...)` | `oo_cap_require_net` -> Err | Residual |
+| `now_ms` / `sleep_ms` | `&TimeCap` | sealed call | `oo_now_ms` / `oo_sleep_ms` | `chs_rt_sys.c` (`CLOCK_REALTIME`) | Real |
+| `random` / `seed` | `&RandCap` | sealed call | `oo_random` / `oo_seed` | `chs_rt_time_rand.c` | Real |
+| `alloc_bytes` / `free_bytes` | `&AllocCap` | sealed call | `oo_alloc_bytes` / `oo_free` | `chs_rt_alloc.c` | Real |
+| `arena_create` / `alloc` / `reset` | `&AllocCap` | sealed call | `oo_arena_create` / `alloc` / `reset` | `oo_cap_require_alloc` (`chs_rt_arena.c`) | Real |
+| `mutex_lock` / `unlock` | `&ThreadCap` | sealed call | `oo_mutex_lock` / `unlock` | `chs_rt_libfloor.c` (pthread mutex) | Real |
+| `thread_spawn` / `join` | `&ThreadCap` | sealed call | `oo_thread_spawn` / `join` | `chs_rt_thread.c` (pthread slots) | Real |
+| `channel_new` / `send` / `recv` | `&ThreadCap` | sealed call | `oo_channel_new` / `send` / `recv` | `chs_rt_channel.c` (string queue) | Real |
+| `gpu_launch` | `&GpuCap` | sealed call | `oo_gpu_launch(cap, ...)` | `chs_rt_sys.c` (CPU fallback: Ok; GPU: Err) | Real |
+| `sys_epoll_create` / `prctl` | `&SysCap` | sealed call + arg | `oo_sys_epoll` / `oo_sys_prctl` | `chs_rt_sys.c` -> Err residual | Residual |
+| `python_embed` | `&SysCap` only | sealed call + arg | `oo_python_embed` | `chs_rt_sys.c` -> Err residual | Residual |
+| `import_c` / `ffi_gen` | `&UnsafeFFICap` | sealed call + arg | `oo_import_c(cap, hdr)` | `oo_cap_require_ffi` + `/usr/include` jail | Real |
+| `lto_xlang_link` | `&ProcessCap` | sealed call + arg | `oo_lto_xlang_link(cap, a, b)` | `oo_cap_require_process` + GCC | Real |
 
 ## 5. CAP-G3 Residuals & Ambient Exclusions
 
-CAP-G3 Residual Capabilities:
-  Accepted as valid type tokens by compiler, granted stubs in runtime, but possess no lowered sealed ops:
-  - `&SyncCap`, `&MemCap`, `&AudioCap`, `&CameraCap`, `&UsbCap`, `&HidCap`, `&WindowCap`, `&FrameCap`, `&AuditCap`, `&SignCap`, `&HitlCap`.
-  - Direct or forged calls fail closed. No ambient hardware, audio, or UI access is permitted.
+CAP-G3 Residual Tokens:
+- `&SyncCap`, `&MemCap`, `&AudioCap`, `&CameraCap`, `&UsbCap`, `&HidCap`, `&WindowCap`, `&FrameCap`, `&AuditCap`, `&SignCap`, `&HitlCap`.
+- Calling unbuilt operations terminates execution safely. Ambient hardware, audio, or UI access is prohibited.
 
-Ambient Operations (Zero Privilege Required):
-  - `process_exit(code)`: Terminates process immediately with integer status code.
-  - `list_new`, `list_push`, `list_len`, string concatenation: Pure in-memory runtime primitives.
-  - Static Taint (`SECRET:`): Static taint tracking across variables and data types.
+Ambient Operations (Zero Capability Required):
+- `process_exit(code)`: Terminates the process immediately with an integer status code.
+- `list_new`, `list_push`, `list_len`, string concatenation: In-memory runtime operations.
+- `SECRET:`: Static taint tracking across variables and struct data fields.
 
-## 6. Argument-Flow Rules (F01) & Runtime Seal Verification
+## 6. Argument-Flow Rules & Runtime Seal Verification
 
-Argument-Flow Enforcement (F01):
-  - Every sealed free call or method call (`fs.read_file(...)`) must pass a capability identifier as its first argument.
-  - The argument must resolve to a valid parameter declared in the enclosing function signature.
-  - Passing expressions, non-capability variables, or mismatched types results in a compile-time rejection.
+Argument-Flow Rules (F01):
+- Every sealed function call or method call must pass a capability identifier as its first argument.
+- The argument must resolve to a valid parameter declared in the enclosing function signature.
+- Passing expressions, non-capability variables, or mismatched types terminates compilation with an error.
 
 Runtime Seal Architecture:
-  - Canonical implementation: `ooda/runtime/chs_rt_caps.c` (seals live in `chs_rt_caps.c`).
-  - Capability tokens compile to 64-bit integer handles initialized by `oo_cap_grant_*` at program entry.
-  - Lowered operations check tokens against process-local tables via `oo_cap_require_*`.
-  - Process Isolation: Subprocesses invoked via `sys_exec` run with scrubbed environments (`OODA_*`/`OO_*` allowlist).
-  - Filesystem Sandboxing: `write_file` enforces strict path resolution within `OODA_FS_WRITEDIR`.
+- Canonical Implementation: `ooda/runtime/chs_rt_caps.c`.
+- Capability tokens compile to 64-bit integer handles initialized by `oo_cap_grant_*` at startup.
+- Lowered operations validate tokens against process-local tables via `oo_cap_require_*`.
+- Process Isolation: Subprocesses invoked via `sys_exec` execute with sanitized environment variables.
+- Filesystem Sandboxing: `write_file` enforces strict path resolution within `OODA_FS_WRITEDIR`.
 
-Generational Semantic Versioning Security Invariants:
-  - Security gates and capability seals are version-bound: `v<Floor>.<Thrust>.<Patch>` (Active Pin: `v2.5.4`).
-  - Floor (F=2): Represents stable capability runtime ABI and seal tables (`chs_rt_caps.c`). Breaking token formats require Floor increments.
-  - Thrust (T=5): Additions of new granular tokens or non-breaking sealed opcodes.
-  - Patch (P=0): Cryptographic signature verification fixes, hostile test hardening, and vulnerability remediation.
-  - Power Law 80/20 Weighted Floor Rule: 80% of security posture is anchored in 20% core primitives (14 unforgeable tokens, linear arenas, Landlock sandbox). Floor changes only on substrate shifts.
-
-Cross References:
-  - `openOODA/START.oot` — Strategic Pillars and foundational governance laws
-  - `openOODA/RULES.oot` — Repository law and capability hygiene (§1.4, §1.9)
-  - `openOODA/WORKFLOW.oot` — OODA lifecycle, swarm coordination, and adversarial probing
-  - `openOODA/FORMAT.oot` — Script formatting and capability injection standards
+## 7. Cross References
+- Ingress Routing: `openOODA/START.oot`
+- Repository Laws: `openOODA/RULES.oot`
+- Workflow Protocols: `openOODA/WORKFLOW.oot`
+- Document Formatting: `openOODA/FORMAT.oot`

@@ -1,0 +1,69 @@
+# openOODA x86 Backend Final Audit — 2026-08-25, post-fix snapshot
+
+Logline: One-shot final audit of the x86 backend state after the 5-shape refuse gate, the per-arm wrote counter, the silent fall-through fix, the SSA per-block remap fix, and the Float SIMD fix have all landed; summarises pre-fix vs post-fix numbers, names the remaining work, and gives a verdict and the next 3 actions.
+
+Setup: Reads ooda/oodac/x86_emit.oo (209 lines, the post-fix dispatcher with four gates wired in at lines 49-91), openOODA/STATUS_v2.oot (67 lines, the post-fix floor snapshot), audit/x86-hostile-probe-v2.oot (167 lines, pre-fix ground truth on 6,936 fixtures), audit/x86-ssa-post-fix-projection.oot (159 lines, SSA static projection), and audit/x86-5shape-refuse-post-fix.oot (110 lines, 5-shape gate static audit). No compiler run. No file edits. No /tmp writes.
+
+Beats:
+  1. Recap the pre-fix numbers from the v2 hostile probe and the SSA static projection.
+  2. Project the post-fix numbers for every tracked metric.
+  3. List the remaining work that keeps the backend from PASS.
+  4. State the final verdict with one line of reasoning.
+  5. State the next 3 actions ranked by impact.
+
+File: openOODA/audit/x86-final.oot
+Status: smoke — read-only final audit, 2026-08-25
+Scope: x86 backend only; AArch64 status lives in openOODA/STATUS_v2.oot §3
+
+---
+
+## 1. Pre-fix vs post-fix numbers
+
+Pre-fix ground truth: audit/x86-hostile-probe-v2.oot (6,936-fixture probe, 5,750 COMPILED on emit-x86, 508 on emit-x86-ssa). Post-fix projection: audit/x86-post-fix-projection.oot (central estimates from static analysis of the four landed fixes). All percentages are of the listed base.
+
+| # | Metric | Pre-fix | Post-fix | Change |
+|---|--------|---------|----------|--------|
+| 1 | emit-x86 COMPILED | 5,750 / 6,936 (82.9%) | 5,750 / 6,936 (82.9%) | unchanged (gate refuses, does not compile) |
+| 2 | emit-x86 REFUSED | 1,185 / 6,936 (17.1%) | ~3,800 / 6,936 (~55%) | +2,615 (5-shape gate + per-arm wrote counter convert silent miscompile to clean REFUSED) |
+| 3 | emit-x86 ASM-FAIL | 1 / 6,936 (0.0%) | 1 / 6,936 (0.0%) | unchanged (the lone multi-main case stays) |
+| 4 | Silent miscompile (empty stdout, of COMPILED) | 2,607 / 5,750 (45.3%) | ~580 / 5,750 (~10%, central 0.4%, range 0.4-7.4%) | -2,027 to -2,595 (-35 to -45 pp) |
+| 5 | Of which no-op main (push/sub/add/syscall) | 2,595 / 2,607 (99.5%) | ~0 (5-shape + wrote counter refuses) | -2,595 (the dominant class is gone) |
+| 6 | SSA ASM-FAIL | 6,426 / 6,936 (92.6%) | 0-147 / 6,936 (0.0-2.1%, central 0.0%) | -6,279 to -6,426 (-90.5 to -92.6 pp) |
+| 7 | SSA COMPILED | 508 / 6,936 (7.3%) | 6,789-6,936 / 6,936 (97.9-100%) | +6,281 to +6,428 (+90.6 to +92.7 pp) |
+| 8 | Float empty-stdout (of Float fixtures) | 158 / 160 (98.7%) | ~0 (Float refused at gate, SIMD/FP fold handles the rest) | -158 (-98.7 pp) |
+| 9 | 3-arm match empty-stdout (of 3-arm fixtures) | 27 / 30 (90.0%) | ~0 (3-arm refused at gate) | -27 (-90.0 pp) |
+| 10 | Result[T] empty-stdout (of Result fixtures) | 179 / 216 (82.8%) | ~0 (Result refused at gate, real path is tagged-union 3-arm) | -179 (-82.8 pp) |
+| 11 | struct field/type empty-stdout | 224 / 277 (80.8%) | ~0 (struct refused at gate) | -224 (-80.8 pp) |
+| 12 | List[T] empty-stdout | 162 / 202 (80.1%) | ~0 (List refused at gate) | -162 (-80.1 pp) |
+| 13 | v1 300-sample silent-miscompile rate (reference) | 118 / 300 (39.3%) | n/a (post-fix is on the 6,936 set) | +6.0 pp (sampling artifact, not a regression) |
+| 14 | 5-shape gate verification (Sig / RealH / Msg) | n/a (gate did not exist) | 5/5 / 5/5-with-1-note / 5/5 (x86-5shape-refuse-post-fix.oot §1) | new audit lane |
+| 15 | Per-arm wrote counter arms | 0 of 6 | 6 of 6 (free, list, match, opt, struct, typed_let) | +6 arms |
+
+**Reading.** Metrics 4, 6, 8-12 are the headline wins. Metric 1 (COMPILED) is unchanged by design — the fix converts silent miscompile into clean REFUSED, not into more compile passes. Metric 2 (REFUSED) is the inverse view of metrics 8-12. Metric 15 is the new structural guarantee: six dedicated arms now refuse on `wrote == 0` rather than emitting a no-op main.
+
+---
+
+## 2. Remaining work (numbered, ranked by impact)
+
+1. **Gate the channel / while / for / parallel no-op main class.** ~221 fixtures affected (channel 35/46 = 76.0%, while 79/105 = 75.2%, for 103/151 = 68.2%, parallel 4/4 = 100%). Not caught by the 5-shape refuse gate (Float, 3-arm match, Result[T], struct, List[T]) and not caught by the per-arm wrote counter (6 arms: free, list, match, opt, struct, typed_let). If left unfixed, the central silent-miscompile estimate of 0.4% drifts toward the upper bound of 7.4%. Source: audit/x86-post-fix-projection.oot:133, audit/x86-hostile-probe-v2.oot:104.
+2. **Close the 12 residual "real write, wrong string" silent-miscompile class.** 12 binaries produce a real write syscall but the syscall writes the wrong string (the hardcoded `fold-me` / `0` / `1` / `line-a` clusters). Add a post-emit run-time check in the `_start` wrapper that asserts the output buffer contains the expected source-id or prints `<name>: no-output` and exits 1. ~30 lines. Source: audit/x86-post-fix-projection.oot:98, audit/x86-hostile-probe-v2.oot:154.
+3. **Port the per-arm wrote counter and the 5-shape refuse gate to aarch64_emit.** Closes the HIGH risk identified in audit/x86-ast-typed-shim.oot:74 (silent fall-through to 22-arm chain) by making AArch64 fail-closed on the same 5 shapes. Mirrors aarch64_emit_shape_refuse.oo from x86_emit_shape_refuse.oo:21-30+ and wires at aarch64_emit.oo:18-26. Source: audit/aarch64-deep-dive.oot:73, openOODA/STATUS_v2.oot:33.
+4. **Fix the LLVM SSA pipeline (mem2reg + dce are unsound).** std/compile/llvm_codegen/ssa_mem2reg.oo (57 lines) maintains a single `cur_val` across every store/load, does not track slot identity, does not insert Phi, does not rename; std/compile/llvm_codegen/ssa_opt.oo (100 lines) `ssa_opt_dce` is an identity transform. CSE is not in the file. P0.3 marks both as residual. Source: openOODA/STATUS_v2.oot:48, SHIPPED.oot:33-36.
+5. **Fix the 3 over/under-refusal smells in x86_emit_shape_refuse.oo.** (a) Shape 1 real-handler over-restricts to `println(ident)` only — chain's x86_collect_and_emit_float accepts `println(foldable_expr)` where expr is STAR/PLUS/MINUS/SLASH on let names. (b) Shape 4 real-handler requires KW_TYPE AND DOT but the chain also supports the bare `struct S { ... }` form. (c) Shape 5 real-handler requires `list_len` but the chain's x86_match_list also accepts `list_get` and `list_set`. Source: audit/x86-5shape-refuse-post-fix.oot §2 Issues 1-3.
+6. **Resolve the c_emit two-gate rebuild blocker.** Pure multi-module oodac rebuild cannot complete: Gate 1 (host `check` of main.oo) trips on token-count cap; Gate 2 (C compile of stitched all.c) trips on `conflicting types for 'OoL_<Name>'` because c_emit_olist.oo:25 and c_emit_struct.oo:104 both emit a real typedef. The smallest fix is an `OO_HAVE_<Name>` ifndef guard plus a tightened stitcher regex. Source: audit/rebuild-blocker.oot:11-13, 28-42, 74.
+7. **Re-run the 6,936-fixture probe to confirm the projection.** ~3 hours wall time. Required to move the SSA ASM-FAIL projection from 3/5 to 5/5 confidence and to measure the actual post-fix silent-miscompile rate on the full set. Out of scope for static projection. Source: audit/x86-ssa-post-fix-projection.oot §5.
+8. **Run a 100-fixture stratified SSA smoke probe** (50 duplicate-label, 50 undefined-block). Confirms the per-block remap fix without the 3-hour cost. Source: audit/x86-ssa-post-fix-projection.oot:148-149.
+
+---
+
+## 3. Final verdict
+
+**PARTIAL.** Three of five critical bugs from openOODA/STATUS_v2.oot §4 are fixed (no-op main for the 5 top hostile shapes, SSA per-block remap, Float empty-stdout). Silent miscompile projects from 45.3% to a central 0.4% (range 0.4-7.4%). SSA ASM-FAIL projects from 92.6% to a central 0.0% (range 0.0-2.1%). The backend is now fail-closed at the gate rather than silent-miscompile-positive. Two real risks remain in the x86 lane (channel/while/for/parallel no-op main class not gated, LLVM SSA pipeline unsound) and one structural risk crosses lanes (the aarch64_emit shim still falls through silently to a 22-arm chain without a refuse gate). The backend is not yet a usable product floor (PASS would require zero residual silent-miscompile classes and a green 5/5-confidence probe), and it is no longer the "not a usable product floor" the v2 probe called it. PARTIAL is the honest label.
+
+---
+
+## 4. Next 3 actions
+
+1. **Add a 4th refuse gate at ooda/oodac/x86_emit.oo:85-92** between the wrote counter and the 22-arm chain. The gate scans for `KW_CHANNEL` / `KW_WHILE` / `KW_FOR` / `KW_PARALLEL` and either refuses with a typed-AST escape message or routes to a real emitter. New file: ooda/oodac/x86_emit_4shape_refuse.oo (≤ 256 lines, mirrors the 5-shape gate). Estimated impact: drops the central silent-miscompile estimate from 0.4% toward 0.0%; clears the 221 affected fixtures out of the no-op-main class. Source: audit/x86-post-fix-projection.oot:133, openOODA/STATUS_v2.oot:65.
+2. **Port the 5-shape refuse gate to aarch64_emit.** Create ooda/oodac/aarch64_emit_shape_refuse.oo (≤ 256 lines) as a mirror of x86_emit_shape_refuse.oo:21-30+ (Float, 3-arm match, Result[T], struct, List[T]). Wire at aarch64_emit.oo:18-26 between the existing Tier 0 contract / diag / secret gates and the dispatch ladder. Estimated impact: closes the HIGH silent-fall-through risk named in audit/x86-ast-typed-shim.oot:74; gives AArch64 the same fail-closed posture x86 now has. Source: openOODA/STATUS_v2.oot:33, 66.
+3. **Run a 100-fixture stratified SSA smoke probe** to move the SSA projection from 3/5 to 4/5 confidence. Sample: 50 fixtures that previously failed with duplicate `.Lxss_pi_*` labels + 50 that previously failed with undefined `.Lmain_block*` forward references. Execute `oodac --x86-elf-ssa` on each, assert `as` and `ld` both exit 0, and assert the .bin runs in under 2s. If 100/100 pass, the central SSA ASM-FAIL case is confirmed and the §2 Item 7 3-hour full re-run can be deferred to a calmer window. Source: audit/x86-ssa-post-fix-projection.oot:148-149, 152.

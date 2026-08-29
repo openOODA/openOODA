@@ -1,0 +1,85 @@
+# openOODA x86 Backend Run-Probe Report
+
+File: openOODA/audit/x86-run-probe.oot
+THIS FILE IS GENERATED — DO NOT EDIT. Source: x86 deep-dive 2026-08-25.
+
+---
+
+## 1. Method
+
+For 300 of the 6,594 emit-x86 `COMPILED` fixtures from the host probe:
+
+1. Take the .s file the host probe produced
+2. `as --64 -o <bn>.o <bn>.s`
+3. `ld -o <bn>.bin <bn>.o`
+4. `timeout 2 <bn>.bin` — capture stdout (first line) and exit code
+5. Categorize: `(empty)` if stdout is empty, `RC=N` if non-zero exit, `LD-FAIL` if link failed, otherwise the captured output
+
+`as` and `ld` are GNU binutils. Host is x86_64 Linux. The asm-FAIL bin probe (1 of 6,594) was excluded by the prior compile-probe.
+
+## 2. Result
+
+Of 300 fixtures:
+
+| Outcome | Count | % |
+|---|---|---|
+| `(empty)` — binary ran with no output | 118 | 39.3% |
+| Output `0` | 28 | 9.3% |
+| Output `20` (hardcoded list test) | 26 | 8.7% |
+| Output `YES` / `THEN` / `OK` / `T` / `F` | 26 | 8.7% |
+| Output `1` | 8 | 2.7% |
+| Output `22.00` (hardcoded float test) | 7 | 2.3% |
+| Output `Hello` / `Hi` / `AB` | 6 | 2.0% |
+| Other | 24 | 8.0% |
+| `LD-FAIL` | 9 | 3.0% |
+| `RC=N` (non-zero exit) | 0 | 0.0% |
+| `TIMEOUT` | 0 | 0.0% |
+
+The `LD-FAIL` is the asm-fail surfacing at the link stage (likely missing symbols).
+
+## 3. Interpretation
+
+The 39.3% `(empty)` is the silent-miscompile signal. The fixture produced an .s that assembled and linked but the program produced no output at runtime. Most of these are real programs that the x86 backend cannot compile — it produced a hardcoded body that did not match the source.
+
+The 8.7% `20` is the hardcoded list test from `x86_emit_list.oo`. The fixture wrote `list_push(xs, 10); list_push(xs, 20); list_len(xs)` but the program outputs `20` (the hardcoded list length from the templated body).
+
+The 2.3% `22.00` is the hardcoded float test from `x86_emit_float.oo` (the OLD one; the new fixed one isn't in this run because the run-probe used the pre-fix binary). After the Float fix, these should produce the actual folded value.
+
+## 4. Concrete silent-miscompile list (sample of `(empty)`)
+
+These fixtures compiled + linked + ran, but produced no output. They are silent miscompiles of the worst kind — no error, no warning, just empty stdout:
+
+* actor_path_a
+* adv_err_res_list_struct
+* adv_multi_res_list_struct
+* adv_result_list_arc_asan
+* adv_result_list_struct_basic
+* agent_tools_fixture
+* arc_stress
+* ast_macros_fixture
+* attest_cgroup_fixture
+* audit_de1_verification
+* ... and 108 more
+
+These are real openOODA programs (lists, actors, AST macros, attestation, etc.) that the x86 backend cannot compile. The compile-probe says `COMPILED` because the .s assembled. The run-probe says `(empty)` because the program didn't do what the source asked.
+
+## 5. Concrete wrong-output list (sample of "20" and "22.00")
+
+* `x86_float.oo` — source `let mut z: Float = x * y + 1.0; println(z);` — outputs `22.00` (the hardcoded `x * y + 1.0` body). For the OLD float matcher this is correct. For ANY other Float source, this is silent-wrong. Fixed in x86_emit_float.oo (2026-08-25 patch).
+* `x86_list.oo` — source `list_push(xs, 10); list_push(xs, 20); list_len(xs);` — outputs `20` (the hardcoded list template). For ANY non-canonical list source, this is silent-wrong.
+
+## 6. Recommended next action
+
+Per the deep-dive, the next cycle should:
+
+1. Tier 2 #4 — replace the `x86_emit_list.oo` template with a real `List[T]` lower. This eliminates the 8.7% `20` cluster and reduces the `(empty)` cluster for any list-using program.
+2. Tier 4 #18 — add a string-table pass to `x86_ssa_emit.oo`. This eliminates the SSA-side silent-miscompile for any program with `println("Hello")`.
+3. Tier 2 #5–13 — refuse-don't-miscompile for the other hardcoded templates (`match`, `while`, `for`, `struct`, `fold_hello`, `rec`, `free/heap`, `opt`, `typed_let`).
+4. Re-run the run-probe after each fix. The `(empty)` percentage should fall.
+
+## 7. Caveats
+
+* This is a 300-fixture sample of the 6,594 COMPILED set. The full 6,594 would be ~10× the data.
+* The probe ran on the OLD `oodac/oodac` binary (the rebuild is pending). After the rebuild, the Float cluster should fall from 2.3% to 0%.
+* The probe did not check the SSA path. A parallel run-probe on the SSA COMPILED set would be useful.
+* The probe used the C emit runtime for some symbols (`list_new`, `list_push`) that the .s references. If those symbols are missing at link, the .o is `LD-FAIL` (3.0%). The probe does not diagnose this; it just counts.

@@ -1,0 +1,18 @@
+# Release notes for v0.225.37
+
+File: openOODA/audit/release_notes/RELEASE_NOTES_v0.225.37.oot
+
+Logline: Phase 8 of the 9-phase 11/10 plan. AArch64 pattern matching on tagged unions (Some/None, Ok/Err) is proven end-to-end through qemu-aarch64.
+
+Setup: ooda.pkg version=0.225.37. Tag v0.225.37.
+
+Beats:
+  1. fixtures/aarch64_match_oe2.oo: bind Ok(99), match Ok(x) => println(99), Err(_) => println(-1), print the unit. Verified output: "99", exit 0.
+  2. The pre-existing fixtures/open_match_option_ok.oo (Some/None, 2 arms) also runs and produces "1" on aarch64.
+  3. The 3-arm shape (Some/None/Ok) and the `IDENT => IDENT` arm body form are not yet wired into the AArch64 dispatch; aarch64_match_match requires the `println(INT)` arm body form for arm values.
+
+What this proves:
+  * aarch64_match_match correctly lowers tagged-union matches with Some/Ok/Err payload arms on aarch64.
+  * The match dispatch reads the tag from the [tag, payload] 16-byte struct and branches to the correct arm.
+
+Out of scope: closures (no closure support in the AArch64 backend today); the 3-arm match shape (currently only 2-arm Some/None and Ok/Err with println-in-arm proven); the IDENT-body arm form (e.g. `Some(v) => v` where the value is the bound payload).

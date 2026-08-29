@@ -1,0 +1,20 @@
+# Release notes for v0.225.32
+
+File: openOODA/audit/release_notes/RELEASE_NOTES_v0.225.32.oot
+
+Logline: Phase 2 of the 9-phase 11/10 plan. AArch64 List[T] port is now a real AAPCS64 runtime that builds, links, and runs on qemu-aarch64.
+
+Setup: ooda.pkg version=0.225.32. Tag v0.225.32 on commit abdf1e1d.
+
+Beats:
+  1. New oodac/aarch64_runtime.oo (canonical source for the AArch64 list/heap runtime, mirrors oodac/x86_runtime.oo).
+  2. oodac/aarch64_emit_list.oo delegates to aarch64_runtime_text(). Matcher returns [push_count, len_ident, push_vals...]. Emit calls real AAPCS64 bl list_new/push/get/set/len with a flat {cap, len, data_ptr} header.
+  3. oodac/aarch64_emit.oo dispatch ladder: aarch64_match_list moved before aarch64_match_frame_test (frame_test short-circuited the list path). List<String> -> List[String] typo repaired in the new line.
+  4. Two fixtures: aarch64_list_int.oo (push 42/7/99, prints 3 and 42), aarch64_list_smoke.oo (fresh list, prints 0). Both run via host pipeline: oodac.aarch64 -> as -> ld -> qemu-aarch64. Exit 0.
+
+What this proves:
+  * AAPCS64 calling convention (x0 list / x1 idx / x2 val in; x0 out) is correctly emitted.
+  * _oo_heap_alloc with mmap syscall 222 produces a real heap; list_new/list_push grow and copy data on demand.
+  * The Tier 2 qemu-aarch64 probe (discovered in the prior session) is the path that exercises this code.
+
+Out of scope for this release (Phase 1 chs_rt fix stays cancelled; phases 3, 5, 6, 7, 8, 9 still pending).

@@ -1,13 +1,16 @@
 # BACKLOG_DEFENSE — Target Capability Backlog: Active Binary Defense
-
+Floor: 2
+Thrust: 5
+Patch: 4
 File: openOODA/backlog/BACKLOG_DEFENSE.oot
-Status: Chapter 2 Specification for Autonomous Swarm Implementation
+
+Status: Chapter 2 Specification for Autonomous Agent Implementation
 
 ## 0. Chapter Overview
 
 This document specifies five tasks for openOODA active binary defense.
-Swarm agents must implement moving target defense, encryption, and RASP.
-Agents must follow the 5-step Swarm Protocol in `TARGET_BUILD_BACKLOG.oot`.
+Autonomous agents must implement moving target defense, string encryption, and runtime self-protection.
+Agents must follow the 4-step verification gate and double-run test laws.
 
 ## 1. Task Specifications
 
@@ -16,97 +19,97 @@ Agents must follow the 5-step Swarm Protocol in `TARGET_BUILD_BACKLOG.oot`.
   - `ooda/oodac/c_emit_flatten.oo`
   - `ooda/oodac/ast_flatten_transform.oo`
   - `ooda/std/sec/defense/control_flow_flattening.oo`
-- Problem Statement:
-  The compiler currently emits linear control flow without flattening.
-  Function control graphs are easily disassembled and reconstructed.
-- Interfaces:
+- Problem Description:
+  The compiler currently emits linear control flow without flattening transformations.
+  Function control flow graphs are easily disassembled and analyzed.
+- Function Interfaces:
   ```oo
   pub type FlattenBlock = struct { state_id: Int, next_state_id: Int, stmts: List[AstStmt] };
   pub fn ast_flatten_function_body(fn_node: &AstFunction, seed: Int) -> Result[AstFunction, String];
   pub fn emit_flattened_switch_dispatcher(blocks: List[FlattenBlock]) -> String;
   ```
-- Capability Tokens: `none`
-- Verification Criteria:
+- Required Capability Tokens: None.
+- Verification Steps:
   1. Transform function AST blocks into centralized switch dispatchers.
-  2. Embed quadratic residue opaque predicates (modulo 7) into state transitions.
-  3. Verify execution produces bit-identical outputs to unflattened binaries.
+  2. Embed quadratic residue opaque predicates into state transitions.
+  3. Verify that execution produces bit-identical outputs to unflattened binaries.
 
 ### Task D2: Stack-Transient String Encryption Pass
 - Target Files:
   - `ooda/oodac/c_emit_str_encrypt.oo`
   - `ooda/oodac/ast_str_obfuscator.oo`
   - `ooda/std/sec/defense/string_literal_encryptor.oo`
-- Problem Statement:
-  String literals are currently emitted into `.rodata` as plaintext.
-  Static binary analysis easily extracts internal tokens and error strings.
-- Interfaces:
+- Problem Description:
+  String literals are currently emitted into `.rodata` as unencrypted plaintext.
+  Static binary analysis easily extracts internal tokens and error messages.
+- Function Interfaces:
   ```oo
   pub type EncryptedStringPayload = struct { cipher_bytes: List[Int], xor_seed: Int, length: Int };
   pub fn encrypt_literal_ast(raw_str: String, key_seed: Int) -> EncryptedStringPayload;
   pub fn emit_stack_decryptor(payload: &EncryptedStringPayload) -> String;
   pub fn emit_stack_zeroize(var_name: String, len: Int) -> String;
   ```
-- Capability Tokens: `&AllocCap`
-- Verification Criteria:
-  1. Verify zero plaintext string literals in `.rodata` via `strings <binary>`.
+- Required Capability Tokens: `&AllocCap`.
+- Verification Steps:
+  1. Verify that `strings <binary>` finds zero plaintext string literals in `.rodata`.
   2. Decrypt strings in stack memory immediately before consumption.
-  3. Overwrite stack memory buffers with zeroes immediately on scope drop.
+  3. Overwrite stack memory buffers with zeroes immediately when dropped from scope.
 
-### Task D3: Autonomic RASP Startup Check & Live-RAM Rollback
+### Task D3: Runtime Application Self-Protection & Memory Recovery
 - Target Files:
   - `ooda/runtime/chs_rt_rasp.c`
   - `ooda/runtime/chs_rt_integrity.h`
   - `ooda/std/sec/defense/self_healing_code_engine.oo`
-- Problem Statement:
-  Emitted binaries lack runtime self-protection against live RAM tampering.
-  External debuggers can attach and insert `0xCC` or `0xE9` hooks unnoticed.
-- Interfaces:
+- Problem Description:
+  Emitted binaries lack runtime self-protection against live memory tampering.
+  External debuggers can attach and insert breakpoint hooks unnoticed.
+- Function Interfaces:
   ```oo
   pub type RaspIntegrityState = struct { text_start: Int, text_len: Int, expected_sha256: String, is_armed: Bool };
   pub fn chs_rasp_arm_watchdog(sys: &SysCap, gold_master: List[Int]) -> Result[RaspIntegrityState, String];
   pub fn chs_rasp_verify_and_heal(sys: &SysCap, state: &RaspIntegrityState) -> Result[Bool, String];
   ```
-- Capability Tokens: `&SysCap`
-- Verification Criteria:
-  1. Compute SHA-256 digest over `.text` memory pages during startup initialization.
-  2. Catch `SIGTRAP` and restore corrupted instruction bytes from gold-master RAM.
-  3. Terminate process with exit code 127 if tampering cannot be restored.
+- Required Capability Tokens: `&SysCap`.
+- Verification Steps:
+  1. Compute a SHA-256 digest over `.text` memory pages during program initialization.
+  2. Catch `SIGTRAP` and restore corrupted instruction bytes from verified memory.
+  3. Terminate process with exit code 127 if tampering cannot be repaired.
 
 ### Task D4: Anti-ROP Gadget Alignment Padding
 - Target Files:
   - `ooda/oodac/x86_emit_rop.oo`
   - `ooda/oodac/aarch64_emit_rop.oo`
   - `ooda/std/sec/defense/rop_gadget_destroyer.oo`
-- Problem Statement:
+- Problem Description:
   Adjacent instructions can accidentally form return `0xC3` or jump bytes.
-  Attackers exploit these accidental sequences to construct ROP chains.
-- Interfaces:
+  Attackers exploit these accidental byte sequences to construct ROP chains.
+- Function Interfaces:
   ```oo
   pub type RopScanReport = struct { gadgets_found: Int, nops_inserted: Int, padded_bytes: List[Int] };
   pub fn neutralize_rop_gadgets(machine_code: List[Int]) -> Result[RopScanReport, String];
   ```
-- Capability Tokens: `none`
-- Verification Criteria:
-  1. Scan emitted machine code streams for unintentional `0xC3` or `0xFF 0x25` sequences.
+- Required Capability Tokens: None.
+- Verification Steps:
+  1. Scan emitted machine code streams for unintended `0xC3` or `0xFF 0x25` sequences.
   2. Insert multi-byte NOP instructions without breaking instruction alignment.
-  3. Validate using an automated ROP gadget scanner that gadget count drops to zero.
+  3. Validate that automated ROP gadget scanners report zero unintended gadgets.
 
-### Task D5: Fortified-by-Default Compiler Driver & --plain Opt-Out
+### Task D5: Fortified-by-Default Compiler Driver & --plain Mode
 - Target Files:
   - `ooda/oodac/cli_parse.oo`
   - `ooda/oodac/c_emit.oo`
   - `ooda/oodac/main.oo`
-- Problem Statement:
+- Problem Description:
   `oodac emit-c` emits unfortified code by default.
-  Active defense requires manual directives instead of default activation.
-- Interfaces:
+  Active defense requires manual flags instead of default activation.
+- Function Interfaces:
   ```oo
   pub type DefenseFlags = struct { enable_flatten: Bool, enable_str_enc: Bool, enable_rop_pad: Bool, enable_rasp: Bool };
   pub fn parse_defense_flags(args: List[String]) -> DefenseFlags;
   pub fn configure_defense_pipeline(flags: DefenseFlags) -> Result[Void, String];
   ```
-- Capability Tokens: `&ProcessCap`
-- Verification Criteria:
-  1. Verify `oodac emit-c` applies flattening and string encryption by default.
-  2. Verify `--plain` CLI flag disables all defense passes for clean debugging.
+- Required Capability Tokens: `&ProcessCap`.
+- Verification Steps:
+  1. Verify that `oodac emit-c` applies control flow flattening and string encryption by default.
+  2. Verify that the `--plain` CLI flag disables defense passes for debugging.
   3. Ensure all tests in `qa/` pass in both default fortified and `--plain` modes.

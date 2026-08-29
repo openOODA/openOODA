@@ -1,20 +1,22 @@
-// # AArch64 Tier 1 in-process wiring audit (Phase 9 final form)
-//
-// Logline: oodac.aarch64 is a single binary that exposes both the text and AST paths in-process, no shell-out.
-//
-// Setup: Re-reads oodac/aarch64_main.oo and the std/hw/arch_aarch64/ rename.
-//
-// Beats:
-//   1. The v0.225.39 process-spawn form (shell out to oodac.aarch64.ast) was a fallback. The in-process form is now achievable by:
-//        a. Renaming std a64_lookup to a64_lookup_parse across aarch64_parse.oo, aarch64_lower.oo, aarch64_xclosure.oo, aarch64_xclosure_scan.oo, aarch64_xcond.oo, aarch64_xexpr.oo, aarch64_xloop.oo, aarch64_xsimple.oo, aarch64_xstmt.oo, aarch64_xterm.oo.
-//        b. Adding `import "aarch64_emit_elf.oo";` to oodac/aarch64_main.oo (already present in the process-spawn form via std/sh.oo).
-//   2. The in-process build produces oodac/oodac.aarch64 (1,322,000 bytes, 727 unique_fns, 112 from-modules) without errors.
-//   3. All four CLI forms verified end-to-end:
-//        - emit-aarch64 fixtures/aarch64_list_int.oo -> as+ld+qemu-aarch64 prints "342", exit 0
-//        - --backend aarch64 emit-aarch64 fixtures/aarch64_hello.oo -> GAS to stdout
-//        - --ast-emit-aarch64 fixtures/aarch64_hello.oo /tmp/h.bin -> ELF64, qemu-aarch64 prints "Hello", exit 0
-//        - --backend aarch64 --ast fixtures/aarch64_hello.oo /tmp/h2.bin -> same
-//   4. The in-process binary is the canonical form going forward. oodac.aarch64.ast (v0.225.34) is kept for backward compatibility but is no longer required.
+# AArch64 Tier 1 in-process wiring audit (Phase 9 final form)
+
+File: openOODA/audit/aarch64-tier1-in-process.oot
+
+Logline: oodac.aarch64 is a single binary that exposes both the text and AST paths in-process, no shell-out.
+
+Setup: Re-reads oodac/aarch64_main.oo and the std/hw/arch_aarch64/ rename.
+
+Beats:
+  1. The v0.225.39 process-spawn form (shell out to oodac.aarch64.ast) was a fallback. The in-process form is now achievable by:
+       a. Renaming std a64_lookup to a64_lookup_parse across aarch64_parse.oo, aarch64_lower.oo, aarch64_xclosure.oo, aarch64_xclosure_scan.oo, aarch64_xcond.oo, aarch64_xexpr.oo, aarch64_xloop.oo, aarch64_xsimple.oo, aarch64_xstmt.oo, aarch64_xterm.oo.
+       b. Adding `import "aarch64_emit_elf.oo";` to oodac/aarch64_main.oo (already present in the process-spawn form via std/sh.oo).
+  2. The in-process build produces oodac/oodac.aarch64 (1,322,000 bytes, 727 unique_fns, 112 from-modules) without errors.
+  3. All four CLI forms verified end-to-end:
+       - emit-aarch64 fixtures/aarch64_list_int.oo -> as+ld+qemu-aarch64 prints "342", exit 0
+       - --backend aarch64 emit-aarch64 fixtures/aarch64_hello.oo -> GAS to stdout
+       - --ast-emit-aarch64 fixtures/aarch64_hello.oo /tmp/h.bin -> ELF64, qemu-aarch64 prints "Hello", exit 0
+       - --backend aarch64 --ast fixtures/aarch64_hello.oo /tmp/h2.bin -> same
+  4. The in-process binary is the canonical form going forward. oodac.aarch64.ast (v0.225.34) is kept for backward compatibility but is no longer required.
 
 == Why the rename was needed ==
 

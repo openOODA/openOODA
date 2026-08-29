@@ -1,0 +1,91 @@
+# openOODA x86 Backend Hostile Probe Report
+
+File: openOODA/audit/x86-hostile-probe.oot
+Generated: Tue Aug 25 05:08:12 PM HST 2026
+Host: Linux starjammer 7.1.10-200.fc44.x86_64 #1 SMP PREEMPT_DYNAMIC Sun Aug 23 16:15:11 UTC 2026 x86_64 GNU/Linux
+oodac: oodac: usage: [--backend c|wasm|llvm|x86|x86-ssa] tokens|ast|check|build|run|emit-c|emit-wasm|emit-llvm|emit-x86|emit-x86-ssa|outline|reflect <file>
+
+## Coverage
+Total fixtures in ooda/fixtures/: 6938
+Probed: 4652 (partial — probe was interrupted by background task lifecycle)
+
+## emit-x86 (token-pattern backend) — results
+
+```
+   4499 COMPILED
+    153 REFUSED
+```
+
+### Sample REFUSED (emit-x86)
+```
+aarch64_bool_bind	REFUSED
+aarch64_bool	REFUSED
+aarch64_empty	REFUSED
+aarch64_leftover_ident	REFUSED
+aarch64_neg_call	REFUSED
+aarch64_nomain	REFUSED
+agy_int_lt0	REFUSED
+bc_match_ok_err	REFUSED
+bc_match_result	REFUSED
+bc_nested_for	REFUSED
+bitwise_ops	REFUSED
+break_loop	REFUSED
+byte_at_main	REFUSED
+bytes_buffer_main	REFUSED
+byte_slice_main	REFUSED
+chrono_smoke_proof	REFUSED
+c_line_ctrl	REFUSED
+c_line_lib	REFUSED
+c_line_main	REFUSED
+c_line_secret_lib	REFUSED
+c_line_secret_main	REFUSED
+complex_contract_ens_fail	REFUSED
+complex_contract_pass	REFUSED
+complex_contract_req_fail	REFUSED
+contract_arith_or_and_fail	REFUSED
+contract_arith_pass	REFUSED
+contract_arith_req_fail	REFUSED
+contract_fuzz_fixture	REFUSED
+contract_or_fail	REFUSED
+contract_or_pass	REFUSED
+```
+
+## emit-x86-ssa (SSA backend) — results
+
+```
+   4644 COMPILED
+      7 ASM-FAIL
+      1 REFUSED
+```
+
+### Sample REFUSED / ASM-FAIL (emit-x86-ssa)
+```
+aarch64_empty	REFUSED
+aarch64_if_ovf	ASM-FAIL
+open92_bare	ASM-FAIL
+prove_prod_adler32	ASM-FAIL
+prove_prod_canconst	ASM-FAIL
+prove_prod_fnv1a	ASM-FAIL
+prove_prod_g4_compilers_macho_linker	ASM-FAIL
+prove_prod_g4_emb_mmu_token_map	ASM-FAIL
+```
+
+## Caveats
+
+* 'COMPILED' here means the .s assembled via 'as --64' — it does not mean the program runs correctly. Many x86_*.oo fixtures are designed around the hardcoded Float/List templates; the assembly assembles but the runtime output is wrong for any source the templates don't recognize.
+* 'REFUSED' means the emit printed 'ERR x86_emit ...' and exited non-zero.
+* 'ASM-FAIL' means the .s was produced but GNU as could not assemble it (e.g. x86-ssa path emits pseudo-ops that conflict).
+* This is a COMPILE-only probe. There is no RUN probe — many of the 'COMPILED' outputs will produce wrong output at runtime (silent miscompile).
+
+## Per-fixture details
+Full per-fixture results in /tmp/x86probe/x86.txt and /tmp/x86probe/ssa.txt (tsv: name<TAB>result)
+
+## Methodology
+
+For each fixture in ooda/fixtures/*.oo:
+  1. Run ./oodac/oodac emit-x86 <f> 2>&1 — capture stdout+stderr
+  2. If output starts with 'ERR', mark REFUSED
+  3. If output contains '_start', 'main:', or '.text', write to /tmp/x86probe/results/<bn>.x86.s
+  4. Run 'as --64 -o <bn>.o <bn>.s'. Success → COMPILED. Failure → ASM-FAIL.
+  5. Repeat for emit-x86-ssa.
+No run probe; no output-correctness check. This is a coarse filter.

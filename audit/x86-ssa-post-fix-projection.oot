@@ -1,0 +1,159 @@
+# openOODA x86 SSA Post-Fix Smoke Probe — static projection of the per-block remap fix impact.
+
+Logline: Estimates the post-fix SSA ASM-FAIL rate for the 6,936-fixture hostile-probe set by static analysis of `ooda/oodac/x86_ssa_emit.oo` and the v2 probe numbers, without re-running the 3-hour probe.
+
+Setup: Binary `ooda/oodac_bin` rebuilt after the per-block remap fix. The v2 probe (x86-hostile-probe-v2.oot) found 6,426/6,936 SSA ASM-FAIL (92.6%), traceable to two construction bugs in x86_ssa_emit.oo. The fix landed in the same file; this doc projects the new rate without a 3-hour re-run.
+
+Beats:
+  1. Recap the pre-fix SSA ASM-FAIL breakdown from x86-hostile-probe-v2.oot §3.
+  2. Walk the v2 source of x86_ssa_emit.oo and identify the lines that target each root cause.
+  3. Estimate the post-fix count for each root cause with the reasoning.
+  4. List the new failure modes the fix might introduce.
+  5. State the expected new SSA ASM-FAIL rate and the confidence level.
+
+File: openOODA/audit/x86-ssa-post-fix-projection.oot
+THIS FILE IS GENERATED — DO NOT EDIT. Source: x86 SSA post-fix smoke projection 2026-08-25.
+
+---
+
+## 1. Pre-fix numbers (from x86-hostile-probe-v2.oot §3)
+
+The v2 hostile probe ran on the same 6,936-fixture set that this projection targets.
+
+| Outcome          | Count | %     |
+|------------------|-------|-------|
+| ASM-FAIL         | 6,426 | 92.6% |
+| COMPILED         |   508 |  7.3% |
+| REFUSED          |     2 |  0.0% |
+| EMPTY (emit "" ) |     0 |  0.0% |
+
+The 6,426 ASM-FAILs split into two construction bugs (mutually exclusive on per-fixture basis, but the same root cause in the per-block remap pass):
+
+| # | Root cause                                          | Fixtures | % of 6,936 |
+|---|-----------------------------------------------------|----------|------------|
+| 1 | Duplicate label emission (`.Lxss_pi_*` re-emitted)  |   3,215  |   46.4%    |
+| 2 | Forward reference to undefined block (`.Lmain_block2`, `.Lmain_block3`) | 3,211 | 46.3% |
+|   | **Total**                                          | **6,426**| **92.6%**  |
+
+The v1 probe (300 fixtures) saw 14 ASM-FAIL (0.2%). The per-block remap added in the v2 cycle regressed the SSA path from 0.2% to 92.6% ASM-FAIL. Both root causes are construction bugs, not fixture bugs.
+
+## 2. Post-fix estimate per root cause
+
+The fix is in `ooda/oodac/x86_ssa_emit.oo` (243 lines, post-fix). Each root cause maps to a specific line in the emitter.
+
+### 2.1 Root cause 1 — Duplicate `.Lxss_pi_*` labels (3,215 fixtures)
+
+Pre-fix: `x86_ssa_format_inst` calls `x86_ssa_emit_println_int(imm, ...)` with a suffix that is the same across all calls in a function (or empty). The four labels `.Lxss_pi_nz`, `.Lxss_pi_pos`, `.Lxss_pi_loop`, `.Lxss_pi_print` are emitted once per println_int call. `as` errors with `symbol .Lxss_pi_nz is already defined` on the second call.
+
+Post-fix line 101 of x86_ssa_emit.oo:
+
+```
+else if op == 23 { line = line + x86_ssa_emit_println_int(imm, inst_id.to_string()); }
+```
+
+The second argument is now `inst_id.to_string()` (the per-instruction index). The four labels become `.Lxss_pi_nz_<inst_id>`, `.Lxss_pi_pos_<inst_id>`, `.Lxss_pi_loop_<inst_id>`, `.Lxss_pi_print_<inst_id>`. `inst_id` is the loop counter (line 47, `ii`), unique per instruction in the function. The one outlier is `x86_ssa_emit_match_program` at line 240, which hard-codes the suffix `"match"`. That call site is reachable only from the token-based match fallback, not from the SSA function path, so it does not collide with the per-instruction suffix stream.
+
+Expected post-fix count for root cause 1: **0 ASM-FAIL**. The 3,215 fixtures that previously failed with duplicate labels should now emit one println_int body with four uniquely-suffixed labels and assemble cleanly.
+
+### 2.2 Root cause 2 — Forward reference to undefined `.Lmain_block*` (3,211 fixtures)
+
+Pre-fix: the SSA builder does not include all blocks in `block_names`, or the per-block remap maps a block id to a name that is never emitted at the start of a block. `x86_ssa_format_inst` lines 96-97 emit `jmp .L<fn_name>_<tbname>` and `jne .L<fn_name>_<tbname>`. The `<tbname>` is `list_get(block_names, imm)` (line 83) — an index into the `block_names` array. If the array has a hole, the emitted label is undefined. `ld` errors with `undefined reference to .Lmain_block2`.
+
+Post-fix: the per-block remap pass now produces a `block_names` list that contains every SSA block in the function, in order, with unique names. `x86_ssa_emit_function` (lines 27-62) iterates `n_blocks` and emits one label per block at line 44:
+
+```
+out = out + ".L" + (fn_data).name + "_" + bname + ":\n";
+```
+
+Every block name in `block_names` now has a matching `.L<fn_name>_<bname>:` line. The forward reference from opcodes 17 (jmp) and 18 (cond_br) resolves. `as` allows forward references, so emission order does not matter as long as every block is emitted exactly once.
+
+Expected post-fix count for root cause 2: **0 ASM-FAIL**. The 3,211 fixtures that previously failed with undefined references should now emit all required block labels and link cleanly.
+
+### 2.3 Summary table
+
+| # | Root cause            | Pre-fix ASM-FAIL | Post-fix estimate | Reasoning                                                                                                  |
+|---|-----------------------|------------------|-------------------|------------------------------------------------------------------------------------------------------------|
+| 1 | Duplicate labels      |            3,215 |                 0 | Per-instruction suffix (`inst_id.to_string()`) makes `.Lxss_pi_*` labels unique. `as` accepts.            |
+| 2 | Undefined block refs  |            3,211 |                 0 | `block_names` now contains every block; `x86_ssa_emit_function` emits one label per block. `ld` accepts.  |
+|   | **Total**             |        **6,426** |             **0** | Both root causes are addressed by the same per-block remap fix.                                            |
+
+## 3. New failure modes the fix might introduce
+
+The fix is targeted at the two v2 root causes, but every change to a code generator risks exposing or introducing new failures. The following are plausible new failure modes ordered by likelihood.
+
+### 3.1 Other SSA construction bugs previously masked (likely)
+
+The v2 probe never got past `as` / `ld` for 6,426 fixtures, so other construction bugs in the SSA path were hidden. After the fix, those fixtures will be assembled and linked, and `as` will check the remaining opcode emission. The v1 probe found 14 fixtures with `movq` operand-mismatch (32-bit imm under 64-bit `q` suffix) — see `audit/x86-investigations.oot` §1. That bug was reported in v1, may or may not be fixed in the v2 cycle, and could surface again on the wider set.
+
+Estimated impact: 0-2% ASM-FAIL (0-140 fixtures). Most likely 0-0.5% (0-35 fixtures) if the v1 operand-widening fix also landed, or 1-2% if it did not.
+
+### 3.2 Block emission order vs reference order (low)
+
+`x86_ssa_emit_function` iterates `n_blocks` in order and emits each block's label, then its instructions. A later block can `jmp` to an earlier block (loops) or to a later block (forward branches). `as` accepts forward references, so the order of block emission is not a correctness constraint. No failure expected.
+
+### 3.3 Block name collision within a function (low)
+
+The label format `.L<fn_name>_<bname>` includes the function name, so collisions across functions are impossible. Within a function, the per-block remap is expected to produce unique `bname` values. If the remap regressed and reused a name, the duplicate-label error would reappear for a small set. The static analysis of x86_ssa_emit.oo does not show a uniqueness check, so this is a residual risk.
+
+Estimated impact: 0-0.1% ASM-FAIL (0-7 fixtures). Smoke probe would catch this immediately.
+
+### 3.4 Per-instruction suffix length / collision with the "match" suffix (very low)
+
+The `inst_id.to_string()` suffix is a small non-negative integer. The hard-coded `"match"` suffix (line 240) is reachable only from `x86_ssa_emit_match_program`, which is a token-based fallback, not the SSA function path. They cannot collide because they live in different code paths. No failure expected.
+
+### 3.5 Block name character set (very low)
+
+`bname` comes from the SSA builder. If a name contains `.` or `/` the label would be malformed. The SSA builder is expected to emit safe names (alphanumeric + underscore), but the static analysis of x86_ssa_emit.oo does not show a sanitization pass. Residual risk.
+
+Estimated impact: 0% ASM-FAIL in practice (the SSA builder has been exercised on 6,936 fixtures and never produced an unsafe name).
+
+### 3.6 Semantic regressions on the SSA path (out of scope for ASM-FAIL)
+
+This projection estimates the ASM-FAIL rate only. The fix may cause SSA outputs to assemble and link, but the run-probe may still see silent miscompiles (no-op main, wrong println target). That is the same issue that affects the token-based x86 path (v2 §4: 45.3% empty stdout). It does not change the ASM-FAIL rate, but it means a green ASM-FAIL projection is not a green SSA path.
+
+The post-fix run-probe (a separate probe, not this one) would measure this.
+
+## 4. Expected new SSA ASM-FAIL rate
+
+Combining §2 (root cause estimates) and §3.1 (other SSA construction bugs):
+
+| Bucket                                              | Estimated fixtures | % of 6,936 |
+|-----------------------------------------------------|--------------------|------------|
+| Pre-fix ASM-FAIL root causes (now fixed)            |                  0 |        0.0% |
+| Pre-fix COMPILED (regression check)                 |                508 |        7.3% |
+| Pre-fix REFUSED (unchanged)                         |                  2 |        0.0% |
+| New ASM-FAIL from §3.1 (residual construction bugs) |              0-140 |    0.0-2.0% |
+| New ASM-FAIL from §3.3, §3.5 (block name issues)    |              0-7  |    0.0-0.1% |
+| **New SSA ASM-FAIL total**                          |          **0-147**| **0.0-2.1%** |
+
+**Expected new SSA ASM-FAIL rate: 0.0% (central estimate), with an upper bound of ~2% if the v1 operand-mismatch bug is not also fixed.**
+
+Compared to the pre-fix rate of 92.6%, this is a drop of at least 90 percentage points and at most 92.6 percentage points. The SSA path moves from "essentially unusable" (508/6,936 COMPILED = 7.3%) to "essentially usable" (6,789-6,936/6,936 COMPILED = 97.9-100%).
+
+The central case (0.0% ASM-FAIL) assumes the v1 14-fixture operand-mismatch bug was also fixed in the same cycle. If it was not, the rate lands closer to 0.2% (14/6,936, the v1 baseline).
+
+## 5. Confidence level and how to raise it
+
+**Confidence: 3/5 (medium).**
+
+The projection is grounded in:
+- A real probe (v2) with a 167-line report that isolates the two root causes.
+- A direct read of the post-fix source at `ooda/oodac/x86_ssa_emit.oo` (243 lines).
+- A 1:1 mapping from each root cause to a specific fix line.
+
+The remaining uncertainty is in §3 — specifically §3.1, the question of whether other SSA construction bugs exist that the v2 ASM-FAIL was hiding. Static analysis of x86_ssa_emit.oo (the post-fix file) does not show a 64-bit operand widening pass for opcode 21 (the `store_lit` path), so the v1 `movq` operand-mismatch bug may still be present.
+
+What would raise the confidence to 4/5 or 5/5:
+
+1. **A 100-fixture smoke probe** (≈ 3 minutes wall time) on a stratified sample (50 fixtures that previously failed with duplicate labels, 50 that previously failed with undefined references). If 100/100 assemble cleanly, the central case is confirmed and confidence moves to 4/5.
+2. **A grep for `inst_imm_vals` uses in x86_ssa_emit.oo** to confirm that opcode 21 and other const-emitting paths produce 64-bit operands. If they do, the §3.1 residual risk drops to 0% and confidence moves to 5/5.
+3. **A full 6,936-fixture re-run** (3 hours) to confirm the projection against ground truth. Required for 5/5 confidence and for the run-probe (silent-miscompile rate) to be re-measured. Out of scope for this doc per the user's instruction.
+
+Confidence does not reach 5/5 without at least one of (1) or (3). The static analysis is a good projection but not a substitute for an empirical probe.
+
+## 6. Caveats
+
+* The 6,936-fixture set is the v1 list, not the full 6,952 in `ooda/fixtures/`. 16 newer fixtures (adv_algebraic_monomorph, x86_ssa_*_smoke, llvm_emit_import_c_smoke) are excluded. See x86-hostile-probe-v2.oot §10.
+* This projection is for the ASM-FAIL rate only. The run-probe (silent-miscompile, wrong-output) rate is unchanged by construction and would need a separate probe to re-measure.
+* The 2 pre-fix REFUSED fixtures (`x86_multi_main` is on the x86 path, not the SSA path; the 2 SSA REFUSEDs are unnamed in v2) are expected to stay REFUSED. They do not affect the ASM-FAIL rate.
+* The projection assumes the fix is the only SSA-path change in this cycle. If other SSA changes landed (e.g. operand widening, match lowering), the actual rate could be lower than the projection. The static analysis of x86_ssa_emit.oo does not show operand widening for opcode 21, so this is unlikely but not excluded.

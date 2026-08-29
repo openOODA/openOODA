@@ -1,188 +1,181 @@
 # NORTHSTAR — Architecture North Star, Language Grammar, AST & Type System Specification
-
+Floor: 2
+Thrust: 5
+Patch: 4
 File: openOODA/NORTHSTAR.oot
-North star specification. SHIPPED.oot is what exists. ROADMAP.oot is the active execution plan and release pin (v2.5.4).
+
+This document defines the target architecture, formal grammar, AST design, and type system.
+SHIPPED.oot records verified on-disk features. ROADMAP.oot defines the active sprint plan and release pin (v2.5.4).
 
 openOODA is a systems programming language engineered for safe, high-performance, deterministic software.
-Humans and autonomous agent swarms write code that is verified ahead-of-time.
-All side effects and privileged resources require explicit, unforgeable capability tokens.
-Every function carries verifiable contracts (requires, ensures, spec).
+The compiler verifies source code ahead-of-time.
+All side effects and privileged operations require explicit, unforgeable capability tokens.
+Functions declare verifiable contracts (`requires`, `ensures`, `spec`).
 The compiler produces machine-readable diagnostics with automated one-turn repairs.
-This document defines the architectural target, formal grammar, AST design, and type system requirements.
 
-1. Architectural North Star & The 6 Strategic Pillars
+## 1. Architectural Foundation & The Six Strategic Pillars
 
-1.1 Core Principles & Informational E-M
-  - Pillar 1 (First Principles & Spec Derivation): Derive all algorithms, data structures, and grammar directly from hardware physics, IEEE 754 floats, NIST KATs, and IETF RFCs.
-  - Pillar 2 (Boyd's Informational E-M Engine): Governed by E-M = ((T - D) / W) * V. Maximize instruction throughput (T) via SIMD vectorization and ELF64/WASM emission. Minimize drag (D) by subtractive elimination of GC pauses, ARC thrashing, and dynamic checks. Minimize binary and runtime weight (W). Maximize rebuild and OODA turnover velocity (V). Address Boyd's mechanical blind spot by elevating the loop from kinematic CPU cycles to full-spectrum AST observation and SMT orientation.
-  - Pillar 3 (Adversarial Validation & Negative Trust): Active falsification, hostile boundary probing, corrupted token fuzzing, and the sequential Double-Run law (`./bin/ooda run <test.oo>`) to certify memory safety.
-  - Pillar 4 (Power Law 80/20 Leverage): Focus compiler architecture on 20% high-leverage primitives (SSA mem2reg, flat closures, direct ELF64 emission, linear arenas) delivering 80% systemic value.
-  - Pillar 5 (Blue Ocean Strategy & Sovereign Moat): Compile-time SMT invariant check elision, zero ambient authority capability security, and zero-toolchain self-hosted bootstrapping.
-  - Pillar 6 (Multi-Agent Swarm Collaboration): Agent-native tooling, structured JSON diagnostics, AST reflection (`ooda outline`), automated code repair (`ooda fix`), and live concurrent swarm integration.
-  - Via Negativa Subtractive Optimization: Improve systems by subtraction rather than addition. Remove non-essential runtime state, ambient privileges, nulls, dynamic dispatch, and human cognitive latency.
-  - Deterministic Execution: Bit-identical compilation, zero-timestamp artifact digests, and reproducible binary outputs.
+### 1.1 Core Principles & Informational E-M
+- Pillar 1 (First Principles): Derive algorithms and grammar directly from hardware specifications and RFCs.
+- Pillar 2 (Boyd's E-M Engine): Calculate performance as E-M = ((T - D) / W) * V. Maximize instruction throughput (T). Minimize drag (D) by removing GC pauses and runtime checks. Minimize binary weight (W). Maximize rebuild speed (V).
+- Pillar 3 (Adversarial Validation): Apply active falsification, hostile probing, and sequential double-run tests.
+- Pillar 4 (Power Law 80/20 Leverage): Concentrate compiler architecture on four high-leverage primitives (SSA mem2reg, flat closures, direct ELF64 emission, linear arenas).
+- Pillar 5 (Capability Security): Provide compile-time SMT check elision, zero ambient authority, and self-hosted bootstrapping.
+- Pillar 6 (Multi-Agent Coordination): Provide structured JSON diagnostics, AST reflection (`ooda outline`), automated repair (`ooda fix`), and collaborative swarm protocols.
+- Subtractive Optimization: Improve software by removing unneeded runtime state and ambient privileges.
+- Deterministic Execution: Produce bit-identical binaries with zero-timestamp digests.
 
-1.2 Generational OODA Hierarchy (Gen 1 to Gen 6)
-  - Gen 1 (Physical & Silicon Substrate): Bare-metal page tables (x86_64 PML4, RISC-V Sv39), SIMD vector registers, MMU, and APIC/GIC interrupt routing.
-  - Gen 2 (Self-Hosted Compiler & IR): Lexer, parser, Merkle AST, SSA mem2reg, optimization passes, and direct in-process ELF64/WASM code emission.
-  - Gen 3 (Deterministic Runtime & Memory): Linear arena allocators with O(1) bulk resets, deterministic ARC, Landlock/rlimit sandboxing, and Undo-RAM ghost-state transactional memory.
-  - Gen 4 (Language Semantics & Type System): Algebraic Data Types, 14 unforgeable capability tokens, refinement types, typestates, SECRET IFC taint tracking, and SMT contract clauses (requires, ensures, spec).
-  - Gen 5 (Distributed Multi-Agent Swarm): Multi-agent concurrent coordination, distributed sensor fusion mesh, peer-to-peer verification in O(log M), and automated one-turn repair.
-  - Gen 6 (Autonomous Sovereign Intelligence): Intent-driven code synthesis, autonomous real-time AST self-mutation, zero-trust verifiable compute (ZK-STARK), and self-healing immune regeneration.
-  - Hierarchical Loop Encapsulation: Gen 1 through Gen 4 form an autonomic reflex stratum. Lower-tier reflexes execute deterministically, allowing Gen 5 and Gen 6 swarms to orient on strategic intent without manual low-level safety verification.
+### 1.2 Generational Architecture Hierarchy (Gen 1 to Gen 6)
+- Gen 1 (Silicon Substrate): Page tables (x86_64 PML4, RISC-V Sv39), SIMD registers, MMU, and APIC/GIC interrupt routing.
+- Gen 2 (Self-Hosted Compiler & IR): Lexer, parser, Merkle AST, SSA mem2reg, optimization passes, and direct ELF64/WASM emission.
+- Gen 3 (Deterministic Runtime & Memory): Linear arena allocators with O(1) bulk resets, deterministic ARC, and Landlock isolation.
+- Gen 4 (Language Semantics & Type System): ADTs, 14 capability tokens, refinement types, typestates, SECRET taint tracking, and SMT contracts.
+- Gen 5 (Distributed Agent Teams): Multi-agent coordination, sensor fusion mesh, P2P verification in O(log M), and automated one-turn repair.
+- Gen 6 (Autonomous Synthesis): Intent synthesis, real-time AST mutation, verifiable compute (ZK-STARK), and self-healing.
+- Layer Encapsulation: Gen 1 through Gen 4 form a stable library layer for Gen 5 and Gen 6 agent teams.
 
-1.3 Memory & Concurrency Model
-  - Linear arena allocators with bulk reset fast paths for zero-heap standard library operations.
-  - Automatic Reference Counting (ARC) with deterministic reclamation when the last reference drops.
-  - Pause-free garbage collection horizon and zero-copy slicing across buffer boundaries.
-  - Actor-based concurrency with isolated heaps and typed, bounded message-passing channels.
-  - Ghost-state transactional memory: speculative execution buffers with rollback before commit.
+### 1.3 Memory & Concurrency Model
+- Linear arena allocators provide zero-heap standard library operations with bulk resets.
+- Automatic Reference Counting (ARC) reclaims memory deterministically when reference counts reach zero.
+- Buffer slicing operates with zero memory copies.
+- Actor-based concurrency isolates memory heaps behind typed, bounded channels.
+- Speculative execution uses transactional rollback buffers before commits.
 
-1.4 Fundamental Operational Laws
-  - Law of Substratum Integrity (Never Skip Layers): Do not attempt high-level autonomous agent orchestration on top of bloated, un-profiled data structures. Fix memory and concurrency drag at the base first.
-  - Law of Hermetic Encapsulation (Isolate State): Treat every subsystem as an encapsulated node with clear input contracts, explicit capability tokens, and deterministic outputs.
-  - Law of Bounded Promotion (Enforce Formal Verification): Dynamic code generation must always have a mathematical proof (compile-time SMT refinement) or hard invariant boundary check before runtime promotion.
+### 1.4 Fundamental Operational Laws
+- Law of Substratum Integrity: Fix base memory and concurrency drag before implementing high-level orchestration.
+- Law of Hermetic Encapsulation: Treat each subsystem as an encapsulated module with explicit capability tokens.
+- Law of Bounded Promotion: Require formal SMT proofs or invariant checks before runtime promotion of dynamic code.
 
-1.5 Generational Semantic Versioning & Power Law 80/20 Rule
-  - Release Architecture: `v<Floor>.<Thrust>.<Patch>` (Active Ecosystem Release Pin: `v2.5.4`).
-  - Floor (F): Generational foundation tier substrate (Gen 1-4). Increments on breaking changes to core memory, capability ABI, or bootstrap compiler substrate.
-  - Thrust (T): Boyd E-M performance improvements, compiler optimization passes, and non-breaking stdlib feature expansions.
-  - Patch (P): Adversarial security remediation, hostile test certifications, and zero-defect maintenance.
-  - Power Law 80/20 Weighted Floor Rule: 80% of systemic capability is concentrated in the 20% core foundational primitives (linear arenas with O(1) bulk resets, 14 capability tokens, direct ELF64/WASM emission, SSA mem2reg). The Floor increments if and only if alterations affect this 20% core substrate or cross a generational tier boundary.
+### 1.5 Generational Semantic Versioning & 80/20 Floor Rule
+- Version Syntax: `v<Floor>.<Thrust>.<Patch>` (Active Pin: `v2.5.4`).
+- Floor (F): Increments on breaking changes to memory invariants, capability ABI, or bootstrap compiler.
+- Thrust (T): Increments on performance improvements and non-breaking feature additions.
+- Patch (P): Increments on bug repairs and security remediation.
+- Power Law 80/20 Floor Rule: Increment Floor only when the 20% core foundational primitives change.
 
-2. Language Grammar & Concrete Syntax
+## 2. Language Grammar & Concrete Syntax
 
-2.1 File & Module Organization
-  - Source files use `.oo`; documentation and process boards use `.oot`.
-  - Every `.oo` file represents an isolated module.
-  - Strict 256-line file limit (RULES §1.8) ensuring modularity and cognitive clarity.
-  - Standard 4-element Academy header (Title, Logline, Setup, Beats) on all product modules.
+### 2.1 File & Module Organization
+- Source files use `.oo`; documentation files use `.oot`.
+- Each `.oo` file represents an isolated module.
+- All files must contain a maximum of 256 lines.
+- Product modules must begin with a 4-element Academy header (Title, Logline, Setup, Beats).
 
-2.2 Core Syntax Rules
-  - Immutability by Default: Variable bindings (`let x = val;`) are immutable unless explicitly marked mutable (`let mut x = val;`).
-  - Expression-Oriented: Blocks, `if/else`, and `match` statements return values.
-  - Null-Free: No `null` or `nil` values; optional values use `Option[T]` and error handling uses `Result[T, E]`.
-  - Must-Use Types: `Result` and `Option` return values must be explicitly handled via `match` or `?`.
-  - Contract Clauses: Functions declare preconditions (`requires`), postconditions (`ensures`), and specifications (`spec`).
+### 2.2 Core Syntax Rules
+- Bindings are immutable by default (`let x = val;`); mutable bindings require `let mut x = val;`.
+- Expressions yield values: blocks, `if/else`, and `match` expressions return results.
+- The language contains no null pointers; use `Option[T]` and `Result[T, E]`.
+- Handlers must explicitly process `Result` and `Option` returns using `match` or `?`.
+- Functions declare contract clauses (`requires`, `ensures`, `spec`).
 
-2.3 Formal EBNF Grammar (Reference: ../ooda/ooda.ebnf)
-  Program           ::= { Item } ;
-  Item              ::= FunctionDecl | TypeDecl | TraitDecl | ImportDecl ;
+### 2.3 Formal EBNF Grammar
+```
+Program           ::= { Item } ;
+Item              ::= FunctionDecl | TypeDecl | TraitDecl | ImportDecl ;
+ImportDecl        ::= "import" Identifier [ "::" Identifier ] ";" ;
+TypeDecl          ::= "type" Identifier "=" ( SumType | StructType | RefinementType | Newtype ) ";" ;
+SumType           ::= Variant { "|" Variant } ;
+Variant           ::= Identifier [ "(" Type ")" ] ;
+StructType        ::= "struct" "{" { FieldDecl } "}" ;
+FieldDecl         ::= Identifier ":" Type [ "," ] ;
+RefinementType    ::= Type "where" Expression ;
+Newtype           ::= "newtype" Type ;
+FunctionDecl      ::= [ "pub" ] "fn" Identifier "(" [ ParameterList ] ")" [ "->" Type ]
+                      [ ContractSpec ] Block [ VerifyBlock ] ;
+ParameterList     ::= Parameter { "," Parameter } ;
+Parameter         ::= Identifier ":" [ "&" ] Type ;
+ContractSpec      ::= { Precondition | Postcondition | SpecClause } ;
+Precondition      ::= "requires" Expression ;
+Postcondition     ::= "ensures" Expression ;
+SpecClause        ::= "spec" StringLiteral ;
+VerifyBlock       ::= "verify" Identifier "{" { Statement } "}" ;
+Statement         ::= LetStmt | ReturnStmt | ExprStmt | WhileStmt | AssignStmt ;
+LetStmt           ::= "let" [ "mut" ] Identifier [ ":" Type ] "=" Expression ";" ;
+ReturnStmt        ::= "return" [ Expression ] ";" ;
+ExprStmt          ::= Expression ";" ;
+WhileStmt         ::= "while" Expression Block ;
+AssignStmt        ::= Identifier "=" Expression ";" ;
+Expression        ::= IfExpr | MatchExpr | BinaryExpr | CallExpr | PrimaryExpr ;
+IfExpr            ::= "if" Expression Block [ "else" ( Block | IfExpr ) ] ;
+MatchExpr         ::= "match" Expression "{" { MatchArm } "}" ;
+MatchArm          ::= Pattern "=>" ( Expression "," | Block ) ;
+Pattern           ::= Identifier [ "(" Identifier ")" ] | Literal | "_" ;
+CallExpr          ::= PrimaryExpr "(" [ ArgList ] ")" [ "?" ] ;
+```
 
-  ImportDecl        ::= "import" Identifier [ "::" Identifier ] ";" ;
-  TypeDecl          ::= "type" Identifier "=" ( SumType | StructType | RefinementType | Newtype ) ";" ;
-  SumType           ::= Variant { "|" Variant } ;
-  Variant           ::= Identifier [ "(" Type ")" ] ;
-  StructType        ::= "struct" "{" { FieldDecl } "}" ;
-  FieldDecl         ::= Identifier ":" Type [ "," ] ;
-  RefinementType    ::= Type "where" Expression ;
-  Newtype           ::= "newtype" Type ;
+## 3. Abstract Syntax Tree (AST) Design
 
-  FunctionDecl      ::= [ "pub" ] "fn" Identifier "(" [ ParameterList ] ")" [ "->" Type ]
-                        [ ContractSpec ] Block [ VerifyBlock ] ;
-  ParameterList     ::= Parameter { "," Parameter } ;
-  Parameter         ::= Identifier ":" [ "&" ] Type ;
-  ContractSpec      ::= { Precondition | Postcondition | SpecClause } ;
-  Precondition      ::= "requires" Expression ;
-  Postcondition     ::= "ensures" Expression ;
-  SpecClause        ::= "spec" StringLiteral ;
-  VerifyBlock       ::= "verify" Identifier "{" { Statement } "}" ;
+### 3.1 Tree Hierarchy & Strongly Typed Nodes
+- Root `Program` node contains an ordered sequence of `Item` nodes.
+- Strongly typed nodes represent statements, expressions, patterns, types, and contracts.
+- Every AST node preserves byte-range source coordinates (file, line, column, length) for diagnostics.
+- Function and call nodes maintain resolved capability signatures.
 
-  Statement         ::= LetStmt | ReturnStmt | ExprStmt | WhileStmt | AssignStmt ;
-  LetStmt           ::= "let" [ "mut" ] Identifier [ ":" Type ] "=" Expression ";" ;
-  ReturnStmt        ::= "return" [ Expression ] ";" ;
-  ExprStmt          ::= Expression ";" ;
-  WhileStmt         ::= "while" Expression Block ;
-  AssignStmt        ::= Identifier "=" Expression ";" ;
+### 3.2 Pure Compile-Time Macro Expansion
+- Compile-time macro functions evaluate during compilation.
+- Macro functions ingest AST subtrees and emit rewritten AST nodes before code generation.
+- Macro expansions cannot introduce out-of-scope identifiers or bypass capability limits.
 
-  Expression        ::= IfExpr | MatchExpr | BinaryExpr | CallExpr | PrimaryExpr ;
-  IfExpr            ::= "if" Expression Block [ "else" ( Block | IfExpr ) ] ;
-  MatchExpr         ::= "match" Expression "{" { MatchArm } "}" ;
-  MatchArm          ::= Pattern "=>" ( Expression "," | Block ) ;
-  Pattern           ::= Identifier [ "(" Identifier ")" ] | Literal | "_" ;
-  CallExpr          ::= PrimaryExpr "(" [ ArgList ] ")" [ "?" ] ;
+### 3.3 Merkle AST Digests & Incremental Caching
+- Compute cryptographic Merkle digests over normalized syntactic subtrees.
+- Incremental compilation skips re-parsing unchanged subtrees via the Merkle cache.
+- Linear zero-copy memory layout enables fast disk persistence and queries (`ooda outline`).
 
-3. Abstract Syntax Tree (AST) Design
+## 4. Type System Specifications
 
-3.1 Tree Hierarchy & Representation
-  - Node Hierarchy: Root `Program` node contains ordered sequence of `Item` nodes (Fn, Type, Trait, Import).
-  - Strongly Typed Nodes: Distinct AST structures for Statements, Expressions, Patterns, Types, and Contracts.
-  - Span Provenance: Every AST node preserves byte-range source coordinates (file, line, column, length) for accurate diagnostics.
-  - Capability Annotation Tags: AST function and call nodes maintain resolved effect signatures and capability dependencies.
+### 4.1 Algebraic Data Types & Exhaustive Matching
+- Sum Types: Tagged unions with payload parameters (`type Shape = Circle(Float) | Rect(Float, Float);`).
+- Product Types: Fixed-layout record structures (`type User = struct { id: u64, name: String };`).
+- Core ADTs: Standard library primitives `Option[T]` and `Result[T, E]`.
+- Pattern Matching: `match` expressions must exhaustively handle all variants.
 
-3.2 AST Macros & Metaprogramming
-  - Pure compile-time macro expansion: normal `.oo` macro functions evaluate during product compilation.
-  - Macro functions ingest AST subtrees and emit rewritten, type-checked AST nodes before code generation.
-  - Hygiene guarantee: AST macro expansions cannot introduce un-scoped identifiers or bypass capability boundaries.
+### 4.2 Static Capability Verification (14 Tokens)
+- 14 unforgeable tokens: `FsReadCap`, `FsWriteCap`, `NetCap`, `TcpCap`, `UdpCap`, `SysCap`, `ProcessCap`, `EnvCap`, `TimeCap`, `RandCap`, `AllocCap`, `ThreadCap`, `GpuCap`, `FfiCap`.
+- Functions accept borrowed capability references (`&FsReadCap`) without taking ownership.
+- Capability attenuation allows token holders to derive strictly narrowed subsets.
+- Calling privileged functions without valid capability tokens fails compilation (`E_CAP`).
 
-3.3 Merkle AST Digests & Zero-Copy Storage
-  - Merkle Hashing: Each AST subtree calculates a cryptographic hash over its normalized syntactic representation.
-  - Incremental Compilation: Unchanged subtrees skip re-parsing and re-typechecking via AST Merkle cache.
-  - Linear Serialization: Zero-copy AST memory layout for ultra-fast disk persistence and agent query tools (`ooda outline`, `ooda reflect`).
+### 4.3 Typestate Protocol Verification
+- Types parameterize abstract lifecycle states (`File[Unopened]`, `File[Opened]`, `File[Closed]`).
+- Methods consume the input typestate and return the successor typestate to prevent invalid sequences.
 
-4. Type System Targets
+### 4.4 Refinement Types & Newtypes
+- Refinement Types: Base types qualified by logical predicate expressions (`type Port = Int where val >= 1 && val <= 65535;`).
+- Newtypes: Zero-cost type abstractions that provide distinct identities to primitive values.
 
-4.1 Algebraic Data Types (ADTs) & Pattern Matching
-  - Sum Types: Tagged unions with optional payload parameters (`type Shape = Circle(Float) | Rect(Float, Float);`).
-  - Product Types: Fixed-layout record structures (`type User = struct { id: u64, name: String };`).
-  - Core ADTs: Standard library primitives `Option[T]` (`Some(T) | None`) and `Result[T, E]` (`Ok(T) | Err(E)`).
-  - Exhaustiveness: `match` expressions must exhaustively cover all sum-type variants; unhandled cases trigger compile-time errors.
+### 4.5 Static Information Flow Control (IFC) & SECRET Taint
+- `SECRET:` annotations tag sensitive data fields at the type level.
+- Taint analysis tracks dataflow through assignments, struct packing, and function calls.
+- Compiler prevents tainted values from reaching unsealed sinks (`process_exec`, unencrypted I/O).
 
-4.2 Static Capability Verification
-  - Unforgeable Permission Tokens: `FsReadCap`, `FsWriteCap`, `NetCap`, `TcpCap`, `UdpCap`, `SysCap`, `ProcessCap`, `EnvCap`, `TimeCap`, `RandCap`, `AllocCap`, `ThreadCap`, `GpuCap`, `FfiCap`.
-  - Borrowed Capabilities: Functions accept capability references (`&FsReadCap`) to exercise effects without taking ownership.
-  - Capability Attenuation: Token holders can derive strictly narrowed capability subsets (e.g. read-only file subtree token).
-  - Default-Deny: Calling privileged runtime functions without possessing the requisite capability token fails closed at compile time (`E_CAP`).
+### 4.6 Boundary Physics & Decidability Limits
+- Rice's Decidability Bound: Restrict contracts to decidable SMT logics (QF_LIA, QF_BV) with deterministic timeouts.
+- CAP Monotonic Leases: Prioritize safety and consistency over availability during network partitions.
+- Landauer Minimal Entropy: Structure memory in contiguous linear arenas with O(1) bulk resets.
 
-4.3 Typestate Protocol Verification
-  - Compile-Time State Tracking: Types parameterized by abstract lifecycle states (e.g. `File[Unopened]`, `File[Opened]`, `File[Closed]`).
-  - Linear State Transitions: Methods consume the incoming typestate and return the successor typestate, preventing use-after-close and invalid protocol sequences.
+## 5. Compiler Backends & Execution Targets
 
-4.4 Refinement Types & Newtypes
-  - Refinement Types: Base types qualified by logical predicate expressions checked statically or via contract guards (`type Port = Int where val >= 1 && val <= 65535;`).
-  - Newtypes: Zero-cost type abstractions providing distinct semantic identities to primitive values (`type OrderId = newtype u64;`).
+### 5.1 Backend Hierarchy
+- Direct ELF64 Emission: Pure `.oo` backend emitting standalone ELF64 and WASM binaries directly.
+- C Code Emission: Generates portable C code linking `chs_rt` runtime; compiles with `gcc` or `clang`.
+- LLVM IR Generation: Direct LLVM IR generation for optimization passes and SIMD vectorization.
+- WebAssembly Target: Compiles to sandboxed WASM for browser environments with zero ambient authority.
+- Bare-Metal Target: Minimal runtime profile for embedded architectures (x86_64, RISC-V).
 
-4.5 Static Information Flow Control (IFC) & SECRET Taint
-  - `SECRET:` annotations tag sensitive data fields and variables at the type level.
-  - Taint propagation analysis tracks dataflow through assignments, struct packing, and function calls.
-  - Compiler statically blocks tainted values from reaching unsealed sinks (`process_exec`, unencrypted I/O, untrusted FFI).
+### 5.2 Build Determinism & Data Layouts
+- Bit-identical compilation produces reproducible binaries with normalized paths and sorted symbols.
+- Support for Struct-of-Arrays (SoA) layout enables high-throughput vector processing.
 
-4.6 Traits & Static Polymorphism
-  - Trait Definitions: Declarative behavior interfaces (`trait Display { fn to_string(&self) -> String; }`).
-  - Monomorphization: Traits resolve via static dispatch without dynamic virtual method table overhead.
+## 6. Architecture Policies & Guidelines
+- Builds produce bit-identical binaries by default.
+- Hot paths use linear arena allocators with bulk resets; long-lived objects use deterministic ARC.
+- External C function calls require `FfiCap` tokens and run inside isolated wrapper boundaries.
+- Multi-agent development uses collaborative git and disk synchronization protocols.
 
-4.7 Boundary Physics & Hard Limits
-  - Rice's Decidability Bound: Non-trivial semantic properties of arbitrary programs are undecidable. Restrict contract verification (requires, ensures) to decidable SMT fragments (quantifier-free linear integer arithmetic QF_LIA and bitvectors QF_BV) with deterministic solver timeouts. Fail closed on unverified contracts.
-  - CAP Monotonic Capability Leases: Under network partition, prioritize safety and consistency over availability. Token holders perform monotonic local attenuation without coordinator consensus. Token renewals and revocations use synchronous leases; expired leases fail closed to default-deny.
-  - Landauer Minimal Thermodynamic Entropy: Bit erasure dissipates minimum energy (Delta Q >= k_B * T * ln 2). Eliminate heap fragmentation and garbage collection thrashing via contiguous linear arena allocators with O(1) bulk resets and deterministic zero-leak RAII ARC teardowns.
-
-5. Compiler Backends & Execution Targets
-
-5.1 Backend Hierarchy
-  - Direct ELF64 Emission & Self-Hosted Bootstrapping: Pure `.oo` backend emitting standalone ELF64 and WASM binaries without external C compilers.
-  - Floor (Native C Emit): Generates clean, portable C code linking `chs_rt` runtime; compiled via host `gcc` or `clang`.
-  - LLVM Emit: Direct LLVM IR generation for aggressive compiler optimization, SIMD auto-vectorization, and cross-module LTO.
-  - WASM Target: Compiles to sandboxed WebAssembly for browser environments with zero ambient host capabilities.
-  - GPU / NPU Kernels: Native compute shader and tensor graph dispatch gated behind explicit `GpuCap` tokens.
-  - Bare-Metal Freestanding: Minimal runtime profile for embedded systems (x86_64 PML4, RISC-V Sv39 page tables, APIC/GIC interrupt routing, UEFI framebuffer).
-
-5.2 Build Determinism & Data Layouts
-  - Bit-Identical Reproducibility: Zero-timestamp outputs, normalized path strings, and sorted symbol tables ensure identical binaries across environments.
-  - Data-Oriented Layouts: Compiler support for Struct-of-Arrays (SoA) and Data-Oriented Design (DoD) memory layouts for high-throughput batch vector processing.
-
-6. Architecture Tensions & Policies
-
-6.1 Policy Constraints
-  - Determinism Default: Builds are bit-identical by default; metamorphic binary transforms (path-a decoy padding) require explicit build flags.
-  - Memory Management: Linear arena allocators with bulk resets for hot paths; deterministic ARC with RAII cleanup for long-lived objects.
-  - FFI Confinement: Calls into external C libraries require `FfiCap` / `UnsafeFFICap` tokens and are wrapped in isolated capability boundaries.
-  - Multi-Agent Concurrent Swarm Protocol: Replaces single-agent lane isolation with collaborative live git and disk synchronization.
-
-7. Related Documentation & Resources
-
-  - Formal Grammar: `../ooda/ooda.ebnf`
-  - Generational OODA RFC: `openOODA/rfcs/0020-generational-ooda.oot`
-  - Shipped Capabilities: `openOODA/SHIPPED.oot`
-  - Long-Term Moonshots: `openOODA/MOONSHOTS.oot`
-  - Capability Matrix: `openOODA/SECURITY.oot`
-  - Core Rules: `openOODA/RULES.oot`
+## 7. Cross References
+- Formal Grammar: `ooda/ooda.ebnf`
+- Generational Architecture RFC: `openOODA/rfcs/0020-generational-ooda.oot`
+- Verified Capabilities: `openOODA/SHIPPED.oot`
+- Sprint Roadmap: `openOODA/ROADMAP.oot`
+- Capability Matrix: `openOODA/SECURITY.oot`
+- Repository Rules: `openOODA/RULES.oot`

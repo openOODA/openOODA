@@ -1,0 +1,28 @@
+# Release notes for v0.225.39
+
+File: openOODA/audit/release_notes/RELEASE_NOTES_v0.225.39.oot
+
+Logline: Phase 9 (Tier 1 wiring) complete. oodac/oodac.aarch64 is now a single binary that handles both the text path and the AST path. The AST path is reached by shelling out to oodac/oodac.aarch64.ast, avoiding the C-emit OoSList/OoIList type collision.
+
+Setup: ooda.pkg version=0.225.39. Tag v0.225.39.
+
+Beats:
+  1. oodac/aarch64_main.oo now takes (&ProcessCap, &FsCap, args) and dispatches on four CLI forms:
+       - emit-aarch64 <file>
+       - --backend aarch64 emit-aarch64 <file>
+       - --ast-emit-aarch64 <file> <out.bin>
+       - --backend aarch64 --ast <file> <out.bin>
+  2. For the text path, it calls aarch64_emit_stream(src) as before.
+  3. For the AST path, it locates the sibling oodac.aarch64.ast binary and shells out via process_exec. The ELF64 binary is written to <out.bin> and can be run on qemu-aarch64.
+  4. The new main is 165 lines (up from 89), well under the 256-line cap.
+
+What this proves:
+  * Tier 1 wiring is achieved without linking the AST path into the same translation unit.
+  * The single oodac.aarch64 binary exposes both surfaces; the 9-phase 11/10 plan's "Tier 1 wiring" deliverable is met.
+  * The C-emit OoSList/OoIList type collision (Phase 9 audit) is sidestepped by the process boundary.
+
+Verified end-to-end:
+  * text: ./oodac/oodac.aarch64 emit-aarch64 fixtures/aarch64_hello.oo -> GAS to stdout
+  * text: ./oodac/oodac.aarch64 emit-aarch64 fixtures/aarch64_list_int.oo -> GAS to stdout, then as+ld+qemu-aarch64 prints "342", exit 0
+  * AST: ./oodac/oodac.aarch64 --ast-emit-aarch64 fixtures/aarch64_hello.oo /tmp/ast.bin -> ELF64, qemu-aarch64 prints "Hello", exit 0
+  * AST: ./oodac/oodac.aarch64 --backend aarch64 --ast fixtures/aarch64_hello.oo /tmp/ast2.bin -> same

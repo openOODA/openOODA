@@ -1,13 +1,16 @@
 # BACKLOG_STDLIB_PQC_ZK — Target Capability Backlog: PQC & ZK/FHE Cryptography
-
+Floor: 2
+Thrust: 5
+Patch: 4
 File: openOODA/backlog/BACKLOG_STDLIB_PQC_ZK.oot
-Status: Chapter 3 Specification for Autonomous Swarm Implementation
+
+Status: Chapter 3 Specification for Autonomous Agent Implementation
 
 ## 0. Chapter Overview
 
 This document specifies four tasks for post-quantum and zero-knowledge cryptography.
-Swarm agents must implement true NIST PQC, pairing-based ZK, and FHE evaluators.
-Agents must follow the 5-step Swarm Protocol in `TARGET_BUILD_BACKLOG.oot`.
+Autonomous agents must implement NIST PQC standards, pairing-based ZK verifiers, and FHE evaluators.
+Agents must follow the 4-step verification gate and double-run test laws.
 
 ## 1. Task Specifications
 
@@ -17,10 +20,10 @@ Agents must follow the 5-step Swarm Protocol in `TARGET_BUILD_BACKLOG.oot`.
   - `ooda/std/crypto/pqc_nist/fips203_ml_kem_decapsulate.oo`
   - `ooda/std/crypto/pqc_nist/kyber_kem.oo`
   - `ooda/std/crypto/pqc/kyber_ntt.oo`
-- Problem Statement:
+- Problem Description:
   High-level FIPS 203 encapsulation APIs currently contain dummy string tags.
-  The implementation lacks Keccak/SHAKE sponge absorption and Fujisaki-Okamoto transforms.
-- Interfaces:
+  The implementation lacks Keccak sponge absorption and Fujisaki-Okamoto transforms.
+- Function Interfaces:
   ```oo
   pub type MlKemKeyPair = struct { public_key: List[Int], secret_key: List[Int] };
   pub type MlKemEncapped = struct { ciphertext: List[Int], shared_secret: List[Int] };
@@ -28,8 +31,8 @@ Agents must follow the 5-step Swarm Protocol in `TARGET_BUILD_BACKLOG.oot`.
   pub fn ml_kem_768_encap(pk: List[Int], rand_m: List[Int]) -> Result[MlKemEncapped, String];
   pub fn ml_kem_768_decap(ct: List[Int], sk: List[Int]) -> Result[List[Int], String];
   ```
-- Capability Tokens: `none`
-- Verification Criteria:
+- Required Capability Tokens: None.
+- Verification Steps:
   1. Validate against official NIST FIPS 203 Known Answer Tests (KAT).
   2. Implement constant-time implicit rejection on invalid or corrupted ciphertext.
   3. Execute 100 key exchanges in `qa/tests_pqc/test_fips203_kat.oo` with zero mismatches.
@@ -40,10 +43,10 @@ Agents must follow the 5-step Swarm Protocol in `TARGET_BUILD_BACKLOG.oot`.
   - `ooda/std/crypto/pqc_nist/fips204_ml_dsa_verify.oo`
   - `ooda/std/crypto/pqc/dilithium_ntt.oo`
   - `ooda/std/crypto/pqc/dilithium_lattice.oo`
-- Problem Statement:
+- Problem Description:
   The FIPS 204 signature generation and verification pipelines contain incomplete steps.
   Rejection sampling and matrix polynomial bounds checking are not fully wired.
-- Interfaces:
+- Function Interfaces:
   ```oo
   pub type MlDsaKeyPair = struct { public_key: List[Int], secret_key: List[Int] };
   pub type MlDsaSignature = struct { sig_bytes: List[Int], hint_bits: List[Int] };
@@ -51,10 +54,10 @@ Agents must follow the 5-step Swarm Protocol in `TARGET_BUILD_BACKLOG.oot`.
   pub fn ml_dsa_65_sign(msg: List[Int], sk: List[Int]) -> Result[MlDsaSignature, String];
   pub fn ml_dsa_65_verify(msg: List[Int], sig: &MlDsaSignature, pk: List[Int]) -> Result[Bool, String];
   ```
-- Capability Tokens: `none`
-- Verification Criteria:
+- Required Capability Tokens: None.
+- Verification Steps:
   1. Validate against official NIST FIPS 204 KAT test vectors.
-  2. Verify that forged or bit-flipped signatures fail closed returning `Ok(false)`.
+  2. Verify that forged or bit-flipped signatures fail closed and return `Ok(false)`.
   3. Execute double-run verification on large message payloads.
 
 ### Task P3: Zero-Knowledge Groth16 / PLONK Circuit Verifier
@@ -63,20 +66,20 @@ Agents must follow the 5-step Swarm Protocol in `TARGET_BUILD_BACKLOG.oot`.
   - `ooda/std/crypto/zk_proofs/zk_snark_groth16.oo`
   - `ooda/std/crypto/zk_proofs/zk_plonk_verifier.oo`
   - `ooda/std/crypto/zk/bn254_pairing.oo`
-- Problem Statement:
+- Problem Description:
   The standard library lacks a complete circuit verifier for SNARK and PLONK proofs.
   Bilinear pairings (Miller loop and final exponentiation) are not integrated.
-- Interfaces:
+- Function Interfaces:
   ```oo
   pub type Groth16Proof = struct { a_g1: List[Int], b_g2: List[Int], c_g1: List[Int] };
   pub type Groth16Vkey = struct { alpha_g1: List[Int], beta_g2: List[Int], gamma_g2: List[Int], delta_g2: List[Int], ic: List[List[Int]] };
   pub fn groth16_verify_proof(proof: &Groth16Proof, vkey: &Groth16Vkey, pub_inputs: List[Int]) -> Result[Bool, String];
   pub fn plonk_verify_proof(proof_bytes: List[Int], vkey_bytes: List[Int], pub_inputs: List[Int]) -> Result[Bool, String];
   ```
-- Capability Tokens: `none`
-- Verification Criteria:
-  1. Verify valid Circom and SnarkJS generated BN254 Groth16 proofs return `Ok(true)`.
-  2. Verify corrupted public inputs return `Ok(false)` without panicking.
+- Required Capability Tokens: None.
+- Verification Steps:
+  1. Verify that valid Circom and SnarkJS BN254 Groth16 proofs return `Ok(true)`.
+  2. Verify that corrupted public inputs return `Ok(false)` without panicking.
   3. Validate BLS12-381 curve pairings for PLONK proof verification.
 
 ### Task P4: FHE BFV/CKKS Homomorphic Evaluator
@@ -84,18 +87,18 @@ Agents must follow the 5-step Swarm Protocol in `TARGET_BUILD_BACKLOG.oot`.
   - `ooda/std/crypto/fhe_lattices/fhe_bfv_evaluator.oo`
   - `ooda/std/crypto/fhe_lattices/fhe_ckks_approx_eval.oo`
   - `ooda/std/crypto/fhe_lattices/fhe_relinearize.oo`
-- Problem Statement:
+- Problem Description:
   The FHE module implements ring arithmetic but lacks high-level evaluation pipelines.
-  Tensor product ciphertext multiplication, relinearization, and rescaling are unbuilt.
-- Interfaces:
+  Ciphertext multiplication, relinearization, and rescaling are unbuilt.
+- Function Interfaces:
   ```oo
   pub type FheCiphertext = struct { c0: List[Int], c1: List[Int], scale: Int, level: Int };
   pub type FheRelinKey = struct { rk_c0: List[Int], rk_c1: List[Int] };
   pub fn fhe_bfv_multiply_relin(ct1: &FheCiphertext, ct2: &FheCiphertext, rk: &FheRelinKey) -> Result[FheCiphertext, String];
   pub fn fhe_ckks_rescale(ct: &FheCiphertext) -> Result[FheCiphertext, String];
   ```
-- Capability Tokens: `&AllocCap`
-- Verification Criteria:
-  1. Perform encrypted multiplication and verify result matches plaintext product.
+- Required Capability Tokens: `&AllocCap`.
+- Verification Steps:
+  1. Perform encrypted multiplication and verify the result matches the plaintext product.
   2. Apply relinearization keys and verify ciphertext degree reduces from 2 to 1.
   3. Execute modulus switching and verify noise growth remains within theoretical bounds.

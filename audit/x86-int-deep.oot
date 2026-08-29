@@ -1,0 +1,91 @@
+# x86 Integer Write Deep Audit — `ooda/oodac/x86_emit_int.oo`
+
+File: openOODA/audit/x86-int-deep.oot
+Status: deep — read-only static source audit, 2026-08-25
+Scope: ooda/oodac/x86_emit_int.oo (114 lines, 3 public fns) and the int-related findings in audit/x86-hostile-probe-v2.oot §4 and §6.
+
+---
+
+## 1. Int module inventory
+
+The module owns 3 public fns plus the 3 it imports from `x86_emit_harv.oo` and `token_fmt.oo`. The matcher in `x86_emit.oo:142-146` dispatches to it as one of 22 token-pattern arms in the post-typed-AST fallthrough chain.
+
+| fn | what it does | file:line |
+|---|---|---|
+| `x86_match_int_write(src)` | Tokenize `src`, walk tokens for `KW_FN main LPAREN RPAREN LBRACE println LPAREN [MINUS] INT RPAREN [SEMI] RBRACE`. Return `[num_str]` (the signed decimal literal as a string). Return `[]` on no match. | x86_emit_int.oo:15-48 |
+| `x86_emit_int_routine()` | Emit the standalone AT&T `_println_int` routine. Reserves 32 B on stack, seeds a newline at -1(%rbp), div-by-10 loops digits into the buffer from the right, prefixes a `-` if the sign flag is set, then `sys_write(1, buf, len)`. | x86_emit_int.oo:50-99 |
+| `x86_emit_int_write(num_str)` | Emit the full .s: comment header, `.section .text`, `.globl _start` and `main`, the routine, then `main: / _start: / mov $num_str, %rdi / call _println_int / mov $60, %rax / xor %rdi, %rdi / syscall`. | x86_emit_int.oo:101-114 |
+| `tokenize_lines` (import) | Source string to token list (kind/text pairs). | token_fmt.oo (re-export) |
+| `x86_tok_k(toks, i)` | Return kind of token i. | x86_emit_harv.oo |
+| `x86_tok_t(toks, i)` | Return text of token i. | x86_emit_harv.oo |
+
+---
+
+## 2. Edge case matrix
+
+Severity legend: H = direct no-op-main contributor (>1% of 5,750 COMPILED); M = works in practice but fragile; L = works on all realistic inputs.
+
+| # | edge case | handled by | missed by | severity |
+|---|---|---|---|---|
+| 1 | `println(0)` (literal) | `x86_emit_int_routine` zero-path at x86_emit_int.oo:61-66 | - | L (correct) |
+| 2 | `println(1)` (literal) | div loop runs once at x86_emit_int.oo:73-83 | - | L (correct) |
+| 3 | `println(-1)` | `neg %rax; mov $1, %r9` at x86_emit_int.oo:71-72; sign byte at :87-88 | - | L (correct) |
+| 4 | `println(-0)` | matcher still matches MINUS+INT(0) → num_str=`-0` → `mov $0` → zero path, %r9=0, no sign byte | - | L (semantically correct: prints "0") |
+| 5 | `println(2147483647)` (INT32_MAX) | fits in imm32 sign-extend at x86_emit_int.oo:109 | - | L (works) |
+| 6 | `println(-2147483648)` (INT32_MIN) | imm32 sign-extend to 0xFFFFFFFF80000000 = -2147483648 | - | L (works) |
+| 7 | `println(9223372036854775807)` (INT64_MAX) | relies on GAS auto-picking movabsq at x86_emit_int.oo:109 | explicit `movabsq` (no emit) | M (implicit) |
+| 8 | `println(-9223372036854775808)` (INT64_MIN) | same implicit movabsq + `neg` overflows (value unchanged), but xor %rdx,%rdx then unsigned div by 10 produces correct digit sequence | explicit `movabsq`, explicit INT64_MIN branch | M (works by accident) |
+| 9 | `println(IDENT)` where IDENT is a let-bound int | - | `x86_match_int_write` only accepts `INT` kind at x86_emit_int.oo:30 | H (no-op main; ~80% of "0"/"1" cluster misses) |
+| 10 | `println(EXPR)` e.g. `x + 1` | - | matcher requires single `INT` token | H (no-op main) |
+| 11 | `println(...)` in a non-`main` fn | - | `KW_FN`+`main` text check at x86_emit_int.oo:21 | H (no-op main) |
+| 12 | `main` with statements before/after `println(0)` | - | matcher wants `println` immediately after `{` at x86_emit_int.oo:23 | H (no-op main) |
+| 13 | `fn main(x: int)` (params) | - | `LPAREN RPAREN` required at x86_emit_int.oo:23 | H (no-op main) |
+| 14 | `pub fn main() { println(0); }` | - | no `KW_PUB` walk at x86_emit_int.oo:21 | M (silent miss) |
+| 15 | `fn main() -> () { println(0); }` | - | no return-type tolerance at x86_emit_int.oo:23 | M (silent miss) |
+| 16 | `println(0xFF)` (hex literal) | - | matcher requires `INT` kind, not `HEX_INT` at x86_emit_int.oo:30 | M (silent miss) |
+| 17 | `println(+5)` (leading plus) | - | no `PLUS` handling at x86_emit_int.oo:25-29 | L (uncommon) |
+| 18 | 32-byte stack buffer overflow on 20+ digit num | - | `sub $32, %rsp` at x86_emit_int.oo:56; no bound check | L (source-controlled; INT64_MAX is 19 digits + sign + nl = 21) |
+| 19 | zero-byte `num_str` (empty list → fallthrough) | - | emit path: `mov $, %rdi` would be malformed | L (matcher returns empty list, never reached) |
+| 20 | `println(0); println(1)` (two prints in main) | first println matched | second println ignored; loop returns at x86_emit_int.oo:39 | M (silent miss for the 2nd) |
+
+---
+
+## 3. Top 5 gaps in priority order
+
+1. **G1 — Matcher accepts only literal `INT` (no `IDENT`, no `EXPR`).** The single biggest reason the int module does not cover most fixtures that print a computed number. Evidence: x86_emit_int.oo:30 (`x86_tok_k(toks, p) == "INT"`). The v2 probe's 41 `0` and 38 `1` outputs are NOT from this gap (those fixtures print the literal 0/1 and the int module emits them correctly); the gap bites on the larger cluster of `let n = 0; println(n);` shapes that fall through to a no-op main.
+
+2. **G2 — `mov $num_str, %rdi` at x86_emit_int.oo:109 depends on GAS auto-selecting movabsq for |value| > 2^31.** Works on modern GNU as (2.30+), but is implicit. A strict-mode assembler, a target switch, or a future rewrite that hand-rolls encoding would break `println(INT64_MAX)` and `println(INT64_MIN)` with `operand type mismatch` or `constant out of range`. Evidence: x86_emit_int.oo:109.
+
+3. **G3 — `x86_match_int_write` requires `KW_FN main () { println` with no `pub`, no params, no return type, no leading imports between `fn` and `main`.** The 22-arm fallthrough chain (x86_emit.oo:95-210) treats any of these as a miss and the next arm runs; if no arm fires, the no-op main path is reached (probe v2 §4: 2,595/2,607 silent miscompiles are no-op main). Evidence: x86_emit_int.oo:21-23 (the four-token LPAREN/RPAREN/LBRACE/println check) and x86_emit.oo:142-146 (the dispatch site).
+
+4. **G4 — No bound check on the 32-byte stack buffer at x86_emit_int.oo:56.** `sub $32, %rsp` reserves room for the worst case (INT64_MIN: 1 sign + 19 digits + 1 newline = 21 B), but the routine never validates `num_str` length. A future 128-bit int or a hand-crafted fixture with a >30-digit literal would silently write past the frame and clobber the saved %rbp. Evidence: x86_emit_int.oo:56, 79-82 (unbounded `dec %rcx; movb %dl, (%rcx)`).
+
+5. **G5 — Redundant `test %rax, %rax` at x86_emit_int.oo:69.** `xor %r9, %r9` (line 68) does not clobber flags (x86 reg-reg XOR leaves EFLAGS untouched); the SF/ZF set by `test %rax, %rax` at line 61 are still live at line 70 `jns .Lpi_loop`. The second test is dead code and a sign the author was uncertain about flag semantics. Not a runtime bug, but a maintenance smell. Evidence: x86_emit_int.oo:68-70.
+
+---
+
+## 4. Recommended fixes (one per gap, with risk)
+
+1. **G1 — Add a second matcher pass `x86_match_int_ident` that accepts `println(IDENT)` and resolves the IDENT through a single-level let-binding scan (one pass over tokens to collect `let IDENT = INT;`).** Then route both to the same `x86_emit_int_write`. Risk: medium — let-resolution can over-match (shadowing, multiple lets with same name, let in a nested block). Cap the scan to one `let` before the `println`. Adds ~80-120 lines.
+
+2. **G2 — Add a range check on `num_str` in `x86_emit_int_write` and emit `movabsq` for |value| > 2^31, `mov` for |value| <= 2^31.** Risk: low — pure string switch in the emitter, no semantic change, removes implicit reliance on GAS heuristics. Adds ~15 lines and a `x86_int_fits_i32(num_str)` helper.
+
+3. **G3 — Loosen the four-token gate at x86_emit_int.oo:23 to allow zero or more tokens between `RPAREN` and `LBRACE` (for return-type annotations) and a leading `KW_PUB` walk at x86_emit_int.oo:21.** Risk: medium — could over-match into a `fn main`-named function called from elsewhere. Add a guard: only match if the `KW_FN` position is preceded by `KW_PUB` or is at offset 0. Adds ~30-50 lines.
+
+4. **G4 — In `x86_emit_int_write`, after computing `num_str` length, emit `ERR x86_emit_int\tbuffer-overflow` and `process_exit(1)` if `chars_len(num_str) > 30`.** Risk: low — fail-closed, never reached for valid INT64. Adds ~5 lines.
+
+5. **G5 — Delete line 69 (`test %rax, %rax`) and keep the existing `jns .Lpi_loop` at line 70.** Risk: zero — pure code cleanup, no behavior change. 1-line deletion. Add a comment noting the flag liveness contract from line 61.
+
+---
+
+## 5. Test cases to add (one line per gap)
+
+1. **G1** — New smoke `x86_int_println_ident_smoke.oo`: fixture `fn main() { let n = 42; println(n); }`. Expect stdout `42\n`. Currently produces empty stdout (no-op main).
+
+2. **G2** — Extend `x86_int_write_smoke.oo` with a row that emits `println(9223372036854775807)` and `println(-9223372036854775808)`. Expect exact byte match. If the new `movabsq` fix is in, the .s diff should show `movabsq` instead of `mov` for the large literal.
+
+3. **G3** — New smoke `x86_int_pub_main_smoke.oo`: fixture `pub fn main() { println(7); }`. Expect stdout `7\n`. Also add `fn main() -> () { println(7); }` as a second row.
+
+4. **G4** — New smoke `x86_int_overflow_refuse_smoke.oo`: hand-crafted fixture with `println(12345678901234567890123456789012345)` (35 digits). Expect the .s to contain `ERR x86_emit_int	buffer-overflow` and the process to exit 1.
+
+5. **G5** — New smoke `x86_int_routine_snapshot_smoke.oo`: after the G5 fix, run emit on `println(0);` and `println(-1);` and `println(2147483647);` and `println(-9223372036854775808);`. Assert the .s is byte-identical to a checked-in snapshot (modulo the deleted line 69). Locks down the cleanup.

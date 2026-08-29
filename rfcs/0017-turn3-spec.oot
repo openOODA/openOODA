@@ -1,17 +1,17 @@
-// # RFC 0017: Turn 3 Spec — x86 Typed-AST Parity & Regression Gate
-//
-// Logline: Verify that the typed-AST dispatch shipped in Turn 2 produces the same .bin output as the old 24-arm chain for every fixture the old chain could handle, flag every fixture where the new path fails where the old chain would have succeeded, and lock the regression so Turn 4 cannot break a passing fixture.
-//
-// Setup: Binary `ooda/oodac_bin` rebuilt after Turn 2 lands (RFC 0014 sub-turns 2a-2d all closed, 26 matcher files deleted, `x86_emit.oo` shrunk to ≤80 lines, the 14 residual-stub handlers return `Err("residual")`, and the 24 active handlers cover the KEEP rows of RFC 0013 §4). The old chain is preserved at `ooda/oodac_bin_old` (snapshot taken immediately before sub-turn 2c replaces the dispatch) so parity can be measured without re-running the chain. The fixture set is the same 6,936 as `audit/x86-hostile-probe-v2.oot` §1 plus the 16 post-v1 fixtures (adv_algebraic_monomorph, llvm_emit_import_c_smoke, x86_ssa_*_smoke, etc.). Results land in `/tmp/x86probe3/{parity.txt,new_only.txt,old_only.txt,regression.txt}`.
-//
-// Beats:
-//   1. Parity probe — run every fixture through both the old chain and the new typed-AST path, capture `.s` bytes + `.bin` stdout + exit code per fixture, classify into `MATCH` / `NEW_REFUSE` / `NEW_ASCII_DIFF` / `NEW_RUN_DIFF` / `NEW_SILENT_EMPTY` / `OLD_ONLY_FAIL`.
-//   2. Regression lock — re-run the 76 `x86_*_smoke.oo` and 88 `x86_*.oo` fixtures on the new path; any new failure is a blocker for Turn 4.
-//   3. Broken-shape audit — re-run the 5 broken-shape clusters from `x86-hostile-probe-v2.oot` §5 (Float, 3-arm match, Result, struct, List) on the new path; the silent-miscompile rate must be lower or must turn into typed REFUSED errors.
-//   4. Residual-stub check — assert that every one of the 14 residual-stub handlers (RFC 0013 §4) returns `Err("residual")` and that no fixture the old chain handled hits a residual stub.
-//   5. Report — write `audit/x86-turn3-parity.oot` (mirror of `x86-hostile-probe-v2.oot` shape) with the per-category counts, top regressions, and the Turn 4 gate.
-//
-// residual: A future Turn 4 will close the regressions Turn 3 finds; Turn 3 is read-only and never edits a backend file.
+# RFC 0017: Turn 3 Spec — x86 Typed-AST Parity & Regression Gate
+
+Logline: Verify that the typed-AST dispatch shipped in Turn 2 produces the same .bin output as the old 24-arm chain for every fixture the old chain could handle, flag every fixture where the new path fails where the old chain would have succeeded, and lock the regression so Turn 4 cannot break a passing fixture.
+
+Setup: Binary `ooda/oodac_bin` rebuilt after Turn 2 lands (RFC 0014 sub-turns 2a-2d all closed, 26 matcher files deleted, `x86_emit.oo` shrunk to ≤80 lines, the 14 residual-stub handlers return `Err("residual")`, and the 24 active handlers cover the KEEP rows of RFC 0013 §4). The old chain is preserved at `ooda/oodac_bin_old` (snapshot taken immediately before sub-turn 2c replaces the dispatch) so parity can be measured without re-running the chain. The fixture set is the same 6,936 as `audit/x86-hostile-probe-v2.oot` §1 plus the 16 post-v1 fixtures (adv_algebraic_monomorph, llvm_emit_import_c_smoke, x86_ssa_*_smoke, etc.). Results land in `/tmp/x86probe3/{parity.txt,new_only.txt,old_only.txt,regression.txt}`.
+
+Beats:
+  1. Parity probe — run every fixture through both the old chain and the new typed-AST path, capture `.s` bytes + `.bin` stdout + exit code per fixture, classify into `MATCH` / `NEW_REFUSE` / `NEW_ASCII_DIFF` / `NEW_RUN_DIFF` / `NEW_SILENT_EMPTY` / `OLD_ONLY_FAIL`.
+  2. Regression lock — re-run the 76 `x86_*_smoke.oo` and 88 `x86_*.oo` fixtures on the new path; any new failure is a blocker for Turn 4.
+  3. Broken-shape audit — re-run the 5 broken-shape clusters from `x86-hostile-probe-v2.oot` §5 (Float, 3-arm match, Result, struct, List) on the new path; the silent-miscompile rate must be lower or must turn into typed REFUSED errors.
+  4. Residual-stub check — assert that every one of the 14 residual-stub handlers (RFC 0013 §4) returns `Err("residual")` and that no fixture the old chain handled hits a residual stub.
+  5. Report — write `audit/x86-turn3-parity.oot` (mirror of `x86-hostile-probe-v2.oot` shape) with the per-category counts, top regressions, and the Turn 4 gate.
+
+residual: A future Turn 4 will close the regressions Turn 3 finds; Turn 3 is read-only and never edits a backend file.
 
 File: openOODA/rfcs/0017-turn3-spec.oot
 Status: Draft

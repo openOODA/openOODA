@@ -1,0 +1,28 @@
+# AArch64 __puts_int newline fix + xrt.oo split (v0.225.47)
+
+File: openOODA/audit/aarch64_puts_int_split_v0.225.47.oot
+
+Logline: Captures the diagnostic chain, the root cause, the fix, and the verification for the AST path's int-println emitting two digits instead of one with a newline.
+
+Setup: Companion to RELEASE_NOTES_v0.225.47.oot. All evidence lives in /tmp/aarch64_disasm/oodac.aarch64 (the prior build) and /tmp/aarch64_topfn.bin (post-fix output).
+
+Beats:
+  1. Symptom: qemu-aarch64 on aarch64_topfn.oo (add(5) then println) printed "66" with no newline, exit 0.
+  2. Disassembly of the prior binary at 0x400178..0x400200 showed:
+     - The itoa loop's b.ne -8 at 0x4001cc correctly targets the sdiv at 0x4001ac (delta = -32 bytes = -8 instructions).
+     - The zero-case b 11 at 0x4001a4 correctly targets the write setup at 0x4001d0 (delta = +44 bytes = +11 instructions).
+     - The first b.ne 6 at 0x400194 correctly targets the sdiv at 0x4001ac.
+     - The newline block: adr x0, 0x204 (0x4001e8) -> movz x0, #1 (0x4001ec) -> movz x2, #1 (0x4001f0) -> movz x8, #0x40 (0x4001f4) -> svc #0x0 (0x4001f8). x1 still held x10 (heap+64) from the int-write at 0x4001d0; the second svc wrote 1 byte from [x10] which contained '6', producing the duplicate digit.
+  3. Root cause: the newline-write block in a64rt_puts_int did not copy a64x_str_ref's x0 result to x1 before the fd/length sysargs clobbered x0. The original a64rt_puts (string path) at lines 150-156 always emits the mov_reg(1, 0); the int variant omitted it.
+  4. Fix: add `x = a64x_emit(x, arm64_word_mov_reg(1, 0));` between a64x_str_ref(x) and the movz(0, 1) for the newline block. Mirror the original a64rt_puts pattern exactly.
+  5. Side concern: the file grew to 275 lines, breaching the 256-line cap. Extracted the entire 49-line a64rt_puts_int body into a new file std/hw/arch_aarch64/aarch64_xrt_puts_int.oo, leaving a one-line redirect in aarch64_xrt.oo (now 224 lines). Added an import of the new file in aarch64_program.oo (now 255 lines).
+  6. Verification:
+     - bootstrap/oodac_pure_build oodac/aarch64_main.oo oodac/oodac.aarch64 -> OK_PURE_MULTI, unique_fns=728, from_modules=113.
+     - oodac/oodac.aarch64 --ast-emit-aarch64 fixtures/aarch64_topfn.oo /tmp/aarch64_topfn.bin -> ELF64 518 bytes.
+     - qemu-aarch64 /tmp/aarch64_topfn.bin -> "6" + newline, exit 0. Was "66" + no newline, exit 0.
+     - /tmp/aarch64_integration/driver.sh (7 tests) -> 7 pass, 0 fail. Two consecutive runs to satisfy the Double-Run Mandate; both clean.
+
+What this proves:
+  * The AST path can print a single int followed by a newline; the newline-write prologue now matches the proven string path.
+  * The xrt.oo file respects the 256-line cap, with the int-puts emit isolated in its own module for future maintenance.
+  * No regression in the 6 prior smoke paths; the new P9 topfn AST path covers the fix specifically.

@@ -1,0 +1,98 @@
+# x86 ast-typed shim — Forwarder Audit
+
+File: openOODA/audit/x86-ast-typed-shim.oot
+Status: smoke — read-only static audit, no compilation run
+Scope: ooda/oodac/x86_ast_typed.oo (Tier 5 #24 Turn 1), 2026-08-25
+
+---
+
+## 1. Call chain trace
+
+The shim is a 7-link forwarder. Each link has a contract, a location, and a guard.
+
+| # | Caller | Callee | Contract | Location |
+|---|---|---|---|---|
+| 1 | `x86_emit_stream_typed` (shim) | self, pre-chain guards | Reject `chars_len(src)==0` and `list_len(toks)==0` before any work | x86_ast_typed.oo:18-24 |
+| 2 | shim | `x86_ssa_compile_program_source` | `Result[String,String]`; empty source → Err `x86_ssa_compile\tempty_source` | x86_ast_typed.oo:25 |
+| 3 | shim/chain | `ssa_lower_program` (AST → `List[SsaFunction]`) | Returns empty list if AST has no fn; chain guards `list_len(fns)==0` | x86_ssa_compile.oo:87-88 |
+| 4 | chain loop | `ssa_mem2reg_promote` (per-fn) | Promotes allocas to SSA virtuals; no return guard in chain | x86_ssa_compile.oo:96 |
+| 5 | chain loop | `ssa_opt_const_fold` (per-fn) | Folds `+0`, `*1`, etc.; no return guard in chain | x86_ssa_compile.oo:97 |
+| 6 | chain | `x86_ssa_emit_program` | `List[SsaFunction]` → AT&T string; chain guards `chars_len==0` | x86_ssa_compile.oo:101-102 |
+| 7 | shim | `x86_runtime_text` (appended) | Returns canonical AT&T .rodata + .bss + .text blob | x86_ast_typed.oo:30 |
+
+**Depth:** 7 links. The shim is link 1 (guard) and link 7 (post-append); links 2-6 are the borrowed chain.
+
+---
+
+## 2. Empty source handling
+
+| Layer | Behavior | Tag |
+|---|---|---|
+| Shim | Rejects with `Err` before any chain work | `ERR\tx86_ast_typed\tempty_source` |
+| Chain | Rejects empty source at line 82 | `ERR\tx86_ssa_compile\tempty_source` |
+
+**Alignment:** Both layers reject empty source with an `Err` of the same shape (`ERR\t<tag>\t<kind>`). The shim's check is redundant — the chain already returns the same kind with a different tag. The shim pre-empts the chain (skips tokenize/ast_parse), so the user sees the shim tag in the empty case. Brief's hypothesis "chain is forgiving" is wrong: `x86_ssa_compile.oo:82` returns Err for empty source.
+
+The shim's empty-source check is therefore a micro-optimization (skip two calls) plus a tag rewrite, not a new safety property.
+
+---
+
+## 3. Error case handling
+
+| Layer | Behavior | Tag prefix |
+|---|---|---|
+| Shim pre-guard #1 (empty) | Returns Err | `x86_ast_typed` |
+| Shim pre-guard #2 (empty toks) | Returns Err | `x86_ast_typed` |
+| Chain (ast_parse_empty) | Err passes through verbatim | `x86_ssa_compile` |
+| Chain (no_functions) | Err passes through verbatim | `x86_ssa_compile` |
+| Chain (empty_asm) | Err passes through verbatim | `x86_ssa_compile` |
+
+**Alignment:** The shim re-tags only the two pre-checks it owns. The three chain errors leak through with the chain's `x86_ssa_compile` prefix. A caller receiving `Err("ERR\tx86_ssa_compile\tast_parse_empty")` from the shim cannot tell whether the shim produced it or the chain did. The shim's name and the Academy header promise a typed-AST entry point; the error stream does not honor that promise.
+
+The shim does no re-tagging, no wrapping, and no log of the chained failure. The contract is asymmetric: shim takes credit for the first two errors and disowns the rest.
+
+---
+
+## 4. Runtime blob handling
+
+| Layer | Behavior |
+|---|---|
+| Shim | Concatenates `asm_code + "\n" + x86_runtime_text()` and returns `Ok(joined)` |
+| Runtime registry | `x86_runtime_text()` returns the canonical AT&T source for the list runtime (new/push/get/set/len) + page allocator (`_oo_heap_alloc`, `oo_x86_alloc`) + `.rodata` OOB string + `.bss` heap pointers |
+| Chain | `x86_ssa_emit_program` does **not** append any runtime blob. The list-runtime helper `x86_ssa_emit_list_runtime` is a separate, unused-by-chain function. |
+
+**Alignment:** Correct. The shim is the only place the runtime blob is appended on this path. No double-append risk. The blob is the canonical registry (x86_runtime.oo:13-72), so the 22-arm fallback and the typed path use the same runtime. The single `"\n"` separator is fine: `asm_code` from `x86_ssa_emit_program` already ends with the final function's `ret`, so one newline is enough.
+
+The .globl surface in the blob (`_oo_heap_alloc`, `oo_x86_alloc`, `list_new/push/get/set/len`, plus 3 external `_println_*`) matches what the SSA emit references. No orphan symbols.
+
+---
+
+## 5. Silent-miscompile risks
+
+Five risks, ordered by severity.
+
+1. **Silent fallback to the 22-arm chain** (HIGH). `x86_emit.oo:73-78` calls `x86_emit_stream_typed` and `match`-swallows the `Err(_)`. On Err, control falls through to the 22-arm token walker. The user sees output from a different backend with no log, no warning, no error. If the typed path has a real bug, the symptom is "wrong assembly that still assembles" — the worst kind of miscompile. The match is `Err(_) => { }`, so even the Err message is dropped.
+
+2. **Error tag leak from the chain** (MEDIUM). Three of five failure modes arrive at the caller tagged `x86_ssa_compile:*` instead of `x86_ast_typed:*`. The shim's public identity is "typed-AST entry point" but its error stream is half-typed, half-foreign. Caller-side filters by tag prefix become incorrect.
+
+3. **Misleading "typed" naming** (MEDIUM). The function is named `x86_emit_stream_typed` and the Academy header says "typed-AST dispatch shim". The chain performs **no type checking** — `tc_check` is aspirational per the header itself. The "typed" is a roadmap claim, not a current property. Callers opting in for type safety get no type safety.
+
+4. **Redundant `tokenize_lines` call** (LOW). Shim line 21 calls `tokenize_lines(src)`; chain line 83 calls it again. Same input, same output, double work. Each `x86_emit_stream_typed` call pays the tokenize cost twice. The shim's pre-check could use a cheaper shape probe (e.g. only count non-whitespace chars).
+
+5. **No newline normalization before runtime append** (LOW). Shim appends `"\n" + x86_runtime_text()`. `x86_ssa_emit_function` ends each function with `ret\n`, and `x86_ssa_emit_program` adds `"\n"` between functions. So `asm_code` already ends with `\n`, and the joined output has two newlines. Cosmetic; no asm-tooling impact (as accepts it).
+
+---
+
+## 6. Recommended fixes
+
+One fix per §5 risk. Each is a minimal patch to the shim or its caller.
+
+1. **Fix the silent fallback.** Replace the `Err(_) => { }` arm in `x86_emit.oo:75-78` with a logged failure path: `Err(e) => { println(e); process_exit(1); }`. This converts the silent fall-through into a hard fail during Turn 1, so any typed-path regression surfaces as a clear error rather than wrong assembly. Restore the 22-arm fallback only when the typed path is known complete (Turn 2).
+
+2. **Fix the error tag leak.** Re-tag chain errors in the shim: on `Err(e)`, return `Err("ERR\tx86_ast_typed\t" + extract_kind(e))` where `extract_kind` pulls the kind after the second tab. Simpler: have `x86_ssa_compile_program_source` accept a `tag_prefix` parameter and let the shim pass `"x86_ast_typed"`. Either way, all 5 error kinds leave the shim with the same tag prefix.
+
+3. **Fix the misleading "typed" name.** Until `tc_check` lands, rename to `x86_emit_stream_ssa` (or `x86_emit_stream_untyped_ast`) and update the Academy header's Logline to say "AST-shape dispatch shim, no type checking". The current name is a forward promise; either keep the promise or rename the function.
+
+4. **Fix the redundant tokenize.** Drop the shim's `tokenize_lines` pre-check. The chain's own `empty_source` and `token_collection_failed` checks cover the same cases. The shim becomes a 4-line forwarder: `let r = x86_ssa_compile_program_source(src); if !r.is_ok() { return r; } return Ok(r.unwrap() + "\n" + x86_runtime_text());`.
+
+5. **Fix the double newline.** Change line 30 to `return Ok(asm_code + x86_runtime_text());` if the last function's `ret` is followed by a newline (confirmed in `x86_ssa_emit_function` line 48). Drop the leading `"\n"`. Test with a known-good program to confirm the linker still accepts the file.

@@ -1,0 +1,22 @@
+# Release notes for v0.225.48
+
+File: openOODA/audit/release_notes/RELEASE_NOTES_v0.225.48.oot
+
+Logline: Closes the AST path's closure residual. Nested `fn name(params) -> RetType { body }` declarations are now lowered to heap-allocated closure values with lexical captures from the parent frame, and `__puts_int` now prints multi-digit integers correctly.
+
+Setup: ooda.pkg version=0.225.48. Tag v0.225.48. Built oodac/oodac.aarch64 with bootstrap/oodac_pure_build (1.3 MB; unique_fns=735; from_modules=115).
+
+Beats:
+  1. std/hw/arch_aarch64/aarch64_xstmt.oo: added a `fn` case to a64x_stmt that dispatches nested function declarations to a64x_nested_fn.
+  2. std/hw/arch_aarch64/aarch64_xnested_fn.oo (new, 75 lines): emits a closure trampoline + capture scan + heap allocation. The trampoline sets up its own frame, binds params from x0..x7 (or stack for >8), binds captures loaded from x16 at [closure+8+8*ci], then parses the body with a minimal c-prefix/c-expr/c-stmt subset. After the body, allocates a closure object via oo_a64_alloc, stores the code pointer at [closure+0] and the captures at [closure+8+8*ki], and binds the closure value to the function name in the parent frame.
+  3. std/hw/arch_aarch64/aarch64_xrt_puts_int.oo: rewrote the itoa loop. The old single-pass loop extracted digits in LSB-first order and the write setup read from buffer[count-1] forward — fine for single-digit values (sdiv by garbage returns 0, msub returns the value, value+48 is the correct ASCII digit) but broken for multi-digit values (the digit extracted was always value+48, never the actual ones or tens). The new code does a count pass (sdiv by 10 until 0, incrementing x11), then a write pass (x16 walks from count-1 down to 0, storing sdiv/msub digits MSB-first). x2 is set to the count from the first pass; the write emits count bytes from buffer[0] in correct order. Also fixed the zero-check b.ne from offset 6 to 5 (was skipping the `mov x13, #0xa` that the sdiv needs).
+  4. std/hw/arch_aarch64/aarch64_xscan.oo: extended a64x_eat_type to skip function pointer type annotations (`fn(ParamTypes) -> RetType`). The compiler did not previously understand this syntax, so a `fn make_adder() -> fn(Int) -> Int { ... }` outer signature would fail to parse with `bad_item` at the first `(` of the return type. The extension matches balanced parens (and string literals) inside the parameter list and recursively eats the return type via the same function.
+  5. 9-path integration smoke now includes the two closure fixtures (no-capture and with-capture), in addition to the prior 7 paths.
+
+What this proves:
+  * Nested-fn closures (with and without captures) lower to AAPCS64-compliant heap-allocated closure values on the AST path.
+  * The lexical-capture path works: `make_adder(10)` returns a closure that, when called as `add(5)`, returns `15`.
+  * Multi-digit integer printing works in __puts_int (the value 15 prints as "15\n", not "1\0\n" or "Z\n").
+  * Function pointer type annotations in return position are accepted by the parser.
+
+Out of scope: lambda expressions (`|x| x + 1`) are still parsed by the existing aarch64_xclosure.oo path (not the AST path's nested-fn path), so a lambda inside a function body continues to flow through the aarch64_xclosure.oo emit. The new aarch64_xnested_fn.oo handles only the `fn name(...) -> ... { body }` named-form. Recursive closures are not yet supported (the closure value is bound after the trampoline, so a body that calls itself by name would not see itself).

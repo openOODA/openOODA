@@ -1,0 +1,115 @@
+# openOODA AArch64 Backend Investigation Report
+
+File: openOODA/audit/aarch64-investigations.oot
+THIS FILE IS GENERATED — DO NOT EDIT. Source: x86 deep-dive follow-up 2026-08-25.
+
+---
+
+## 1. Inventory
+
+The AArch64 backend in `ooda/oodac/` has **10 files** (compared to x86's 38), totaling ~1,392 lines:
+
+| File | Lines | Role |
+|---|---|---|
+| `aarch64_emit.oo` | 134 | dispatch (single state machine) |
+| `aarch64_emit_cond.oo` | 176 | if-cond folder |
+| `aarch64_emit_elf.oo` | 81 | direct-ELF64 binary path |
+| `aarch64_emit_fold.oo` | 33 | frame/param-register helpers |
+| `aarch64_emit_harv.oo` | 194 | token helpers |
+| `aarch64_emit_if.oo` | 115 | if/else skip helpers |
+| `aarch64_emit_num.oo` | 217 | int parsing, ALU fold, cmp fold, bool read |
+| `aarch64_emit_sys.oo` | 105 | Linux AArch64 GAS emitter |
+| `aarch64_emit_take.oo` | 251 | println and let binder (max) |
+| `aarch64_main.oo` | 86 | side driver for `emit-aarch64` |
+
+The x86 backend is **~3.8× larger** because it has 22 per-shape matcher files plus the SSA path. AArch64 has a fundamentally different dispatch shape: a single state machine, not a per-shape ladder.
+
+## 2. No 22-style matcher ladder
+
+AArch64 has **zero** per-shape matcher files. The dispatch at `aarch64_emit.oo:19-124` is one `a64_collect_prints` function that walks tokens and calls three helpers:
+- `a64_record_let` (aarch64_emit_take.oo:67) — records same-fn `let name = STRING | INT | INT op INT | MINUS INT | KW_TRUE | KW_FALSE | IDENT() | IDENT(STRING)` binds
+- `a64_take_println` (aarch64_emit_take.oo:164) — accepts `println(INT | INT op INT | true | false | -INT | -IDENT | STRING | IDENT | mix)`; everything else returns `empty` and the dispatch sets `leftover = true`
+- `a64_if_cond` (aarch64_emit_cond.oo:138) — folds if-condition into `"true" | "false" | "other"`; only that grammar is recognized
+
+Fail-closed outcomes:
+- `ERR aarch64_emit residual: need fn main` (line 116)
+- `ERR aarch64_emit leftover println` (line 120)
+- `ERR aarch64_emit empty` (line 128)
+- `ERR aarch64_emit negative write length` (aarch64_emit_sys.oo:47)
+
+## 3. No silent-miscompile surface
+
+A static read of all 10 AArch64 files found:
+- **No hardcoded bodies** (no equivalent of x86's `x86_emit_list.oo` always emitting `20`, or `x86_emit_float.oo` always emitting `22.00`)
+- **No missing field validation** (no struct matcher at all)
+- **Every ERR site is in a fail-closed path** — the system is structurally fail-closed
+
+The 53 `aarch64_*.oo` fixtures in `ooda/fixtures/` are themselves annotated with `// Emit must ERR leftover` markers on at least 9 of them. They are explicit fail-closed tests.
+
+**Estimated silent-miscompile rate: 0%** by static analysis. This is a structural property, not a tested one. A run-probe via qemu-aarch64 would confirm.
+
+## 4. No SSA path
+
+There is **no AArch64 SSA path**. Searches for `aarch64_ssa`, `aarch64_ssa_emit`, `aarch64_ssa_compile` return zero hits. The 14 emit-x86-ssa ASM-FAILs documented in `audit/x86-investigations.oot:14-27` have no AArch64 parallel. The x86 `movq $imm` 32-bit-encoding bug is structurally impossible on AArch64 because:
+- The AArch64 text path uses `mov x2, #N` and `movz x2, #lo` + `movk x2, #hi, lsl #16` (aarch64_emit_sys.oo:50-58)
+- The AArch64 direct-ELF path uses `arm64_word_movz`/`arm64_word_movk` for all immediates
+- The `a64_int_digits` overflow check at `aarch64_emit_harv.oo:139-164` returns `-1` for `> 2^63-1`
+
+## 5. std/hw/arch_aarch64/ is the principled toolchain
+
+`ooda/std/hw/arch_aarch64/` is the **AArch64 equivalent of the principled x86 toolchain in std/hw/arch_x86/**. It has **125 files** totaling ~394,829 lines, with the same shape:
+
+| File | Lines | Role |
+|---|---|---|
+| `aarch64_abi.oo` | 1,717 | AAPCS64 ABI constants (x0-x7, frame x29, link x30, sp) |
+| `aarch64_regs.oo` | 1,489 | hardware register encodings |
+| `aarch64_syscalls.oo` | 3,262 | Linux syscall table |
+| `aarch64_assembler.oo` | 1,545 | instruction word buffer |
+| `aarch64_encoder.oo` | 6,441 | per-instruction encoder (arm64_word_movz, arm64_word_add_imm, etc.) |
+| `aarch64_codegen.oo` | 3,922 | top-level compile pipeline (aarch64_compile_source, aarch64_compile_to_elf, aarch64_compile_recursive_elf, aarch64_compile_match_elf, aarch64_compile_array_elf) |
+| `aarch64_linker.oo` | 4,017 | ELF64 linker |
+| `aarch64_lower.oo` | 8,552 | expression/statement lowering to instruction words |
+| `aarch64_parse.oo` | 5,536 | source parser |
+| `aarch64_elf_check.oo` | 2,843 | ELF verification |
+
+**Already wired**: `ooda/oodac/aarch64_emit_elf.oo:13` imports `std/hw/arch_aarch64/aarch64_codegen.oo` and calls `aarch64_compile_to_elf` (line 71). `cli_build_sovereign.oo:35-36` calls `aarch64_emit_direct_elf_binary` for `--backend aarch64`.
+
+This is **fundamentally different from the x86 case** where `std/hw/arch_x86/x86_codegen.oo` is **not** wired into `oodac emit-x86`. The AArch64 std codegen is the default for the sovereign-build path.
+
+## 6. Recommendations for the AArch64 owner
+
+The AArch64 backend is in a structurally better state than x86. The recommendations are mostly about closing the **0-matcher coverage gap** and **deprecating the hand-written text path** in favor of the std-level principled codegen.
+
+### Tier 0 — close the matcher gap (parallel to x86 22-matcher ladder)
+
+Add new files `ooda/oodac/aarch64_emit_<shape>.oo` (mirroring x86 naming) for each shape the x86 ladder covers:
+- `aarch64_emit_int.oo` — `println(INT)`, `println(-INT)`, `println(INT op INT)`. Refuse overflow.
+- `aarch64_emit_struct.oo` — `point { x: 1, y: 2 }` + `p.x = 3` + `println(p.y)`. Refuse non-int fields.
+- `aarch64_emit_list.oo` — `list_new` / `list_push` / `list_get` / `list_len` via AAPCS64 calls. **Critical**: must wire the std-level `aarch64_xrt_list.oo` runtime, not hardcode.
+- `aarch64_emit_float.oo` — `let z: Float = ...; println(z);` via `aarch64_encode_fp.oo`.
+- `aarch64_emit_match.oo` — 2-8 arm match on a const tag.
+- `aarch64_emit_loop.oo` — while loop.
+- `aarch64_emit_for.oo` — for-in range.
+- `aarch64_emit_rec.oo`, `aarch64_emit_free.oo`, `aarch64_emit_heap.oo`, `aarch64_emit_opt.oo`, `aarch64_emit_typed_let.oo`, `aarch64_emit_mut.oo`, `aarch64_emit_multi.oo`, `aarch64_emit_fold.oo` (real fold, not the current 33-line stub), `aarch64_emit_greet.oo`
+
+Each new matcher must **refuse-don't-miscompile** by returning `empty` on shape mismatch (the AArch64 dispatch is already fail-closed; do not introduce silent miscompiles).
+
+### Tier 1 — deprecate the text-output path
+
+The `aarch64_emit_sys.oo:60 aarch64_emit_linux` is a 105-line hand-rolled GAS emitter. The std-level `std/hw/arch_aarch64/aarch64_codegen.oo:67 aarch64_compile_to_elf` already produces raw ELF64 bytes via the principled codegen. Recommend: deprecate the text path and make `emit-aarch64` (or `oodac --backend aarch64 emit-aarch64`) call `aarch64_compile_to_elf` directly. The x86 std-audit (`audit/x86-std-audit.oot:39-47`) recommends the same consolidation for x86; the AArch64 case is **easier** because the std codegen is already wired.
+
+### Tier 2 — no SSA path needed
+
+Skip Tier 4 #18 (string-table pass) and Tier 2 #5 (match lower) and the 14 SSA ASM-FAIL fixes from the x86 plan — they don't apply because there is no AArch64 SSA path. If a future SSA path is added, use 32-bit-immediate-free encodings (`arm64_word_movz` + `arm64_word_movk` for 16-bit chunks) so the `movq $imm` bug is structurally impossible.
+
+### Tier 3 — host probe
+
+Run a probe (parallel to the x86 300-fixture run-probe in `audit/x86-run-probe.oot:11-19`) on the 53 `aarch64_*.oo` fixtures. Categorize as COMPILED / REFUSED / ASM-FAIL / RUN-OK. Use `qemu-aarch64 -L /usr/aarch64-linux-gnu` if the host has qemu. Expected: 0% silent-miscompile by static analysis. The 47 `aarch64_*_smoke.oo` files in `ooda/scripts/` already exist as evidence of the intended probe.
+
+### Tier 4 — move misfiled fixtures
+
+53 `aarch64_*.oo` fixtures in `ooda/fixtures/` should arguably move to `ooda/fixtures-aarch64/`. The x86 probe (`audit/x86-refused-clusters.oot:36`) already noted "Many of the 134 are aarch64_*.oo fixtures that are misfiled in fixtures/ instead of qa/."
+
+### Tier 5 — close the 0-matcher gap to a documented ladder
+
+After Tier 0 ships, enumerate the resulting ladder in `audit/aarch64-investigations.oot` (this file) and produce `audit/aarch64-refused-clusters.oot` and `audit/aarch64-run-probe.oot` in the same format as the x86 audits.

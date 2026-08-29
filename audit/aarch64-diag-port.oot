@@ -1,0 +1,115 @@
+# Audit: x86_emit_diag port to aarch64_emit_diag
+
+Logline: Line-by-line diff of the AArch64 Tier 0 fix #1, with x86-specific-assumption review, aarch64-specific-opportunity scan, public-surface comparison, coverage-gap report, and KEEP/FIX/EXTEND recommendations.
+
+Setup: x86_emit_diag.oo (149 lines, source of truth) and aarch64_emit_diag.oo (161 lines, port) read; x86_emit.oo:43 (import) and aarch64_emit.oo:18, 129-137 (wiring) read; oodac/ grep run for x86_diag_/aarch64_diag_/x86_emit_diag_test callers. Static analysis only. No .oo file was modified.
+
+Beats:
+  1. Side-by-side row-by-row diff with match/diff and reason.
+  2. x86-specific assumptions the port may have inherited.
+  3. aarch64-specific opportunities the port missed.
+  4. Public surface diff table.
+  5. Coverage gaps: errors caught in x86 but not aarch64.
+  6. KEEP-AS-IS / FIX-IN-PORT / EXTEND-PORT recommendations.
+
+residual: x86_emit_diag_test was never written; the x86 smoke test (x86_diag_smoke.oo) only greps for `pub fn` presence, so a runtime coverage gap is invisible to today's tests.
+
+File: openOODA/audit/aarch64-diag-port.oot
+Static analysis only. No oodac/*.oo file was modified.
+
+---
+
+## 1. Side-by-side comparison
+
+All rows are 1-indexed and refer to the same source-line position in each file unless the row says "aarch64-only".
+
+| # | Behavior | x86 line | aarch64 line | Match | Reason | Correct? |
+|---|---|---|---|---|---|---|
+| 1 | File title in header | x86_emit_diag.oo:1 `// # Typed error reporter for emit-x86` | aarch64_emit_diag.oo:1 `// # Typed error reporter for emit-aarch64` | diff | Backends differ; the title is a per-file label, not a behavior change. | yes |
+| 2 | Header beat 1 names the main emit helper | x86_emit_diag.oo:8 `x86_diag_emit` | aarch64_emit_diag.oo:8 `aarch64_diag_emit` | diff | Public-name rename mirrors prefix swap. | yes |
+| 3 | Header beat 2 names the token-driven helper | x86_emit_diag.oo:9 `x86_diag_from_tokens` | aarch64_emit_diag.oo:9 `aarch64_diag_from_tokens` | diff | Public-name rename. | yes |
+| 4 | Header beat 3 names the caret helper | x86_emit_diag.oo:10 `x86_diag_caret_for_src` | aarch64_emit_diag.oo:10 `aarch64_diag_caret_for_src` | diff | Public-name rename. | yes |
+| 5 | Residual comment | x86_emit_diag.oo:12 `residual: cap-driven file read, multi-file line/col fold, and AArch64 stay later.` | aarch64_emit_diag.oo:12 `residual: aarch64_emit_diag_test returns empty until shape-gate rules are added.` | diff | AArch64 port closes the `stay later` line; new residual admits the test gate is a stub. | yes (honest) |
+| 6 | `import "token_fmt.oo"` | x86_emit_diag.oo:14 | aarch64_emit_diag.oo:14 | match | Same token format helpers. | yes |
+| 7 | Private spaces builder | x86_emit_diag.oo:17-27 `x86_diag_spaces(n)` | aarch64_emit_diag.oo:17-27 `aarch64_diag_spaces(n)` | match | Body byte-identical; only the prefix changed. | yes |
+| 8 | Public line/col scan | x86_emit_diag.oo:30-52 `x86_diag_line_col(src, bad_index) -> List[Int]` | aarch64_emit_diag.oo:30-52 `aarch64_diag_line_col(src, bad_index) -> List[Int]` | match | Body byte-identical; signature unchanged. | yes |
+| 9 | Public 1-indexed line fetch | x86_emit_diag.oo:55-92 `x86_diag_src_line(src, line)` | aarch64_emit_diag.oo:55-92 `aarch64_diag_src_line(src, line)` | match | Body byte-identical. | yes |
+| 10 | Public caret builder | x86_emit_diag.oo:95-99 `x86_diag_caret_for_src(src, bad_index, line_offset)` | aarch64_emit_diag.oo:95-99 `aarch64_diag_caret_for_src(src, bad_index, line_offset)` | match | Body byte-identical; the internal call to `*_diag_spaces` (line 98) was renamed in lockstep. | yes |
+| 11 | Public SRC_PATH puller | x86_emit_diag.oo:102-111 `x86_diag_path_of(toks, n)` | aarch64_emit_diag.oo:102-111 `aarch64_diag_path_of(toks, n)` | match | Body byte-identical; mirrors `tc_diag.tc_src_path_of`, an arch-neutral tokenization helper. | yes |
+| 12 | Public 4-line ERR builder (no src) | x86_emit_diag.oo:114-123 `x86_diag_emit(kind, path, line, col, msg)` | aarch64_emit_diag.oo:114-123 `aarch64_diag_emit(kind, path, line, col, msg)` | match | Body byte-identical; format string `"ERR  " + kind + "  " + loc + ": " + msg` is arch-neutral. | yes |
+| 13 | Public 4-line ERR builder (with src) | x86_emit_diag.oo:126-135 `x86_diag_emit_with_src(kind, path, line, col, msg, src_line)` | aarch64_emit_diag.oo:126-135 `aarch64_diag_emit_with_src(...)` | match | Body byte-identical. | yes |
+| 14 | Public token-driven renderer | x86_emit_diag.oo:138-149 `x86_diag_from_tokens(toks, n, bad_index, kind, msg, src)` | aarch64_emit_diag.oo:138-149 `aarch64_diag_from_tokens(...)` | match | Body byte-identical; internal calls to `*_line_col`, `*_src_line`, `*_path_of`, `*_emit_with_src` were renamed in lockstep. | yes |
+| 15 | Dispatch-gate entry | (none) | aarch64_emit_diag.oo:154-161 `pub fn aarch64_emit_diag_test(src: String) -> List[String]` | aarch64-only | New gate: the aarch64 dispatch is the first one to actually wire the diag helpers (see aarch64_emit.oo:129-137). x86_emit.oo:43 imports x86_emit_diag.oo but never calls it (verified by grep — zero `x86_diag_*` references in x86_emit.oo or anywhere outside x86_emit_diag.oo itself). | yes (correct) but **EMPTY BEHAVIOR** — see §3 and §5 |
+
+## 2. x86-specific assumptions in source
+
+The x86_emit_diag.oo formatter has **no x86-specific assumptions**. Every helper is a pure function over generic inputs:
+
+1. `x86_diag_spaces` (x86_emit_diag.oo:17-27) operates on `Int -> String`. No architecture tag, no register, no calling convention. The port inherits the body byte-for-byte. **Risk: none.**
+2. `x86_diag_line_col` (x86_emit_diag.oo:30-52) scans for `"\n"` only. The byte `0x0A` is the same in both ISAs. **Risk: none.** (Side note: a `\r\n` (CRLF) source would yield a 1-char column drift on both ports; this is a shared bug, not a port regression.)
+3. `x86_diag_src_line` (x86_emit_diag.oo:55-92) uses `chars_len`/`char_at`/`str_slice` — these are openOODA string primitives, not arch-dependent. **Risk: none.**
+4. `x86_diag_caret_for_src` (x86_emit_diag.oo:95-99) computes `bad_index - line_offset` and delegates to the spaces builder. No arch input. **Risk: none.**
+5. `x86_diag_path_of` (x86_emit_diag.oo:102-111) reads token 0 and inspects `field_at(t0, 0) == "SRC_PATH"`. The comment "Mirrors tc_diag.tc_src_path_of" (x86_emit_diag.oo:101) shows the original purpose is the arch-neutral `tc_diag` (typecheck diag) module. The `x86_` prefix is a **module-ownership label**, not a behavioral claim. **Risk: none.**
+6. `x86_diag_emit` and `x86_diag_emit_with_src` (x86_emit_diag.oo:114-135) format a 4-line block with literal `"ERR  "`, `"--> "`, and `"<source>"` placeholders. These are openOODA-wide diagnostic conventions, not x86 conventions. **Risk: none.**
+7. `x86_diag_from_tokens` (x86_emit_diag.oo:138-149) ties the helpers together. Pure composition. **Risk: none.**
+
+**Net**: the prefix is a label, not a contract. The port is allowed to swap it; the only thing the port had to do is swap it. No x86-specific assumption was inherited incorrectly.
+
+## 3. aarch64-specific opportunities the port missed
+
+1. **The new gate does no work.** `aarch64_emit_diag_test` (aarch64_emit_diag.oo:154-161) reads `total: Int = chars_len(src)` (line 155), checks `total == 0` (line 157), and otherwise returns the empty `errs` (line 160). Every non-empty source is accepted silently. The header (aarch64_emit_diag.oo:12) admits this: `aarch64_emit_diag_test returns empty until shape-gate rules are added.` AArch64 callers cannot rely on the gate as a shape-screen until at least one rule is wired.
+2. **The dispatcher that calls the gate does its own redundant empty check.** aarch64_emit.oo:138-141 re-checks `chars_len(src) == 0` after the gate (which already returned). With the gate being a no-op, this is currently harmless, but the two checks will collide when shape-gate rules are added (the gate will print its own ERR and the dispatch will print "empty" again).
+3. **The library has aarch64-specific shape errors it could surface but doesn't.** `aarch64_emit.oo:117` prints `"residual: need fn main"` and aarch64_emit.oo:121 prints `"leftover println"` as raw tab-delimited `ERR\t…` lines. These are the only diagnostic strings in the aarch64 dispatch; the 4-line ERR/kind/-->/^ machinery from `aarch64_diag_emit` is unused. The gate is the right place to render them with `--> aarch64_emit` and a caret, but it doesn't.
+4. **No parallel to `x86_diag_smoke.oo`.** `ooda/scripts/x86_diag_smoke.oo:1-34` asserts the file exists, the three pub fns are named, and the `let x: Int = "hi"` fixture is present (line 31). There is no `aarch64_diag_smoke.oo`. Without it, a future patch can rename `aarch64_diag_emit` to `aarch64_emit_diag_diag_emit` and CI will not notice. The format `.oo` (grep-based, no behavior check) is the only thing protecting the names.
+5. **No kind-tag convention enforced for aarch64.** x86_diag_smoke.oo:32 requires `grep -q 'type-mismatch'` somewhere in the file. The aarch64 port has no example kind tag in the source, so callers will invent inconsistent strings (`aarch64_emit`, `aarch64_diag`, `residual`, etc., as already seen in aarch64_emit.oo:117, 121, 139).
+6. **AArch64 supports 64-bit immediates; the caret / col is still 1-char wide.** The library has no `^~` (range) or `^^^` (multi-char) span helper. Both ports lack it; this is a future-work note, not a regression.
+
+## 4. Public surface differences
+
+| x86 public fn | aarch64 public fn | Signature diff | Notes |
+|---|---|---|---|
+| `x86_diag_line_col(src, bad_index) -> List[Int]` | `aarch64_diag_line_col(src, bad_index) -> List[Int]` | name only | body byte-identical |
+| `x86_diag_src_line(src, line) -> String` | `aarch64_diag_src_line(src, line) -> String` | name only | body byte-identical |
+| `x86_diag_caret_for_src(src, bad_index, line_offset) -> String` | `aarch64_diag_caret_for_src(src, bad_index, line_offset) -> String` | name only | body byte-identical |
+| `x86_diag_path_of(toks, n) -> String` | `aarch64_diag_path_of(toks, n) -> String` | name only | body byte-identical |
+| `x86_diag_emit(kind, path, line, col, msg) -> String` | `aarch64_diag_emit(kind, path, line, col, msg) -> String` | name only | body byte-identical |
+| `x86_diag_emit_with_src(kind, path, line, col, msg, src_line) -> String` | `aarch64_diag_emit_with_src(kind, path, line, col, msg, src_line) -> String` | name only | body byte-identical |
+| `x86_diag_from_tokens(toks, n, bad_index, kind, msg, src) -> String` | `aarch64_diag_from_tokens(toks, n, bad_index, kind, msg, src) -> String` | name only | body byte-identical |
+| (none) | `aarch64_emit_diag_test(src) -> List[String]` | **new** | the gate block; not present in x86_emit_diag.oo |
+
+Naming note: the library uses the `aarch64_diag_*` prefix (rows 1-7); the gate uses `aarch64_emit_diag_test`. The `_diag_` and `_diag_emit_` orderings diverge. This is not a bug, but a reader has to learn two name shapes per backend.
+
+## 5. Coverage gaps: errors the x86 version catches but aarch64 doesn't
+
+Strict reading: **0 gaps.** The x86_emit_diag.oo library is a pure formatter — it catches no errors itself. It only renders. The x86 dispatch (x86_emit.oo:46-204) does its own catching via `x86_emit_contract_test` (line 49) and `x86_emit_secret_test` (line 64), neither of which is the diag formatter. The diag formatter is imported (x86_emit.oo:43) but not called.
+
+**Reframed gap** (rules the aarch64_emit_diag_test gate could enforce but currently doesn't):
+
+1. **Empty source** — caught (aarch64_emit_diag.oo:157). ✓
+2. **Source missing `fn main`** — not caught. Currently surfaced in aarch64_emit.oo:117 as a raw `println("ERR\taarch64_emit\tresidual: need fn main")` without a 4-line ERR/kind/-->/^ block.
+3. **Source with leftover `println` forms** — not caught by the gate. Surfaced in aarch64_emit.oo:121 as a raw `println`. The gate runs *before* tokenization, so this rule cannot live in the gate as written; it must move inside `a64_collect_prints` and route through the gate's `List[String]` return.
+4. **Empty-after-tokenization source (e.g. whitespace or comments only)** — not caught. The dispatch at aarch64_emit.oo:142-144 would call `a64_collect_prints(toks)` and `aarch64_emit_linux(msgs)` with `msgs == list_new()`, producing an empty program.
+5. **Multi-line / `;`-delimited source with bad index that x86_diag_line_col could resolve** — not caught. The gate is gate-only; no token-stream diagnostic is wired through `aarch64_diag_from_tokens`.
+
+## 6. Recommendations
+
+For each opportunity (numbered per its source section) and each coverage gap:
+
+| Source | Item | Verdict | Action |
+|---|---|---|---|
+| §3 #1 | Gate returns empty for all non-empty input | **FIX-IN-PORT** | Add the `fn main` and `println`-shape rules to `aarch64_emit_diag_test`. Rule shape: scan `src` for `"fn main"` and for unbalanced `println`; return a `List[String]` of 4-line ERR blocks built via `aarch64_diag_emit_with_src`. Honors the refuse-don't-miscompile policy (line 153). |
+| §3 #2 | Dispatcher re-checks empty after the gate | **FIX-IN-PORT** | Delete aarch64_emit.oo:138-141 once the gate covers empty-source. Until then, keep both and add a comment that the duplication is a transition artifact. |
+| §3 #3 | Raw `ERR\t…` lines instead of 4-line blocks | **EXTEND-PORT** | Replace aarch64_emit.oo:117, 121, 139 with calls to `aarch64_diag_emit_with_src("aarch64_emit", "", 1, 0, "residual: need fn main", "<source>")` (or appropriate kind strings). One helper, six sites. |
+| §3 #4 | No `aarch64_diag_smoke.oo` | **EXTEND-PORT** | New file `ooda/scripts/aarch64_diag_smoke.oo` parallel to x86_diag_smoke.oo:1-34. Asserts `pub fn aarch64_diag_emit`, `pub fn aarch64_diag_from_tokens`, `pub fn aarch64_diag_caret_for_src` are present and a `fixtures/aarch64_diag_smoke.oo` exists. |
+| §3 #5 | No kind-tag convention | **EXTEND-PORT** | Add a comment in aarch64_emit_diag.oo:1-12 listing canonical kind tags: `aarch64_emit`, `aarch64_diag`, `aarch64_token`, `aarch64_shape`. x86_diag_smoke.oo:32 already enforces one (`type-mismatch`); the aarch64 port should match. |
+| §3 #6 | No multi-char span helper | KEEP-AS-IS | Out of scope for Tier 0 fix #1; both ports lack it. Add to a future Tier. |
+| §5 #2 | Missing-fn-main not caught by gate | (covered by §3 #1) | — |
+| §5 #3 | Leftover println not caught by gate | **EXTEND-PORT** | Move the leftover check out of `a64_collect_prints` into a second gate fn `aarch64_emit_shape_test(toks)`; the existing gate becomes pre-tokenization (empty / no-fn-main) and the new one is post-tokenization. |
+| §5 #4 | Whitespace-only source | **FIX-IN-PORT** | After `tokenize_lines(src)`, if `list_len(toks) == 0` and `chars_len(src) > 0`, append a `aarch64_diag_emit("aarch64_emit", "", 1, 0, "no tokens")` to the gate's `errs`. |
+| §5 #5 | Multi-line bad-index diagnostic not wired | KEEP-AS-IS | The library helpers exist; no caller needs them yet. A future `aarch64_token_diag.oo` (new) can wrap `aarch64_diag_from_tokens`. |
+
+**Top 3** (priority order, in the parent audit's spirit of refuse-don't-miscompile):
+
+1. **FIX-IN-PORT** §3 #1: write the `fn main` / leftover rule into `aarch64_emit_diag_test` so the gate is a real shape screen. Without this, the AArch64 Tier 0 fix #1 is a stub-gate, not a working gate.
+2. **EXTEND-PORT** §3 #3: route aarch64_emit.oo:117, 121, 139 through `aarch64_diag_emit_with_src` so users see `-->` and `^` rather than bare tab-delimited lines. This is the first time aarch64 actually exercises the diag formatter.
+3. **EXTEND-PORT** §3 #4: add `ooda/scripts/aarch64_diag_smoke.oo` so a future rename of the public fns fails CI, matching x86_diag_smoke.oo.

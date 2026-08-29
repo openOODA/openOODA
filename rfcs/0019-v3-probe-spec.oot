@@ -1,17 +1,17 @@
-// # RFC 0019: v3 Hostile Probe — Post-Fix Silent-Miscompile Re-Measurement
-//
-// Logline: Re-run the compile + as + ld + run probe on every `ooda/fixtures/*.oo` (n=6,952: 6,936 v1 + 16 post-v1) against the post-fix `ooda/oodac_bin` and measure the actual silent-miscompile rate, per-shape break-down, and per-fix attribution so the orchestrator can confirm whether the 9 fixes in `audit/x86-post-fixes-summary.oot` moved the numbers.
-//
-// Setup: Binary `/home/jeryd/Projects/openOODA/ooda/oodac_bin` rebuilt after the 9 fixes (silent fall-through, 5-shape refuse gate, per-arm wrote counter, SSA per-block remap, SSA Float gaps, SIMD Float fix, dead-arm DELETEs, dead imports removed, contract gate expansion). Pre-fix baselines are `audit/x86-hostile-probe-v2.oot` (45.3% silent-miscompile on x86, 92.6% ASM-FAIL on SSA) and `audit/x86-post-fixes-summary.oot` §4 (central estimates: 0.4% silent-miscompile, 0.1% SSA ASM-FAIL). Results land in `/tmp/x86probe3/{fixture_list.txt,x86.txt,ssa.txt,run.txt,by_shape.txt,by_fix.txt,by_fix_full.txt}`.
-//
-// Beats:
-//   1. Coverage — confirm 6,952/6,952 fixtures probed on both emit-x86 and emit-x86-ssa, including the 16 post-v1 fixtures that v2 excluded.
-//   2. Compile-side categorization — COMPILED / REFUSED / ASM-FAIL / EMPTY counts on each backend; compare to v2.
-//   3. Run-side silent-miscompile count — empty stdout, non-zero exit, timeout; compare to v2 §4.
-//   4. Per-shape break-down — measure the 5 v2-broken shapes (Float, 3-arm match, Result, struct, List) plus 4 not-caught shapes (while, for, channel, parallel) and report per-shape silent-miscompile rate and what fix (if any) catches each.
-//   5. Per-fix attribution — walk every hostile-probe-v2 failure class and report which fix catches it, with the empirical post-fix count and delta vs the central estimate.
-//   6. Final state — write `audit/x86-v3-probe.oot` (mirror of v2 shape) with the per-category counts, per-shape table, per-fix attribution, and consolidated verdict on the 9 fixes.
-//
+# RFC 0019: v3 Hostile Probe — Post-Fix Silent-Miscompile Re-Measurement
+
+Logline: Re-run the compile + as + ld + run probe on every `ooda/fixtures/*.oo` (n=6,952: 6,936 v1 + 16 post-v1) against the post-fix `ooda/oodac_bin` and measure the actual silent-miscompile rate, per-shape break-down, and per-fix attribution so the orchestrator can confirm whether the 9 fixes in `audit/x86-post-fixes-summary.oot` moved the numbers.
+
+Setup: Binary `/home/jeryd/Projects/openOODA/ooda/oodac_bin` rebuilt after the 9 fixes (silent fall-through, 5-shape refuse gate, per-arm wrote counter, SSA per-block remap, SSA Float gaps, SIMD Float fix, dead-arm DELETEs, dead imports removed, contract gate expansion). Pre-fix baselines are `audit/x86-hostile-probe-v2.oot` (45.3% silent-miscompile on x86, 92.6% ASM-FAIL on SSA) and `audit/x86-post-fixes-summary.oot` §4 (central estimates: 0.4% silent-miscompile, 0.1% SSA ASM-FAIL). Results land in `/tmp/x86probe3/{fixture_list.txt,x86.txt,ssa.txt,run.txt,by_shape.txt,by_fix.txt,by_fix_full.txt}`.
+
+Beats:
+  1. Coverage — confirm 6,952/6,952 fixtures probed on both emit-x86 and emit-x86-ssa, including the 16 post-v1 fixtures that v2 excluded.
+  2. Compile-side categorization — COMPILED / REFUSED / ASM-FAIL / EMPTY counts on each backend; compare to v2.
+  3. Run-side silent-miscompile count — empty stdout, non-zero exit, timeout; compare to v2 §4.
+  4. Per-shape break-down — measure the 5 v2-broken shapes (Float, 3-arm match, Result, struct, List) plus 4 not-caught shapes (while, for, channel, parallel) and report per-shape silent-miscompile rate and what fix (if any) catches each.
+  5. Per-fix attribution — walk every hostile-probe-v2 failure class and report which fix catches it, with the empirical post-fix count and delta vs the central estimate.
+  6. Final state — write `audit/x86-v3-probe.oot` (mirror of v2 shape) with the per-category counts, per-shape table, per-fix attribution, and consolidated verdict on the 9 fixes.
+
 File: openOODA/rfcs/0019-v3-probe-spec.oot
 Status: Draft
 Context: Companion to `audit/x86-hostile-probe-v2.oot` (v2 baseline, 167 lines), `audit/x86-ssa-post-fix-projection.oot` (SSA central estimate, 159 lines), and `audit/x86-post-fixes-summary.oot` (9 fixes, 96 lines). Sequence: 0017 Turn 3 parity, 0018 reserved, 0019 v3 hostile probe.
