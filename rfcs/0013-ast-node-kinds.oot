@@ -13,7 +13,7 @@ Context: Authored for the Turn 2 implementer who replaces the 24-arm chain in oo
 
 ## 1. Goals
 
-The Turn 1 shim (ooda/oodac/x86_ast_typed.oo) is a thin forwarder over x86_ssa_compile_program_source. Turn 2 must replace the 24-arm token walker in ooda/oodac/x86_emit.oo:73-196 with a single call that walks a typed AST once and dispatches per node kind. This RFC names every node kind the AST must carry, the fields each kind holds, the chain-arm-to-node-kind mapping, and the cross-cutting concerns (spans, type annotations, contracts). It also carries the must-wire list from audit/x86-std-surface.oot §3 so the implementer knows which std/arch_x86/ fns the new dispatch must call. Out of scope: SSA opcodes, ELF layout, register allocation, and the in-process ELF writer (those are RFC 0011 Phases B and D).
+The Turn 1 shim (ooda/oodac/x86_ast_typed.oo) is a thin forwarder over x86_ssa_compile_program_source. Turn 2 must replace the 24-arm token walker in ooda/oodac/x86_emit.oo:73-196 with a single call that walks a typed AST once and dispatches per node kind. This RFC names every node kind the AST must carry, the fields each kind holds, the chain-arm-to-node-kind mapping, and the cross-cutting concerns (spans, type annotations, contracts). It also carries the must-wire list from audit/x86-std-surface.oot §3 so the implementer knows which std/hw/arch_x86/ fns the new dispatch must call. Out of scope: SSA opcodes, ELF layout, register allocation, and the in-process ELF writer (those are RFC 0011 Phases B and D).
 
 ## 2. NodeKind enum
 
@@ -199,11 +199,11 @@ The AST carries four orthogonal properties alongside the node kind. Each is a se
 1. **Source span** — every node carries a `(line, col)` pair as a trailing suffix: `node.span = "<line>:<col>"`. The parser fills this in; the typed-error reporter (ooda/oodac/x86_emit_diag.oo) reads it to format the `-->` line. Empty span means synthesized node (e.g. implicit return).
 2. **Type annotation** — every Expr carries an optional `ty: Ty` suffix, populated by the typer (ooda/oodac/tc_drive.oo). Stmts may carry a `ty` on the LHS of LetBinding/LetMutBinding/Assign. The SSA lowerer (ooda/oodac/x86_ssa_compile.oo) reads the typed AST and emits SSA ops whose result types match.
 3. **Contract** — every FnDecl carries a `contracts: List[(kind, body)]` suffix where kind is `requires | ensures | spec | invariant`. The contract gate at x86_emit.oo:48-57 walks the list. The body is a Bool-typed Expr.
-4. **Capability annotation** — every Expr that calls into std/arch_x86/ (process_exec, write_file, env_get, sys_exec, fetch) carries a `cap: TyCap` suffix naming the required capability. The secret gate (x86_emit.oo:62-72) refuses to emit any call where the argument is SECRET-tainted and the callee is an unsealed sink.
+4. **Capability annotation** — every Expr that calls into std/hw/arch_x86/ (process_exec, write_file, env_get, sys_exec, fetch) carries a `cap: TyCap` suffix naming the required capability. The secret gate (x86_emit.oo:62-72) refuses to emit any call where the argument is SECRET-tainted and the callee is an unsealed sink.
 
 ## 6. Must-wire set
 
-The new dispatch must call the following std/arch_x86/ symbols (audit/x86-std-surface.oot §3, 11 items). Each item names the chain arm it replaces so the implementer has a precise target.
+The new dispatch must call the following std/hw/arch_x86/ symbols (audit/x86-std-surface.oot §3, 11 items). Each item names the chain arm it replaces so the implementer has a precise target.
 
 1. `elf64_link_executable` (x86_linker.oo:121) — replaces arm 1 fallback and the x86_emit_elf.oo shim.
 2. `x86_encode_mov_rr` (x86_encoder.oo:46) — replaces arm 10 int arith body.

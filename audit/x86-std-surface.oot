@@ -1,11 +1,11 @@
-# x86 STD SURFACE — `std/arch_x86/` Call Graph and AST-Shim Wire Plan
+# x86 STD SURFACE — `std/hw/arch_x86/` Call Graph and AST-Shim Wire Plan
 
 File: openOODA/audit/x86-std-surface.oot
-THIS FILE IS GENERATED — DO NOT EDIT. Source: ripgrep inventory of `ooda/std/arch_x86/`, `ooda/oodac/`, and `ooda/scripts/` on 2026-08-25. Fresh after RFC 0011 Turn 2.
+THIS FILE IS GENERATED — DO NOT EDIT. Source: ripgrep inventory of `ooda/std/hw/arch_x86/`, `ooda/oodac/`, and `ooda/scripts/` on 2026-08-25. Fresh after RFC 0011 Turn 2.
 
-Logline: This door names every public symbol that `std/arch_x86/` exposes, every external caller that reaches it, and the small set the new typed-AST shim (`ooda/oodac/x86_ast_typed.oo`) must wire in Turn 2 to retire the 25-arm token walker in `ooda/oodac/x86_emit.oo:46-198`.
+Logline: This door names every public symbol that `std/hw/arch_x86/` exposes, every external caller that reaches it, and the small set the new typed-AST shim (`ooda/oodac/x86_ast_typed.oo`) must wire in Turn 2 to retire the 25-arm token walker in `ooda/oodac/x86_emit.oo:46-198`.
 
-Setup: Reader has read `openOODA/FORMAT.oot`, `openOODA/rfcs/0011-x86-ast-pipeline.oot`, and `audit/x86-std-audit.oot`. The 95 files under `ooda/std/arch_x86/` form a complete x86-64 native toolchain (registers, ABI, encoder, syscalls, linker, codegen) that is currently not wired into the `oodac emit-x86` path; only seven `std_qa_*` scripts reach it.
+Setup: Reader has read `openOODA/FORMAT.oot`, `openOODA/rfcs/0011-x86-ast-pipeline.oot`, and `audit/x86-std-audit.oot`. The 95 files under `ooda/std/hw/arch_x86/` form a complete x86-64 native toolchain (registers, ABI, encoder, syscalls, linker, codegen) that is currently not wired into the `oodac emit-x86` path; only seven `std_qa_*` scripts reach it.
 
 Beats:
   1. Inventory 95 files into library versus fixture roles, with line counts and purpose.
@@ -17,9 +17,9 @@ Beats:
 
 ---
 
-## 1. std/arch_x86/ file inventory
+## 1. std/hw/arch_x86/ file inventory
 
-`ooda/std/arch_x86/` contains 95 `.oo` files (95 of 95, 0 missing), 3,326 lines total, 255 public fn or type declarations. Split: 15 library files (real codegen helpers) and 80 fixture files (single `verify_x86_<name>` entry point consumed by the `emit-x86` regression smokes).
+`ooda/std/hw/arch_x86/` contains 95 `.oo` files (95 of 95, 0 missing), 3,326 lines total, 255 public fn or type declarations. Split: 15 library files (real codegen helpers) and 80 fixture files (single `verify_x86_<name>` entry point consumed by the `emit-x86` regression smokes).
 
 ### 1.1 Library files (15)
 
@@ -70,7 +70,7 @@ Beats:
 
 ## 2. External call graph
 
-`grep` for callers of each public symbol, restricted to `ooda/oodac/`, `ooda/scripts/`, `ooda/runtime/`, and `ooda/std/arch_aarch64/`. The oodac x86 backend (`ooda/oodac/x86_emit*.oo`, `x86_ssa_*.oo`) has **zero** `import "std/arch_x86/"` statements as of 2026-08-25 — confirming `audit/x86-std-audit.oot:14`. The only external callers are seven `scripts/std_qa/std_qa_*.oo` smokes and the parallel AArch64 `arch_aarch64/`.
+`grep` for callers of each public symbol, restricted to `ooda/oodac/`, `ooda/scripts/`, `ooda/runtime/`, and `ooda/std/hw/arch_aarch64/`. The oodac x86 backend (`ooda/oodac/x86_emit*.oo`, `x86_ssa_*.oo`) has **zero** `import "std/hw/arch_x86/"` statements as of 2026-08-25 — confirming `audit/x86-std-audit.oot:14`. The only external callers are seven `scripts/std_qa/std_qa_*.oo` smokes and the parallel AArch64 `arch_aarch64/`.
 
 | std fn | Caller file:line |
 |--------|------------------|
@@ -97,13 +97,13 @@ Beats:
 | `x86_peephole.oo` (transitive import only) | `scripts/std_qa/std_qa_x86_selfhost.oo:13` (no fn call) |
 | `x86_torture_cases.oo` (transitive import only) | `scripts/std_qa/std_qa_x86_selfhost.oo:14` (no fn call) |
 
-Internally within `std/arch_x86/`: `x86_codegen.oo` calls `x86_regs.*`, `x86_encoder.*`, `x86_abi.*`, `x86_syscalls.*` (lines 15-18). `x86_native_cases.oo` and `x86_torture_cases.oo` each call `x86_linker.*` and `x86_syscalls.*` (lines 12-16 and 12-14). `x86_matrix_compile.oo` calls `x86_matrix_elf.*` (line 13). No other cross-file deps.
+Internally within `std/hw/arch_x86/`: `x86_codegen.oo` calls `x86_regs.*`, `x86_encoder.*`, `x86_abi.*`, `x86_syscalls.*` (lines 15-18). `x86_native_cases.oo` and `x86_torture_cases.oo` each call `x86_linker.*` and `x86_syscalls.*` (lines 12-16 and 12-14). `x86_matrix_compile.oo` calls `x86_matrix_elf.*` (line 13). No other cross-file deps.
 
 ---
 
 ## 3. Must-wire set (AST shim, RFC 0011 Turn 2)
 
-The new shim layer (replacing the 25-arm `x86_emit.oo:46-198` dispatch chain) must call the following `std/arch_x86/` fns to lower the typed AST into bytes. Each item cites the specific token-walker arm it replaces.
+The new shim layer (replacing the 25-arm `x86_emit.oo:46-198` dispatch chain) must call the following `std/hw/arch_x86/` fns to lower the typed AST into bytes. Each item cites the specific token-walker arm it replaces.
 
 1. `elf64_link_executable` (`x86_linker.oo:121`) replaces the final fallback `x86_emit_linux64` (`x86_emit.oo:78, 198`) and the `x86_emit_elf.oo` shim. Use this for the per-program ELF writer.
 2. `x86_encode_mov_rr` (`x86_encoder.oo:46`) replaces the SSA int-arith bodies behind `x86_emit_int_write` (`x86_emit.oo:121-124`) and the `+`/`-`/`*` arms of `x86_emit_alu.oo`.
@@ -156,7 +156,7 @@ Fns or files that the new shim must be careful around.
 1. `x86_codegen.oo` is a 178-line "do-everything" module: it lexes (`cg_is_ws/alpha/digit/alnum` lines 39-63), drives the program (`cg_prog_new/size/finish` lines 142-152), and emits bytes (`cg_emit_prologue/epilogue` lines 154-177). Turn 2 must split lex from emit; the AST shim will only need the emit half.
 2. `elf64_build_executable` (`x86_elf.oo:39-55`) returns `Ok` with only 48 bytes, *ignoring* `text_bytes` entirely after the magic + e_type + e_machine + e_version fields (lines 44-48). It is fail-closed for empty text (line 41) but never writes the program header or text segment. The new shim must not use it; call `elf64_link_executable` (`x86_linker.oo:121`) instead.
 3. `php_elim_dead_stores` (`x86_peephole.oo:181-217`) has a `let _x: Int = i + m;` block (lines 200-204) that does not actually remove bytes — it computes but discards. The pass is a partial implementation; the AST shim should treat it as residual and not rely on its output.
-4. `x86_abi.oo` and `aarch64_abi.oo` (`ooda/std/arch_aarch64/aarch64_abi.oo:13-72`) duplicate the function names `abi_arg_reg`, `abi_arg_count`, `abi_ret_reg`, `abi_ret_hi_reg`, `abi_is_callee_saved`, `abi_align_up`, `abi_stack_aligned`. The new shim must not import both at once; today `std_qa_aarch64_native_compiler.oo:49-63` already calls `abi_arg_reg` against the AArch64 ABI, so importing `x86_abi.oo` from the same file would silently bind to the wrong body.
+4. `x86_abi.oo` and `aarch64_abi.oo` (`ooda/std/hw/arch_aarch64/aarch64_abi.oo:13-72`) duplicate the function names `abi_arg_reg`, `abi_arg_count`, `abi_ret_reg`, `abi_ret_hi_reg`, `abi_is_callee_saved`, `abi_align_up`, `abi_stack_aligned`. The new shim must not import both at once; today `std_qa_aarch64_native_compiler.oo:49-63` already calls `abi_arg_reg` against the AArch64 ABI, so importing `x86_abi.oo` from the same file would silently bind to the wrong body.
 5. `x86_assembler.oo`'s `x86_asm_finish` (`x86_assembler.oo:53-58`) only checks `(as).size == 0`; any non-empty buffer passes. The new shim's typed-AST path can rely on it, but a future caller that needs a real "valid x86 image" check must add its own magic/len verification.
 6. `x86_syscalls.oo`'s `sc_emit_sys_mmap` (`x86_syscalls.oo:168-178`) hardcodes syscall number 9 in seven places (one per argument and the syscall itself). If Linux renumbers syscalls (it has, twice), every line must change. The shim should factor a `sc_emit_syscall(num, args[])` dispatcher that takes the number once.
 7. `x86_codegen.oo:114` defines `cg_emit_imm64_mov_rax` as an alias of `cg_emit_imm32_mov_rax`. The name lies — no 64-bit imm is actually emitted. The new shim must not call it; it would emit a 32-bit imm with a 64-bit opcode and trip an `as --64` `operand type mismatch` per `audit/x86-investigations.oot:7-29`.
@@ -167,4 +167,4 @@ Fns or files that the new shim must be careful around.
 
 ## 7. Status
 
-Open. This door is read by the AST-shim Turn 2 implementer and the audit curator. Refresh by re-running the `grep` inventory in §2 and the `wc -l` count in §1.1 after any new `.oo` lands in `std/arch_x86/`. Cross-references: `audit/x86-std-audit.oot` (parallel surface map), `audit/x86-investigations.oot` (silent-miscompile catalog), `openOODA/rfcs/0011-x86-ast-pipeline.oot` (RFC for the new shim), `openOODA/ROADMAP.oot:48` (Tier 5 #24 row).
+Open. This door is read by the AST-shim Turn 2 implementer and the audit curator. Refresh by re-running the `grep` inventory in §2 and the `wc -l` count in §1.1 after any new `.oo` lands in `std/hw/arch_x86/`. Cross-references: `audit/x86-std-audit.oot` (parallel surface map), `audit/x86-investigations.oot` (silent-miscompile catalog), `openOODA/rfcs/0011-x86-ast-pipeline.oot` (RFC for the new shim), `openOODA/ROADMAP.oot:48` (Tier 5 #24 row).
