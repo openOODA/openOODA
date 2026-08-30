@@ -1,0 +1,81 @@
+# Org Functional Review — First-Principles Repo Topology Audit
+Floor: 2
+Thrust: 9
+Patch: 1
+File: openOODA/audit/org-functional-review.oot
+
+Zero-trust inventory of 12 repos plus workspace aggregate. Powerlaw 80/20, systems Merkle-KV, blue-ocean microkernel, 4-Gate REDTEAM veto. No file moves executed. Delta_path=0 preserved.
+
+## 1. Inventory — 12 Git Repos + 1 Unversioned Workspace
+
+Workspace root /home/jeryd/Projects/openOODA is not a git repo. Contains 4 symlink shims (std, runtime, fixtures, oodac_bin) and orphaned opencode.json, PROJECT.md, tests/. Git repos:
+- brand — Brand assets (58 files, DESIGN_SYSTEM.oot 66 lines). Remote openOODA/brand.
+- .github — Org profile (tiny).
+- helloworld — Template v2.7.0 (61 files).
+- install — Dead redirect stub (54 files, purge debris).
+- ooda — Deterministic engine v2.9.1 (83,852 files, 681M): oodac 529, runtime C, std 35 parents, cli 110, qa 33 parents.
+- openOODA — Governance v2.9.1 (309 files): 13 boards, rfcs 22, scripts 30 enforcers, audit 5362 logs.
+- openOODA.github.io — Portal v2.16.0 web (1,096 files): index.html, guide, install.sh, registry.html.
+- qa — External challenger (1,469 files): tests_challenger_1..4, e2e, qa_master.
+- registry — Package index (50,774 files, 225M): index 16,898 entries, index.minisig Ed25519, 16,917 pkg dirs.
+- research — Papers 52 RP-*.oot (195 files).
+- tree-sitter — Grammar sketch JS (79 files, not product).
+- vscode — Extension 88 files (TextMate + leftover ooda-lsp.js).
+
+Average alignment 6.2/10. Too many by factor 3. C(12)=66 channels vs C(3)=3 (95.5% drag).
+
+## 2. Functional Alignment — Tier DAG
+
+Tier1 Governance: openOODA correct (13 boards, SHIPPED). Research duplicated (research vs openOODA/rfcs same STE100).
+Tier2 Engine: ooda correct colocation (compiler+std+qa) per CONSTRAINTS.oot 1.5 two-repo split. Mixing intentional for Merkle K_manifest=H(relpath). Splitting std would duplicate Hash(std) and break eta 0.998.
+Tier2 QA: ooda/qa domain cert (33 parents) correct. qa external challenger naming collision (qa vs ooda/qa) — 4 test roots (tests/, qa/tests, ooda/tests, ooda/qa).
+Tier3 Portal: openOODA.github.io correct. Duplicates ooda/dist tarballs (21M) and registry.html.
+Tier3 Registry: provenance isolation (Ed25519) argues separate, but 50k dummy ooda_aero_* fixtures mimic bench, not packages.
+Tier3 Brand: only portal consumes logos — should merge to openOODA.github.io/brand.
+Tier3 Install: split across ooda/install, github.io/install.sh, cli/cmd_install — dead install repo.
+
+Score: ooda 9/10, openOODA 8/10, github.io 8/10, helloworld 9/10, registry 6/10, brand 5/10, research 5/10, qa 6/10, vscode/tree-sitter 5/10, install 2/10.
+
+## 3. Powerlaw 80/20 — 4 Leverage Hubs
+
+Hub1 Canonical EBNF ooda/ooda.ebnf 112 lines — dictates parser/LSP/highlighter. Drift breaks SSoT.
+Hub2 Capability Checker oodac/check_caps.oo + runtime/chs_rt_caps.c + SECURITY.oot 14 tokens — zero ambient authority.
+Hub3 Emitter oodac/x86_ssa_compile.oo + c_emit* 88 files + c_avx/c_neon — direct ELF >100k lines/s, Merkle K.
+Hub4 Enforcer openOODA/scripts/enforcer.oo + verify_all.oo + check_board.oo — 8 Gates, single command.
+Fix hubs before tail. 4754 std files are commodity if hubs hold.
+
+## 4. Systems Thinking — Feedback & Invariants
+
+Reinforcing: Ps,info=((T-D)/W)*V,Info: T↑ → V↑ → more agents → faster decide → T↑.
+Balancing: D=D,rebuild+D,token_burn+D,alloc+D,search+D,verify; W↑ → Ps↓.
+Cache: Hash(u)=H(Type||Path||Content||Sum Children); K_manifest=H(relpath||ast_hash); Delta_path!=0 → eta 0.998→0 → tau_build eta*hit+(1-eta)*compile → seconds.
+Team: D,search=κ*M*K*logN; 12 repos multiply K.
+Invariants Delta_path=0: Merkle keys, LLM KV-prefix, Landauer arenas, substratum stability (gov not trigger engine rebuild). Violation via symlinks/std alias already.
+
+## 5. Blue Ocean — Unique
+
+Do not just merge 12→3. Capability-Sealed Microkernel: repos as 14-token cspace, compiler microkernel, std servers, verify_all monitor. Sovereign LSP: ooda.ebnf → generate grammar deterministically, editors speak LSP stdio only. Merkle Registry: key=H(ast_hash||cap_set||wasm_bytes), O(log M) P2P verify. Sparing Ingress: enforce ooda outline 1.3% ρ≥0.987, forbid raw read >256 lines.
+
+## 6. REDTEAM 4-Gate Veto
+
+Red1 Hunter: Fake decoupling — vscode/tree-sitter JS regex vs EBNF, c_emit python re.sub _pad heuristic, hyg drift line-count snapshot. Veto conditional.
+Red2 Falsifier: Repo count 0 or 50, path traversal ../, token limit 1000 vs 1048576, 256 ceiling. Veto open (2 blockers: rebuild-blocker).
+Red3 Tracer: ((void)0) in registry — 100+ ooda_aero_* dummy pkgs not wired via cli/cmd_pm → chs_rt_fetch verify. Veto advisory.
+Red4 Jailor: 14 CUT ambient paths; install.sh shell cannot carry &FsWriteCap, registry fetch via HttpCap, editor JS exfil. Veto partial — hybrid shell wrapper → ooda/install/install.oo with caps required.
+
+Overall: CONDITIONAL VETO — 3-tier DAG principled, Delta_path=0 correct, 4 hubs dominate, but pure rebuild gates red (c_emit_olist guard + seed rebootstrap needed).
+
+## 7. Proposals — Elegant 3 Options
+
+Proposal A Minimal Closed 3-Tier RECOMMENDED: 3 repos openOODA (gov+research), ooda (engine+std+tools+qa), github.io (portal+registry+brand+dist→Releases). C=3 (-95.5%), eta 0.998, 0 redundant closures. Archive helloworld, install, registry, brand, research, qa, tree-sitter, vscode via subtree + symlink period.
+
+Proposal B 4-Tier Provenance: Keep registry separate for Ed25519 signing isolation (portal fetch, not co-host). C=6 (-90.9%), security vs elegance tradeoff.
+
+Proposal C Pragmatic 5-Repo: Keep challenges (renamed qa) external to resolve naming collision, helloworld separate forkable. C=10 (-84.8%), lowest migration risk.
+
+Execute via Blueprint Phases 0-3: tag v2.9.1-baseline, delete shims, subtree merges, centralize product.yml to .github, enforce verify_all single command, lock Delta_path=0.
+
+## 8. Next Step
+
+Choose A (minimal) with B exception if signing isolation required. No moves now. Plan awaits your decision and compiler DONE signal for MATH swarm.
+
