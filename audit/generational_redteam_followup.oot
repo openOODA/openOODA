@@ -168,18 +168,22 @@ A second REDTEAM pass was executed to repair the blockers identified above.
 - Updated `openOODA/scripts/enforcer.oo` to drop stale `.md` name exceptions.
 - **Verification:** `generate_shipped.oo` reports `passed=16 failed=0` and `Lock files present: 32 of 32`.
 
-## 12. Outstanding Residuals
+## 12. Resolved Residuals
 
-- `runtime/chs_rt_crypto.c:263-277` `async_spawn_internal`/`async_join_internal` remains a synthetic string stub. It does not create OS threads or schedule work.
-- `ooda/runtime/*.c` and `*.h` form the Gen 1 silicon substrate and are outside the `.oo`-only governance model. A formal bounded exception or `.oo` runtime sunset plan is still needed; until then they are excluded from the enforcer's extension scan.
+- The fake `async_spawn_internal`/`async_join_internal` API, `std/sync/async.oo`, and `std/os/async.oo` have been removed. The real pthread surface in `std/os/thread.oo` (`thr_spawn`/`thr_join` under `&ThreadCap`) is the only supported concurrency path.
+- The standalone research C/H files `oo_hide.c/h`, `oo_holo.c/h`, and `oo_sha256.c/h` have been removed from `ooda/runtime/`; the smoke tests and `.gitignore` exceptions that depended on them were also removed.
+
+## 13. Remaining Residuals
+
+- `ooda/runtime/*.c` and `*.h` still form the Gen 1 silicon substrate and are outside the `.oo`-only governance model. A formal bounded exception or `.oo` runtime sunset plan is still needed; until then they are excluded from the enforcer's extension scan.
 - `x86_ssa_smoke.oo` and `test_contracts_and.oo` are now **PASS**; `x86_ssa_list_lower.oo` was split and kept under the 256-line limit, and `std/compile/llvm_codegen/ssa_lower.oo` was isolated from `oodac/ast.oo` to avoid duplicate `ssa_args_of` symbols.
 - `ooda run` / `ooda test` now emit their transient binary to `.ooda-cache/run/test.bin` instead of leaving `.oo.bin` artifacts in source directories. The enforcer's `enforcer.oo.bin` carve-out is now a defensive belt-and-suspenders fallback, not a primary fix.
 
-## 13. Remaining Generational Debt
+## 14. Remaining Generational Debt
 
 Per the Master Audit (`openOODA/audit/generational_ooda_master_audit.oot`), the repository's measured baseline remains **Generation 2.5** — the product runtime is Gen 2/3, the type system/capabilities are Gen 4, but the lowest physical invariants (Gen 1 concurrency/arena/SIMD) still carry residual stubs and data races. The taxonomy fix resolves the *documentation* generation count, but the next lowest-generation engineering work is in `runtime/chs_rt_arena.c`, `chs_rt_thread.c`, and capability confinement.
 
-## 14. Final Continuous-Run Verification
+## 15. Final Continuous-Run Verification
 
 | Suite | Result |
 |-------|--------|

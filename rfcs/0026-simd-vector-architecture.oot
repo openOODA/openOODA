@@ -1,0 +1,142 @@
+# RFC 0026: Sovereign SIMD Vector Architecture & Fused Multiply-Add Substrate
+Floor: 2
+Thrust: 9
+Patch: 0
+File: openOODA/rfcs/0026-simd-vector-architecture.oot
+
+* **RFC ID**: 0026
+* **Author**: openOODA SIMD & HPC Architecture Team
+* **Status**: Accepted
+* **Created**: 2026-08-30
+
+---
+
+## 💡 Feature Overview
+
+This RFC defines first-class 256-bit SIMD vector types and hardware-accelerated fused multiply-add operations for openOODA. The architecture introduces native primitive types `f32x8` (8-lane single precision) and `f64x4` (4-lane double precision), combined with zero-overhead `fma` intrinsics.
+
+The SIMD subsystem enforces strict 32-byte memory alignment invariants, deterministic IEEE 754 arithmetic laws, and fail-closed capability security via `&AllocCap`. It provides native code lowering for x86_64 AVX2 / AVX-512, ARM AArch64 NEON / SVE2, and AMD ROCm / HIP device architectures.
+
+## 🎯 Motivation & Problem Statement
+
+High-performance tensor computing, neural network inference, and scientific simulation require dense data-parallel vectorization:
+1. High Overhead of Scalar Loops: Processing high-dimensional arrays with scalar instructions wastes hardware execution units and increases memory bus pressure.
+2. Silent Precision Drift: Unfused multiply and add sequences incur double rounding errors ($2\text{ ULP}$), destabilizing iterative numerical algorithms.
+3. Unaligned Memory Faults: SIMD vector loads from unaligned memory boundaries cause performance penalties or hardware alignment exceptions.
+4. Non-Deterministic Emulation: Generic compilers introduce non-deterministic instruction selection when vectorizing loops across differing hardware architectures.
+
+openOODA requires sovereign, hardware-direct SIMD primitives with mathematical determinism, unforgeable capability validation, and bit-exact backend lowering.
+
+## 📐 Detailed Specification
+
+### 1. Vector Type Grammar & Memory Representation
+
+openOODA introduces native 256-bit value types:
+
+```ooda
+// 8-lane 32-bit floating point vector (256-bit register)
+type f32x8 = primitive;
+
+// 4-lane 64-bit floating point vector (256-bit register)
+type f64x4 = primitive;
+```
+
+Vector constructors and lane extraction operations:
+* `f32x8_splat(val: Float) -> f32x8`: Broadcast a scalar `Float` across all 8 lanes.
+* `f32x8_load_aligned(cap: &AllocCap, ptr: FloatPtr, offset: Int) -> f32x8`: Load 8 packed floats from a 32-byte aligned address.
+* `f32x8_store_aligned(cap: &AllocCap, ptr: FloatPtr, offset: Int, vec: f32x8) -> Void`: Store 8 packed floats to a 32-byte aligned address.
+* `f32x8_get_lane(vec: f32x8, lane: Int) -> Float`: Extract scalar value from lane `0..7`.
+* `f64x4_splat(val: Float) -> f64x4`: Broadcast a 64-bit scalar across all 4 lanes.
+* `f64x4_load_aligned(cap: &AllocCap, ptr: FloatPtr, offset: Int) -> f64x4`: Load 4 packed floats from a 32-byte aligned address.
+* `f64x4_store_aligned(cap: &AllocCap, ptr: FloatPtr, offset: Int, vec: f64x4) -> Void`: Store 4 packed floats to a 32-byte aligned address.
+
+### 2. 32-Byte Memory Alignment Invariants
+
+All vector load and store instructions enforce strict 32-byte memory alignment:
+* `ptr + (offset * sizeof(elem))` must satisfy `address % 32 == 0`.
+* Misaligned load or store attempts trigger an immediate fail-closed panic (`TRAP_0x20_SIMD_ALIGNMENT_FAULT`).
+* Dynamic vector allocations via `&AllocCap` automatically enforce 32-byte boundary alignment.
+
+### 3. Fused Multiply-Add (`fma`) Mathematical Laws
+
+The `fma` instruction calculates $(a \times b) + c$ as an atomic ternary operation:
+* Precision Invariant: Single intermediate rounding with maximum error bound $\le 1\text{ ULP}$ (Unit in the Last Place).
+* IEEE 754-2019 Conformance: Zero intermediate overflow or underflow when intermediate product fits hardware exponent range.
+* Special Value Rules:
+  - If $a = 0$ and $b = \infty$, result is canonical quiet NaN ($qNaN$).
+  - If $a \times b = \infty$ and $c = -\infty$, result is canonical quiet NaN ($qNaN$).
+  - Sign bit preservation adheres strictly to IEEE 754 sign rules.
+
+Core FMA function signatures:
+* `f32x8_fma(a: f32x8, b: f32x8, c: f32x8) -> f32x8`: Lane-wise $(a_i \times b_i) + c_i$ for $i \in [0, 7]$.
+* `f64x4_fma(a: f64x4, b: f64x4, c: f64x4) -> f64x4`: Lane-wise $(a_i \times b_i) + c_i$ for $i \in [0, 3]$.
+* `fma(a: Float, b: Float, c: Float) -> Float`: Scalar hardware fused multiply-add.
+
+### 4. Vector Arithmetic & Reductions
+
+Standard arithmetic operators apply element-wise across SIMD vectors:
+* Arithmetic: `f32x8_add`, `f32x8_sub`, `f32x8_mul`, `f32x8_div`, `f32x8_min`, `f32x8_max`.
+* Horizontal Reductions: `f32x8_reduce_sum(vec: f32x8) -> Float`, `f64x4_reduce_sum(vec: f64x4) -> Float`.
+* Fast Approximations: `f32x8_rsqrt(vec: f32x8) -> f32x8` (reciprocal square root with Newton-Raphson refinement).
+
+### 5. Backend Lowering & Target Code Generation
+
+The compiler pipeline lowers SIMD operations directly to target ISA intrinsics:
+
+1. **x86_64 AVX2 / FMA3**:
+   - `f32x8` maps to 256-bit `__m256` registers (`ymm0`..`ymm15`).
+   - `f64x4` maps to 256-bit `__m256d` registers (`ymm0`..`ymm15`).
+   - `f32x8_fma` lowers to `vfmadd213ps %ymm_c, %ymm_b, %ymm_a` (`_mm256_fmadd_ps`).
+   - `f64x4_fma` lowers to `vfmadd213pd %ymm_c, %ymm_b, %ymm_a` (`_mm256_fmadd_pd`).
+
+2. **x86_64 AVX-512**:
+   - Compiles to 512-bit vector registers (`zmm0`..`zmm31`) using lower-half 256-bit sub-register views with zero penalty.
+   - Lowers to `_mm512_fmadd_ps` / `_mm256_fmadd_ps` with AVX-512VL support.
+
+3. **ARM AArch64 NEON & SVE2**:
+   - Pairs dual 128-bit NEON vector registers (`v0.4s`, `v1.4s`) for `f32x8`.
+   - Lowers to `fmla.4s` (single precision) and `fmla.2d` (double precision).
+   - On ARM SVE2 hardware, lowers directly to 256-bit scalable predicate registers.
+
+4. **AMD ROCm / HIP GPU**:
+   - Lowers to native device vectors `float8` / `double4`.
+   - Compiles arithmetic to `v_fma_f32` and `v_fma_f64` machine instructions.
+
+## 🛡️ Security & Capability Impact
+
+### 1. Capability Security Model
+
+SIMD vector allocations and memory transactions require explicit, unforgeable capability tokens:
+* `&AllocCap`: Required for allocating 32-byte aligned vector memory buffers and executing aligned memory transfers.
+* Operations lacking `&AllocCap` are rejected statically at compile time (`E_CAP_MISSING`). Ambient memory vectorization is strictly forbidden.
+
+### 2. Memory Boundary & Sandboxing Invariants
+
+* Out-of-Bounds Protection: Vector load and store offsets are validated against allocation bounds descriptors.
+* Alignment Enforcement: Addresses not divisible by 32 trigger an immediate runtime trap.
+* Cross-Thread Isolation: SIMD registers are cleared on context switches to prevent information leakage across isolation domains.
+
+## 🧪 Testing & Verification Criteria
+
+Verification requires 100% test pass rate across 5 automated verification suites:
+
+### 1. Numerical Parity & Bit-Exact Precision
+* Bit-Exact Reference Parity: Assert `f32x8` and `f64x4` arithmetic matches double-precision scalar reference within 1 ULP.
+* FMA Precision Verification: Assert `fma(a, b, c)` produces exact single-rounding value without intermediate precision truncation.
+
+### 2. Alignment & Boundary Falsification
+* Misaligned Pointer Trap: Assert misaligned pointer offsets (`offset % 32 != 0`) trigger `TRAP_0x20_SIMD_ALIGNMENT_FAULT`.
+* Out-of-Bounds Rejection: Assert vector reads exceeding allocated buffer lengths fail closed.
+
+### 3. Capability Enforcement
+* Reject vector allocation attempts lacking `&AllocCap` with static compilation error.
+* Assert zero ambient vector access across all library modules.
+
+### 4. Cross-Platform Parity Soak
+* Run 10,000-operation randomized test vectors across AVX2, AVX-512, NEON, and ROCm HIP targets.
+* Verify bit-identical results across all target architectures for identical IEEE 754 inputs.
+
+### 5. Governance & Code Quality Gate
+* Strictly <= 256 lines in ASD-STE100 technical English.
+* SemVer pins conform to Floor: 2, Thrust: 9, Patch: 0.
+* Pass `rfc_lint.oo`, `check_board.oo`, `verify_all.oo`, and `enforcer.oo`.

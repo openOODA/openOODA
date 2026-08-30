@@ -1,0 +1,52 @@
+// # Red Team Pre-Commit Hook Gate
+//
+// Logline: Enforce the 4 Red Team empirical falsification gates (Red 1 to Red 4) on staged commits.
+//
+// Setup: SysCap granted to invoke Red Team probe suites via ooda/bin/ooda. Fail closed on any veto.
+//
+// Beats:
+//   1. Red 1 Heuristic Hunter: Lowering AST integrity and decoy keyword immunity.
+//   2. Red 2 Boundary Falsifier: Dynamic dimension and collection bounds validation.
+//   3. Red 3 Data-Path Tracer: Canonical board whitelist and machine code execution data-paths.
+//   4. Red 4 Hermetic Jailor: Capability sandboxing, token integrity, and path containment.
+
+pub fn main(sys: &SysCap) {
+    let script_cmd: String = "set -e; "
+        + "src_root=\".\"; "
+        + "if [ -d \"openOODA\" ] && [ -d \"ooda\" ]; then src_root=\".\"; "
+        + "elif [ -d \"../openOODA\" ] && [ -d \"../ooda\" ]; then src_root=\"..\"; "
+        + "elif [ -d \"../../openOODA\" ]; then src_root=\"../..\"; "
+        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/ooda\" ] && [ -f \"$d/openOODA/REDTEAM.oot\" ]; then src_root=\"$d\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
+        + "cd \"$src_root\" 2>/dev/null || true; "
+        + "if [ -x \"ooda/bin/ooda\" ]; then OODA=\"$(pwd)/ooda/bin/ooda\"; "
+        + "elif [ -x \"./bin/ooda\" ]; then OODA=\"$(pwd)/bin/ooda\"; "
+        + "else OODA=\"ooda\"; fi; "
+        + "echo \"===================================================================\"; "
+        + "echo \"  RED TEAM PRE-COMMIT VETO GATE (RED 1 - RED 4 FALSIFICATION)      \"; "
+        + "echo \"===================================================================\"; "
+        + "echo \"[Gate 1 & 2: Red 1 Heuristic Hunter + Red 2 Boundary Falsifier]\"; "
+        + "\"$OODA\" run qa/tests_challenger_1/test_c1_red1_red2_falsification.oo; "
+        + "echo \"[Gate 1 Additional: HIP & Math Red 1 Keyword Smoke]\"; "
+        + "(cd ooda && \"$OODA\" run scripts/hip_red1_keyword_trap_smoke.oo); "
+        + "(cd ooda && \"$OODA\" run scripts/math_red1_heuristic_smoke.oo); "
+        + "echo \"[Gate 3 & 4: Red 3 Data-Path Tracer + Red 4 Hermetic Jailor]\"; "
+        + "\"$OODA\" run qa/tests_challenger_2/test_c2_red3_red4_falsification.oo; "
+        + "echo \"[Gate 3 & 4 Additional: Std Law Red 3 & Red 4 Smoke]\"; "
+        + "(cd ooda && \"$OODA\" run scripts/std_red3_datapath_smoke.oo); "
+        + "(cd ooda && \"$OODA\" run scripts/std_red4_hermetic_smoke.oo); "
+        + "echo \"===================================================================\"; "
+        + "echo \"  ALL 4 RED TEAM GATES CERTIFIED PASS (0 VETOES)                   \"; "
+        + "echo \"===================================================================\"; "
+        + "echo \"redteam_hook: OK\";";
+
+    let res = sys_exec(sys, "sh", "-c", script_cmd);
+    match res {
+        Ok(out) => {
+            println(out);
+        },
+        Err(e) => {
+            println("RED TEAM VETO: Pre-commit gate failed closed: " + e);
+            process_exit(1);
+        }
+    }
+}
