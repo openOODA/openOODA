@@ -28,7 +28,10 @@ pub fn main(p: &ProcessCap, env: &EnvCap) {
 
     // Bust the .oot read_file emit cache. The compiler constant-folds read_file
     // into the compiled build_ssg binary, so stale .oot data survives in the cache.
-    if !ok_cmd(p, "rm -rf " + root + "/.ooda-cache " + root + "/ooda/.ooda-cache " + root + "/ooda/bin/.ooda-cache $HOME/.ooda-cache /tmp/build_ssg /tmp/build_ssg_* /tmp/ssg_*") {
+    // Delete the build_ssg emit cache. Leave the compiler's own ooda/.ooda-cache
+    // alone because the running process may hold it open; the stale data is in
+    // the project-level .ooda-cache and the /tmp build artifacts.
+    if !ok_cmd(p, "rm -rf " + root + "/.ooda-cache $HOME/.ooda-cache /tmp/build_ssg /tmp/build_ssg_* /tmp/ssg_*") {
         fail(p, "cache cleanup failed");
         return;
     }
@@ -44,5 +47,12 @@ pub fn main(p: &ProcessCap, env: &EnvCap) {
         fail(p, "build_ssg.oo failed");
         return;
     }
+
+    let appjs_cmd: String = "python3 " + root + "/openOODA/scripts/sync_appjs.py " + root + " " + root + "/openOODA.github.io";
+    if !ok_cmd(p, appjs_cmd) {
+        fail(p, "sync_appjs.py failed");
+        return;
+    }
+
     println("[SSG] Fresh build complete");
 }
