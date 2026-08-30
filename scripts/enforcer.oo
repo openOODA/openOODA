@@ -22,7 +22,7 @@ pub fn main(sys: &SysCap) {
         + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/ooda\" ] && [ -f \"$d/ooda/cli/main.oo\" ]; then src_root=\"$d\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
         + "cd \"$src_root\" 2>/dev/null || true; fails=0; "
         + "echo '=== 1. Checking Forbidden File Extensions in Product Scope ==='; "
-        + "forbidden=$(find openOODA ooda qa docs -type f \\( -name '*.py' -o -name '*.sh' -o -name '*.md' -o -name '*.js' \\) ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/node_modules/*' ! -path '*/target/*' ! -path '*/e2e/*' ! -path '*/tools/debugger/*' ! -path '*/tests/systems_challenge/*' ! -path '*/tests/c_backend_systems_e2e/*' ! -name 'meta_path_a_hide_rail.sh' ! -name 'oodac_pure_build' ! -name 'install.sh' ! -name 'llvm_test_runner.sh' ! -name 'PROJECT.md' ! -name 'TEST_READY.md' ! -name 'TEST_INFRA.md' ! -name 'LLM_PRIMER.md' ! -name 'coop-coep-shim.js' 2>/dev/null | sort || true); "
+        + "forbidden=$(find openOODA ooda qa docs tests -type f \\( -name '*.py' -o -name '*.sh' -o -name '*.md' -o -name '*.js' \\) ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/node_modules/*' ! -path '*/target/*' ! -path '*/e2e/*' ! -path '*/tools/debugger/*' ! -path '*/tests/systems_challenge/*' ! -path '*/tests/c_backend_systems_e2e/*' ! -name 'meta_path_a_hide_rail.sh' ! -name 'oodac_pure_build' ! -name 'install.sh' ! -name 'llvm_test_runner.sh' ! -name 'coop-coep-shim.js' 2>/dev/null | sort || true); "
         + "if [ -n \"$forbidden\" ]; then echo '[FORBIDDEN FILE FAIL] Found unauthorized .py/.sh/.md/.js files:'; echo \"$forbidden\"; fails=$((fails + 1)); fi; "
         + "echo '=== 2. Checking Line Limits (<= 256 lines) ==='; "
         + "oversized=$(find openOODA ooda qa docs openOODA.github.io -type f \\( -name '*.oo' -o -name '*.oot' \\) ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/bootstrap/corpus/*' ! -path '*/wasm_interpreter/*' ! -path '*/qa_challenger_*' 2>/dev/null -exec wc -l {} + | awk '$1 > 256 && $2 != \"total\" {print $1, $2}' || true); "
@@ -63,13 +63,19 @@ pub fn main(sys: &SysCap) {
         + "  done; "
         + "fi; "
         + "echo '=== 8. Compiler is not the product CLI ==='; "
+        + "echo '=== 9. Checking Gen 1 C/H Substrate Boundary ==='; "
+        + "ch_bad=$(find openOODA ooda qa docs -type f \\( -name '*.c' -o -name '*.h' \\) ! -path '*/runtime/*' ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/.ooda-cache/*' ! -path '*/wasm_interpreter/*' 2>/dev/null | sort || true); "
+        + "if [ -n \"$ch_bad\" ]; then echo '[C/H BOUNDARY FAIL] Found .c/.h files outside ooda/runtime/:'; echo \"$ch_bad\"; fails=$((fails + 1)); fi; "
         + "for b in ooda/oodac/oodac ooda/oodac_bin; do "
         + "  [ -e \"$b\" ] || continue; "
         + "  if grep -a -q 'pure .oo product CLI' \"$b\" 2>/dev/null; then echo \"[IDENTITY FAIL] $b is the product CLI\"; fails=$((fails + 1)); fi; "
         + "  if ! grep -a -q 'oodac: usage:' \"$b\" 2>/dev/null; then echo \"[IDENTITY FAIL] $b missing oodac usage\"; fails=$((fails + 1)); fi; "
         + "done; "
         + "if [ -e ooda/bin/ooda ]; then if ! grep -a -q 'pure .oo product CLI' ooda/bin/ooda 2>/dev/null; then echo '[IDENTITY FAIL] ooda/bin/ooda is not the product CLI'; fails=$((fails + 1)); fi; fi; "
-        + "if [ \"$fails\" -eq 0 ]; then echo \"Format & 10-Board Master Governance Lint OK: zero forbidden files, all line counts <= 256, zero intermediate files in std/, all 4-element Academy headers compliant, zero trailing commas in structs, RFCs template-clean.\"; else echo \"FAILED: $fails total violations found.\"; exit 1; fi";
+        + "echo '=== 10. Checking Zero Compiled/Generated Artifacts in Product Scope ==='; "
+        + "genart=$(find openOODA ooda qa tests -type f \\( -name '*.oo.bin' -o -name '*.o' -o -name '*.wasm' -o -name '*.pb.c' -o -name 'preamble_*.c' -o -name '*.protos.c' -o -name '*.tu.c' -o -name '*.tmp.c' -o -name '*.manifest' \\) ! -path '*/.ooda-cache/*' ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/target/*' ! -path '*/corpus/*' ! -path '*/fixtures/*' 2>/dev/null | sort || true); "
+        + "if [ -n \"$genart\" ]; then echo '[GENERATED ARTIFACT FAIL] Found compiled/emit artifacts in product scope:'; echo \"$genart\"; fails=$((fails + 1)); fi; "
+        + "if [ \"$fails\" -eq 0 ]; then echo \"Format & 10-Board Master Governance Lint OK: zero forbidden files, all line counts <= 256, zero intermediate files in std/, all 4-element Academy headers compliant, zero trailing commas in structs, RFCs template-clean, zero generated artifacts in product scope.\"; else echo \"FAILED: $fails total violations found.\"; exit 1; fi";
 
     let res = sys_exec(sys, "sh", "-c", check_cmd);
     match res {

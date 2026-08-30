@@ -1,0 +1,41 @@
+# CI_INFRASTRUCTURE — GitHub Actions and Repository Metadata Exception
+#
+# Logline: Bounded carve-out for GitHub Actions workflows and repository metadata files.
+#
+# Setup: Referenced by openOODA/scripts/enforcer.oo. Authorizes .yml workflows and dotfile metadata because GitHub requires them.
+#
+# Beats:
+#   1. Declare authorized directories and formats.
+#   2. State invariants that keep product source out of CI metadata.
+#   3. Require workflows to run the enforcer and check_board before publishing.
+#   4. Make this exception permanent.
+
+## 1. Scope
+
+The following repository-level files are outside the `.oo`/`.oot` file law:
+
+- `.github/workflows/*.yml` — GitHub Actions CI/CD workflows
+- `ooda/.github/workflows/*.yml` — GitHub Actions CI/CD workflows in the compiler subtree
+- `openOODA/.github/workflows/*.yml` — GitHub Actions CI/CD workflows in the governance subtree
+- `.github/LICENSE`, `.github/LICENSE-*`, `.github/CNAME`, `.github/.gitignore`, `.github/ISSUE_TEMPLATE/*.oot` — repository metadata
+- `.gitignore` files at repository and subtree roots
+
+These files are not product source code, compiler modules, standard-library modules, or test harnesses.
+
+## 2. Authorized Artifact Formats
+
+- `.yml` — GitHub Actions workflow definitions
+- `.oot` — issue templates and documentation
+- plain-text metadata files (`LICENSE`, `CNAME`, `.gitignore`)
+
+## 3. Invariants
+
+- Workflows must not install host-language toolchains (`cargo`, `rustup`, `npm`, `pip`, etc.).
+- Every workflow that builds, tests, or publishes artifacts must run `openOODA/scripts/enforcer.oo` and `openOODA/scripts/check_board.oo` before any merge or release.
+- No `.yml` file may exist inside product source directories (`ooda/oodac/`, `ooda/std/`, `ooda/cli/`, `ooda/scripts/`, `qa/tests/`, `openOODA/scripts/`, etc.).
+- Workflows must not reference missing files or scripts.
+- Workflows must not commit secrets, credentials, or tokens.
+
+## 4. Exit Criteria
+
+This exception is permanent. GitHub Actions requires YAML workflow definitions.

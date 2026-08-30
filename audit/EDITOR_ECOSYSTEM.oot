@@ -1,0 +1,40 @@
+# EDITOR_ECOSYSTEM — IDE and Parser Tooling Exception
+#
+# Logline: Bounded carve-out for editor/grammar support files that must use non-.oo formats.
+#
+# Setup: Referenced by openOODA/scripts/enforcer.oo. Authorizes syntax/grammar/editor files in vscode/ and tree-sitter/.
+#
+# Beats:
+#   1. Declare authorized directories and formats.
+#   2. State invariants that keep product logic out of editor tooling.
+#   3. Forbid executable or package-install scripts.
+#   4. Make this exception permanent.
+
+## 1. Scope
+
+The editor ecosystem directories provide IDE support and tree-sitter grammar for `.oo` source files:
+
+- `vscode/` — VSCode / Cursor language client, LSP bridge, TextMate grammar
+- `tree-sitter/` — tree-sitter parser grammar, queries, and test corpus
+
+These directories are outside the product source tree and are not used to build the compiler, runtime, or CLI.
+
+## 2. Authorized Artifact Formats
+
+- `.js` — VSCode extension entry point, LSP client, server
+- `.json` — `package.json`, `tsconfig.json`, TextMate grammar, LSP configs
+- `.scm` — tree-sitter query files (highlights, injections, locals, folds)
+- `.txt` — minimal parser test corpus fixtures
+- `.oot` — documentation and specification files
+
+## 3. Invariants
+
+- No compiler, runtime, standard-library, or capability-enforcement logic may be implemented in these directories.
+- `package.json` must not include `preinstall`, `postinstall`, or any lifecycle script that downloads or executes non-openOODA binaries.
+- Files must remain syntactic/UX-only: grammar, highlighting, completion, and LSP client glue.
+- No `.py`, `.sh`, `.rb`, `.pl`, `.md`, `.c`, or `.h` files may be added to these directories.
+- Any `.js` LSP client must validate server responses and must not execute server-provided code.
+
+## 4. Exit Criteria
+
+This exception is permanent. VSCode and tree-sitter require JavaScript/JSON/SCM/Text formats.

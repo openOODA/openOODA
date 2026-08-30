@@ -110,17 +110,19 @@ A second REDTEAM pass was executed to repair the blockers identified above.
 
 ### 10.6 SSG and Embedded Docs Restored
 
-- Recreated `openOODA.github.io/scripts/sync_appjs.py` to re-embed the 13 `.oot` docs into `app.js`.
-- `build_ssg_fresh.oo` now completes with `[SSG] Fresh build complete` and 20 targets + `app.js` sync.
+- Replaced the unauthorized `sync_appjs.py` with a pure `.oo` implementation: `openOODA/scripts/sync_appjs.oo`.
+- Fixed JSON escaping in `sync_appjs.oo` so the embedded `DOCS` object is parseable by Node's `JSON.parse`.
+- `build_ssg_fresh.oo` now invokes `sync_appjs.oo` and completes with `[SSG] Fresh build complete` and 20 targets + `app.js` sync.
 
 ### 10.7 Full REDTEAM Re-Run
 
 | Suite | Result |
 |-------|--------|
-| `openOODA/scripts/enforcer.oo` | **OK** |
-| `openOODA/scripts/install_redteam_breaktest.oo` | **ALL 4 GATES CERTIFIED** |
+| `openOODA/scripts/enforcer.oo` | **OK** (0 forbidden files, 0 line-limit violations) |
+| `openOODA/scripts/install_redteam_breaktest.oo` | **ALL GATES CERTIFIED** (Gen 3 pack + Gen 2 source fallback) |
 | `openOODA/scripts/web_redteam_full_review.oo` | **CERTIFIED** (0 failures, 4 advisory warnings) |
 | `openOODA/scripts/generational_drift_breaktest.oo` | **OK** `version=v2.8.0` `generations=Gen 1-7 (Gen 8 unknowable)` |
+| `openOODA/scripts/generate_shipped.oo` | **OK** `passed=16 failed=0`, `Lock files present: 32 of 32` |
 | `tests/test_m3_quantum_swarm.oo` | **100% PASS** |
 
 ## 11. Additional Repairs Applied
@@ -134,8 +136,8 @@ A second REDTEAM pass was executed to repair the blockers identified above.
 
 ### 11.2 Embedded `app.js` Sync Restored
 
-- Recreated `openOODA.github.io/scripts/sync_appjs.py` after the previous helper was removed.
-- `build_ssg_fresh.oo` now completes and re-embeds all 13 `.oot` guide documents into `app.js`.
+- Removed `openOODA.github.io/scripts/sync_appjs.py` and implemented `openOODA/scripts/sync_appjs.oo` in pure `.oo`.
+- `build_ssg_fresh.oo` now completes and re-embeds all 13 `.oot` guide documents into `app.js` as valid JSON.
 
 ### 11.3 `c_line_secret` Fixture Healed
 
@@ -153,9 +155,24 @@ A second REDTEAM pass was executed to repair the blockers identified above.
 | `scripts/test_x86_ssa_smoke.oo` | **FAIL** — undefined `x86_ssa_emit_program` (pre-existing, unrelated) |
 | `scripts/test_contracts_and.oo` | **FAIL** — invalid C initializer/struct scalar errors (pre-existing, unrelated) |
 
-## 12. Outstanding Gen 3 Residual
+### 11.5 C Backend `for ... in ...` Support Restored
 
-`runtime/chs_rt_crypto.c:263-277` `async_spawn_internal`/`async_join_internal` remains a synthetic string stub. It does not create OS threads or schedule work. This is an honest, documented residual; real task execution requires a future work queue / work-stealing scheduler and is out of scope for this repair pass.
+- **Root cause:** the lexer now emits `KW_IN` for `in`, but `ooda/oodac/c_emit_for.oo` and `c_emit_simd.oo` only accepted `IDENT "in"`, causing `ERR c_emit for residual (need 'in')` on `for j in 0..1` and collection loops.
+- **Fix:** updated both guards to accept `KW_IN` or legacy `IDENT "in"`; moved the source `#line` stamp immediately before the generated `for` so `scripts/c_line_ctrl_smoke.oo` and `scripts/for_expr_bound_smoke.oo` pass.
+
+### 11.6 Shipped Inventory & Forbidden Artifacts Cleaned
+
+- Fixed stale lock path in `openOODA/scripts/generate_shipped.oo`: `../ooda/fixtures/sum_shape_smoke.oo` → `../ooda/std/math/extended/sum_shape_smoke.oo`.
+- Removed generated artifacts with forbidden extensions from product scope: `ooda/qa/ai/bias_variance_theory.oo.js`, `ooda/qa/crypto/rsa_oaep_law.oo.js`, `ooda/std/principles/category_adjunction_theory.oo.bin`.
+- Removed duplicate Markdown files from `openOODA.github.io/` (`PROJECT.md`, `TEST_INFRA.md`, `TEST_READY.md`) and moved historical root `.md` files to `.agents/historical_md/`.
+- Updated `openOODA/scripts/enforcer.oo` to drop stale `.md` name exceptions.
+- **Verification:** `generate_shipped.oo` reports `passed=16 failed=0` and `Lock files present: 32 of 32`.
+
+## 12. Outstanding Residuals
+
+- `runtime/chs_rt_crypto.c:263-277` `async_spawn_internal`/`async_join_internal` remains a synthetic string stub. It does not create OS threads or schedule work.
+- `ooda/runtime/*.c` and `*.h` form the Gen 1 silicon substrate and are outside the `.oo`-only governance model. A formal bounded exception or `.oo` runtime sunset plan is still needed; until then they are excluded from the enforcer's extension scan.
+- Pre-existing compiler backend gaps remain: `scripts/test_x86_ssa_smoke.oo` (`undefined x86_ssa_emit_program`) and `scripts/test_contracts_and.oo` (invalid C initializer/struct scalar) are unrelated to this pass.
 
 ## 13. Remaining Generational Debt
 
