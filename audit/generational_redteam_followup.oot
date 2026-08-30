@@ -152,8 +152,8 @@ A second REDTEAM pass was executed to repair the blockers identified above.
 |------|--------|
 | `scripts/test_std_smoke.oo` | **PASS** (14/14) |
 | `scripts/test_emit_simple.oo` | **PASS** |
-| `scripts/test_x86_ssa_smoke.oo` | **FAIL** — undefined `x86_ssa_emit_program` (pre-existing, unrelated) |
-| `scripts/test_contracts_and.oo` | **FAIL** — invalid C initializer/struct scalar errors (pre-existing, unrelated) |
+| `scripts/test_x86_ssa_smoke.oo` | **PASS** — `x86_ssa_emit_program` alias collapsed and verified  |
+| `scripts/test_contracts_and.oo` | **PASS** — contract expressions parenthesized; missing fixtures added; marker-file exit checks used  |
 
 ### 11.5 C Backend `for ... in ...` Support Restored
 
@@ -172,8 +172,27 @@ A second REDTEAM pass was executed to repair the blockers identified above.
 
 - `runtime/chs_rt_crypto.c:263-277` `async_spawn_internal`/`async_join_internal` remains a synthetic string stub. It does not create OS threads or schedule work.
 - `ooda/runtime/*.c` and `*.h` form the Gen 1 silicon substrate and are outside the `.oo`-only governance model. A formal bounded exception or `.oo` runtime sunset plan is still needed; until then they are excluded from the enforcer's extension scan.
-- Pre-existing compiler backend gaps remain: `scripts/test_x86_ssa_smoke.oo` (`undefined x86_ssa_emit_program`) and `scripts/test_contracts_and.oo` (invalid C initializer/struct scalar) are unrelated to this pass.
+- `x86_ssa_smoke.oo` and `test_contracts_and.oo` are now **PASS**; `x86_ssa_list_lower.oo` was split and kept under the 256-line limit, and `std/compile/llvm_codegen/ssa_lower.oo` was isolated from `oodac/ast.oo` to avoid duplicate `ssa_args_of` symbols.
+- `ooda run` / `ooda test` now emit their transient binary to `.ooda-cache/run/test.bin` instead of leaving `.oo.bin` artifacts in source directories. The enforcer's `enforcer.oo.bin` carve-out is now a defensive belt-and-suspenders fallback, not a primary fix.
 
 ## 13. Remaining Generational Debt
 
 Per the Master Audit (`openOODA/audit/generational_ooda_master_audit.oot`), the repository's measured baseline remains **Generation 2.5** — the product runtime is Gen 2/3, the type system/capabilities are Gen 4, but the lowest physical invariants (Gen 1 concurrency/arena/SIMD) still carry residual stubs and data races. The taxonomy fix resolves the *documentation* generation count, but the next lowest-generation engineering work is in `runtime/chs_rt_arena.c`, `chs_rt_thread.c`, and capability confinement.
+
+## 14. Final Continuous-Run Verification
+
+| Suite | Result |
+|-------|--------|
+| `openOODA/scripts/enforcer.oo` | **OK** (0 forbidden files, 0 line-limit violations, 0 generated artifacts in product scope) |
+| `openOODA/scripts/install_redteam_breaktest.oo` | **ALL 4 GATES CERTIFIED** (Gen 3 pack + Gen 2 source fallback) |
+| `openOODA/scripts/web_redteam_full_review.oo` | **CERTIFIED** (0 failures, 4 advisory warnings) |
+| `openOODA/scripts/generational_drift_breaktest.oo` | **OK** `version=v2.8.0` `generations=Gen 1-7 (Gen 8 unknowable)` |
+| `openOODA/scripts/generate_shipped.oo` | **OK** `passed=16 failed=0` `Lock files present: 32 of 32` |
+| `tests/test_m3_quantum_swarm.oo` | **100% PASS** |
+| `ooda/scripts/test_std_smoke.oo` | **PASS** (14/14) |
+| `ooda/scripts/test_emit_simple.oo` | **PASS** |
+| `ooda/scripts/c_line_ctrl_smoke.oo` | **PASS** |
+| `ooda/scripts/for_expr_bound_smoke.oo` | **PASS** |
+| `ooda/scripts/c_line_secret_smoke.oo` | **PASS** |
+| `ooda/scripts/test_x86_ssa_smoke.oo` | **PASS** |
+| `ooda/scripts/test_contracts_and.oo` | **PASS** (3/3) |
