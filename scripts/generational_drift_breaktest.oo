@@ -1,0 +1,76 @@
+// # Generational Drift Breaktest
+//
+// Logline: Negative-trust regression test that fails if the public generational taxonomy or version pins drift.
+//
+// Setup: ProcessCap runs grep; reads project pkg version.
+//
+// Beats:
+//   1. Assert no public .oot claims only Gen 1 to Gen 6.
+//   2. Assert no stale v2.6.5 pins remain on public surfaces.
+//   3. Assert templates and SSG JSON-LD match project pkg version.
+//
+// Exit 0 = no drift. Exit 1 = drift detected.
+
+fn cmd_found(p: &ProcessCap, cmd: String) -> Bool {
+    return process_exec(p, cmd).is_ok();
+}
+
+fn fail(msg: String) {
+    println("DRIFT FAIL: " + msg);
+    process_exit(1);
+}
+
+fn pkg_version(p: &ProcessCap, fs: &FsReadCap, path: String) -> String {
+    if !path_exists(fs, path) { fail("pkg missing: " + path); }
+    let tmp: String = "/tmp/ooda_pkg_version.txt";
+    let cmd: String = "grep -E '^version = ' " + path + " | sed 's/version = \"//; s/\"$//' > " + tmp;
+    if !cmd_found(p, cmd) { fail("cannot parse pkg version"); }
+    let r: Result[String, String] = read_file(fs, tmp);
+    if r.is_err() { fail("cannot read " + tmp); }
+    let raw: String = match r { Ok(s) => s, Err(_) => "" };
+    let ver: String = strip(raw);
+    if ver == "" { fail("empty pkg version"); }
+    if str_slice(ver, 0, 1) != "v" { return "v" + ver; }
+    return ver;
+}
+
+fn strip(s: String) -> String {
+    let mut n: Int = chars_len(s);
+    while n > 0 && (str_slice(s, n - 1, n) == "\n" || str_slice(s, n - 1, n) == "\r") {
+        n = n - 1;
+        s = str_slice(s, 0, n);
+    }
+    return s;
+}
+
+pub fn main(p: &ProcessCap, fs: &FsReadCap, env: &EnvCap) {
+    let root_r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
+    let root: String = if root_r.is_ok() { match root_r { Ok(s) => s, Err(_) => "" } } else { "" };
+    if root == "" { fail("set OODA_REPO_ROOT"); return; }
+
+    let pkg_ver: String = pkg_version(p, fs, root + "/openOODA/ooda.pkg");
+
+    // 1. No public .oot should regress to a Gen 1-6 model (allow Gen 1-4, 5-7, 1-7, but not 1-6).
+    if cmd_found(p, "grep -rIE 'Gen 1[^0-9]*[-–][^0-9]*6($|[^0-9])' " + root + "/openOODA.github.io/guide/*.oot " + root + "/openOODA/QUICKREF.oot " + root + "/openOODA/CONSTRAINTS.oot " + root + "/openOODA/NORTHSTAR.oot " + root + "/openOODA/STRUCTURE_EM.oot") {
+        fail("public generation count regressed to Gen 1-6");
+        return;
+    }
+
+    // 2. Stale v2.6.5 must not reappear in public .oot or templates.
+    if cmd_found(p, "grep -rIE 'v2\.6\.5' " + root + "/openOODA.github.io/guide/QuickRef.oot " + root + "/openOODA.github.io/guide/Std.oot " + root + "/openOODA.github.io/templates/shell.html") {
+        fail("stale v2.6.5 pin in public surface");
+        return;
+    }
+
+    // 3. Templates and SSG JSON-LD must match pkg version.
+    if !cmd_found(p, "grep -qE '" + pkg_ver + "' " + root + "/openOODA.github.io/templates/shell.html") {
+        fail("templates/shell.html version does not match " + pkg_ver);
+        return;
+    }
+    if !cmd_found(p, "grep -qE '" + pkg_ver + "' " + root + "/openOODA/scripts/ssg_routes.oo") {
+        fail("ssg_routes.oo JSON-LD version does not match " + pkg_ver);
+        return;
+    }
+
+    println("OK\tgenerational_drift_breaktest\tversion=" + pkg_ver + "\tgenerations=Gen 1-7 (Gen 8 unknowable)");
+}
