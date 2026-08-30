@@ -1,0 +1,48 @@
+// # SSG Cache-Busting Build Wrapper
+//
+// Logline: Clear the compiler's .oot emit cache and rebuild the static site from the current source files.
+//
+// Setup: ProcessCap runs shell commands. Run from the repository root.
+//
+// Beats:
+//   1. Delete .ooda-cache and stale /tmp/build_ssg binaries (the compiler caches read_file of .oot data).
+//   2. Invoke build_ssg.oo with the correct capability grants.
+//   3. Report success or failure.
+
+fn fail(p: &ProcessCap, msg: String) {
+    println("FAIL [SSG] " + msg);
+    process_exit(1);
+}
+
+fn ok_cmd(p: &ProcessCap, cmd: String) -> Bool {
+    return process_exec(p, cmd).is_ok();
+}
+
+pub fn main(p: &ProcessCap, env: &EnvCap) {
+    let root_r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
+    let root: String = if root_r.is_ok() { match root_r { Ok(s) => s, Err(_) => "" } } else { "" };
+    if root == "" {
+        fail(p, "set OODA_REPO_ROOT to the repository root");
+        return;
+    }
+
+    // Bust the .oot read_file emit cache. The compiler constant-folds read_file
+    // into the compiled build_ssg binary, so stale .oot data survives in the cache.
+    if !ok_cmd(p, "rm -rf " + root + "/.ooda-cache " + root + "/ooda/.ooda-cache " + root + "/ooda/bin/.ooda-cache /tmp/build_ssg /tmp/build_ssg_* /tmp/ssg_*") {
+        fail(p, "cache cleanup failed");
+        return;
+    }
+
+    let run_cmd: String = "cd " + root + " && "
+        + "OODA_FS_WRITEDIR=" + root + " "
+        + "OODA_POLICY_WRITE=1 "
+        + "OODA_POLICY_PROCESS=1 "
+        + root + "/ooda/bin/ooda run openOODA/scripts/build_ssg.oo";
+
+    println("[SSG] Fresh build from .oot source");
+    if !ok_cmd(p, run_cmd) {
+        fail(p, "build_ssg.oo failed");
+        return;
+    }
+    println("[SSG] Fresh build complete");
+}
