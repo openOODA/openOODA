@@ -16,17 +16,20 @@ import "ssg_routes.oo";
 import "ssg_template.oo";
 import "ssg_minify.oo";
 
-pub fn resolve_site_root(env: &EnvCap) -> String {
-    let r: Result[String, String] = env_get(env, "OODA_SITE_ROOT");
-    if r.is_ok() {
-        let v: String = match r { Ok(s) => s, Err(_) => "" };
-        if str_len(v) > 0 {
-            return v;
-        }
+pub fn resolve_site_root(fs: &FsReadCap) -> String {
+    if path_exists(fs, "openOODA.github.io/templates/shell.html") {
+        return "openOODA.github.io";
     }
-    println("FAIL [SSG] Set OODA_SITE_ROOT to the website source directory");
-    process_exit(1);
-    return "";
+    if path_exists(fs, "../openOODA.github.io/templates/shell.html") {
+        return "../openOODA.github.io";
+    }
+    if path_exists(fs, "../../openOODA.github.io/templates/shell.html") {
+        return "../../openOODA.github.io";
+    }
+    if path_exists(fs, "templates/shell.html") {
+        return ".";
+    }
+    return "openOODA.github.io";
 }
 
 fn resolve_abs_dest(env: &EnvCap, rel_path: String) -> String {
@@ -81,10 +84,10 @@ fn write_html_file(fs_w: &FsWriteCap, env: &EnvCap, rel_dest: String, content: S
     return write_file(fs_w, abs_path, content);
 }
 
-pub fn main(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap) {
-    let site_root: String = resolve_site_root(env);
+pub fn main(p: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap) {
+    let site_root: String = resolve_site_root(fs_r);
     let shell_path: String = site_root + "/templates/shell.html";
-    let shell_res: Result[String, String] = read_file(fs_r, shell_path);
+    let shell_res: Result[String, String] = load_file_content(p, shell_path);
     if shell_res.is_err() {
         println("FAIL [SSG] cannot load shell template: " + shell_path);
         process_exit(1);
@@ -108,7 +111,7 @@ pub fn main(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap) {
         let r_has_a: Bool = route_has_alias(cfg);
         let r_alias: String = route_alias_file(cfg);
 
-        let body_res: Result[String, String] = get_route_body(fs_r, site_root, cfg);
+        let body_res: Result[String, String] = get_route_body(p, site_root, cfg);
         if body_res.is_err() {
             println("FAIL [SSG] " + r_name);
             process_exit(1);
@@ -160,7 +163,7 @@ pub fn main(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap) {
     }
 
     // Generate 404.html
-    let p404_res: Result[String, String] = read_file(fs_r, site_root + "/templates/404.html");
+    let p404_res: Result[String, String] = load_file_content(p, site_root + "/templates/404.html");
     let p404_body: String = match p404_res {
         Ok(b404) => b404,
         Err(_) => "<h1>Page Not Found</h1>\n<p>The requested route does not exist. <a href=\"/\">Return to Home</a>.</p>"
