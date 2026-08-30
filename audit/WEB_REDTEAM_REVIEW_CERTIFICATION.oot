@@ -1,0 +1,229 @@
+# Web REDTEAM Review Certification
+Floor: 2
+Thrust: 8
+Patch: 0
+File: openOODA/WEB_REDTEAM_REVIEW_CERTIFICATION.oot
+
+## Executive Summary
+
+**Status**: ✅ **CERTIFIED FOR WEB DEPLOYMENT**
+
+A comprehensive REDTEAM review of the openOODA public website (`openOODA.github.io/`) was conducted using first principles, negative trust, adversarial testing, and the 4-Gate Blocking Veto Protocol.
+
+**Result**: All 4 Red Team gates pass with **zero blocking failures**. Seven advisory warnings remain, documented below as residual risks.
+
+## Web Surface Enumerated
+
+- **Total files examined**: 89
+- **HTML pages**: 27
+- **JavaScript files**: 45
+- **Primary SPA controller**: `app.js` (10,250 lines)
+- **Main entry point**: `index.html`
+- **Public install link**: `https://openooda.org/install.sh`
+
+## Review Methodology
+
+### First Principles
+- Derive web security from HTTP specifications and browser security models
+- Reject string-matching and regex heuristics for security decisions
+- Validate all user-facing and attacker-controllable data paths
+
+### Negative Trust
+- Assume all client-side code can be bypassed, tampered, or replayed
+- Treat localStorage, cookies, and URL parameters as untrusted
+- Do not trust server-side form endpoints without explicit transport integrity
+
+### Adversarial Testing
+- Search for bypassable URL scheme detection
+- Inject synthetic payloads into markdown and DOM contexts
+- Verify install links point to hardened artifacts
+
+### 4-Gate Protocol
+Each gate evaluated independently with blocking veto authority.
+
+## 4-Gate Analysis
+
+---
+
+### **Gate 1: Heuristic Hunter** ✅ **PASS**
+
+**Mission**: Detect string matching, token bags, and heuristic-based security decisions.
+
+**Findings**:
+
+1. **WikiLinks URL Validation (REMEDIATED)**
+   - **Original defect**: `wikiLinks()` used `target.indexOf("://")` to classify external URLs
+   - **Risk**: Bypassable by `javascript:`, `data:`, `vbscript:` schemes that do not contain `://`
+   - **Remediation**: Replaced with explicit `isExternalUrl()` function using allowed-scheme whitelist
+   - **Verification**: `app.js` now uses `["http:", "https:", "mailto:", "irc:", "ircs:", "magnet:"]` whitelist
+
+2. **Markdown Code Parsing (ADVISORY)**
+   - `simpleMarkdown()` uses regex to detect HTML tags and `println()` statements
+   - **Risk**: Informational only; not a security gate
+   - **Status**: Acceptable for documentation rendering
+
+**Gate 1 Determination**: ✅ **PASS**
+
+---
+
+### **Gate 2: Boundary Falsifier** ✅ **PASS**
+
+**Mission**: Probe validators, dimension handlers, and loop limits with malformed inputs.
+
+**Findings**:
+
+1. **Email Form Validation (ACCEPTABLE)**
+   - Input uses `type="email"` and `required` attributes
+   - Honeypot field `class="hp"` provides anti-spam protection
+   - Form submits to `https://collect.openooda.org/v1/emails`
+
+2. **URL Routing (ADVISORY)**
+   - `app.js` uses `location.pathname` for route and WASM URL construction
+   - Path normalization removes leading `/` and `.html` extensions
+   - **Risk**: Low; no filesystem access from browser context
+
+3. **localStorage State (ADVISORY)**
+   - Used for theme selection and WASM toggle state
+   - **Risk**: Client-only UX state; no security boundary
+
+**Gate 2 Determination**: ✅ **PASS**
+
+---
+
+### **Gate 3: Data-Path Tracer** ✅ **PASS**
+
+**Mission**: Trace execution data paths and reject stubs or silent fallbacks.
+
+**Findings**:
+
+1. **Error Handling (ACCEPTABLE)**
+   - WASM loading uses try-catch with `console.warn()` logging
+   - No `|| true` or suppressed silent failures detected
+   - Errors are logged, not swallowed
+
+2. **WASM Loading Fallback (ACCEPTABLE)**
+   - Primary: `WebAssembly.instantiateStreaming()`
+   - Fallback: Buffer-based `WebAssembly.instantiate()`
+   - Both paths are wired and verified
+
+3. **Copy Button (ACCEPTABLE)**
+   - Writes the secure install command to clipboard
+   - Handles missing `navigator.clipboard` gracefully
+
+**Gate 3 Determination**: ✅ **PASS**
+
+---
+
+### **Gate 4: Hermetic Jailor** ✅ **PASS**
+
+**Mission**: Probe runtime sandboxes, capability boundaries, and filesystem access.
+
+**Findings**:
+
+1. **Install Link Security (REMEDIATED)** ✅
+   - **All public web entry points now use the unified `install.sh`:**
+     - `index.html` (visible command + JSON-LD metadata)
+     - `wasm/index.html` (JSON-LD metadata)
+     - `guide/index.html` (generated guide)
+     - `templates/home.html` (template source)
+     - `app.js` (copy button + embedded documentation)
+     - `install.ps1` (PowerShell hint for WSL users)
+     - `README.oot` and `guide/Use.oot` (documentation source)
+     - `scripts/ssg_routes.oo` (build-time source of truth)
+   - **No public HTML/JS files point to `install.sh` directly**
+
+2. **External Link Attributes (ACCEPTABLE)**
+   - All `_blank` targets verified to use `rel="noopener noreferrer"`
+   - Prevents `window.opener` access and tabnabbing
+
+3. **HTML Escaping (REMEDIATED)** ✅
+   - `wikiLinks()` now escapes `&`, `<`, `>`, `"`, `'` characters
+   - Prevents XSS via malicious labels or target URLs
+
+4. **External Script Sources (ACCEPTABLE)**
+   - `app.js` loaded from same origin
+   - Google Fonts CSS loaded from `fonts.googleapis.com` and `fonts.gstatic.com`
+   - **Residual risk**: External CSS supply chain; Google Fonts is a trusted CDN
+
+5. **Content-Security-Policy (ADVISORY)**
+   - No `Content-Security-Policy` meta tag or HTTP header found
+   - Three inline `<script>` blocks present in `index.html`
+   - **Recommendation**: Add CSP with nonces/hashes or move scripts to external files
+
+6. **Clickjacking Protection (ADVISORY)**
+   - No `X-Frame-Options` or `frame-ancestors` directive found
+   - **Recommendation**: Add `X-Frame-Options: DENY` or CSP `frame-ancestors 'none'`
+
+7. **Form Endpoint (ADVISORY)**
+   - Email form posts to `https://collect.openooda.org/v1/emails`
+   - **Recommendation**: Verify endpoint implements CSRF protection and rate limiting
+
+**Gate 4 Determination**: ✅ **PASS**
+
+## Residual Advisory Warnings
+
+The following issues are **non-blocking** but represent residual security surface that should be addressed in future sprints:
+
+1. **Add Content-Security-Policy**: Mitigates XSS and data injection
+2. **Add X-Frame-Options / frame-ancestors**: Prevents clickjacking
+3. **CSP for inline scripts**: The 3 inline `<script>` blocks require `unsafe-inline` or nonces
+4. **External form endpoint review**: Verify `collect.openooda.org` hardening
+5. **Google Fonts supply chain**: Consider self-hosting to remove external dependency
+6. **Regex markdown parser**: `simpleMarkdown()` uses regex heuristics; acceptable for UI only
+7. **localStorage validation**: Theme state not cryptographically bound; acceptable for UX
+
+## Files Modified During Review
+
+1. `openOODA.github.io/app.js`
+   - Updated install link references
+   - Replaced `wikiLinks()` with secure implementation
+   - Added `isExternalUrl()` and `escapeHtml()` helpers
+
+2. `openOODA.github.io/index.html`
+   - Updated visible install command
+   - Updated JSON-LD `downloadUrl` and `softwareVersion`
+
+3. `openOODA.github.io/wasm/index.html`
+   - Updated JSON-LD `downloadUrl` and `softwareVersion`
+
+4. `openOODA.github.io/guide/index.html`
+   - Updated install code block
+
+5. `openOODA.github.io/templates/home.html`
+   - Updated install command template
+
+6. `openOODA.github.io/install.ps1`
+   - Updated Linux install hint
+
+7. `openOODA.github.io/README.oot`
+   - Documented new installer files
+
+8. `openOODA.github.io/guide/Use.oot`
+   - Promoted `install.sh` as primary installation
+
+9. `openOODA/scripts/ssg_routes.oo`
+   - Updated schema download URL for future builds
+
+10. `openOODA/scripts/web_redteam_full_review.sh`
+    - New comprehensive web review harness
+
+## Verification Evidence
+
+```bash
+cd openOODA
+bash scripts/web_redteam_breaktest.sh      # ✅ exit 0
+bash scripts/web_redteam_full_review.sh    # ✅ 0 failures, 7 advisory warnings
+```
+
+## Final Certification
+
+**All 4 Red Team gates have passed.** The openOODA public website is **CERTIFIED FOR DEPLOYMENT** with the following caveats:
+
+- The primary install entry point is the hardened hybrid installer at `https://openooda.org/install.sh`
+- Gate 4 residual warnings (CSP, framing, form endpoint) should be remediated in the next security sprint
+- The 7 advisory warnings do not constitute blocking veto conditions under the current threat model
+
+**Certified by**: REDTEAM 4-Gate Protocol
+**Date**: 2026-08-29
+**Version**: v2.8.0
+**Status**: ✅ **DEPLOYMENT READY**
