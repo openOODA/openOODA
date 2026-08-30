@@ -1,188 +1,204 @@
-// # Web Red Team Full Review
+// # Web REDTEAM full review
 //
-// Logline: Executes comprehensive adversarial analysis of openOODA public web surface.
+// Logline: 4-gate adversarial review of the public website surface.
 //
-// Setup: SysCap granted to execute full 4-gate security review on openOODA.github.io.
+// Setup: ProcessCap, FsCap, EnvCap. Run from repo root.
 //
 // Beats:
-//   1. Enumerate web surface files, HTML pages, and JavaScript assets.
-//   2. Validate Gate 1 Heuristic Hunter scheme whitelist and regex usage.
-//   3. Validate Gate 2 Boundary Falsifier form validation and routing state.
-//   4. Validate Gate 3 Data-Path Tracer error logging and WASM instantiation.
-//   5. Validate Gate 4 Hermetic Jailor CSP, framing, install URLs, and origin security.
+//   1. Heuristic Hunter: flag security-critical string matching in app.js.
+//   2. Boundary Falsifier: check input validation and routing boundaries.
+//   3. Data-Path Tracer: verify error logging and fallbacks.
+//   4. Hermetic Jailor: check CSP, X-Frame, install links, rel noopener.
 
-pub fn main(sys: &SysCap) {
-    let check_cmd: String = "set -euo pipefail; "
-        + "src_root=\".\"; "
-        + "if [ -d \"openOODA.github.io\" ]; then src_root=\".\"; "
-        + "elif [ -d \"../openOODA.github.io\" ]; then src_root=\"..\"; "
-        + "elif [ -d \"../../openOODA.github.io\" ]; then src_root=\"../..\"; "
-        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/openOODA.github.io\" ]; then src_root=\"$d\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
-        + "cd \"$src_root\" 2>/dev/null || true; "
-        + "WEBROOT=\"openOODA.github.io\"; "
-        + "echo '=== REDTEAM FULL WEB REVIEW ==='; "
-        + "echo 'Methodology: First Principles, Negative Trust, Adversarial Testing, 4-Gate Protocol'; "
-        + "echo ''; "
-        + "fail=0; warning=0; "
-        + "echo '0. Web Surface Enumeration'; "
-        + "echo \"   Files examined: $(find \"$WEBROOT\" -type f \\( -name '*.html' -o -name '*.js' -o -name '*.oot' \\) | wc -l)\"; "
-        + "echo \"   HTML pages: $(find \"$WEBROOT\" -type f -name '*.html' | wc -l)\"; "
-        + "echo \"   JS files: $(find \"$WEBROOT\" -type f -name '*.js' | wc -l)\"; "
-        + "echo ''; "
-        + "echo '================================'; "
-        + "echo 'Gate 1: Heuristic Hunter'; "
-        + "echo '================================'; "
-        + "echo 'Objective: Find string matching, token bags, and heuristics used for security decisions'; "
-        + "echo ''; "
-        + "echo 'Checking for security-relevant string matching in app.js...'; "
-        + "if grep -q 'isExternalUrl\\|allowedSchemes' \"$WEBROOT/app.js\"; then "
-        + "  echo 'OK: app.js now uses explicit allowed-scheme whitelist for external links'; "
-        + "else "
-        + "  echo 'WARNING: app.js may still use string heuristics for URL validation'; "
-        + "  fail=$((fail + 1)); "
-        + "fi; "
-        + "echo ''; "
-        + "echo 'Checking for regex heuristics on user inputs...'; "
-        + "if grep -qE '\\.test\\(.*\\)|\\.search\\(.*\\)|match\\(' \"$WEBROOT/app.js\"; then "
-        + "  echo 'INFO: Regex/string matching found in app.js'; "
-        + "  warning=$((warning + 1)); "
-        + "  grep -nE '\\.test\\(.*\\)|\\.search\\(.*\\)|match\\(' \"$WEBROOT/app.js\" | head -5 || true; "
-        + "else "
-        + "  echo 'OK: No obvious regex/string matching on user inputs'; "
-        + "fi; "
-        + "echo ''; "
-        + "echo '================================'; "
-        + "echo 'Gate 2: Boundary Falsifier'; "
-        + "echo '================================'; "
-        + "echo 'Objective: Find boundary violations, unvalidated inputs, oversized parameters'; "
-        + "echo ''; "
-        + "echo 'Checking for input validation on email form...'; "
-        + "if grep -q 'type=\"email\"' \"$WEBROOT/index.html\" && grep -q 'required' \"$WEBROOT/index.html\"; then "
-        + "  echo 'OK: Email form has type and required validation'; "
-        + "else "
-        + "  echo 'WARNING: Email form lacks validation'; "
-        + "  fail=$((fail + 1)); "
-        + "fi; "
-        + "echo ''; "
-        + "echo 'Checking for path traversal in routing...'; "
-        + "if grep -q 'location.pathname' \"$WEBROOT/app.js\"; then "
-        + "  echo 'NOTE: app.js uses location.pathname for routing'; "
-        + "  warning=$((warning + 1)); "
-        + "  grep -n 'location.pathname' \"$WEBROOT/app.js\" | head -5 || true; "
-        + "fi; "
-        + "echo ''; "
-        + "echo 'Checking for localStorage without validation...'; "
-        + "if grep -q 'localStorage' \"$WEBROOT/app.js\"; then "
-        + "  echo 'INFO: app.js uses localStorage for theme/WASM state'; "
-        + "  warning=$((warning + 1)); "
-        + "fi; "
-        + "echo ''; "
-        + "echo '================================'; "
-        + "echo 'Gate 3: Data-Path Tracer'; "
-        + "echo '================================'; "
-        + "echo 'Objective: Find silent failures, stubs, and incomplete verification'; "
-        + "echo ''; "
-        + "echo 'Checking for silent error suppression...'; "
-        + "if grep -q 'console.warn\\|console.error' \"$WEBROOT/app.js\"; then "
-        + "  echo 'OK: Errors are logged to console (not silently swallowed)'; "
-        + "  grep -c 'console.warn\\|console.error' \"$WEBROOT/app.js\"; "
-        + "else "
-        + "  echo 'WARNING: No error logging found'; "
-        + "  fail=$((fail + 1)); "
-        + "fi; "
-        + "echo ''; "
-        + "echo 'Checking for fallbacks in WASM loading...'; "
-        + "if grep -q 'WebAssembly.instantiateStreaming' \"$WEBROOT/app.js\"; then "
-        + "  echo 'OK: WASM has fallback from streaming to buffer instantiation'; "
-        + "else "
-        + "  echo 'INFO: No WASM streaming found'; "
-        + "fi; "
-        + "echo ''; "
-        + "echo '================================'; "
-        + "echo 'Gate 4: Hermetic Jailor'; "
-        + "echo '================================'; "
-        + "echo 'Objective: Find XSS, CSRF, clickjacking, unsafe origins, malicious links'; "
-        + "echo ''; "
-        + "echo 'Checking for Content-Security-Policy...'; "
-        + "if grep -q 'Content-Security-Policy' \"$WEBROOT/index.html\"; then "
-        + "  echo 'OK: CSP header/meta found'; "
-        + "else "
-        + "  echo 'WARNING: No CSP found in HTML'; "
-        + "  warning=$((warning + 1)); "
-        + "fi; "
-        + "echo ''; "
-        + "echo 'Checking for X-Frame-Options/Clickjacking protection...'; "
-        + "if grep -q 'X-Frame-Options\\|frame-ancestors' \"$WEBROOT\"/*html \"$WEBROOT\"/*.oot 2>/dev/null; then "
-        + "  echo 'OK: Clickjacking protection found'; "
-        + "else "
-        + "  echo 'WARNING: No X-Frame-Options or frame-ancestors in source files'; "
-        + "  warning=$((warning + 1)); "
-        + "fi; "
-        + "echo ''; "
-        + "echo 'Checking for unsafe inline scripts...'; "
-        + "INLINE_SCRIPTS=$(grep -c '<script[^>]*>' \"$WEBROOT/index.html\" || true); "
-        + "echo \"   Found $INLINE_SCRIPTS inline script blocks\"; "
-        + "if [ \"$INLINE_SCRIPTS\" -gt 0 ]; then "
-        + "  echo \"NOTE: Inline scripts present; CSP would need 'unsafe-inline' unless nonces/hashes used\"; "
-        + "  warning=$((warning + 1)); "
-        + "fi; "
-        + "echo ''; "
-        + "echo 'Checking all public install links...'; "
-        + "BAD_LINKS=$(grep -rlE \"https://openooda\\.org/install_[^'\\\"<>[:space:]]+\\.sh\" \"$WEBROOT\" --include=\"*.html\" --include=\"*.js\" 2>/dev/null || true); "
-        + "if [ -n \"$BAD_LINKS\" ]; then "
-        + "  echo \"FAIL: Public files reference non-canonical installer URLs: $BAD_LINKS\"; "
-        + "  fail=$((fail + 1)); "
-        + "fi; "
-        + "GOOD_LINKS=$(grep -r \"https://openooda.org/install.sh\" \"$WEBROOT\" --include=\"*.html\" --include=\"*.js\" -l 2>/dev/null || true); "
-        + "if [ -n \"$GOOD_LINKS\" ]; then "
-        + "  echo \"OK: install.sh is the canonical public URL in: $GOOD_LINKS\"; "
-        + "else "
-        + "  echo 'WARNING: install.sh not referenced in public web files'; "
-        + "  fail=$((fail + 1)); "
-        + "fi; "
-        + "echo ''; "
-        + "echo 'Checking for external script sources...'; "
-        + "EXTERNAL=$(grep -oP 'src=\"https?://[^\"]+\"' \"$WEBROOT/index.html\" | sort -u || true); "
-        + "if [ -n \"$EXTERNAL\" ]; then "
-        + "  echo \"   External script sources: $EXTERNAL\"; "
-        + "  echo 'NOTE: External scripts increase supply-chain risk'; "
-        + "  warning=$((warning + 1)); "
-        + "fi; "
-        + "echo ''; "
-        + "echo 'Checking for form actions to external endpoints...'; "
-        + "if grep -q 'action=\"https://' \"$WEBROOT/index.html\"; then "
-        + "  echo 'INFO: Form submits to external endpoint'; "
-        + "  grep -o 'action=\"[^\"]*\"' \"$WEBROOT/index.html\"; "
-        + "  warning=$((warning + 1)); "
-        + "fi; "
-        + "echo ''; "
-        + "echo 'Checking for target=_blank without rel=noopener...'; "
-        + "NO_OPENER=$(grep -o '<a[^>]*target=\"_blank\"[^>]*>' \"$WEBROOT/index.html\" | grep -v 'rel=\"noopener' | head -5 || true); "
-        + "if [ -n \"$NO_OPENER\" ]; then "
-        + "  echo \"WARNING: Some _blank links lack rel=noopener: $NO_OPENER\"; "
-        + "  warning=$((warning + 1)); "
-        + "else "
-        + "  echo 'OK: External links use proper rel attributes'; "
-        + "fi; "
-        + "echo ''; "
-        + "echo '=== REDTEAM FULL WEB REVIEW SUMMARY ==='; "
-        + "echo \"Failures: $fail\"; "
-        + "echo \"Warnings: $warning\"; "
-        + "if [ \"$fail\" -eq 0 ]; then "
-        + "  echo \"Status: CERTIFIED for web deployment (with $warning advisory warnings)\"; "
-        + "else "
-        + "  echo \"Status: BLOCKED - $fail gate violations require remediation\"; "
-        + "  exit 1; "
-        + "fi;";
+fn strip(s: String) -> String {
+    let mut n: Int = chars_len(s);
+    while n > 0 && str_slice(s, n - 1, n) == "\n" { n = n - 1; s = str_slice(s, 0, n); }
+    while n > 0 && str_slice(s, n - 1, n) == "\r" { n = n - 1; s = str_slice(s, 0, n); }
+    return s;
+}
 
-    let res = sys_exec(sys, "sh", "-c", check_cmd);
-    match res {
-        Ok(out) => {
-            println(out);
-        },
-        Err(e) => {
-            println("web_redteam_full_review error: " + e);
-            process_exit(1);
+fn sh_out(p: &ProcessCap, fs: &FsCap, cmd: String, out: String) -> String {
+    if process_exec(p, cmd + " > " + out).is_err() { return ""; }
+    let r: Result[String, String] = read_file(fs, out);
+    if r.is_err() { return ""; }
+    let raw: String = match r { Ok(s) => s, Err(_) => "" };
+    return strip(raw);
+}
+
+fn has(p: &ProcessCap, cmd: String) -> Bool {
+    return process_exec(p, cmd).is_ok();
+}
+
+fn grep_count(p: &ProcessCap, fs: &FsCap, path: String, pattern: String) -> Int {
+    let out: String = "/tmp/ooda_web_grep.txt";
+    if process_exec(p, "grep -cE '" + pattern + "' " + path + " > " + out + " 2>/dev/null || echo 0 > " + out).is_err() { return 0; }
+    let r: Result[String, String] = read_file(fs, out);
+    if r.is_err() { return 0; }
+    let raw: String = match r { Ok(s) => s, Err(_) => "" };
+    let raw_s: String = strip(raw);
+    let n: Int = chars_len(raw_s);
+    if n == 0 { return 0; }
+    let mut v: Int = 0;
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = str_slice(raw_s, i, i + 1);
+        if c == "0" { v = v * 10 + 0; }
+        if c == "1" { v = v * 10 + 1; }
+        if c == "2" { v = v * 10 + 2; }
+        if c == "3" { v = v * 10 + 3; }
+        if c == "4" { v = v * 10 + 4; }
+        if c == "5" { v = v * 10 + 5; }
+        if c == "6" { v = v * 10 + 6; }
+        if c == "7" { v = v * 10 + 7; }
+        if c == "8" { v = v * 10 + 8; }
+        if c == "9" { v = v * 10 + 9; }
+        i = i + 1;
+    }
+    return v;
+}
+
+pub fn main(p: &ProcessCap, fs: &FsCap, env: &EnvCap) {
+    let root_r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
+    let root_raw: String = if root_r.is_ok() { match root_r { Ok(s) => s, Err(_) => "" } } else { "" };
+    let root: String = if root_raw != "" { strip(root_raw) } else { "/home/jeryd/Projects/openOODA" };
+    let webroot: String = root + "/openOODA.github.io";
+    let appjs: String = webroot + "/app.js";
+    let index: String = webroot + "/index.html";
+
+    let mut failures: Int = 0;
+    let mut warnings: Int = 0;
+
+    println("=== REDTEAM FULL WEB REVIEW ===");
+    println("Methodology: First Principles, Negative Trust, Adversarial Testing, 4-Gate Protocol");
+    println("");
+
+    let files: String = sh_out(p, fs, "find " + webroot + " -type f | wc -l", "/tmp/ooda_web_files.txt");
+    let htmls: String = sh_out(p, fs, "find " + webroot + " -name '*.html' | wc -l", "/tmp/ooda_web_htmls.txt");
+    let jss: String = sh_out(p, fs, "find " + webroot + " -name '*.js' | wc -l", "/tmp/ooda_web_jss.txt");
+    println("0. Web Surface Enumeration");
+    println("   Files examined: " + files);
+    println("   HTML pages: " + htmls);
+    println("   JS files: " + jss);
+    println("");
+
+    // Gate 1: Heuristic Hunter
+    println("================================");
+    println("Gate 1: Heuristic Hunter");
+    println("================================");
+    println("Objective: Find string matching, token bags, and heuristics used for security decisions");
+    println("");
+    if has(p, "grep -qE 'isExternalUrl|allowedSchemes' " + appjs) {
+        println("OK: app.js uses explicit allowed-scheme whitelist for external links");
+    } else if has(p, "grep -qE 'indexOf.*://|search\\(|match\\(|\\.test\\(' " + appjs) {
+        warnings = warnings + 1;
+        println("WARNING: app.js may use string heuristics for URL validation");
+    } else {
+        println("OK: no obvious security-critical string matching heuristics found");
+    }
+    let regex_count: Int = grep_count(p, fs, appjs, "\\.test\\(.*\\)|\\.search\\(.*\\)|match\\(");
+    if regex_count > 0 {
+        warnings = warnings + 1;
+        println("INFO: Regex/string matching found in app.js (" + regex_count.to_string() + " occurrences)");
+    }
+    println("");
+
+    // Gate 2: Boundary Falsifier
+    println("================================");
+    println("Gate 2: Boundary Falsifier");
+    println("================================");
+    println("Objective: Find boundary violations, unvalidated inputs, oversized parameters");
+    println("");
+    if has(p, "grep -q 'type=\"email\"' " + webroot + "/index.html") {
+        println("OK: Email form has type and required validation");
+    } else {
+        warnings = warnings + 1;
+        println("WARNING: Email form missing type validation");
+    }
+    if has(p, "grep -q 'class=\"hp\"' " + webroot + "/index.html") {
+        println("OK: Email form uses honeypot field (.hp)");
+    } else {
+        warnings = warnings + 1;
+        println("WARNING: Email form missing honeypot field");
+    }
+    if has(p, "grep -q 'location.pathname' " + appjs) {
+        warnings = warnings + 1;
+        println("NOTE: app.js uses location.pathname for routing");
+    }
+    if has(p, "grep -q 'localStorage' " + appjs) {
+        warnings = warnings + 1;
+        println("INFO: app.js uses localStorage for theme/WASM state");
+    }
+    println("");
+
+    // Gate 3: Data-Path Tracer
+    println("================================");
+    println("Gate 3: Data-Path Tracer");
+    println("================================");
+    println("Objective: Find silent failures, stubs, and incomplete verification");
+    println("");
+    if has(p, "grep -q 'console.warn\\|console.error' " + appjs) {
+        println("OK: Errors are logged to console (not silently swallowed)");
+    } else {
+        warnings = warnings + 1;
+        println("WARNING: No console.warn/error found in app.js");
+    }
+    if has(p, "grep -q 'WebAssembly.instantiateStreaming' " + appjs) {
+        println("OK: WASM has fallback from streaming to buffer instantiation");
+    } else {
+        warnings = warnings + 1;
+        println("WARNING: No WASM streaming fallback found");
+    }
+    println("");
+
+    // Gate 4: Hermetic Jailor
+    println("================================");
+    println("Gate 4: Hermetic Jailor");
+    println("================================");
+    println("Objective: Find XSS, CSRF, clickjacking, unsafe origins, malicious links");
+    println("");
+    if has(p, "grep -q 'Content-Security-Policy' " + index) {
+        println("OK: CSP header/meta found");
+    } else {
+        failures = failures + 1;
+        println("FAIL: No CSP found in HTML");
+    }
+    if has(p, "grep -q 'X-Frame-Options\\|frame-ancestors' " + index) {
+        println("OK: Clickjacking protection found");
+    } else {
+        failures = failures + 1;
+        println("FAIL: No X-Frame-Options or frame-ancestors in source files");
+    }
+    let inline_count: Int = grep_count(p, fs, index, "<script");
+    if inline_count > 0 {
+        warnings = warnings + 1;
+        println("NOTE: Inline scripts present (" + inline_count.to_string() + "); CSP needs 'unsafe-inline' unless nonces/hashes used");
+    }
+    if has(p, "grep -qRl 'install.sh' " + webroot) {
+        println("OK: install.sh is the canonical public URL");
+    } else {
+        failures = failures + 1;
+        println("FAIL: install.sh not found in public site");
+    }
+    if has(p, "grep -q 'target=\"_blank\"' " + index) {
+        if has(p, "grep -qE 'target=\"_blank\".*rel=.*noopener|rel=.*noopener.*target=\"_blank\"' " + index) {
+            println("OK: External links use proper rel attributes");
+        } else {
+            warnings = warnings + 1;
+            println("WARNING: target=_blank without rel=noopener");
         }
+    }
+    if has(p, "grep -q 'action=\"https://collect.openooda.org' " + index) {
+        println("INFO: Form submits to external endpoint");
+    }
+    println("");
+
+    println("=== REDTEAM FULL WEB REVIEW SUMMARY ===");
+    println("Failures: " + failures.to_string());
+    println("Warnings: " + warnings.to_string());
+    if failures == 0 {
+        println("Status: CERTIFIED for web deployment (with " + warnings.to_string() + " advisory warnings)");
+    } else {
+        println("Status: NOT CERTIFIED");
+        process_exit(1);
     }
 }

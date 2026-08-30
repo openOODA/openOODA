@@ -16,20 +16,17 @@ import "ssg_routes.oo";
 import "ssg_template.oo";
 import "ssg_minify.oo";
 
-pub fn resolve_site_root(fs: &FsReadCap) -> String {
-    if path_exists(fs, "openOODA.github.io/templates/shell.html") {
-        return "openOODA.github.io";
+pub fn resolve_site_root(env: &EnvCap) -> String {
+    let r: Result[String, String] = env_get(env, "OODA_SITE_ROOT");
+    if r.is_ok() {
+        let v: String = match r { Ok(s) => s, Err(_) => "" };
+        if str_len(v) > 0 {
+            return v;
+        }
     }
-    if path_exists(fs, "../openOODA.github.io/templates/shell.html") {
-        return "../openOODA.github.io";
-    }
-    if path_exists(fs, "../../openOODA.github.io/templates/shell.html") {
-        return "../../openOODA.github.io";
-    }
-    if path_exists(fs, "templates/shell.html") {
-        return ".";
-    }
-    return "openOODA.github.io";
+    println("FAIL [SSG] Set OODA_SITE_ROOT to the website source directory");
+    process_exit(1);
+    return "";
 }
 
 fn resolve_abs_dest(env: &EnvCap, rel_path: String) -> String {
@@ -85,7 +82,7 @@ fn write_html_file(fs_w: &FsWriteCap, env: &EnvCap, rel_dest: String, content: S
 }
 
 pub fn main(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap) {
-    let site_root: String = resolve_site_root(fs_r);
+    let site_root: String = resolve_site_root(env);
     let shell_path: String = site_root + "/templates/shell.html";
     let shell_res: Result[String, String] = read_file(fs_r, shell_path);
     if shell_res.is_err() {

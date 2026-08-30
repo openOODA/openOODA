@@ -1,60 +1,133 @@
-// # Install Script Red Team Adversarial Break-Test
+// # Install REDTEAM break-test
 //
-// Logline: Validates security remediations in install.sh across the 4 Red Team gates.
+// Logline: Adversarial install tests for the 4-gate protocol.
 //
-// Setup: SysCap granted to execute adversarial break-test probes against install.sh.
+// Setup: ProcessCap, FsCap, FsWriteCap, EnvCap. Run from repo root.
 //
 // Beats:
-//   1. Check Gate 1 Heuristic Hunter string matching remediation.
-//   2. Check Gate 2 Boundary Falsifier path traversal remediation.
-//   3. Check Gate 3 Data-Path Tracer silent failure remediation.
-//   4. Check Gate 4 Hermetic Jailor capability security status.
+//   1. Happy path: Gen 3 pack install succeeds.
+//   2. Boundary: --to outside OODA_FS_WRITEDIR rejected.
+//   3. Hermetic: missing OODA_POLICY_WRITE rejects env write.
+//   4. Data path: invalid --from fails closed.
+//   5. Gen 2 source re-install fallback from checkout.
 
-pub fn main(sys: &SysCap) {
-    let check_cmd: String = "set -euo pipefail; "
-        + "src_root=\".\"; "
-        + "if [ -f \"openOODA.github.io/install.sh\" ]; then src_root=\".\"; "
-        + "elif [ -f \"../openOODA.github.io/install.sh\" ]; then src_root=\"..\"; "
-        + "elif [ -f \"../../openOODA.github.io/install.sh\" ]; then src_root=\"../..\"; "
-        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -f \"$d/openOODA.github.io/install.sh\" ]; then src_root=\"$d\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
-        + "cd \"$src_root\" 2>/dev/null || true; "
-        + "echo '=== RED TEAM ADVERSARIAL INSTALL BREAK-TEST ==='; "
-        + "echo ''; "
-        + "echo 'Gate 1: Heuristic Hunter - String Matching Remediation'; "
-        + "echo 'Attack: Inject decoy keyword .config/ooda/env in comment'; "
-        + "echo 'Expected: Install script uses structural analysis, not string matching'; "
-        + "echo 'Status: REMEDIATED - Uses profile_contains_env_line() with structural comparison'; "
-        + "echo ''; "
-        + "echo 'Gate 2: Boundary Falsifier - Path Traversal Remediation'; "
-        + "echo 'Attack: OODA_FS_WRITEDIR=/tmp/../../../etc/passwd'; "
-        + "echo 'Expected: Path normalization and traversal rejection'; "
-        + "echo 'Status: REMEDIATED - validate_path() rejects traversal sequences and enforces length limits'; "
-        + "echo ''; "
-        + "echo 'Gate 3: Data-Path Tracer - Silent Failure Remediation'; "
-        + "echo 'Attack: Force template copy failure via missing directory'; "
-        + "echo 'Expected: Hard error with exit code 1, not silent fallback'; "
-        + "echo 'Status: REMEDIATED - Removed || true, smoke test failure is hard error'; "
-        + "echo ''; "
-        + "echo 'Gate 4: Hermetic Jailor - Capability Security (Partial)'; "
-        + "echo 'Attack: Execute filesystem operations without capability tokens'; "
-        + "echo 'Expected: All operations require explicit capability tokens'; "
-        + "echo 'Status: PARTIAL - Added security notices, but shell scripts lack full capability model'; "
-        + "echo 'Note: Full capability security requires pure .oo installer (Phase 2)'; "
-        + "echo ''; "
-        + "echo '=== BREAK-TEST SUMMARY ==='; "
-        + "echo 'Gates 1-3: REMEDIATED in install.sh'; "
-        + "echo 'Gate 4: PARTIAL (shell script limitation, requires pure .oo installer)'; "
-        + "echo 'Status: READY FOR DEPLOYMENT with documented limitations'; "
-        + "echo '';";
+import "std/fs/path.oo";
 
-    let res = sys_exec(sys, "sh", "-c", check_cmd);
-    match res {
-        Ok(out) => {
-            println(out);
-        },
-        Err(e) => {
-            println("install_redteam_breaktest error: " + e);
-            process_exit(1);
+fn fail(msg: String) {
+    println("FAIL: " + msg);
+}
+
+fn pass(msg: String) {
+    println("PASS: " + msg);
+}
+
+fn strip(s: String) -> String {
+    let mut n: Int = chars_len(s);
+    while n > 0 && str_slice(s, n - 1, n) == "\n" { n = n - 1; s = str_slice(s, 0, n); }
+    while n > 0 && str_slice(s, n - 1, n) == "\r" { n = n - 1; s = str_slice(s, 0, n); }
+    return s;
+}
+
+fn tmp_home(p: &ProcessCap, fs: &FsCap, tag: String) -> String {
+    let out: String = "/tmp/ooda_rt_home_" + tag + ".txt";
+    if process_exec(p, "mktemp -d > " + out).is_err() { return ""; }
+    let r: Result[String, String] = read_file(fs, out);
+    if r.is_err() { return ""; }
+    let raw: String = match r { Ok(s) => s, Err(_) => "" };
+    return strip(raw);
+}
+
+fn ok_cmd(p: &ProcessCap, cmd: String) -> Bool {
+    return process_exec(p, cmd).is_ok();
+}
+
+pub fn main(p: &ProcessCap, fs: &FsCap, fw: &FsWriteCap, env: &EnvCap) {
+    let root_r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
+    let root_raw: String = if root_r.is_ok() { match root_r { Ok(s) => s, Err(_) => "" } } else { "" };
+    let root: String = if root_raw != "" { strip(root_raw) } else { "/home/jeryd/Projects/openOODA" };
+    let pack_root: String = root + "/ooda/dist/ooda-v0.212.0-linux-x86_64";
+    let pack_tar: String = pack_root + ".tar.gz";
+    let ooda_bin: String = root + "/ooda/bin/ooda";
+    let install_sh: String = root + "/openOODA.github.io/install.sh";
+
+    if !path_exists(fs, ooda_bin) { println("ERR: ooda not built"); process_exit(1); }
+    if !path_exists(fs, pack_tar) { println("ERR: release pack not built: " + pack_tar); process_exit(1); }
+
+    let mut failures: Int = 0;
+
+    // 1. Gen 3 first install via install.sh + release pack
+    let home1: String = tmp_home(p, fs, "t1");
+    let cmd1: String = "rm -rf " + home1 + " && mkdir -p " + home1 + " && HOME=" + home1 + " OODA_INSTALL_PACK=" + pack_tar + " bash " + install_sh;
+    if ok_cmd(p, cmd1) && path_exists(fs, home1 + "/.local/bin/ooda") && path_exists(fs, home1 + "/.config/ooda/env") {
+        pass("Gate 2/3: Gen 3 pack install happy path");
+    } else {
+        fail("Gate 2/3: Gen 3 pack install happy path");
+        failures = failures + 1;
+    }
+
+    // 2. --to outside OODA_FS_WRITEDIR fails closed
+    let home2: String = tmp_home(p, fs, "t2");
+    let bad2: String = tmp_home(p, fs, "bad2");
+    let cmd2: String = "rm -rf " + home2 + " " + bad2 + " && mkdir -p " + home2 + " " + bad2 + " && OODA_FS_WRITEDIR=" + home2 + " OODA_POLICY_WRITE=1 " + ooda_bin + " install --from " + pack_root + " --to " + bad2;
+    if !ok_cmd(p, cmd2) {
+        pass("Gate 2: --to outside OODA_FS_WRITEDIR rejected");
+    } else {
+        fail("Gate 2: --to outside OODA_FS_WRITEDIR not rejected");
+        failures = failures + 1;
+    }
+
+    // 3. Missing OODA_POLICY_WRITE fails closed on config
+    let home3: String = tmp_home(p, fs, "t3");
+    let cmd3: String = "rm -rf " + home3 + " && mkdir -p " + home3 + " && OODA_FS_WRITEDIR=" + home3 + " " + ooda_bin + " install --from " + pack_root + " --to " + home3;
+    if !ok_cmd(p, cmd3) {
+        pass("Gate 4: missing OODA_POLICY_WRITE rejected");
+    } else {
+        fail("Gate 4: missing OODA_POLICY_WRITE not rejected");
+        failures = failures + 1;
+    }
+
+    // 4. Invalid --from fails closed
+    let home4: String = tmp_home(p, fs, "t4");
+    let cmd4: String = "rm -rf " + home4 + " && mkdir -p " + home4 + " && OODA_FS_WRITEDIR=" + home4 + " OODA_POLICY_WRITE=1 " + ooda_bin + " install --from /nonexistent-dir --to " + home4;
+    if !ok_cmd(p, cmd4) {
+        pass("Gate 3: invalid --from rejected");
+    } else {
+        fail("Gate 3: invalid --from not rejected");
+        failures = failures + 1;
+    }
+
+    // 5. Gen 2 source re-install fallback
+    let home5: String = tmp_home(p, fs, "t5");
+    let src: String = root + "/ooda";
+    let cmd5: String = "rm -rf " + home5 + " && mkdir -p " + home5 + " && OODA_FS_WRITEDIR=" + home5 + " OODA_POLICY_WRITE=1 OODA_CHECKOUT=" + src + " " + ooda_bin + " install --from " + src + " --to " + home5;
+    if ok_cmd(p, cmd5) && path_exists(fs, home5 + "/.local/bin/ooda") {
+        pass("Gate 2-4: Gen 2 source re-install fallback");
+    } else {
+        fail("Gate 2-4: Gen 2 source re-install fallback");
+        failures = failures + 1;
+    }
+
+    // 6. Verify receipt claims 4 gates passed
+    let receipt: String = home1 + "/.local/share/ooda/share/INSTALL_RECEIPT.txt";
+    if path_exists(fs, receipt) {
+        let body_r: Result[String, String] = read_file(fs, receipt);
+        let body_raw: String = if body_r.is_ok() { match body_r { Ok(s) => s, Err(_) => "" } } else { "" };
+        let body: String = body_raw;
+        if str_contains(body, "security_gates=4_PASSED") && str_contains(body, "source=pack") {
+            pass("Gate 3: install receipt records pack / 4 gates");
+        } else {
+            fail("Gate 3: install receipt missing pack / 4 gates");
+            failures = failures + 1;
         }
+    } else {
+        fail("Gate 3: install receipt not found");
+        failures = failures + 1;
+    }
+
+    if failures == 0 {
+        println("=== INSTALL REDTEAM: ALL 4 GATES CERTIFIED ===");
+    } else {
+        println("=== INSTALL REDTEAM: " + failures.to_string() + " FAILURE(S) ===");
+        process_exit(1);
     }
 }
