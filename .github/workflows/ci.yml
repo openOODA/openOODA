@@ -40,7 +40,7 @@ jobs:
       - name: Execute Master Governance Linters & Boards
         run: |
           set -euo pipefail
-          if [[ -x ooda/bin/ooda ]]; then
+          if [ -x ooda/bin/ooda ]; then
             ooda/bin/ooda run openOODA/scripts/enforcer.oo
             ooda/bin/ooda run openOODA/scripts/check_board.oo
             ooda/bin/ooda run openOODA/scripts/verify_all.oo
@@ -77,12 +77,13 @@ jobs:
         run: |
           set -euo pipefail
           cd ooda
-          ./scripts/oodac_pure_build || true
+          ./scripts/oodac_pure_build
 
-      - name: Verify Engine SemVer (v2.9.0 / v2.9.1)
+      - name: Verify Engine SemVer (v2.9.1)
         run: |
           set -euo pipefail
-          ooda/bin/ooda --version | grep -E 'v2\.9\.[01]'
+          ooda/bin/ooda --version | grep -q '^ooda 2\.9\.1'
+          grep -q 'version = "2.9.1"' ooda/ooda.pkg
 
       - name: Execute 8-Dimensional Adversarial Red Team Gates
         run: |
@@ -106,14 +107,35 @@ jobs:
       - name: Verify Pure stdio JSON-RPC LSP
         run: |
           set -euo pipefail
-          printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n' | timeout 5 ooda/bin/ooda lsp | grep -q 'jsonrpc'
+          MSG='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+          printf 'Content-Length: %d\r\n\r\n%s' "${#MSG}" "$MSG" | timeout 5 ooda/bin/ooda lsp --stdio | grep -q 'jsonrpc'
 
       - name: Package & Sign Sovereign Release Artifacts
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
         run: |
           set -euo pipefail
-          mkdir -p dist
-          tar -czf dist/ooda-v2.9.1-linux-x86_64.tar.gz ooda/bin ooda/oodac ooda/runtime ooda/std
-          sha256sum dist/ooda-v2.9.1-linux-x86_64.tar.gz > dist/ooda-v2.9.1-linux-x86_64.tar.gz.sha256
+          VER="2.9.1"
+          NAME="ooda-v${VER}-linux-x86_64"
+          mkdir -p "dist/${NAME}"
+          cp -r ooda/bin ooda/fixtures ooda/oodac ooda/runtime ooda/std "dist/${NAME}/"
+          rm -f "dist/${NAME}.tar.gz"
+          LC_ALL=C GZIP=-n tar --sort=name -czf "dist/${NAME}.tar.gz" -C dist "${NAME}"
+          sha256sum "dist/${NAME}.tar.gz" > "dist/${NAME}.tar.gz.sha256"
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "ERR: MINISIGN_SECRET_KEY secret is not configured" >&2
+            exit 1
+          fi
+          if [ -z "$MINISIGN_PASSWORD" ]; then
+            echo "ERR: MINISIGN_PASSWORD secret is required" >&2
+            exit 1
+          fi
+          SEC_FILE="${RUNNER_TEMP}/ooda-release.sec"
+          printf '%s' "$MINISIGN_SECRET_KEY" | base64 -d > "$SEC_FILE"
+          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -s "$SEC_FILE" -m "dist/${NAME}.tar.gz" -x "dist/${NAME}.tar.gz.minisig"
+          minisign -V -p openOODA.github.io/install/ooda-release.pub -m "dist/${NAME}.tar.gz" -x "dist/${NAME}.tar.gz.minisig"
+          rm -f "$SEC_FILE"
 
   # =========================================================================
   # TIER 3: DISTRIBUTION, REGISTRY & PUBLIC PORTAL (openOODA.github.io)
@@ -151,8 +173,8 @@ jobs:
           set -euo pipefail
           node openOODA.github.io/tests/run_all_tests.js
 
-      - name: Continuous Deployment Live Build Stamp
+      - name: Continuous Deployment Build Stamp
         run: |
           set -euo pipefail
-          BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-          echo "CD Live Build Certified: $BUILD_TIMESTAMP"
+          BUILD_TIMESTAMP="${SOURCE_DATE_EPOCH:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}"
+          echo "CD Build Stamp: $BUILD_TIMESTAMP"

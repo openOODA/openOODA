@@ -1,62 +1,44 @@
 // # Verify all — SHIPPED freshness + RFC lint
 //
-// Logline: Validate SHIPPED freshness and run rfc_lint fail-closed. std FLOOR certified 100% GREEN (BLOCKED 0 per audit/library_status.oot:16).
+// Logline: Validate SHIPPED freshness and run rfc_lint fail-closed.
 //
-// Setup: SysCap granted to invoke rfc_lint via ooda/bin/ooda. CWD can be repo root or openOODA/.
+// Setup: SysCap granted to invoke rfc_lint via ooda/bin/ooda. Root is OODA_REPO_ROOT.
 //
 // Beats:
-//   1. Verify SHIPPED.oot is GENERATED + <=256 lines (zero-trust gate).
-//   2. Run scripts/rfc_lint.oo — fail closed if any RFC regresses.
-//   3. Verify 13 canonical boards present and RFC template present in openOODA/rfcs/.
-//   4. Print summary and exit 0 on pass, non-zero on any regression.
+//   1. Use OODA_REPO_ROOT for canonical root; no parent traversal.
+//   2. Verify 13 canonical boards and SHIPPED.oot generated marker + line count.
+//   3. Run scripts/rfc_lint.oo and confirm "RFC lint OK".
+//   4. Print summary and fail closed on any regression.
 
 pub fn main(sys: &SysCap) {
     let check_cmd: String = "set -e; "
-        + "src_root=\".\"; "
-        + "if [ -f \"SHIPPED.oot\" ] && [ -d \"audit\" ] && [ -d \"rfcs\" ]; then src_root=\".\"; "
-        + "elif [ -f \"openOODA/SHIPPED.oot\" ] && [ -d \"openOODA/audit\" ]; then src_root=\"openOODA\"; "
-        + "elif [ -f \"../openOODA/SHIPPED.oot\" ] && [ -d \"../ooda\" ]; then src_root=\"../openOODA\"; "
-        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/ooda\" ] && [ -f \"$d/openOODA/SHIPPED.oot\" ]; then src_root=\"$d/openOODA\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
-        + "cd \"$src_root\" 2>/dev/null || true; "
-        + "echo \"=== Boards (13 canonical) ===\"; "
-        + "boards_ok=1; "
+        + "root=\"${OODA_REPO_ROOT:-.}\"; src_root=\"$root/openOODA\"; ws_root=\"$root\"; "
+        + "if [ ! -d \"$src_root\" ]; then echo \"[ROOT FAIL] $src_root missing\"; exit 1; fi; "
+        + "cd \"$src_root\"; fails=0; "
+        + "echo '=== Boards (13 canonical) ==='; "
         + "for b in START.oot RULES.oot NORTHSTAR.oot MOONSHOTS.oot ROADMAP.oot SHIPPED.oot FORMAT.oot SECURITY.oot WORKFLOW.oot QUICKREF.oot CONSTRAINTS.oot STRUCTURE_EM.oot REDTEAM.oot; do "
-        + "  if [ -f \"$b\" ]; then echo \"  $b OK\"; else echo \"  $b MISSING\"; boards_ok=0; fi; "
+        + "  if [ -f \"$b\" ]; then echo \"  $b OK\"; else echo \"  $b MISSING\"; fails=$((fails + 1)); fi; "
         + "done; "
-        + "if [ \"$boards_ok\" -ne 1 ]; then echo \"FAIL: missing canonical board\"; exit 1; fi; "
-        + "echo \"=== SHIPPED freshness (zero trust) ===\"; "
-        + "if [ ! -f \"SHIPPED.oot\" ]; then echo \"FAIL: SHIPPED.oot missing\"; exit 1; fi; "
-        + "if ! grep -q \"THIS FILE IS GENERATED\" \"SHIPPED.oot\"; then echo \"FAIL: SHIPPED.oot stale (no GENERATED marker)\"; exit 1; fi; "
-        + "lc=$(wc -l < \"SHIPPED.oot\" | tr -d ' '); if [ \"$lc\" -gt 256 ]; then echo \"FAIL: SHIPPED.oot $lc lines > 256\"; exit 1; fi; "
-        + "echo \"SHIPPED.oot OK: $lc lines, GENERATED marker present\"; "
-        + "echo \"=== RFC lint (fail-closed) ===\"; "
-        + "if [ ! -f \"scripts/rfc_lint.oo\" ]; then echo \"FAIL: scripts/rfc_lint.oo missing\"; exit 1; fi; "
-        + "if [ ! -f \"rfcs/0000-template.oot\" ]; then echo \"FAIL: rfcs/0000-template.oot missing\"; exit 1; fi; "
-        + "if [ -x \"scripts/rfc_lint.oo.bin\" ]; then "
-        + "  if ! timeout 30 \"./scripts/rfc_lint.oo.bin\" > \".rfc_lint.out\" 2>&1; then echo \"FAIL: rfc_lint failed to run\"; cat \".rfc_lint.out\"; exit 1; fi; "
-        + "else "
-        + "  ws_root=\".\"; "
-        + "  if [ -d \"../openOODA\" ] && [ -d \"../ooda\" ]; then ws_root=\"..\"; "
-        + "  elif [ -d \"openOODA\" ] && [ -d \"ooda\" ]; then ws_root=\".\"; "
-        + "  elif [ -d \"../../openOODA\" ] && [ -d \"../../ooda\" ]; then ws_root=\"../..\"; fi; "
-        + "  if [ -x \"$ws_root/ooda/bin/ooda\" ]; then OODA=\"ooda/bin/ooda\"; else OODA=\"ooda\"; fi; "
-        + "  if ! (cd \"$ws_root\" && timeout 30 \"$OODA\" run \"openOODA/scripts/rfc_lint.oo\") > \".rfc_lint.out\" 2>&1; then echo \"FAIL: rfc_lint failed to run\"; cat \".rfc_lint.out\"; exit 1; fi; "
+        + "if [ ! -f \"SHIPPED.oot\" ]; then echo \"FAIL: SHIPPED.oot missing\"; fails=$((fails + 1)); else "
+        + "  if ! grep -q 'THIS FILE IS GENERATED' \"SHIPPED.oot\"; then echo \"FAIL: SHIPPED.oot stale\"; fails=$((fails + 1)); fi; "
+        + "  lc=$(wc -l < \"SHIPPED.oot\" | tr -d ' '); if [ \"$lc\" -gt 256 ]; then echo \"FAIL: SHIPPED.oot $lc lines > 256\"; fails=$((fails + 1)); else echo \"SHIPPED.oot OK: $lc lines\"; fi; "
         + "fi; "
-        + "if ! grep -qE \"RFC lint OK\" \".rfc_lint.out\"; then echo \"FAIL: rfc_lint did not OK\"; cat \".rfc_lint.out\"; exit 1; fi; "
-        + "rfc_total=$(grep -cE '\\.oot OK' \".rfc_lint.out\" || echo 0); "
-        + "echo \"rfc_lint OK\"; "
+        + "if [ ! -f \"scripts/rfc_lint.oo\" ]; then echo \"FAIL: scripts/rfc_lint.oo missing\"; fails=$((fails + 1)); fi; "
+        + "if [ ! -f \"rfcs/0000-template.oot\" ]; then echo \"FAIL: rfcs/0000-template.oot missing\"; fails=$((fails + 1)); fi; "
+        + "bin=\"$ws_root/ooda/bin/ooda\"; "
+        + "if [ ! -x \"$bin\" ]; then echo \"FAIL: $bin missing\"; fails=$((fails + 1)); else "
+        + "  if ! (cd \"$ws_root\" && timeout 60 \"$bin\" run \"openOODA/scripts/rfc_lint.oo\") > \".rfc_lint.out\" 2>&1; then "
+        + "    echo \"FAIL: rfc_lint did not run\"; cat \".rfc_lint.out\"; fails=$((fails + 1)); "
+        + "  elif ! grep -qE 'RFC lint OK' \".rfc_lint.out\"; then "
+        + "    echo \"FAIL: rfc_lint did not OK\"; cat \".rfc_lint.out\"; fails=$((fails + 1)); "
+        + "  else echo \"rfc_lint OK\"; fi; "
+        + "fi; "
         + "rm -f \".rfc_lint.out\"; "
-        + "echo \"=== verify_all passed ===\"; "
-        + "echo \"Note: ooda/std FLOOR certified 100% GREEN (4539 GREEN, BLOCKED 0 per audit/library_status.oot:16).\";";
+        + "if [ \"$fails\" -eq 0 ]; then echo \"verify_all passed\"; exit 0; else echo \"FAILED: $fails regression(s)\"; exit 1; fi";
 
     let res = sys_exec(sys, "sh", "-c", check_cmd);
     match res {
-        Ok(out) => {
-            println(out);
-        },
-        Err(e) => {
-            println("Error: " + e);
-            process_exit(1);
-        }
+        Ok(out) => { println(out); },
+        Err(e) => { println("Error: " + e); process_exit(1); }
     }
 }

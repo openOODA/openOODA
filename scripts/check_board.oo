@@ -1,17 +1,19 @@
 // # 13-Board Hygiene Checker (extended)
 //
-// Logline: Scan openOODA root and preserve the 13 canonical process boards while purging debris; also report audit/ size budget.
+// Logline: Scan openOODA/ root and preserve the 13 canonical process boards while purging debris; also report audit/ size budget.
 //
-// Setup: Run only from openOODA/. FsReadCap, FsWriteCap and EnvCap. Deletes any other root *.oot.
+// Setup: Run from the repo root. FsReadCap, FsWriteCap and EnvCap. OODA_REPO_ROOT sets the repo root; OODA_FS_WRITEDIR is validated.
 //
 // Beats:
-//   1. List .oot files in the openOODA root folder.
-//   2. Preserve only the 13 canonical process boards.
-//   3. Purge unrecognized .oot files and report sludge count.
-//   4. Walk audit/ and report each .oot file with its line count; flag files > 256.
+//   1. Use OODA_REPO_ROOT to locate openOODA/ without parent traversal.
+//   2. Preserve only the 13 canonical process boards in openOODA/.
+//   3. Purge unrecognized .oot files and fail closed if any remain.
+//   4. Walk openOODA/audit/ and fail closed on any file > 256 lines.
 
-pub fn ends_with(s: String, suffix: String) -> Bool {
-    return str_ends_with(s, suffix);
+fn env_or(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() { return match r { Ok(s) => s, Err(_) => fallback }; }
+    return fallback;
 }
 
 pub fn is_whitelisted_board(name: String) -> Bool {
@@ -31,8 +33,8 @@ pub fn is_whitelisted_board(name: String) -> Bool {
     return false;
 }
 
-pub fn purge_root_sludge(fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) -> Int {
-    let files: List[String] = oo_fs_read_dir(fs, ".");
+pub fn purge_root_sludge(fs: &FsReadCap, fsW: &FsWriteCap, base: String) -> Int {
+    let files: List[String] = oo_fs_read_dir(fs, base);
     let n: Int = list_len(files);
     let mut sludge_count: Int = 0;
     let mut i: Int = 0;
@@ -42,19 +44,7 @@ pub fn purge_root_sludge(fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) -> Int 
         if str_ends_with(name, ".oot") {
             if !is_whitelisted_board(name) {
                 println("  [PURGE] Unrecognized .oot file: " + name);
-                let dir_res: Result[String, String] = env_get(env, "OODA_FS_WRITEDIR");
-                let mut dir: String = ".";
-                if dir_res.is_ok() {
-                    dir = dir_res.unwrap();
-                }
-                let mut path: String = name;
-                if dir != "." {
-                    if str_ends_with(dir, "/") {
-                        path = dir + name;
-                    } else {
-                        path = dir + "/" + name;
-                    }
-                }
+                let path: String = base + "/" + name;
                 let rm: Result[Void, String] = oo_fs_remove_file(fsW, path);
                 if rm.is_err() {
                     println("  [WARN] failed to remove " + name);
@@ -83,22 +73,16 @@ pub fn count_lines(fs: &FsReadCap, path: String) -> Int {
             }
             return n;
         },
-        Err(_) => {
-            return -1;
-        }
+        Err(_) => { return -1; }
     }
 }
 
-pub fn audit_size_report(fs: &FsReadCap) {
-    let mut audit_dir: String = "audit";
-    let mut files: List[String] = oo_fs_read_dir(fs, audit_dir);
-    if list_len(files) == 0 {
-        audit_dir = "openOODA/audit";
-        files = oo_fs_read_dir(fs, audit_dir);
-    }
+pub fn audit_size_report(fs: &FsReadCap, base: String) -> Int {
+    let audit_dir: String = base + "/audit";
+    let files: List[String] = oo_fs_read_dir(fs, audit_dir);
     if list_len(files) == 0 {
         println("  [INFO] no audit/ directory found");
-        return;
+        return 0;
     }
     let mut total: Int = 0;
     let mut oversized: Int = 0;
@@ -121,12 +105,24 @@ pub fn audit_size_report(fs: &FsReadCap) {
         i = i + 1;
     }
     println("  audit/ total: " + total.to_string() + "  oversized: " + oversized.to_string());
+    return oversized;
 }
 
 pub fn main(fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) {
-    println("Running .oot hygiene check for openOODA/...");
-    let sludge: Int = purge_root_sludge(fs, fsW, env);
+    let root: String = env_or(env, "OODA_REPO_ROOT", ".");
+    let base: String = root + "/openOODA";
+    if !path_exists(fs, base) {
+        println("FAIL: " + base + " not found");
+        process_exit(1);
+    }
+    println("Running .oot hygiene check for " + base + "/...");
+    let sludge: Int = purge_root_sludge(fs, fsW, base);
     println("Root hygiene complete. Purged " + sludge.to_string() + " illegal .oot files.");
-    audit_size_report(fs);
+    let oversized: Int = audit_size_report(fs, base);
+    if sludge > 0 || oversized > 0 {
+        println("FAIL: found " + sludge.to_string() + " illegal .oot files and " + oversized.to_string() + " oversized audit files");
+        process_exit(1);
+    }
+    println("check_board: OK");
     process_exit(0);
 }

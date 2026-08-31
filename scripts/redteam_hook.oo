@@ -1,63 +1,49 @@
 // # Red Team Continuous Adversarial Pre-Commit Verification Hook
 //
-// Logline: Enforce all 8 Red Team empirical falsification gates (Red 1 to Red 8) across Challenger suites 1 to 4 on staged commits.
+// Logline: Run the 8 Red Team falsification gates fail-closed, then run the
+// 9th structural-integrity gate that actually probes the source tree for the
+// post-audit invariants (32-byte SIMD prologue, TRAP_0x20 alignment check,
+// branchless ct_primitives, Landlock-fallback deletion). The 9th gate is
+// real — it is a falsifiable source-lint probe and the master release
+// verifier. A failure on either vetoes the hook even if the 8 synthetic
+// gates all reported "PASS".
 //
-// Setup: SysCap granted to execute 8-dimensional adversarial verification test suites fail-closed via bin/ooda.
+// Setup: SysCap granted to execute bin/ooda tests from the canonical repo root.
 //
 // Beats:
-//   1. Red 1 Heuristic Hunter: Lowering AST integrity and decoy keyword immunity.
-//   2. Red 2 Boundary Falsifier: Dynamic dimension and attention bounds protection.
-//   3. Red 3 Data-Path Tracer: Canonical board whitelist and execution data-paths.
-//   4. Red 4 Hermetic Jailor: Capability sandboxing, token integrity, and path containment.
-//   5. Red 5 Temporal Saboteur: GPU stream pinning, lock-free barriers, and deterministic replay invariance.
-//   6. Red 6 Drag Assassin: Pathological AST nesting, bump arena leak-free cycles, and Boyd SIMD scaling.
-//   7. Red 7 Semantic Subverter: AST mutant kill rate (>=95%) and formal contract anti-vacuity validation.
-//   8. Red 8 Byzantine Infiltrator: Cryptographic constant-time side-channel immunity and RASP autonomic rollback.
+//   1. Use OODA_REPO_ROOT for the repo root; no parent traversal.
+//   2. Run each Red Team test via ooda/bin/ooda and fail closed on any veto.
+//   3. Run the 9th structural-integrity gate (real probes).
+//   4. Print a neutral summary on success.
 
 pub fn main(sys: &SysCap) {
     let script_cmd: String = "set -e; "
-        + "src_root=\".\"; "
-        + "if [ -d \"openOODA\" ] && [ -d \"ooda\" ]; then src_root=\".\"; "
-        + "elif [ -d \"../openOODA\" ] && [ -d \"../ooda\" ]; then src_root=\"..\"; "
-        + "elif [ -d \"../../openOODA\" ]; then src_root=\"../..\"; "
-        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/ooda\" ] && [ -f \"$d/openOODA/REDTEAM.oot\" ]; then src_root=\"$d\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
-        + "cd \"$src_root\" 2>/dev/null || true; "
-        + "export OODA_FS_READDIR=\"$(pwd)\"; "
-        + "if [ -x \"ooda/bin/ooda\" ]; then OODA=\"$(pwd)/ooda/bin/ooda\"; "
-        + "elif [ -x \"./bin/ooda\" ]; then OODA=\"$(pwd)/bin/ooda\"; "
-        + "else OODA=\"ooda\"; fi; "
-        + "echo \"===================================================================\"; "
-        + "echo \"  8-DIMENSIONAL CONTINUOUS ADVERSARIAL PRE-COMMIT VETO GATE        \"; "
-        + "echo \"===================================================================\"; "
-        + "echo \"[Gate 1 & 2: Red 1 Heuristic Hunter + Red 2 Boundary Falsifier]\"; "
+        + "root=\"${OODA_REPO_ROOT:-.}\"; "
+        + "if [ ! -d \"$root/openOODA\" ] || [ ! -d \"$root/ooda\" ]; then echo \"[ROOT FAIL] missing openOODA or ooda\"; exit 1; fi; "
+        + "cd \"$root\"; OODA=\"$root/ooda/bin/ooda\"; "
+        + "if [ ! -x \"$OODA\" ]; then echo \"ERR	redteam	$OODA not executable\"; exit 1; fi; "
+        + "export OODA_FS_READDIR=\"$root\"; "
+        + "echo '=== Red Team pre-commit gates ==='; "
         + "\"$OODA\" run ooda/qa/tests_challenger_1/test_c1_red1_red2_falsification.oo; "
-        + "echo \"[Gate 1 Additional: HIP & Math Red 1 Keyword Smoke]\"; "
         + "(cd ooda && \"$OODA\" run scripts/hip_red1_keyword_trap_smoke.oo); "
         + "(cd ooda && \"$OODA\" run scripts/math_red1_heuristic_smoke.oo); "
-        + "echo \"[Gate 3 & 4: Red 3 Data-Path Tracer + Red 4 Hermetic Jailor]\"; "
         + "\"$OODA\" run ooda/qa/tests_challenger_2/test_c2_red3_red4_falsification.oo; "
-        + "echo \"[Gate 3 & 4 Additional: Std Law Red 3 & Red 4 Smoke]\"; "
         + "(cd ooda && \"$OODA\" run scripts/std_red3_datapath_smoke.oo); "
         + "(cd ooda && \"$OODA\" run scripts/std_red4_hermetic_smoke.oo); "
-        + "echo \"[Gate 5 & 6: Red 5 Temporal Saboteur + Red 6 Drag Assassin]\"; "
         + "\"$OODA\" run ooda/qa/tests_challenger_3/test_c3_red5_temporal_saboteur.oo; "
         + "\"$OODA\" run ooda/qa/tests_challenger_3/test_c3_red6_drag_assassin.oo; "
-        + "echo \"[Gate 7 & 8: Red 7 Semantic Subverter + Red 8 Byzantine Infiltrator]\"; "
         + "\"$OODA\" run ooda/qa/tests_challenger_4/test_c4_red7_semantic_subverter.oo; "
         + "\"$OODA\" run ooda/qa/tests_challenger_4/test_c4_red8_byzantine_infiltrator.oo; "
-        + "echo \"===================================================================\"; "
-        + "echo \"  ALL 8 RED TEAM ADVERSARIAL GATES CERTIFIED PASS (0 VETOES)       \"; "
-        + "echo \"===================================================================\"; "
-        + "echo \"redteam_hook: OK\";";
+        + "echo '=== 9th Gate: Structural Integrity (real probes) ==='; "
+        + "\"$OODA\" run ooda/qa/prove/simd_codegen_probe.oo; "
+        + "\"$OODA\" run ooda/qa/prove/ct_primitives_smoke.oo; "
+        + "\"$OODA\" run ooda/qa/prove/dudect_real.oo; "
+        + "\"$OODA\" run ooda/qa/prove/master_release_verifier.oo; "
+        + "echo 'redteam_hook: OK';";
 
     let res = sys_exec(sys, "sh", "-c", script_cmd);
     match res {
-        Ok(out) => {
-            println(out);
-        },
-        Err(e) => {
-            println("RED TEAM VETO: Pre-commit gate failed closed: " + e);
-            process_exit(1);
-        }
+        Ok(out) => { println(out); },
+        Err(e) => { println("RED TEAM VETO: " + e); process_exit(1); }
     }
 }
