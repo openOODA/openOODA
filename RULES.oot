@@ -1,7 +1,7 @@
 # RULES — Repository Law & Core Principles
 Floor: 2
 Thrust: 9
-Patch: 1
+Patch: 2
 File: openOODA/RULES.oot
 
 These governance rules do not change. They apply across all repository directories.
@@ -58,8 +58,10 @@ These governance rules do not change. They apply across all repository directori
     - Landauer's Principle (Minimal Entropy): Reclaim memory through linear arena bulk resets and zero-leak ARC.
   Do not place secret keys or passwords in source code or log files.
 
-### 1.6 Multi-Agent Coordination & Architecture Stratification (Pillar 6)
+### 1.6 Multi-Agent Coordination & Swarm Safety (Pillar 6)
   Each code change must decrease line count or complexity while maintaining all test verifications.
+  Autonomous swarms operate on stationary workspace topology (Delta_path = 0).
+  Agent self-replication and identity mutation are strictly blocked fail-closed.
   Hierarchical Loop Stratification:
     Stabilize lower-level loops as deterministic libraries:
     - Gen 1 (Silicon Hardware): Bare-metal page tables, SIMD registers, and interrupt controllers.
@@ -79,10 +81,11 @@ These governance rules do not change. They apply across all repository directori
   Follow the adversarial verification protocols in WORKFLOW.oot.
   Update SHIPPED.oot only through `scripts/generate_shipped.oo` based on verified on-disk locks.
 
-### 1.8 Code Quality Rules
+### 1.8 Code Quality & Line Limits (Pillar 2)
   Every file must contain a maximum of 256 lines. Split large files along domain seams.
   Free all allocated memory. Use linear arenas with bulk resets for temporary allocations.
   Delete debug files, obsolete code, and temporary artifacts when work is complete.
+  Zero intermediate artifacts (*.tmp.c, *.protos.c, *.tu.c, *.bin, *.txt) permitted in ooda/std/.
   Ensure that implementation behavior matches specification documentation.
 
 ### 1.9 Incremental Modifications
@@ -91,17 +94,24 @@ These governance rules do not change. They apply across all repository directori
 ### 1.10 Negative Trust & Adversarial Validation (Pillar 3)
   Assume that unverified stubs, docstrings, and tests contain defects until proven.
   Apply active falsification: Test code with corrupted tokens, invalid inputs, and boundary values.
-  Deploy the 4 Adversarial Red Team roles defined in `REDTEAM.oot`:
-    - Red 1 (Heuristic Hunter): AST lowering and keyword decoy immunity.
-    - Red 2 (Boundary Falsifier): Dynamic bounds and line limit verification.
-    - Red 3 (Data-Path Tracer): Execution wiring and fallback rejection.
-    - Red 4 (Hermetic Jailor): Sandboxing and capability isolation.
-  Follow the 4-Gate Blocking Veto Protocol in `REDTEAM.oot` for candidate code.
+  Deploy the 8-Dimensional Red Team roles defined in `REDTEAM.oot`:
+    - Red 1 (Heuristic Hunter / e1): Lowering AST integrity and keyword decoy immunity.
+    - Red 2 (Boundary Falsifier / e2): Dynamic parameter bounds and line limit verification.
+    - Red 3 (Data-Path Tracer / e3): Genuine execution wiring and fallback rejection.
+    - Red 4 (Hermetic Jailor / e4): Capability isolation and Landlock sandboxing.
+    - Red 5 (Temporal Saboteur / e5): Concurrency races, stream synchronization, and replay drift.
+    - Red 6 (Drag Assassin / e6): Algorithmic complexity, arena leaks, and GC pause elimination.
+    - Red 7 (Semantic Subverter / e7): AST mutant kill rate (>= 95%) and non-vacuous contracts.
+    - Red 8 (Byzantine Infiltrator / e8): Constant-time cryptography (|t_Welch| < 4.5) and RASP rollback.
+  Follow the 8-Gate Blocking Veto Protocol in `REDTEAM.oot` for candidate code.
   Follow the Double-Run Law: Execute `./bin/ooda run <test.oo>` twice in fresh processes.
   Do not trust plain board text; execute verification scripts directly.
 
-### 1.11 Simplified Technical English (ASD-STE100)
+### 1.11 ASD-STE100 & Academy 4-Element Headers (Pillar 4)
   All agent text and documentation must follow ASD-STE100 Simplified Technical English.
+  Every product `.oo` file begins with a mandatory 4-element Academy header:
+    `// # <Title>`, `// Logline:`, `// Setup:`, `// Beats:`.
+  Every `.oot` process board begins with `# <Title>`, `Floor:`, `Thrust:`, `Patch:`, `File:`.
   Write short sentences. Put exactly one thought in each sentence.
   Use approved words from the openOODA dictionary. Give each word exactly one meaning.
   Use the active voice. Do not use slang, jokes, metaphors, or marketing terms.
@@ -118,11 +128,14 @@ These governance rules do not change. They apply across all repository directori
   If two viable implementations exist, evaluate both solutions with benchmarks.
   Select the faster and simpler implementation. Delete the unused implementation.
 
-### 1.13 Network Specifications
+### 1.13 Formal RFC Template Compliance (Pillar 7)
+  All RFC proposals in `openOODA/rfcs/` must adhere to `0000-template.oot`.
+  Required sections: RFC ID, Title, Author, Status, Summary, Motivation, Design, Security, and Testing.
+  Implemented RFCs must contain concrete adversarial test suites.
   When writing networking code, adhere strictly to published IETF RFC specifications.
   Record the relevant RFC number in the source file header.
 
-### 1.14 Pure .oo and .oot File Laws
+### 1.14 Pure .oo/.oot File Laws, Two-Binary & Clean Workspaces (Pillars 1, 8, 9, 10)
   All source code, tools, proofs, fixers, and test harnesses must use `.oo` files.
   All process boards, research papers, RFCs, and specifications must use `.oot` files.
   Strictly Prohibited:
@@ -130,6 +143,9 @@ These governance rules do not change. They apply across all repository directori
     - Never create `.sh` files, except the two authorized host scripts.
     - Never create `.js`, `.ts`, `.rb`, or `.pl` files outside editor extensions.
     - Never create `.md` files.
+  Two-Binary Architecture (Pillar 8): The compiler (`oodac`) is decoupled from the workflow driver (`ooda`).
+  Gen 1 C/H Substrate Isolation (Pillar 9): All low-level C shims (`chs_rt_*.c`, `chs_rt.h`) strictly confined to `ooda/runtime/`. Zero C header leaks into `ooda/std/`.
+  Clean Workspaces (Pillar 10): Zero unmanaged/unheaded `.oo` files in roots; zero struct trailing commas.
   Directory naming responsibilities:
     `oodac/*.oo` — Compiler implementation modules.
     `cli/*.oo` — Product CLI commands and entrypoint.
@@ -143,21 +159,21 @@ These governance rules do not change. They apply across all repository directori
   Execute `scripts/enforcer.oo` and `scripts/check_board.oo` before completing any task.
   Any commit that introduces unauthorized file types or oversized files fails closed.
 
-### 1.16 Canonical Board Governance
-  Cross-reference all architecture decisions with the 13 canonical process boards:
-    `START.oot`, `RULES.oot`, `NORTHSTAR.oot`, `MOONSHOTS.oot`, `ROADMAP.oot`, `SHIPPED.oot`,
+### 1.16 Canonical Board Governance & Sovereign Orientation Codex
+  Cross-reference all architecture decisions with `LLMS.oot` and the 13 canonical process boards:
+    `LLMS.oot`, `START.oot`, `RULES.oot`, `NORTHSTAR.oot`, `MOONSHOTS.oot`, `ROADMAP.oot`, `SHIPPED.oot`,
     `FORMAT.oot`, `SECURITY.oot`, `WORKFLOW.oot`, `QUICKREF.oot`, `CONSTRAINTS.oot`, `STRUCTURE_EM.oot`,
     `REDTEAM.oot`.
 
-### 1.17 Power Law 80/20 Leverage (Pillar 4)
+### 1.17 Power Law 80/20 Leverage
   Concentrate architecture efforts on the 20% high-leverage primitives:
     - SSA mem2reg variable promotion.
     - Flat closures with explicit capture environments.
     - Direct machine code emission for ELF64 and WebAssembly.
     - Linear arena memory allocators with bulk resets.
 
-### 1.18 Capability Architecture & Bootstrapping (Pillar 5)
-  Maintain three foundational architectural security advantages:
+### 1.18 Capability Architecture & Zero Ambient Authority (Pillar 5)
+  Maintain foundational architectural security advantages:
     - Compile-time SMT check elision to remove redundant runtime checks.
     - Zero ambient authority capability model with 14 explicit unforgeable tokens.
     - Self-hosted compiler bootstrapping directly emitting native binaries.
@@ -181,7 +197,7 @@ These governance rules do not change. They apply across all repository directori
 
 ### 1.21 Generational Semantic Versioning & 80/20 Floor Rule
   All release artifacts and manifests obey Generational Semantic Versioning:
-  - Version Syntax: `v<Floor>.<Thrust>.<Patch>` (Verified State: `v2.9.1` from `ooda.pkg`).
+  - Version Syntax: `v<Floor>.<Thrust>.<Patch>` (Verified State: `v2.9.2` from `ooda.pkg`).
   - Floor (F): Increments on breaking changes to memory invariants or capability ABI.
   - Thrust (T): Increments on performance improvements and non-breaking feature additions.
   - Patch (P): Increments on bug repairs and security remediation.
