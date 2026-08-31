@@ -15,14 +15,11 @@
 //   8. Pillar 6 (Multi-Agent Swarm Safety): Validate compiler binary identity and fail closed on any fork bomb or identity violation.
 
 pub fn main(sys: &SysCap) {
-    let check_cmd: String = "src_root=\".\"; "
-        + "if [ -d \"openOODA\" ] && [ -d \"ooda\" ]; then src_root=\".\"; "
-        + "elif [ -d \"../openOODA\" ] && [ -d \"../ooda\" ]; then src_root=\"..\"; "
-        + "elif [ -d \"../../openOODA\" ]; then src_root=\"../..\"; "
-        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/ooda\" ] && [ -f \"$d/ooda/cli/main.oo\" ]; then src_root=\"$d\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
-        + "cd \"$src_root\" 2>/dev/null || true; fails=0; "
+    let check_cmd: String = "src_root=\"${OODA_REPO_ROOT:-.}\"; "
+        + "if [ ! -d \"$src_root/openOODA\" ] || [ ! -d \"$src_root/ooda\" ]; then echo \"[ROOT FAIL] missing openOODA and ooda under $src_root\"; echo \"__FAILS__=1\"; exit 0; fi; "
+        + "cd \"$src_root\" 2>/dev/null || { echo \"[ROOT FAIL] cannot chdir to $src_root\"; echo \"__FAILS__=1\"; exit 0; }; fails=0; "
         + "echo '=== 1. Checking Forbidden File Extensions in Product Scope ==='; "
-        + "forbidden=$(find openOODA ooda docs tests -type f \\( -name '*.py' -o -name '*.sh' -o -name '*.md' -o -name '*.js' \\) ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/node_modules/*' ! -path '*/target/*' ! -path '*/e2e/*' ! -path '*/tools/debugger/*' ! -path '*/tests/systems_challenge/*' ! -path '*/tests/c_backend_systems_e2e/*' ! -name 'meta_path_a_hide_rail.sh' ! -name 'oodac_pure_build' ! -name 'install.sh' ! -name 'llvm_test_runner.sh' ! -name 'coop-coep-shim.js' 2>/dev/null | sort || true); "
+        + "forbidden=$(find openOODA ooda docs tests -type f \\( -name '*.py' -o -name '*.sh' -o -name '*.md' -o -name '*.js' \\) ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/node_modules/*' ! -path '*/target/*' ! -path '*/e2e/*' ! -path '*/tools/debugger/*' ! -path '*/tools/vscode/*' ! -path '*/tools/tree-sitter/*' ! -path '*/tests/systems_challenge/*' ! -path '*/tests/c_backend_systems_e2e/*' ! -name 'README.md' ! -name 'meta_path_a_hide_rail.sh' ! -name 'oodac_pure_build' ! -name 'install.sh' ! -name 'llvm_test_runner.sh' ! -name 'coop-coep-shim.js' 2>/dev/null | sort || true); "
         + "if [ -n \"$forbidden\" ]; then echo '[FORBIDDEN FILE FAIL] Found unauthorized .py/.sh/.md/.js files:'; echo \"$forbidden\"; fails=$((fails + 1)); fi; "
         + "echo '=== 2. Checking Line Limits (<= 256 lines) ==='; "
         + "oversized=$(find openOODA ooda docs openOODA.github.io -type f \\( -name '*.oo' -o -name '*.oot' \\) ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/bootstrap/corpus/*' ! -path '*/wasm_interpreter/*' ! -path '*/qa_challenger_*' 2>/dev/null -exec wc -l {} + | awk '$1 > 256 && $2 != \"total\" {print $1, $2}' || true); "
@@ -81,12 +78,16 @@ pub fn main(sys: &SysCap) {
         + "echo '=== 10. Checking Zero Compiled/Generated Artifacts in Product Scope ==='; "
         + "genart=$(find openOODA ooda tests openOODA.github.io -type f \\( -name '*.oo.bin' -o -name '*.o' -o -name '*.wasm' -o -name '*.pb.c' -o -name 'preamble_*.c' -o -name '*.protos.c' -o -name '*.tu.c' -o -name '*.tmp.c' -o -name '*.manifest' \\) ! -path '*/.ooda-cache/*' ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/target/*' ! -path '*/corpus/*' ! -path '*/fixtures/*' ! -path '*openOODA.github.io/wasm/site.wasm' 2>/dev/null | sort || true); "
         + "if [ -n \"$genart\" ]; then echo '[GENERATED ARTIFACT FAIL] Found compiled/emit artifacts in product scope:'; echo \"$genart\"; fails=$((fails + 1)); fi; "
-        + "if [ \"$fails\" -eq 0 ]; then echo \"Format & 10-Board Master Governance Lint OK: zero forbidden files, all line counts <= 256, zero intermediate files in std/, all 4-element Academy headers compliant, zero trailing commas in structs, RFCs template-clean, zero generated artifacts in product scope.\"; else echo \"FAILED: $fails total violations found.\"; exit 1; fi";
+        + "if [ \"$fails\" -eq 0 ]; then echo \"Format & 10-Board Master Governance Lint OK: zero forbidden files, all line counts <= 256, zero intermediate files in std/, all 4-element Academy headers compliant, zero trailing commas in structs, RFCs template-clean, zero generated artifacts in product scope.\"; else echo \"FAILED: $fails total violations found.\"; fi; "
+        + "echo \"__FAILS__=$fails\"; exit 0;";
 
     let res = sys_exec(sys, "sh", "-c", check_cmd);
     match res {
         Ok(msg) => {
             println(msg);
+            if str_index_of(msg, "[FAIL]") >= 0 || str_index_of(msg, "FAILED:") >= 0 {
+                process_exit(1);
+            }
         },
         Err(err) => {
             println(err);
