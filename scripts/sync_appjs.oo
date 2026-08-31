@@ -16,20 +16,25 @@ fn fail(p: &ProcessCap, msg: String) {
     process_exit(1);
 }
 
-fn resolve_site_root(fs: &FsReadCap) -> String {
+fn env_or(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() { return match r { Ok(s) => s, Err(_) => fallback }; }
+    return fallback;
+}
+
+fn resolve_site_root(fs: &FsReadCap, env: &EnvCap) -> String {
+    let env_root: String = env_or(env, "OODA_SITE_ROOT", "");
+    if chars_len(env_root) > 0 {
+        if path_exists(fs, env_root + "/templates/shell.html") { return env_root; }
+        println("FAIL [sync_appjs] OODA_SITE_ROOT does not contain templates/shell.html");
+        process_exit(1);
+    }
     if path_exists(fs, "openOODA.github.io/templates/shell.html") {
         return "openOODA.github.io";
     }
-    if path_exists(fs, "../openOODA.github.io/templates/shell.html") {
-        return "../openOODA.github.io";
-    }
-    if path_exists(fs, "../../openOODA.github.io/templates/shell.html") {
-        return "../../openOODA.github.io";
-    }
-    if path_exists(fs, "templates/shell.html") {
-        return ".";
-    }
-    return "openOODA.github.io";
+    println("FAIL [sync_appjs] site root not found");
+    process_exit(1);
+    return "";
 }
 
 fn json_escape_str(s: String) -> String {
@@ -97,7 +102,7 @@ pub fn main(p: &ProcessCap, fs: &FsReadCap, fw: &FsWriteCap, env: &EnvCap) {
             root = root + "/";
         }
     }
-    let site_dir: String = if root != "" { root + resolve_site_root(fs) } else { resolve_site_root(fs) };
+    let site_dir: String = if root != "" { root + resolve_site_root(fs, env) } else { resolve_site_root(fs, env) };
     let app_js: String = site_dir + "/app.js";
     let guide_dir: String = site_dir + "/guide";
     if !path_exists(fs, app_js) { fail(p, "app.js missing: " + app_js); }
