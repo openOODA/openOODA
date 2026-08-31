@@ -2,7 +2,7 @@
 //
 // Logline: Validate SHIPPED freshness and run rfc_lint fail-closed.
 //
-// Setup: SysCap granted to invoke rfc_lint via ooda/bin/ooda. Root is OODA_REPO_ROOT.
+// Setup: ProcessCap granted to invoke rfc_lint via ooda/bin/ooda. Root is OODA_REPO_ROOT.
 //
 // Beats:
 //   1. Use OODA_REPO_ROOT for canonical root; no parent traversal.
@@ -10,7 +10,7 @@
 //   3. Run scripts/rfc_lint.oo and confirm "RFC lint OK".
 //   4. Print summary and fail closed on any regression.
 
-pub fn main(sys: &SysCap) {
+pub fn main(p: &ProcessCap) {
     let check_cmd: String = "set -e; "
         + "root=\"${OODA_REPO_ROOT:-.}\"; ws_root=\"$(cd \"$root\" 2>/dev/null && pwd || echo \"$root\")\"; src_root=\"$ws_root/openOODA\"; "
         + "if [ ! -d \"$src_root\" ]; then echo \"[ROOT FAIL] $src_root missing\"; exit 1; fi; "
@@ -36,7 +36,7 @@ pub fn main(sys: &SysCap) {
         + "rm -f \".rfc_lint.out\"; "
         + "if [ \"$fails\" -eq 0 ]; then echo \"verify_all passed\"; exit 0; else echo \"FAILED: $fails regression(s)\"; exit 1; fi";
 
-    let res = sys_exec(sys, "sh", "-c", check_cmd);
+    let res = sys_exec(p, "sh", "-c", check_cmd);
     match res {
         Ok(out) => { println(out); },
         Err(e) => { println("Error: " + e); process_exit(1); }

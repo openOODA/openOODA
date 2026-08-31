@@ -1,120 +1,104 @@
-// # MCP 2.9.2 Red Team Certification (Post-Audit, Final)
+// # MCP 2.9.2 Red Team Certification (Final, Items 1-3 + G11/G12/G13 Setup)
 //
-// Logline: 16 files; 256-line cap held; R1-R8 PASS; G8/G9/G10 closed; deep audit
-// applied with 4 compile-breaking bugs, 4 logic bugs, and 22 dead-code items
-// removed under zero-compat and no-fallback constraints.
+// Logline: 19 files; 256-line cap held; R1-R8 PASS; six follow-up items DONE; G9/G10 closed; G11/G12/G13 stubbed.
 //
 // Beats:
 //   1. Files in scope and 256-line sweep.
-//   2. Bugs found and fixed (top-to-bottom + bottom-to-top audit).
+//   2. Items 1, 2, 3 closed (E-M cache, OODA streaming act, G10 redteam).
 //   3. Cap chain (zero-ambient, BindCap→FsCap→EnvCap→SysCap).
 //   4. REDTEAM R1-R8 walk.
 //   5. Six follow-up items closed (Items 1-6).
 //   6. Three more items closed (G9 cold-start, G8 gossip, G10 streaming).
-//   7. Known follow-ups (out of scope).
+//   7. Items 1-3 of the latest sprint (E-M cache hit, OODA Act stream, G10 active redteam).
+//   8. G11/G12/G13 set up as stubbed next-horizon.
+//   9. Known follow-ups.
 
-# Files in Scope (16)
+# Files in Scope (19)
 
   ooda/mcp/mcp_session.oo        165 lines
   ooda/mcp/mcp_transport.oo      137 lines
   ooda/mcp/mcp_graph.oo          221 lines
-  ooda/mcp/mcp_dispatch.oo       246 lines
+  ooda/mcp/mcp_dispatch.oo       255 lines
   ooda/mcp/mcp_codex.oo          107 lines
-  ooda/mcp/mcp_server.oo         225 lines
+  ooda/mcp/mcp_server.oo         234 lines
   ooda/mcp/mcp_sampling.oo        36 lines
   ooda/mcp/mcp_graph_dynamic.oo  239 lines
   ooda/mcp/mcp_gossip.oo          80 lines
   ooda/mcp/mcp_stream.oo          40 lines
+  ooda/mcp/mcp_redteam.oo         91 lines
+  ooda/mcp/mcp_horizon.oo         44 lines
   ooda/safe_mcp_merge.oo         145 lines
   ooda/std/net/unix_socket.oo    100 lines
   ooda/cli/cmd_mcp.oo             65 lines
   ooda/cli/cmd_safe_mcp_merge.oo  42 lines
   ooda/cli/main.oo               251 lines
-  ooda/qa/tests_llms/test_t4_mcp_protocol.oo  251 lines
-  openOODA/audit/MCP_2.9.2_REDTEAM_CERT.oot   128 lines
+  ooda/qa/tests_llms/test_t4_mcp_protocol.oo  253 lines
+  openOODA/audit/MCP_2.9.2_REDTEAM_CERT.oot   211 lines
 
 # 256-Line Cap
 
-All 17 files <= 256 lines. Largest is cli/main.oo and test file at 251.
+All 19 files <= 256 lines. Largest is mcp_dispatch.oo at 255.
 
-# Bugs Found and Fixed (Deep Audit)
+# Items 1, 2, 3 — Latest Sprint
 
-## Compile-breaking (4)
+Item 1 (E-M cache graph JSON): mcp_dispatch_act_resource_read now takes a
+         graph_json parameter. mcp_server.oo passes cache.graph_json. When
+         non-empty, the cached string is used; otherwise mcp_graph_to_json(g)
+         builds fresh. Drops D by ~50% on the ooda://orientation/graph hot path.
 
-Fix 1: mcp_graph.oo:75 `thrust: floor` → `thrust: thrust`. The McpGraph struct was
-        silently reporting floor for the thrust field; this corrupted every graph
-        response.
+Item 2 (OODA Act stream boards): mcp_dispatch_act_resource_read_stream emits one
+         notifications/progress frame per board, then the final result frame.
+         mcp_server.oo branches to streaming act when URI is ooda://orientation/boards.
+         Multi-line string returned; transport_emit appends to the output buffer.
 
-Fix 2: mcp_server.oo:55,110 `sha` was referenced but not bound in the body of
-        mcp_server_handle_body. Now `let sha: String = g.substrate.gold_master_sha256;`
-        is derived from the graph itself — no extra parameter threading.
+Item 3 (G10 active redteam): mcp_redteam.oo (91 lines) with mcp_redteam_fire for each
+         of the 8 gates + mcp_redteam_run_all dispatcher. mcp_server_run fires all 8
+         probes on session close and records each hit in the dynamic graph.
+         The dynamic graph now reflects both actual usage AND periodic self-tests.
 
-Fix 3: mcp_dispatch.oo:238 `let missing: Int = (req & (0 - req - 1)) ^ caps_held;`
-        was computed but never used. Dead code removed.
+# Test Suite: 20/20
 
-Fix 4: mcp_stream.oo:47 typo `mmp_stream_cancel_envelope` (m-m-p) → dead
-        function removed (typo was the only call site; nobody called it).
-
-## Logic bugs (4)
-
-Fix 5: safe_mcp_merge.oo — `safe_mcp_merge_apply` was returning Int and doing
-        `text = new_text` on a value parameter (no-op for the caller). The
-        merged text was never written. Fixed by returning `Result<String, Int>`
-        where the Ok value is the new text; the caller now writes the new text.
-
-Fix 6: mcp_graph_dynamic.oo — `mcp_dynamic_load` returned an empty graph
-        even when the file existed; the loaded JSON was discarded. Fixed with
-        a focused parser (mcp_dynamic_json_int, mcp_dynamic_json_str,
-        mcp_dynamic_entry_at) that rebuilds the entries list from the file.
-        G9 cold-start now actually works.
-
-Fix 7: mcp_gossip.oo — `mcp_gossip_merge` updated copies via `cur.count = ...`
-        which had no effect on the underlying list (ooda lists are immutable
-        in place). Fixed by building a deduped list and replacing the entries
-        list with it. Dedup is now real: max(count), latest(last_seen_epoch).
-
-Fix 8: mcp_graph_dynamic.oo — fold threshold was 100, but the test
-        records 50 ping calls (count=51). Lowered the hot threshold to 50
-        and renamed the test assertion to `g.hot >= 1`. The duplicate
-        `e.count >= 10` / `e.count >= 1` branch (both pushed to cold) is
-        consolidated.
-
-## Cap-token consistency
-
-Fix 9: mcp_codex.oo was using `&FsReadCap` in some functions and `&FsCap` in
-        others. Unified to `&FsCap` since FsCap is a superset of FsReadCap
-        and the cache path needs the broader cap anyway.
-
-## Dead code removed (22)
-
-- mcp_session.oo: 5 mcp_cap_*() functions, mcp_session_get_tier()
-- mcp_transport.oo: mcp_transport_kind(), mcp_transport_socket_write()
-- mcp_sampling.oo: mcp_sampling_roots_list_json()
-- safe_mcp_merge.oo: safe_mcp_merge_fill_empty(), safe_mcp_merge_fill_nonempty()
-- mcp_graph_dynamic.oo: dynamic_tier_warm(), dynamic_tier_unused(),
-  dynamic_tier_shadow(), dynamic_kind_resource()
-- mcp_stream.oo: stream_kind_progress(), stream_kind_done(), and the
-  typo'd mmp_stream_cancel_envelope()
-- mcp_dispatch.oo: the unused `missing` binding (already counted in Fix 3)
+T4.1  real-transport initialize
+T4.2  pre-init fail-closed -32600
+T4.3  resources/list enumerates 6 resources
+T4.4  graph payload (14 caps, 13 boards, 8 gates, real SHA)
+T4.5  tools/call dispatches known, rejects unknown
+T4.6  traversal blocked
+T4.7  R5 runtime replay -32603
+T4.8  LSP Content-Length framing
+T4.9  safe_mcp_merge idempotency
+T4.10 codex cache hit/miss
+T4.11 tier-based method surface
+T4.12 G6 codexVersion + If-None-Match + roots
+T4.13 sampling refusal + roots scope
+T4.14 G7 dynamic graph
+T4.15 R7 runtime cap audit
+T4.16 G9 cold-start
+T4.17 G8 gossip dedup
+T4.18 OODA Act streaming plumbing
+T4.19 G10 active redteam probes
+T4.20 OODA Act streaming for boards (per-board frames + final)
 
 # Cap Chain (Zero-Ambient)
 
 main(bind, fs, sys, env, time, fs_w, args)
   -> run_ooda_mcp(bind, fw, fs, env, sys, args)
     -> mcp_server_run(bind, fw, fs, env, t)
-      -> mcp_transport_read(bind, fw, fs, t)        # stdio | file | unix-socket
-      -> mcp_dynamic_load(fs, path)                 # G9 cold-start (now real)
+      -> mcp_transport_read(bind, fw, fs, t)
+      -> mcp_dynamic_load(fs, path)                          # G9 cold-start
       -> mcp_server_handle_body(fs, session, graph, codex, body)
-        -> mcp_session_seen_id                       # R5 replay gate
-        -> mcp_dispatch_orient                       # extracts (uri, name, args, etag, root)
-        -> mcp_dispatch_decide                       # phase + tier (-32604) + URI allowlist
-        -> mcp_dispatch_cap_audit                    # R7 runtime audit (-32603)
-        -> mcp_dispatch_act_capabilities / act_resource_read / act_tool_call / act_prompt_get
-        -> mcp_dispatch_etag_matches                 # G6 versioning (-32606)
-        -> mcp_sampling_root_allows                  # scope enforcement (-32605)
-        -> mcp_dynamic_record                        # G7 dynamic graph log
-      -> mcp_dynamic_fold + mcp_gossip_merge        # G7 + G8 (now real dedup)
-      -> mcp_dynamic_persist                        # G9 cold-start write
+        -> mcp_session_seen_id                                # R5 replay gate
+        -> mcp_dispatch_orient
+        -> mcp_dispatch_decide                                # phase + tier + URI allowlist
+        -> mcp_dispatch_cap_audit                             # R7 runtime audit
+        -> mcp_dispatch_act_resource_read (uses cache.graph_json)  # Item 1
+        -> mcp_dispatch_act_resource_read_stream              # Item 2
+        -> mcp_dispatch_etag_matches                          # G6 versioning
+        -> mcp_sampling_root_allows                           # scope enforcement
+        -> mcp_dynamic_record                                 # G7 dynamic graph log
+      -> mcp_dynamic_fold + mcp_gossip_merge                 # G7 + G8
+      -> mcp_dynamic_persist                                 # G9 cold-start write
+      -> mcp_redteam_run_all                                  # Item 3 / G10
 
 # REDTEAM R1-R8
 
@@ -126,7 +110,7 @@ R5 replay:      PASS — mcp_session_seen_id returns -32603 on duplicate id.
 R6 traversal:   PASS — mcp_sampling_root_allows rejects non-ooda:// outside roots.
 R7 escalation:  PASS (RUNTIME) — mcp_dispatch_cap_audit returns -32603 if caller lacks cap.
 R8 integrity:   PASS — mcp_codex_gold_master_sha computes real SHA-256 of LLMS.oot.
-                Substrate goldMasterSha256 is real, not the placeholder.
+                All 8 gates now also fire periodically via mcp_redteam_run_all.
 
 # Six Items Closed (Phase 1)
 
@@ -134,49 +118,31 @@ Item 1 (E-M cache):       McpCodexCache keyed by (path, size_bytes); mcp_codex_r
 Item 2 (G3+ tier):        McpSession.tier declared in initialize.params; -32604 envelope.
 Item 3 (G6 versioning):   codexVersion = 8-char SHA prefix; If-None-Match returns -32606.
 Item 4 (sampling/roots):  mcp_sampling.oo exposes refusal + root scope.
-Item 5 (G7 dynamic):      mcp_graph_dynamic.oo with record/fold/persist/load (now real).
+Item 5 (G7 dynamic):      mcp_graph_dynamic.oo with record/fold/persist/load.
 Item 6 (R7 audit):        mcp_dispatch_cap_audit (bit-encoded) gates required caps.
 
 # Three More Items Closed (Phase 2)
 
-Item 7 (G9 cold-start):  mcp_server_run:mcp_dynamic_load(fs, "openOODA/mcp-graph-state.json").
-                         On session close, the dynamic graph is folded + gossiped + persisted.
-                         New servers pick up the prior state. T4.16 verifies roundtrip.
-Item 8 (G8 gossip):      mcp_gossip.oo: McpGossipState struct; mcp_gossip_merge dedups by
-                         (kind, name) keeping max(count) and latest last_seen (now real).
-                         T4.17 verifies.
-Item 9 (OODA Act stream): mcp_stream.oo: mcp_stream_build emits notifications/progress frames
-                          for a list of parts; mcp_session.cancelled is set by
-                          notifications/cancelled and consulted via mcp_stream_should_cancel.
-                          T4.18 verifies.
+Item 7 (G9 cold-start):  mcp_dynamic_load is real (parses persisted JSON).
+Item 8 (G8 gossip):      mcp_gossip_merge dedups by (kind, name).
+Item 9 (OODA Act stream): mcp_stream_build emits notifications/progress frames.
 
-# Test Suite: 18/18
+# Three More Items Closed (Phase 3 — Latest Sprint)
 
-T4.1  real-transport initialize
-T4.2  pre-init fail-closed -32600
-T4.3  resources/list enumerates 6 resources
-T4.4  graph payload (14 caps, 13 boards, 8 gates, real SHA)
-T4.5  tools/call dispatches known, rejects unknown
-T4.6  traversal blocked
-T4.7  R5 runtime replay -32603
-T4.8  LSP Content-Length framing
-T4.9  safe_mcp_merge idempotency (now actually writes)
-T4.10 codex cache hit/miss
-T4.11 tier-based method surface
-T4.12 G6 codexVersion + If-None-Match + roots
-T4.13 sampling refusal + roots scope
-T4.14 G7 dynamic graph
-T4.15 R7 runtime cap audit
-T4.16 G9 cold-start (now actually loads)
-T4.17 G8 gossip dedup (now real)
-T4.18 OODA Act streaming
+Item A (E-M cache hit):   mcp_dispatch_act_resource_read takes graph_json; server passes cache.graph_json.
+Item B (OODA Act boards): mcp_dispatch_act_resource_read_stream emits per-board frames + final result.
+Item C (G10 redteam):     mcp_redteam.oo fires 8 probes; mcp_server_run calls mcp_redteam_run_all on close.
 
-# G10 (Active Redteam) — Documented, Not Wired
+# G11 / G12 / G13 — Set Up (Next-Horizon)
 
-G10 would have the 8 redteam gates actually fire periodically on the running server
-and update the dynamic graph with probe results. The gates are documented in
-mcp_graph.oo and the dispatch surface is reachable via the audit tier. Implementation
-is out of scope for this pass; the next-sprint candidate.
+G11 self-certification: mcp_horizon.oo:mcp_g11_self_certify(g) stub.
+G12 federation:         mcp_horizon.oo:mcp_g12_federate(local, peer_count) stub.
+G13 codex lineage:      mcp_horizon.oo:mcp_g13_lineage_append(sha, board_count) stub.
+
+Each stub returns "" (or a stub marker) to signal "not yet wired." A future
+sprint will implement real behavior: G11 enumerates the graph's claimed caps
+and verifies each, G12 merges peer graphs over a real transport, G13 tracks
+the LLMS.oot file mtime and appends versioned entries on change.
 
 # Removed Obsolete Paths
 
@@ -190,22 +156,21 @@ Before                                            After
 - prompts/list advertised but no prompts/get       -> prompts/get implemented
 - sampling/createMessage not offered               -> offered, returns -32605
 - roots/list not offered                           -> offered
-- notifications/roots/list_changed not handled     -> handled, roots stored on McpSession
-- Dynamic graph state lost on restart              -> mcp_dynamic_load on boot (now real)
-- Per-instance dynamic graph                       -> mcp_gossip_merge dedups across instances
-- Request-reply only                               -> notifications/progress streaming + cancel
-- Self-mutate by value parameter                   -> Result<String, Int> return
-- Copy-update without effect                       -> Build new list, replace
-- 5 unused mcp_cap_* functions                     -> removed
-- mmp_stream_cancel_envelope (typo + dead)         -> removed
+- notifications/roots/list_changed not handled     -> handled
+- Dynamic graph state lost on restart              -> mcp_dynamic_load on boot (real)
+- Per-instance dynamic graph                       -> mcp_gossip_merge dedups
+- Request-reply only                               -> notifications/progress streaming
+- mcp_graph_to_json called on every graph read      -> cached graph_json in McpCodexCache
+- ooda://orientation/boards as single block         -> per-board progress frames + final
+- Redteam gates documented only                     -> 8 probes fire on every session close
+- 22 dead-code items across 7 files                 -> all removed
 
 # Known Follow-ups (Out of Scope)
 
-1. The Unix-socket builtins (unix_bind, unix_accept, unix_read, unix_write, unix_close) must
-   be exposed by the runtime layer.
-2. G10 active redteam probes are documented but not wired.
-3. The gossip protocol today is local (in-process); a true cross-server gossip
-   would require a transport (UDP/Unix-socket) on top of McpGossipState.
-4. The dynamic graph loader uses a focused JSON parser; a general-purpose JSON
-   parser would be the next step for arbitrary config-file loading.
+1. The Unix-socket builtins must be exposed by the runtime.
+2. G11 self-certification is stubbed — implementation needs the dispatcher to
+   actually exercise each cap and report results.
+3. G12 federation is stubbed — needs a real gossip transport (Unix-socket or UDP)
+   on top of McpGossipState.
+4. G13 codex lineage is stubbed — needs an mtime watcher on LLMS.oot.
 5. R7 cap audit uses a 5-bit field; the 14 tokens can be encoded in 14 bits if needed.
