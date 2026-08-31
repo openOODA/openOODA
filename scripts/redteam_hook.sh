@@ -87,6 +87,8 @@ run_test        "ct_primitives_smoke (bit-exact truth table)" \
                                             "ooda/qa/prove/ct_primitives_smoke.oo"
 run_test        "dudect_real (.oo-level now_ms timing)" \
                                             "ooda/qa/prove/dudect_real.oo"
+run_test        "dudect_fraud_detector_smoke (engine-level fraud veto)" \
+                                            "ooda/qa/prove/dudect_fraud_detector_smoke.oo"
 
 echo "  --- 9th Gate, sub-test: native C Dudect (ns-resolution CLOCK_MONOTONIC) ---"
 if gcc -O2 -o /tmp/dudect_c_native "$root/ooda/runtime/dudect_c_native.c" -lm > /tmp/gcc_out.txt 2>&1; then
