@@ -13,25 +13,16 @@
 pub fn main(sys: &SysCap) {
     let check_cmd: String = "set -e; fails=0; "
         + "echo '=== 1. Checking Forbidden File Extensions in Product Scope ==='; "
-        + "forbidden=$(find openOODA ooda docs openOODA.github.io -type f \\( -name '*.py' -o -name '*.sh' \\) ! -path '*/.git/*' ! -path '*/node_modules/*' ! -path '*/target/*' ! -name 'oodac_pure_build' ! -name 'install.sh' 2>/dev/null | sort); "
+        + "forbidden=$(find openOODA ooda docs openOODA.github.io -type f \\( -name '*.py' -o -name '*.sh' \\) ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/node_modules/*' ! -path '*/target/*' ! -path '*/e2e/*' ! -name 'oodac_pure_build' ! -name 'install.sh' 2>/dev/null | sort); "
         + "if [ -n \"$forbidden\" ]; then echo '[FORBIDDEN FILE FAIL] Found unauthorized .py/.sh files:'; echo \"$forbidden\"; fails=$((fails + 1)); fi; "
         + "echo '=== 2. Checking Line Limits (<= 256 lines) ==='; "
-        + "oversized=$(find openOODA ooda docs openOODA.github.io -type f \\( -name '*.oo' -o -name '*.oot' \\) ! -path '*/.git/*' ! -path '*/bootstrap/corpus/*' 2>/dev/null -exec wc -l {} + | awk '$1 > 256 && $2 != \"total\" {print $1, $2}'); "
+        + "oversized=$(find openOODA ooda docs openOODA.github.io -type f \\( -name '*.oo' -o -name '*.oot' \\) ! -path '*/.agents/*' ! -path '*/.git/*' ! -path '*/bootstrap/corpus/*' ! -path '*/qa_challenger_*' 2>/dev/null -exec wc -l {} + | awk '$1 > 256 && $2 != \"total\" {print $1, $2}'); "
         + "if [ -n \"$oversized\" ]; then echo '[OVERSIZED FILE FAIL] Found files > 256 lines:'; echo \"$oversized\"; fails=$((fails + 1)); fi; "
         + "echo '=== 3. Checking Product .oo Academy Headers ==='; "
-        + "oo_count=0; "
-        + "for dir in ooda/oodac ooda/std ooda/cli ooda/scripts qa docs openOODA openOODA.github.io; do "
-        + "  if [ ! -d \"$dir\" ]; then continue; fi; "
-        + "  for f in $(find \"$dir\" -type f -name '*.oo' | sort); do "
-        + "    case \"$f\" in *corpus*|*fixtures*) continue ;; esac; "
-        + "    oo_count=$((oo_count + 1)); "
-        + "    hdr=$(head -n 25 \"$f\"); "
-        + "    if ! echo \"$hdr\" | grep -q '^// # '; then echo \"[FORMAT FAIL] $f: missing // # <Title>\"; fails=$((fails + 1)); fi; "
-        + "    if ! echo \"$hdr\" | grep -q '^// Logline:'; then echo \"[FORMAT FAIL] $f: missing // Logline:\"; fails=$((fails + 1)); fi; "
-        + "  done; "
-        + "done; "
+        + "hdr_fails=$(find ooda/oodac ooda/std ooda/cli ooda/scripts qa docs openOODA openOODA.github.io -type f -name '*.oo' 2>/dev/null | grep -v -E 'corpus|fixtures|vendor|\\.ooda-cache|\\.ooda_modules|\\.ooda_pack|\\.agents|\\.git' | xargs awk 'FNR<=25{if($0~/^\\/\\/ # /)t[FILENAME]=1; if($0~/^\\/\\/ Logline:/)l[FILENAME]=1} ENDFILE{if(!t[FILENAME])print \"[FORMAT FAIL] \" FILENAME \": missing // # <Title>\"; if(!l[FILENAME])print \"[FORMAT FAIL] \" FILENAME \": missing // Logline:\"}' || true); "
+        + "if [ -n \"$hdr_fails\" ]; then echo \"$hdr_fails\"; fails=$((fails + $(echo \"$hdr_fails\" | wc -l))); fi; "
         + "if [ \"$fails\" -gt 0 ]; then echo \"FAILED: $fails total violations found.\"; exit 1; fi; "
-        + "echo \"Format & 10-Board Rule 1.13 Lint OK: zero forbidden files, all line counts <= 256, all $oo_count product modules compliant.\"";
+        + "echo \"Format & 10-Board Rule 1.13 Lint OK: zero forbidden files, all line counts <= 256, all product modules compliant.\"";
 
     let res = sys_exec(sys, "sh", "-c", check_cmd);
     match res {

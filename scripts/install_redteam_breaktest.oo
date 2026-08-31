@@ -29,8 +29,8 @@ fn strip(s: String) -> String {
 }
 
 fn tmp_home(p: &ProcessCap, fs: &FsCap, tag: String) -> String {
-    let out: String = "/tmp/ooda_rt_home_" + tag + ".txt";
-    if process_exec(p, "mktemp -d > " + out).is_err() { return ""; }
+    let out: String = ".ooda-cache/ooda_rt_home_" + tag + ".txt";
+    if process_exec(p, "mkdir -p .ooda-cache && mktemp -d -p \"$(pwd)/.ooda-cache\" > " + out).is_err() { return ""; }
     let r: Result[String, String] = read_file(fs, out);
     if r.is_err() { return ""; }
     let raw: String = match r { Ok(s) => s, Err(_) => "" };
@@ -99,7 +99,7 @@ pub fn main(p: &ProcessCap, fs: &FsCap, fw: &FsWriteCap, env: &EnvCap) {
     // 5. Gen 2 source re-install fallback
     let home5: String = tmp_home(p, fs, "t5");
     let src: String = root + "/ooda";
-    let cmd5: String = "rm -rf " + home5 + " && mkdir -p " + home5 + " && OODA_FS_WRITEDIR=" + home5 + " OODA_POLICY_WRITE=1 OODA_CHECKOUT=" + src + " " + ooda_bin + " install --from " + src + " --to " + home5;
+    let cmd5: String = "rm -rf " + home5 + " && mkdir -p " + home5 + " && OODA_FS_READDIR=" + src + " OODA_FS_WRITEDIR=" + home5 + " OODA_POLICY_WRITE=1 OODA_CHECKOUT=" + src + " " + ooda_bin + " install --from " + src + " --to " + home5;
     if ok_cmd(p, cmd5) && path_exists(fs, home5 + "/.local/bin/ooda") {
         pass("Gate 2-4: Gen 2 source re-install fallback");
     } else {
