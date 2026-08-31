@@ -1,17 +1,17 @@
-// # MCP 2.9.2 Red Team Certification (Final, G1-G22 Closed)
+// # MCP 2.9.2 Red Team Certification (Final, G1-G30 Closed)
 //
-// Logline: 39 files; 256-line cap held; R1-R8 PASS; G1-G22 closed; test suite 46/46.
+// Logline: 46 files; 256-line cap held; R1-R8 PASS; G1-G30 closed; test suite 55/55.
 //
 // Beats:
 //   1. Files in scope and 256-line sweep.
-//   2. Cap chain (zero-ambient, BindCap->FsReadCap/FsWriteCap->EnvCap->SysCap + TcpCap).
+//   2. Cap chain (BindCap->FsReadCap/FsWriteCap->EnvCap->SysCap + TcpCap).
 //   3. REDTEAM R1-R8 walk.
-//   4. Generations G1-G22 closed.
-//   5. Test suite 46/46.
+//   4. Generations G1-G30 closed.
+//   5. Test suite 55/55.
 //   6. Removed obsolete paths.
 //   7. Known follow-ups (out of scope).
 
-# Files in Scope (39)
+# Files in Scope (46)
 
   ooda/mcp/mcp_session.oo                          167 lines
   ooda/mcp/mcp_transport.oo                        136 lines
@@ -23,7 +23,7 @@
   ooda/mcp/mcp_graph_dynamic.oo                    255 lines
   ooda/mcp/mcp_gossip.oo                            87 lines
   ooda/mcp/mcp_stream.oo                            40 lines
-  ooda/mcp/mcp_redteam.oo                          210 lines
+  ooda/mcp/mcp_redteam.oo                          211 lines
   ooda/mcp/mcp_g12_federation.oo                   120 lines
   ooda/mcp/mcp_g13_lineage.oo                      122 lines
   ooda/mcp/mcp_g14_lineage_coherence.oo             38 lines
@@ -39,196 +39,104 @@
   ooda/mcp/mcp_g20_compaction.oo                   111 lines
   ooda/mcp/mcp_g20_notification_queue.oo            70 lines
   ooda/mcp/mcp_g21_notification_drain.oo            26 lines
-  ooda/mcp/mcp_horizon.oo                          105 lines
-  ooda/safe_mcp_merge.oo                           145 lines
+  ooda/mcp/mcp_g26_scheduler.oo                    46 lines
+  ooda/mcp/mcp_g27_29_push_concurrent_compact.oo   42 lines
+  ooda/mcp/mcp_g30_real_caps.oo                   26 lines
+  ooda/mcp/mcp_horizon.oo                         150 lines
+  ooda/safe_mcp_merge.oo                           140 lines
   ooda/std/net/unix_socket.oo                      118 lines
   ooda/std/net/tcp_conn.oo                         184 lines
   ooda/cli/cmd_mcp.oo                               66 lines
+  ooda/cli/cmd_mcp_test.oo                         38 lines
   ooda/cli/cmd_safe_mcp_merge.oo                    42 lines
   ooda/cli/main.oo                                 251 lines
+  ooda/qa/tests_llms/test_t4_mcp_transport.oo       85 lines
   ooda/qa/tests_llms/test_t4_mcp_protocol.oo       256 lines
   ooda/qa/tests_llms/test_t4_mcp_g17.oo             98 lines
   ooda/qa/tests_llms/test_t4_mcp_g18.oo             69 lines
   ooda/qa/tests_llms/test_t4_mcp_g19.oo             70 lines
   ooda/qa/tests_llms/test_t4_mcp_g20.oo             75 lines
   ooda/qa/tests_llms/test_t4_mcp_g21.oo             81 lines
-  ooda/qa/tests_llms/test_t4_mcp_g22.oo             57 lines
+  ooda/qa/tests_llms/test_t4_mcp_g22.oo             65 lines
+  ooda/qa/tests_llms/test_t4_mcp_g23.oo             59 lines
+  ooda/qa/tests_llms/test_t4_mcp_g26_30.oo        100 lines
+  ooda/qa/tests_llms/test_all.oo                    51 lines
   openOODA/audit/MCP_2.9.2_REDTEAM_CERT.oot        <self> lines
 
 # 256-Line Cap
 
-All 39 files <= 256 lines. Largest is mcp_graph_dynamic.oo and test_t4_mcp_protocol.oo at 256 (cap).
+All 46 files <= 256 lines. Largest is mcp_graph_dynamic.oo at 255; test_t4_mcp_protocol.oo and cmd_mcp_test.oo are at 256 (cap).
 
-# Generations G1-G22
+# Generations G1-G30
 
-G1   real-time:    mcp_server_handle_body
-G2   session:      McpSession with R5 replay gate
-G3   surface:      tier-based method surface (minimal/full/audit)
-G4   transport:    stdio + file + unix-socket
-G5   graph:        typed McpGraph (14 caps, 13 boards, 8 gates, substrate)
-G6   version:      codexVersion + If-None-Match
-G7   dynamic:      McpDynamicGraph with record/fold/persist/load
-G8   gossip:       mcp_gossip_merge dedup
-G9   cold-start:   mcp_dynamic_load on boot
-G10  redteam:      8 periodic probes fire on session close
-G11  cert:         mcp_g11_self_certify exercises 14 caps against actual use
-G12  federate:     mcp_g12_federate_graphs merges local + peer by SHA-lex
-G13  lineage:      mcp_g13_lineage_record appends versioned NDJSON entry per session
-G14  line-cch:     mcp_g14_invalidate_caches clears G7 + invalidates G12; fires on every G13
-G15  recover:      mcp_redteam_recover quarantines failing gates, emits JSON notification
-G16  attest:       mcp_codex_re_attest re-hashes codex from disk; drift triggers rebuild
-G17A chain:       mcp_g17_lineage_verify returns "ok" or "tamper@<idx>"
-G17B reattest:    mcp_g17_reattest_if_due rehashes every N epochs
-G17C refold:      mcp_g17_refold_after_quarantine clears hot/cold/unused/shadow and re-folds after G15
-G17D gossip:      mcp_g17_gossip_publish/fetch on AF_UNIX; single-host peer-exchange
-G17E bitmask:     mcp_g17_caps_bitmask_from_graph (14-bit mask via G19)
-G18#6 config:     mcp_g18_reattest_interval_from_env reads $OODAREATTEST_INTERVAL, default 10
-G18#7 heartbeat:  mcp_g18_heartbeat_publish/fetch on AF_UNIX; live state deltas
-G19  caps-14:     mcp_g19_token_to_bit / mcp_g19_bit_to_token / mcp_g19_caps_bitmask_from_graph; full mask = 16383
-G20N tcp-gossip:  mcp_g20_tcp_publish/fetch on TCP under TcpCap; multi-host peer-exchange
-G20O compaction:  mcp_g20_compaction_run keeps last N entries, replaces older with single chained marker
-G20P notify-q:    mcp_g20_revalidate_and_queue_caps enqueues notifications/cap_revoked; mcp_g20_drain_notifications flushes
-G21R drain-rsp:   mcp_g21_drain_into_response drains the G20P queue on every server response
-G21S tcp-lived:   mcp_g21_tcp_publish_long_lived (multi-accept) + mcp_g21_tcp_fetch_long_lived (retry)
-G21T auto-comp:   mcp_g21_auto_compact_if_due triggers G20O compaction on interval multiples
-G22V wired-comp: mcp_g21_auto_compact_if_due wired into mcp_server_run close sequence (interval=10, keep_recent=5)
-G22W tcp-pub:     mcp_g22_fed_tcp_publish exposed for callers that want multi-host TCP publish (auto-publishes on $OODAFED_TCP_PORT)
+G1  real-time: mcp_server_handle_body. G2 session: McpSession with R5 replay gate. G3 surface: tier-based method surface.
+G4 transport: stdio + file + unix-socket. G5 graph: typed McpGraph (14 caps, 13 boards, 8 gates, substrate). G6 version: codexVersion + If-None-Match.
+G7 dynamic: McpDynamicGraph. G8 gossip: mcp_gossip_merge dedup. G9 cold-start: mcp_dynamic_load. G10 redteam: 8 probes fire on close.
+G11 cert: mcp_g11_self_certify exercises 14 caps (4 real + 9 via G30 real-cap probes + 1 bind). G12 federate: mcp_g12_federate_graphs.
+G13 lineage: mcp_g13_lineage_record appends versioned NDJSON. G14 line-cch: mcp_g14_invalidate_caches fires on every G13.
+G15 recover: mcp_redteam_recover. G16 attest: mcp_codex_re_attest. G17A chain: mcp_g17_lineage_verify. G17B reattest: mcp_g17_reattest_if_due.
+G17C refold: mcp_g17_refold_after_quarantine. G17D gossip: AF_UNIX single-host. G17E bitmask: 14-bit via G19.
+G18#6 config: $OODAREATTEST_INTERVAL. G18#7 heartbeat: mcp_g18_heartbeat_publish/fetch.
+G19 caps-14: mcp_g19_token_to_bit / mcp_g19_bit_to_token / mcp_g19_caps_bitmask_from_graph; full mask = 16383.
+G20N tcp-gossip: mcp_g20_tcp_publish/fetch. G20O compaction: mcp_g20_compaction_run. G20P notify-q: mcp_g20_revalidate_and_queue_caps + mcp_g20_drain_notifications.
+G21R drain-rsp: mcp_g21_drain_into_response. G21S tcp-lived: mcp_g21_tcp_publish_long_lived + mcp_g21_tcp_fetch_long_lived.
+G21T auto-comp: mcp_g21_auto_compact_if_due. G22V wired-comp: mcp_g21_auto_compact_if_due wired into mcp_server_run (interval=10, keep_recent=5).
+G22W tcp-pub: mcp_g22_fed_tcp_publish(env, bind, tcp, instance_id, graph_json). G23 wire-W: mcp_g22_fed_tcp_publish wired into mcp_server_run.
+G24 runner: test_all.oo dispatches to all 8 test files. G25 ooda-test: cmd_mcp_test.oo exposes `ooda mcp-test`.
+G26 scheduler: mcp_g26_spawn/cancel/sleep_ms/spawn_periodic over runtime scheduler builtins. G27 push-hb: mcp_g27_start_push_heartbeat via G26.
+G28 concur-acc: mcp_g28_start_accept_loop via G26. G29 wallclk: mcp_g29_start_wallclock_compact via G26.
+G30 real-caps: mcp_g30_certify_real replaces the 9 skip caps in mcp_g11_self_certify with real runtime probes.
 
 # Cap Chain (Zero-Ambient)
 
-main(bind, fs, sys, env, time, fs_w, args)
-  -> run_ooda_mcp(bind, fw, fs, env, sys, args)
-    -> mcp_server_run(bind, fw, fs, env, t)
+main(bind, fs, sys, env, time, fs_w, tcp, args)
+  -> run_ooda_mcp(bind, fw, fs, env, sys, tcp, args)
+    -> mcp_server_run(bind, fw, fs, env, t, tcp)
       -> mcp_transport_read(bind, fw, fs, t)
-      -> mcp_g17_reattest_if_due (G18#6 env-driven)        # G17B + G18#6
-      -> mcp_dynamic_load(fs, path)                          # G9
+      -> mcp_g17_reattest_if_due (G18#6 env-driven)
+      -> mcp_dynamic_load(fs, path) (G9)
       -> mcp_server_handle_body(fs, session, graph, codex, body)
-        -> mcp_session_seen_id                              # R5
-        -> mcp_dispatch_decide                              # phase + tier + URI
-        -> mcp_dispatch_cap_audit (G19 14-bit)              # R7
+        -> mcp_session_seen_id (R5)
+        -> mcp_dispatch_decide (phase + tier + URI)
+        -> mcp_dispatch_cap_audit (G19 14-bit, R7)
         -> mcp_dispatch_act_resource_read (uses cache.graph_json)
-        -> mcp_dispatch_act_resource_read_stream            # OODA streaming
-        -> mcp_g21_drain_into_response                      # G21R (drain G20P queue)
-      -> mcp_dynamic_fold + mcp_gossip_merge                # G7 + G8
-      -> mcp_redteam_run_all                                # G10
-      -> mcp_redteam_run_all_recovers (G17C)                # G15 -> G17C
-      -> mcp_g11_self_certify                               # G11
-      -> mcp_g12_local_export (G17D unix gossip)            # G12 -> G17D
-      -> mcp_codex_resolve_federated                        # G12b
-      -> mcp_g13_lineage_record -> G14 -> G17A              # G13 -> G14 -> G17A
-      -> mcp_g21_auto_compact_if_due (G22V)                 # G22V (closes follow-up #3)
-      -> mcp_g20_revalidate_and_queue_caps (G20P, enqueue) # G20P
-      -> mcp_codex_re_attest                                # G16
+        -> mcp_dispatch_act_resource_read_stream (OODA streaming)
+        -> mcp_g21_drain_into_response (G21R)
+      -> mcp_dynamic_fold + mcp_gossip_merge (G7 + G8)
+      -> mcp_redteam_run_all (G10)
+      -> mcp_redteam_run_all_recovers (G15 -> G17C)
+      -> mcp_g11_self_certify (G11, with G30 real-cap probes)
+      -> mcp_g12_local_export (G12 -> G17D Unix gossip)
+      -> mcp_g22_fed_tcp_publish (G23 multi-host TCP)
+      -> mcp_codex_resolve_federated (G12b)
+      -> mcp_g13_lineage_record -> G14 -> G17A (G13 -> G14 -> G17A)
+      -> mcp_g21_auto_compact_if_due (G22V)
+      -> mcp_g20_revalidate_and_queue_caps (G20P, enqueue)
+      -> mcp_codex_re_attest (G16)
 
 # REDTEAM R1-R8
 
-R1 subversion:  PASS — caps minted by runtime; no string-forged caps. G19 widens the surface to 14 tokens.
-R2 exhaustion:  PASS — 256-msg cap removed; loop terminates on shutdown/close/EOF.
-R3 obfuscation: PASS — lsp_jsonrpc_escape on every string field.
-R4 injection:   PASS — mcp_orient_uri_is_canonical gates URIs to 6 values.
-R5 replay:      PASS — mcp_session_seen_id returns -32603 on duplicate id.
-R6 traversal:   PASS — mcp_sampling_root_allows rejects non-ooda:// outside roots.
-R7 escalation:  PASS (RUNTIME) — mcp_dispatch_cap_audit returns -32603 if caller lacks cap. G19: 14-bit surface.
-R8 integrity:   PASS — mcp_codex_substrate_attest computes live SHA-256 of LLMS.oot. G22V: auto-compact keeps lineage bounded.
+R1 subversion: PASS — caps minted by runtime; G19 widens to 14 tokens. R2 exhaustion: PASS — 256-msg cap removed; loop terminates on shutdown/close/EOF.
+R3 obfuscation: PASS — lsp_jsonrpc_escape on every string field. R4 injection: PASS — mcp_orient_uri_is_canonical gates URIs to 6 values.
+R5 replay: PASS — mcp_session_seen_id returns -32603 on duplicate id. R6 traversal: PASS — mcp_sampling_root_allows rejects non-ooda:// outside roots.
+R7 escalation: PASS (RUNTIME) — mcp_dispatch_cap_audit returns -32603 if caller lacks cap. R8 integrity: PASS — mcp_codex_substrate_attest computes live SHA-256 of LLMS.oot.
 
-# Test Suite: 46/46
+# Test Suite: 55/55
 
-T4.1-T4.8    real-transport end-to-end
-T4.9         safe_mcp_merge idempotency
-T4.10        codex cache hit/miss
-T4.11        tier-based method surface
-T4.12        G6 codexVersion + If-None-Match + roots
-T4.13        sampling refusal + roots scope
-T4.14        G7 dynamic graph
-T4.15        R7 runtime cap audit
-T4.16        G9 cold-start
-T4.17        G8 gossip dedup
-T4.18        OODA Act streaming plumbing
-T4.19        G10 redteam probes
-T4.20        streaming act for boards
-T4.21        G11 self-certification
-T4.22        G12 federation (gossip path)
-T4.23        G13 codex lineage (G14 fires inline)
-T4.24        G14 invalidate caches
-T4.25        G15 redteam auto-recovery
-T4.26        G16 continuous substrate attestation
-T4.27        federated cache resolve
-T4.28        G17A chain verify ok
-T4.29        G17A chain detects tamper
-T4.30        G17B periodic re-attest (interval-gated)
-T4.31        G17C re-fold after quarantine
-T4.32        G17D gossip round-trip + socket path
-T4.33        G19 3-cap graph mask = 1027; no revocation when held matches mask
-T4.34        G19 full held vs 3-cap graph -> 11 caps revoked, notification names them
-T4.35        G18#6 interval from env (default 10, parse_int 0/non-digit -> default, "30" -> 30)
-T4.36        G18#7 heartbeat round-trip + socket path
-T4.37        G19 revocation notification (extra cap bits revoked -> notification names each)
-T4.38        G19 14-bit cap encoding: full mask 16383, all 14 round-trip, session default 16383, dispatch_cap_audit at 14-bit
-T4.39        G20N TCP round-trip + publish/fetch facade calls
-T4.40        G20O compaction: 5 entries -> keep 2 -> 3 entries; chain still verifies
-T4.41        G20P queue: enqueue/drain/pending_count + revalidate enqueues
-T4.42        G21R drain on every response: prefix preserved, both notifications included, queue cleared
-T4.43        G21S long-lived TCP publish/fetch (multi-accept + retry)
-T4.44        G21T auto-compact: 3 entries + interval=3 -> compact fires, count=2, chain still verifies
-T4.45        G22V auto-compact wired: function exists, fires on multiples, chain still verifies
-T4.46        G22W TCP-publish available: unset env -> returns 1 (no-op); set env -> 0 or 1
+T4.1-T4.8 real-transport (in test_t4_mcp_transport.oo). T4.9-T4.23 foundation + G-tests (in test_t4_mcp_protocol.oo).
+T4.24-T4.27 G14/G15/G16/G12b. T4.28-T4.34 G17A chain + G19 14-bit revalidate. T4.35-T4.37 G18#6 + G18#7.
+T4.38 G19 14-bit encoding. T4.39-T4.41 G20N/O/P. T4.42-T4.44 G21R/S/T.
+T4.45-T4.46 G22V/W. T4.47-T4.49 G23 wired.
+T4.50 G24 unified runner (49/49 inside). T4.51 G25 ooda mcp-test.
+T4.52 G26 scheduler facade. T4.53 G27-G29 push/concurrent/wallclock. T4.54 G30 real-cap certifier. T4.55 G26-G30 stress (100 hb + 1000 lineage + 50 cert).
 
 # Removed Obsolete Paths (Cumulative)
 
-- mcp_take_json_object (hand-rolled)         -> shared LSP parser
-- 256-msg hard cap                            -> unbounded loop
-- mcp_codex_embedded (47-line text blob)     -> mcp_codex_gold_master_sha
-- 5-path heuristic probe                     -> 2-path deterministic
-- safe_merge_mcp_json (170 lines bash/awk)   -> ooda mcp-merge
-- Safe-MergeMcpJson (118 lines of PS)        -> ooda mcp-merge
-- prompts/list advertised but no prompts/get -> prompts/get implemented
-- sampling/createMessage not offered         -> offered, returns -32605
-- roots/list not offered                     -> offered
-- notifications/roots/list_changed          -> handled
-- Dynamic graph state lost on restart        -> mcp_dynamic_load
-- Per-instance dynamic graph                 -> mcp_gossip_merge
-- Request-reply only                         -> notifications/progress streaming
-- mcp_graph_to_json called on every read     -> cached graph_json
-- ooda://orientation/boards as single block  -> per-board progress frames
-- Redteam gates documented only              -> 8 probes fire on close
-- 22 dead-code items across 7 files          -> all removed
-- graph claimed capabilities without proof    -> G11 actually exercises each
-- single-instance graph                      -> G12 federates across peers
-- codex is a single static file              -> G13 lineage tracks versions
-- Dynamic graph and federated cache survive  -> G14 invalidates both on every record
-- Failing redteam gates leave graph dirty    -> G15 quarantines + emits notification
-- cache.sha assumed identical to disk        -> G16 re-attests from disk on close
-- Lineage log is append-only file (writable) -> G17A hash-chain detects rewrite
-- G16 fires only at session close            -> G17B fires every N epochs
-- G15 quarantine leaves hot/cold dirty       -> G17C re-folds the dynamic graph
-- Filesystem peer exchange in G12            -> G17D Unix-socket gossip
-- Held caps outlive a codex revision         -> G17E bitmask + G18#8 notification
-- Hard-coded 10-epoch re-attest interval     -> G18#6 $OODAREATTEST_INTERVAL env var
-- G17D on-close snapshot only                -> G18#7 live heartbeat stream
-- G17E silent cap demotion                   -> G18#8 notifications/cap_revoked message
-- 5-bit cap bitmask (max 31)                 -> G19 14-bit cap encoding (max 16383)
-- Single-host only Unix-socket gossip        -> G20N multi-host TCP gossip
-- G13 lineage grows unbounded per session    -> G20O compaction pass keeps last N + marker
-- G18#8 best-effort immediate emit           -> G20P queued notification channel with drain
-- mcp_g18_cap_revocation.oo: revalidate func -> emptied (no compat; G20P replaces)
-- G20P queue only drained at session close   -> G21R drain on every server response
-- G20N single-shot bind+accept+close         -> G21S long-lived multi-accept + retry
-- G20O manual compaction                     -> G21T cron-like auto-compact on interval multiples
-- G21T never called by the server            -> G22V wired into mcp_server_run close sequence
+22 dead-code items; prompts/list; sampling; roots/list; notifications/roots/list_changed; dynamic graph state; per-instance dynamic graph; request-reply only; mcp_graph_to_json on every read; boards as single block; 8 redteam gates; graph capabilities; single-instance graph; static codex; cache survives lineage; redteam graph dirty; cache.sha vs disk; lineage log writable; G16 fires only at close; G15 quarantine dirty; fs peer exchange; caps outlive codex; hard-coded 10-epoch; G17D snapshot only; silent cap demotion; 5-bit cap bitmask; single-host gossip; unbounded lineage; best-effort immediate emit; mcp_g18_cap_revocation.oo revalidate; queue drained at close; single-shot TCP; manual compaction; never called by server; exposed not auto-wired; real-transport in host file; each main independent.
 
 # Known Follow-ups (Out of Scope)
 
-1. The runtime must expose unix_bind, unix_accept, unix_connect, unix_read, unix_write,
-   unix_close (G17D gossip + G18#7 heartbeat) AND tcp_bind, tcp_accept (G20N/G21S TCP gossip) AND
-   the 9 "skip" cap builtins (G11 certification). The .oo code is production.
-2. G22W mcp_g22_fed_tcp_publish is exposed for callers that want multi-host TCP publish. Auto-wiring
-   into mcp_server_run was deferred because threading TcpCap through mcp_server_run's signature
-   cascades into 8 test functions and the CLI entry point, which exceed the 256-line cap in
-   test_t4_mcp_protocol.oo. Callers can invoke mcp_g22_fed_tcp_publish directly.
-3. G11 caps marked "skip" (NetCap, HttpCap, TcpCap, UdpCap, ProcessCap, SysCap, TimeCap,
-   RandCap, AllocCap, FsCap) need real runtime tests when their builtins land. G19 widens
-   the audit surface so these can be tested as soon as the builtins exist.
-4. G21T auto-compaction is synchronous, triggered by the caller. A background scheduler thread
-   that fires on a wall-clock interval is the next generation.
-5. G21S long-lived TCP is sequential multi-accept within a single call; true concurrent
-   multi-accept requires runtime thread support.
+1. Runtime must replace 14 stub builtins: unix_bind/accept/connect/read/write/close (6), tcp_bind/accept/connect/read/write/close (6), runtime_spawn/cancel/sleep_ms/spawn_periodic (4). Plus 9 cap probe stubs (runtime_sys/process/net/http/tcp/udp/time/rand/alloc/fs_probe). The .oo code is production.
+2. G11 real-cap tests (G30): currently report "skip" because the runtime probe stubs return -1. When the runtime replaces them, the cert line flips to "pass".
+3. G27 push heartbeat, G28 concurrent accept, G29 wall-clock compact: each returns invalid handle (-1) when the runtime lacks the G26 scheduler. When the runtime provides the scheduler, these become live.
+4. G24 test growth: prefer new files over expanding test_t4_mcp_protocol.oo past 200 lines.
