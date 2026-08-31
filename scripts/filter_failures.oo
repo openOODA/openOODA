@@ -2,15 +2,17 @@
 //
 // Logline: Parse failure logs and extract concise error lines for failing modules.
 //
-// Setup: FsReadCap and SysCap granted to inspect audit failure logs and re-check modules.
+// Setup: FsReadCap and ProcessCap granted to inspect audit failure logs and re-check modules.
 //
 // Beats:
 //   1. Read failure list from log file or argument.
 //   2. Re-check each failing module with oodac check.
 //   3. Extract and display the first error diagnostic line.
 
+import "std/str.oo";
+
 pub fn extract_first_line(s: String) -> String {
-    let nl = str_index_of(s, "\n");
+    let nl: Int = str_index_of(s, "\n");
     if nl >= 0 {
         return str_slice(s, 0, nl);
     }
@@ -18,11 +20,11 @@ pub fn extract_first_line(s: String) -> String {
 }
 
 pub fn shell_escape(s: String) -> String {
-    let mut out = "'";
-    let n = chars_len(s);
-    let mut i = 0;
+    let mut out: String = "'";
+    let n: Int = chars_len(s);
+    let mut i: Int = 0;
     while i < n {
-        let c = str_slice(s, i, i + 1);
+        let c: String = str_slice(s, i, i + 1);
         if c == "'" {
             out = out + "'\\''";
         } else {
@@ -34,39 +36,39 @@ pub fn shell_escape(s: String) -> String {
     return out;
 }
 
-pub fn main(fs: &FsReadCap, sys: &SysCap, args: List[String]) {
-    let mut log_path = "audit/current_failures.log";
+pub fn main(fs: &FsReadCap, p: &ProcessCap, args: List[String]) {
+    let mut log_path: String = "audit/current_failures.log";
     if list_len(args) > 1 {
         log_path = list_get(args, 1);
     }
-    let get_files_cmd = "grep '^Fail: ' " + log_path + " 2>/dev/null | cut -d' ' -f2 || true";
-    let get_files_res = sys_exec(sys, "sh", "-c", get_files_cmd);
+    let get_files_cmd: String = "grep '^Fail: ' " + log_path + " 2>/dev/null | cut -d' ' -f2 || true";
+    let get_files_res = sys_exec(p, "sh", "-c", get_files_cmd);
     
-    let mut files_out = "";
+    let mut files_out: String = "";
     if get_files_res.is_ok() {
         files_out = match get_files_res { Ok(s) => s, Err(e) => e };
     } else {
         files_out = match get_files_res { Ok(s) => s, Err(e) => e };
     }
     
-    let mut start = 0;
-    let n = chars_len(files_out);
+    let mut start: Int = 0;
+    let n: Int = chars_len(files_out);
     
     while start < n {
-        let rest = str_slice(files_out, start, n);
-        let nl = str_index_of(rest, "\n");
-        let mut end = n;
+        let rest: String = str_slice(files_out, start, n);
+        let nl: Int = str_index_of(rest, "\n");
+        let mut end: Int = n;
         if nl >= 0 {
             end = start + nl;
         }
         
         if end > start {
-            let f = str_slice(files_out, start, end);
+            let f: String = str_slice(files_out, start, end);
             
-            let cmd = "oodac check " + shell_escape(f) + " 2>&1 || true";
-            let check_res = sys_exec(sys, "sh", "-c", cmd);
+            let cmd: String = "oodac check " + shell_escape(f) + " 2>&1 || true";
+            let check_res = sys_exec(p, "sh", "-c", cmd);
             
-            let mut check_out = "";
+            let mut check_out: String = "";
             if check_res.is_ok() {
                 check_out = match check_res { Ok(s) => s, Err(e) => e };
             } else {
@@ -74,7 +76,7 @@ pub fn main(fs: &FsReadCap, sys: &SysCap, args: List[String]) {
             }
             
             if str_index_of(check_out, "ERR") >= 0 {
-                let first = extract_first_line(check_out);
+                let first: String = extract_first_line(check_out);
                 println(f + ": " + first);
             }
         }

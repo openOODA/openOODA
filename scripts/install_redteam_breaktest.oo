@@ -2,7 +2,7 @@
 //
 // Logline: Adversarial install tests for the 4-gate protocol.
 //
-// Setup: ProcessCap, FsCap, FsWriteCap, EnvCap. Run from repo root.
+// Setup: ProcessCap, FsReadCap, FsWriteCap, EnvCap. Run from repo root.
 //
 // Beats:
 //   1. Happy path: Gen 3 pack install succeeds.
@@ -28,7 +28,7 @@ fn strip(s: String) -> String {
     return s;
 }
 
-fn tmp_home(p: &ProcessCap, fs: &FsCap, tag: String) -> String {
+fn tmp_home(p: &ProcessCap, fs: &FsReadCap, tag: String) -> String {
     let out: String = ".ooda-cache/ooda_rt_home_" + tag + ".txt";
     if process_exec(p, "mkdir -p .ooda-cache && mktemp -d -p \"$(pwd)/.ooda-cache\" > " + out).is_err() { return ""; }
     let r: Result[String, String] = read_file(fs, out);
@@ -41,7 +41,7 @@ fn ok_cmd(p: &ProcessCap, cmd: String) -> Bool {
     return process_exec(p, cmd).is_ok();
 }
 
-pub fn main(p: &ProcessCap, fs: &FsCap, fw: &FsWriteCap, env: &EnvCap) {
+pub fn main(p: &ProcessCap, fs_r: &FsReadCap, fw: &FsWriteCap, env: &EnvCap) {
     let root_r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
     let root_raw: String = if root_r.is_ok() { match root_r { Ok(s) => s, Err(_) => "" } } else { "" };
     let root: String = if root_raw != "" { strip(root_raw) } else { "/home/jeryd/Projects/openOODA" };
@@ -50,15 +50,15 @@ pub fn main(p: &ProcessCap, fs: &FsCap, fw: &FsWriteCap, env: &EnvCap) {
     let ooda_bin: String = root + "/ooda/bin/ooda";
     let install_sh: String = root + "/openOODA.github.io/install.sh";
 
-    if !path_exists(fs, ooda_bin) { println("ERR: ooda not built"); process_exit(1); }
-    if !path_exists(fs, pack_tar) { println("ERR: release pack not built: " + pack_tar); process_exit(1); }
+    if !path_exists(fs_r, ooda_bin) { println("ERR: ooda not built"); process_exit(1); }
+    if !path_exists(fs_r, pack_tar) { println("ERR: release pack not built: " + pack_tar); process_exit(1); }
 
     let mut failures: Int = 0;
 
     // 1. Gen 3 first install via install.sh + release pack
-    let home1: String = tmp_home(p, fs, "t1");
-    let cmd1: String = "rm -rf " + home1 + " && mkdir -p " + home1 + " && HOME=" + home1 + " OODA_INSTALL_PACK=" + pack_tar + " bash " + install_sh;
-    if ok_cmd(p, cmd1) && path_exists(fs, home1 + "/.local/bin/ooda") && path_exists(fs, home1 + "/.config/ooda/env") {
+    let home1: String = tmp_home(p, fs_r, "t1");
+    let cmd1: String = "rm -rf " + home1 + " && mkdir -p " + home1 + " && HOME=" + home1 + " PATH=\"" + home1 + "/.local/bin:" + root + "/ooda/bin:$PATH\" OODA_INSTALL_PACK=" + pack_tar + " bash " + install_sh;
+    if ok_cmd(p, cmd1) && path_exists(fs_r, home1 + "/.local/bin/ooda") && path_exists(fs_r, home1 + "/.config/ooda/env") {
         pass("Gate 2/3: Gen 3 pack install happy path");
     } else {
         fail("Gate 2/3: Gen 3 pack install happy path");
@@ -66,8 +66,8 @@ pub fn main(p: &ProcessCap, fs: &FsCap, fw: &FsWriteCap, env: &EnvCap) {
     }
 
     // 2. --to outside OODA_FS_WRITEDIR fails closed
-    let home2: String = tmp_home(p, fs, "t2");
-    let bad2: String = tmp_home(p, fs, "bad2");
+    let home2: String = tmp_home(p, fs_r, "t2");
+    let bad2: String = tmp_home(p, fs_r, "bad2");
     let cmd2: String = "rm -rf " + home2 + " " + bad2 + " && mkdir -p " + home2 + " " + bad2 + " && OODA_FS_WRITEDIR=" + home2 + " OODA_POLICY_WRITE=1 " + ooda_bin + " install --from " + pack_root + " --to " + bad2;
     if !ok_cmd(p, cmd2) {
         pass("Gate 2: --to outside OODA_FS_WRITEDIR rejected");
@@ -77,7 +77,7 @@ pub fn main(p: &ProcessCap, fs: &FsCap, fw: &FsWriteCap, env: &EnvCap) {
     }
 
     // 3. Missing OODA_POLICY_WRITE fails closed on config
-    let home3: String = tmp_home(p, fs, "t3");
+    let home3: String = tmp_home(p, fs_r, "t3");
     let cmd3: String = "rm -rf " + home3 + " && mkdir -p " + home3 + " && OODA_FS_WRITEDIR=" + home3 + " " + ooda_bin + " install --from " + pack_root + " --to " + home3;
     if !ok_cmd(p, cmd3) {
         pass("Gate 4: missing OODA_POLICY_WRITE rejected");
@@ -87,7 +87,7 @@ pub fn main(p: &ProcessCap, fs: &FsCap, fw: &FsWriteCap, env: &EnvCap) {
     }
 
     // 4. Invalid --from fails closed
-    let home4: String = tmp_home(p, fs, "t4");
+    let home4: String = tmp_home(p, fs_r, "t4");
     let cmd4: String = "rm -rf " + home4 + " && mkdir -p " + home4 + " && OODA_FS_WRITEDIR=" + home4 + " OODA_POLICY_WRITE=1 " + ooda_bin + " install --from /nonexistent-dir --to " + home4;
     if !ok_cmd(p, cmd4) {
         pass("Gate 3: invalid --from rejected");
@@ -97,10 +97,10 @@ pub fn main(p: &ProcessCap, fs: &FsCap, fw: &FsWriteCap, env: &EnvCap) {
     }
 
     // 5. Gen 2 source re-install fallback
-    let home5: String = tmp_home(p, fs, "t5");
+    let home5: String = tmp_home(p, fs_r, "t5");
     let src: String = root + "/ooda";
-    let cmd5: String = "rm -rf " + home5 + " && mkdir -p " + home5 + " && OODA_FS_READDIR=" + src + " OODA_FS_WRITEDIR=" + home5 + " OODA_POLICY_WRITE=1 OODA_CHECKOUT=" + src + " " + ooda_bin + " install --from " + src + " --to " + home5;
-    if ok_cmd(p, cmd5) && path_exists(fs, home5 + "/.local/bin/ooda") {
+    let cmd5: String = "rm -rf " + home5 + " && mkdir -p " + home5 + " && OODA_COMPILER=" + root + "/ooda/bin/oodac OODA_FS_READDIR=" + src + " OODA_FS_WRITEDIR=" + home5 + " OODA_POLICY_WRITE=1 OODA_CHECKOUT=" + src + " " + ooda_bin + " install --from " + src + " --to " + home5;
+    if ok_cmd(p, cmd5) && path_exists(fs_r, home5 + "/.local/bin/ooda") {
         pass("Gate 2-4: Gen 2 source re-install fallback");
     } else {
         fail("Gate 2-4: Gen 2 source re-install fallback");
@@ -109,8 +109,8 @@ pub fn main(p: &ProcessCap, fs: &FsCap, fw: &FsWriteCap, env: &EnvCap) {
 
     // 6. Verify receipt claims 4 gates passed
     let receipt: String = home1 + "/.local/share/ooda/share/INSTALL_RECEIPT.txt";
-    if path_exists(fs, receipt) {
-        let body_r: Result[String, String] = read_file(fs, receipt);
+    if path_exists(fs_r, receipt) {
+        let body_r: Result[String, String] = read_file(fs_r, receipt);
         let body_raw: String = if body_r.is_ok() { match body_r { Ok(s) => s, Err(_) => "" } } else { "" };
         let body: String = body_raw;
         if str_contains(body, "security_gates=4_PASSED") && str_contains(body, "source=pack") {

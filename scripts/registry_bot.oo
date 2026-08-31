@@ -2,7 +2,7 @@
 //
 // Logline: Automated registry crawler, package ingestion, cryptographic verification, and catalog generator.
 //
-// Setup: Inspects registry packages, validates SHA-256 and min_pin, and rebuilds catalog under &FsCap and &SysCap.
+// Setup: Inspects registry packages, validates SHA-256 and min_pin, and rebuilds catalog under &FsReadCap and &ProcessCap.
 //
 // Beats:
 //   1. Audit repository package manifests and payloads.
@@ -17,10 +17,14 @@ fn fail_bot(msg: String) {
     process_exit(1);
 }
 
-pub fn main(fs: &FsCap, sys: &SysCap) {
+pub fn main(fs: &FsReadCap, p: &ProcessCap) {
     let mut reg_dir: String = "registry";
     if !path_exists(fs, reg_dir) {
-        if path_exists(fs, "../registry") {
+        if path_exists(fs, "openOODA.github.io/registry") {
+            reg_dir = "openOODA.github.io/registry";
+        } else if path_exists(fs, "../openOODA.github.io/registry") {
+            reg_dir = "../openOODA.github.io/registry";
+        } else if path_exists(fs, "../registry") {
             reg_dir = "../registry";
         }
     }
@@ -34,7 +38,7 @@ pub fn main(fs: &FsCap, sys: &SysCap) {
     bot_args = list_push(bot_args, "bot");
     bot_args = list_push(bot_args, reg_dir);
     bot_args = list_push(bot_args, "--sign");
-    cmd_pm_bot_run(fs, sys, bot_args);
+    cmd_pm_bot_run(fs, p, bot_args);
 
     let cat_p: String = reg_dir + "/catalog";
     let idx_p: String = reg_dir + "/index";
