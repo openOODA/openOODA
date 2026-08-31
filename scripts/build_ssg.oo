@@ -1,6 +1,6 @@
 // # SSG Master Build Orchestrator
 //
-// Logline: Master Static Site Generator compiling 18 routes and 20 static fallback HTML shells under capability grants.
+// Logline: Master Static Site Generator compiling routes, fallback HTML shells, and AI orientation endpoints under capability grants.
 //
 // Setup: Requires &FsReadCap, &FsWriteCap, &EnvCap. Run via ./ooda/bin/ooda run openOODA/scripts/build_ssg.oo.
 //
@@ -8,8 +8,9 @@
 //   1. Resolve site root directory (openOODA.github.io) and absolute sandbox path.
 //   2. Load shell template and iterate route configurations.
 //   3. Compile markdown guides and template bodies into pre-rendered static HTML shells.
-//   4. Minify markup and emit all 20 target HTML fallback files under &FsWriteCap.
-//   5. Generate 404 error fallback shell and report verification status.
+//   4. Minify markup and emit all target HTML fallback files under &FsWriteCap.
+//   5. Generate 404 error fallback shell.
+//   6. Synchronize /llms.txt and /llms-full.txt directly from canonical openOODA/LLMS.oot.
 
 import "std/str.oo";
 import "ssg_routes.oo";
@@ -193,6 +194,37 @@ pub fn main(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap) {
     }
     println("[SSG] Updated 404.html (Size: " + str_len(minified_404).to_string() + " bytes)");
     generated_count = generated_count + 1;
+
+    // Synchronize /llms.txt and /llms-full.txt directly from canonical openOODA/LLMS.oot
+    let repo_root: String = env_or(env, "OODA_REPO_ROOT", ".");
+    let mut llms_path: String = repo_root + "/openOODA/LLMS.oot";
+    if !path_exists(fs_r, llms_path) {
+        if path_exists(fs_r, "openOODA/LLMS.oot") {
+            llms_path = "openOODA/LLMS.oot";
+        }
+    }
+    if path_exists(fs_r, llms_path) {
+        let llms_res: Result[String, String] = read_file(fs_r, llms_path);
+        if llms_res.is_ok() {
+            let llms_text: String = match llms_res { Ok(s) => s, Err(_) => "" };
+            let dest_llms: String = site_root + "/llms.txt";
+            let wr_llms: Result[Void, String] = write_html_file(fs_w, env, dest_llms, llms_text + "\n");
+            if wr_llms.is_err() {
+                println("FAIL [SSG] write " + dest_llms);
+                process_exit(1);
+                return;
+            }
+            let dest_full: String = site_root + "/llms-full.txt";
+            let wr_full: Result[Void, String] = write_html_file(fs_w, env, dest_full, llms_text + "\n");
+            if wr_full.is_err() {
+                println("FAIL [SSG] write " + dest_full);
+                process_exit(1);
+                return;
+            }
+            println("[SSG] Synchronized llms.txt & llms-full.txt (Source: " + llms_path + ", Size: " + str_len(llms_text).to_string() + " bytes)");
+            generated_count = generated_count + 2;
+        }
+    }
 
     println("[SSG] Complete: " + generated_count.to_string() + " targets generated with zero ambient authority.");
 }
