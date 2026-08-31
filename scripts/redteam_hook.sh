@@ -37,13 +37,24 @@ run_test() {
     local desc="$1"
     local path="$2"
     echo "  $desc..."
-    if "$OODA" run "$path" > /tmp/redteam_gate_out.txt 2>&1; then
-        cat /tmp/redteam_gate_out.txt
-        echo "  [PASS] $desc"
+    # First, build the .bin (fast if cached) so we can run it directly.
+    if "$OODA" build "$path" > /tmp/redteam_gate_out.txt 2>&1; then
+        # Build succeeded; now run the cached .bin directly to bypass
+        # the ooda-run toolchain's intermittent stdout-flush path issue.
+        if ./.ooda-cache/run/last.bin > /tmp/redteam_gate_out.txt 2>&1; then
+            cat /tmp/redteam_gate_out.txt
+            echo "  [PASS] $desc"
+        else
+            local rc=$?
+            cat /tmp/redteam_gate_out.txt
+            echo "  [FAIL] $desc (direct .bin run, exit $rc)"
+            overall_status=1
+        fi
     else
+        # Build failed; fall back to ooda run for the error message.
         local rc=$?
         cat /tmp/redteam_gate_out.txt
-        echo "  [FAIL] $desc (exit $rc)"
+        echo "  [FAIL] $desc (build, exit $rc)"
         overall_status=1
     fi
     rm -f /tmp/redteam_gate_out.txt
