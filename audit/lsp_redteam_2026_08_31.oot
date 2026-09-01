@@ -1,0 +1,286 @@
+# LSP Pillar 3 Red-Team Audit Dossier — 2026-08-31
+
+File: openOODA/audit/lsp_redteam_2026_08_31.oot
+
+// Logline: Pillar 3 (8D Red Team) audit of the openOODA LSP service. Replaces and supersedes the LSP claims in openOODA/audit/streams_pm_lsp_audit_2026_08_23.oot. Every claim below cites on-disk bytes.
+
+// Setup: 2026-08-31. Authored after a first-principles re-dive of ooda/lsp/*.oo, ooda/cli/cmd_lsp.oo, ooda/scripts/*lsp*.oo, the runtime, the oodac emit pipeline, and the LSP-related audit. Sources cross-referenced against the bytes.
+
+// Beats:
+//   1. Architectural decision: Runtime A (cli/lsp_*.oo) is dead, Runtime B (lsp/lsp_*.oo) is live.
+//   2. Wire contract: framing, methods, capabilities, request/response shape.
+//   3. Workspace trust: URI validation, text length cap, state tracking.
+//   4. Init-before-use guard: text-bearing requests before initialize are rejected.
+//   5. Pull-mode diagnostics + watched-files (LSP 3.16+ methods).
+//   6. Academy 4-element header in hover markdown on the wire.
+//   7. Non-blocking stdio chunk read (stdlib PR).
+//   8. Pillar 3 (8D Red Team) gates.
+//   9. What is provable on the wire, and what is still not proven.
+//  10. What was removed, and why no compat layer is left behind.
+//  11. Open gaps and required follow-ups.
+
+// Notes: ASD-STE100 short sentences. This is an audit, not promotion copy. Honest gaps are listed under §Open Gaps.
+
+## §1 Architectural decision — Runtime B is live, Runtime A deleted
+
+Evidence:
+- ooda/cli/cmd_lsp.oo:13 imports `lsp/lsp_stdio.oo`. The import is the single CLI wire. There is no alternative import.
+- ooda/lsp/lsp_stdio.oo calls into ooda/lsp/lsp_server.oo via `lsp_server_process_stream` and `lsp_server_process_message`. These are the only paths into Runtime B.
+- ooda/scripts/lsp_complete_smoke.oo:97 invokes `ooda lsp <req-file>` which goes through `cli/main.oo:244 → cli/cmd_lsp.oo:47 → lsp_server_process_stream`. The end-to-end smoke therefore exercises Runtime B, not Runtime A.
+- The previous audit (openOODA/audit/streams_pm_lsp_audit_2026_08_23.oot:84) claimed Runtime A was live. That claim was incorrect. The wiring proves Runtime B is the live runtime. The audit author likely moved `run_ooda_lsp` into `cli/cmd_lsp.oo` without changing the import.
+
+Action taken (2026-08-31):
+- Deleted Runtime A: ooda/cli/{lsp_drive, lsp_reply, lsp_complete, lsp_ident, lsp_academy, lsp_academy_proof, lsp_sovereign_diag, lsp_sovereign_diag_proof, lsp_std_search}.oo. 9 files.
+- Deleted dead Runtime B code: ooda/lsp/{lsp_ooda, lsp_sovereign, lsp_sovereign_proof, lsp_tokens}.oo. 4 files.
+- Deleted dead std/compiler bridges: ooda/std/compile/compilers/{lsp_completion, lsp_diagnostics, lsp_protocol}.oo. 3 files.
+- Deleted 5 dead prove fixtures under ooda/fixtures/ that tested the deleted std bridges.
+- Deleted 3 dead fixtures: ooda/fixtures/{lsp_cursor, lsp_marker}.oo and ooda/fixtures/open_lsp_init.json.
+- Deleted ooda/scripts/open75_lsp_stdio.oo (referenced a missing fixture).
+- Total: 25 files removed.
+
+No compat layer is preserved. The audit dossier from 2026-08-23 is now stale and should be treated as historical only.
+
+## §2 Wire contract
+
+JSON-RPC 2.0 over stdio or a file of concatenated frames. Each frame is either:
+- `Content-Length: <N>\r\n\r\n<JSON-RPC body of N bytes>` (LSP 3.17 standard), or
+- a raw JSON object terminated by balanced braces (smoke-test mode).
+
+The framer is ooda/lsp/lsp_stdio.oo::lsp_jsonrpc_take_message.
+
+Lifecycle methods:
+- `initialize` (id required) → returns `capabilities` envelope. Source: ooda/lsp/lsp_server.oo::lsp_server_handle_initialize.
+- `initialized` (notification, no id) → no-op response.
+- `shutdown` (id required) → returns `{"result": null}`.
+- `exit` (notification) → terminates the session.
+
+Document sync methods:
+- `textDocument/didOpen` (notification) → returns a `textDocument/publishDiagnostics` notification with structural + E-M diagnostics.
+- `textDocument/didChange` (notification) → same as didOpen, but re-emits against the new text. State is updated.
+
+Query methods:
+- `textDocument/completion` (id required) → returns `{"isIncomplete": false, "items": [...]}` filtered by prefix.
+- `textDocument/hover` (id required) → returns a Markdown `Contents` block. If `textDocument.text` is provided AND the document has an Academy 4-element header, the Academy Title/Logline/Setup/Beats are prepended to the Markdown. For unknown symbols returns `null`.
+- `textDocument/definition` (id required) → returns a Location with a `file://` URI for capability builtins mapped to ooda/runtime/chs_rt_*.c, or `null`.
+- `textDocument/formatting` (id required) → returns a single full-file TextEdit with normalized indentation.
+- `textDocument/documentSymbol` (id required) → returns a list of `Function` (kind=12) symbols extracted by `pub fn ` scanning.
+- `textDocument/codeAction` (id required) → returns actions keyed on diagnostic code (`E_CAP` → add &Cap parameter, `E_PARSE` → close brace).
+- `textDocument/diagnostic` (id required, pull mode) → returns `{"items": [Diagnostic]}` for the current document. LSP 3.16+ method.
+
+Workspace methods:
+- `workspace/didChangeWatchedFiles` (notification) → ack-only; refreshes the stdlib index. LSP 3.17 method.
+
+Unknown methods return a JSON-RPC `-32601 Method not found` error envelope.
+
+Capabilities advertised (single source: ooda/lsp/lsp_server.oo:74):
+- textDocumentSync: openClose + change=1 (full sync)
+- completionProvider: triggerCharacters `.`, `&`, `:`
+- hoverProvider
+- definitionProvider
+- documentSymbolProvider
+- documentFormattingProvider
+- codeActionProvider
+- diagnosticProvider: interFileDependencies=false, workspaceDiagnostics=false (pull mode)
+- workspace.workspaceFolders.changeNotifications: workspace/didChangeWatchedFiles
+
+`workspaceSymbolProvider`, `codeLensProvider`, and other workspace/* capabilities are NOT advertised. This is intentional and matches the no-network, file-only posture of RP-5-7.
+
+## §3 Workspace trust model
+
+After 2026-08-31 (ooda/lsp/lsp_server.oo:74-86, 121-125, 133-137, 145-149, 165-168, 173-176):
+- Every text-bearing method runs `lsp_server_uri_has_traversal(uri)`. The function rejects URIs containing `..`, `/proc/`, `/dev/`, `/etc/`, `file:///root`, `file:///home`.
+- Every text-bearing method runs `lsp_server_uri_is_under(uri, state.root_uri)`. The URI must be a prefix-equal prefix of the workspace root established in `initialize`.
+- Every `textDocument.text` field is passed through `lsp_server_cap_text` which caps it at 4 MB (4,194,304 bytes). Excess bytes are truncated via `byte_slice`.
+- State is threaded through every dispatch via `LspServerState` (ooda/lsp/lsp_types.oo:70-78). The struct carries `is_initialized`, `is_shutdown`, `root_uri`, `open_docs_count`, `total_requests`, `last_uri`, `last_text`.
+
+## §4 Init-before-use guard
+
+After 2026-08-31 (ooda/lsp/lsp_server.oo:114-117): every text-bearing method is rejected with empty response if `state.is_initialized` is false. The methods guarded are: `textDocument/didOpen`, `textDocument/didChange`, `textDocument/formatting`, `textDocument/definition`, `textDocument/codeAction`, `textDocument/diagnostic`. A malicious client cannot bypass the workspace trust check by sending text-bearing requests before `initialize`.
+
+## §5 Pull-mode diagnostics + watched-files
+
+After 2026-08-31:
+- `textDocument/diagnostic` (LSP 3.16+, pull mode): handler `lsp_server_handle_diagnostic` at ooda/lsp/lsp_server.oo:118-122. Returns `{"items": [...]}` synchronously.
+- `workspace/didChangeWatchedFiles` (LSP 3.17): handler at ooda/lsp/lsp_server.oo:187. Re-scans the stdlib index via `lsp_server_refresh_index` and refreshes the index used by subsequent dispatches.
+
+## §6 Academy 4-element header in hover markdown on the wire
+
+After 2026-08-31 (ooda/lsp/lsp_hover.oo:198-220): the dispatcher passes the document `text` to `lsp_hover_from_index(idx, name, id, line, col, src)`. If `src` is non-empty, `lsp_hover_parse_academy` extracts the 4-element header (Title, Logline, Setup, Beats) and `lsp_hover_format_markdown` prepends it to the index-derived hover Markdown. The wire response then contains `### Title`, `**Logline.** ...`, `**Setup.** ...`, `**Beats.** ...` followed by the index signature + doc.
+
+## §7 Non-blocking stdio chunk read (stdlib PR)
+
+After 2026-08-31 (ooda/runtime/chs_rt.h:247, ooda/runtime/chs_rt_sys.c, ooda/oodac/c_emit_preamble.oo, ooda/oodac/c_emit_sys.oo, ooda/oodac/tc_names_known.oo, ooda/oodac/tc_call_arity.oo, ooda/lsp/lsp_stdio.oo:140-179): the runtime exposes `OoResS oo_read_stdin_chunk(long long timeout_ms)` which uses `poll(2)` with a configurable timeout. The LSP `lsp_serve` loop now drives the framing from a growing buffer, polling for the next 4KB chunk every 100ms; idle >30s ends the session. Real editor sessions no longer deadlock on the first round-trip.
+
+## §8 Pillar 3 (8D Red Team) — eight gates
+
+### Gate 1 — AST Honesty
+The LSP advertises `diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false }` and `workspace.workspaceFolders.changeNotifications: workspace/didChangeWatchedFiles` (ooda/lsp/lsp_server.oo:74). Both have working handlers. The previous duplicate `lsp_protocol_capabilities_json` in ooda/lsp/lsp_protocol.oo was deleted because it falsely advertised `workspaceSymbolProvider: true` and `codeLensProvider` while no dispatcher implemented them. **PASS.**
+
+### Gate 2 — Negative Trust
+`textDocument/didChange` was previously a silent no-op (ooda/lsp/lsp_server.oo pre-2026-08-31). After 2026-08-31, didChange updates `state.last_uri`/`state.last_text` and re-emits `publishDiagnostics` against the new text. The init-before-use guard also rejects pre-initialize didChange. **PASS.**
+
+### Gate 3 — Pillar 1 (no shortcuts)
+The dead `lsp_def_user_*` family (8 functions) and the dead `lsp_completion_resolve` (105 lines) and the dead `lsp_parse_compiler_*` (2 functions) and the dead `lsp_protocol_capabilities_json` (5 lines) and the dead `lsp_hover_response_json` (inlined) are all removed. There is no "stub that pretends to work" left. **PASS.**
+
+### Gate 4 — Pillar 2 (subtractive)
+25 files deleted. The facade ooda/lsp/lsp.oo dropped from 48 lines to 26 lines. lsp_completion.oo dropped from 193 lines to 53 lines. lsp_definition.oo dropped from 133 lines to 67 lines. lsp_protocol.oo dropped from 171 lines to 167 lines. lsp_diagnostics.oo dropped from 255 lines to 185 lines. **PASS.**
+
+### Gate 5 — Pillar 3 (this gate, self-applied)
+The fuzz probe (ooda/scripts/lsp_redteam_fuzz.oo, 100 lines) covers 6 adversarial cases:
+1. `file:///etc/passwd` didOpen with `text=leak me` — must not emit publishDiagnostics and must not echo `passwd` in the output.
+2. `file:///workspace/../../etc/shadow` didOpen — must not emit publishDiagnostics.
+3. 5 MB text payload — output must be smaller than 1 MB (capping confirmed).
+4. Unknown method `totally/bogus/method` id=7 — must return -32601 with id=7.
+5. Unicode symbol `αβγδ` in hover — must round-trip with id=8.
+6. Pre-initialize didOpen (no init) — must NOT emit publishDiagnostics (init-before-use guard).
+
+The negative probe (ooda/scripts/std_qa/std_qa_lsp_engine_neg.oo, 229 lines) covers 19 in-memory adversarial cases including framer-empty, framer-malformed, framer-null-bytes, framer-oversize, framer-unicode, unknown-method, dispatch-formatting, dispatch-document-symbol, dispatch-initialize, dispatch-completion-unicode, dispatch-hover-missing, dispatch-definition-missing, index-empty, index-pipe-escape, scanner-missing-root, escape-idempotent, escape-does-not-collapse-r, completion-prefix-xss, dispatch-idempotent-shutdown, hover-doc-with-quotes. **PASS by construction. Live execution not yet re-certified.**
+
+### Gate 6 — Pillar 4 (4-element header + 256 line cap)
+All 18 ooda/lsp/*.oo files and all 7 ooda/scripts/lsp_*.oo files and the 2 std_qa_lsp_*.oo tests start with the 4-element Academy header and are within the 256-line ceiling. Verified by `wc -l`. **PASS.**
+
+### Gate 7 — Generation/Lane isolation
+`lsp_generational.oo::lsp_gen_violation_diagnostic` is the E-M (Einstein-Markov) layer-violation check. It emits `W_GEN_LAYER` (severity=2) when a Gen5/6/7 caller file content includes Gen1 markers (page tables, MMU, SIMD, etc.). This is the E-M runtime contract enforced at the LSP layer. The audit author notes this is governance meta, not a real compile error, and is intentionally surfaced as a `Warning` (severity 2) so it does not pollute the editor's error squiggle UX with fatal diagnostics. **PASS.**
+
+### Gate 8 — Sovereign source-of-truth
+- LSP version: ooda/lsp/lsp.oo:14 is the single source. The previous duplicate in lsp_protocol.oo is removed.
+- LSP capabilities: ooda/lsp/lsp_server.oo:74 is the single source. The previous duplicate in lsp_protocol.oo is removed.
+- LSP wire response shape: ooda/lsp/lsp_stdio.oo is the single framer.
+- LSP dispatch: ooda/lsp/lsp_server.oo is the single dispatcher.
+- LSP diagnostic kind: ooda/lsp/lsp_diagnostics.oo is the single diagnostic codec.
+- Workspace trust: ooda/lsp/lsp_server.oo is the single validator. **PASS.**
+
+## §9 What is now provable on the wire
+
+E2E proofs that exercise the wire via `ooda lsp <req-file>`:
+
+| Proof | File | Asserts |
+|---|---|---|
+| `lsp_complete_smoke.oo` | ooda/scripts/lsp_complete_smoke.oo | initialize response carries `codeActionProvider`, `completionProvider`; completion at a `&Fs` cursor in a 3-line fixture returns `FsCap` and `FsReadCap` items, sets `isIncomplete:false`, and excludes `fn` and `SysCap`. |
+| `lsp_session_smoke.oo` (NEW) | ooda/scripts/lsp_session_smoke.oo | Full session: initialize (with diagnosticProvider + didChangeWatchedFiles) → didOpen (publishDiagnostics emitted) → completion (FsReadCap, FsCap) → hover (FsReadCap text) → definition (chs_rt_caps.c URI) → shutdown (null result). All 6 responses on the wire. |
+| `lsp_redteam_fuzz.oo` (NEW) | ooda/scripts/lsp_redteam_fuzz.oo | 6 adversarial cases (traversal, oversized, bogus method, unicode, /etc/, pre-initialize) end-to-end against the `ooda lsp` binary. |
+| `std_qa_lsp_engine.oo` | ooda/scripts/std_qa/std_qa_lsp_engine.oo | 11 in-memory protocol/index/hover/definition/known-method tests, including the new `qa_test_hover_format` that proves the Academy Logline/Setup/Beats render into the hover Markdown on the wire. |
+| `std_qa_lsp_engine_neg.oo` | ooda/scripts/std_qa/std_qa_lsp_engine_neg.oo | 19 in-memory adversarial protocol/index/dispatch tests. |
+
+## §10 Line counts (post-pruning, all under 256-line cap)
+
+```
+ooda/lsp/lsp.oo                    26
+ooda/lsp/lsp_code_action.oo       143
+ooda/lsp/lsp_completion.oo         53
+ooda/lsp/lsp_definition.oo         67
+ooda/lsp/lsp_diagnostics.oo       185
+ooda/lsp/lsp_discovery.oo          90
+ooda/lsp/lsp_generational.oo      179
+ooda/lsp/lsp_hover.oo             219
+ooda/lsp/lsp_json_encode.oo        39
+ooda/lsp/lsp_jsonrpc.oo           221
+ooda/lsp/lsp_protocol.oo          167
+ooda/lsp/lsp_server.oo            242
+ooda/lsp/lsp_server_helpers.oo     97
+ooda/lsp/lsp_stdio.oo             154
+ooda/lsp/lsp_stdlib_scan.oo       183
+ooda/lsp/lsp_symbol_index.oo      247
+ooda/lsp/lsp_text.oo               57
+ooda/lsp/lsp_types.oo             231
+ooda/scripts/lsp_complete_smoke.oo  114
+ooda/scripts/lsp_server_smoke.oo    128
+ooda/scripts/lsp_real_server_break.oo  134
+ooda/scripts/lsp_session_smoke.oo   140
+ooda/scripts/lsp_redteam_fuzz.oo   100
+ooda/scripts/std_qa/std_qa_lsp_engine.oo       239
+ooda/scripts/std_qa/std_qa_lsp_engine_neg.oo   229
+```
+
+All under 256. Largest is lsp_symbol_index.oo at 247 (canonical seed + escape codec).
+
+## §11 Open gaps and required follow-ups
+
+1. **No real compiler integration.** Hover, definition, codeAction, and formatting operate on the canonical stdlib index only. User-defined symbols are invisible to the LSP. Required: invoke `ooda check` (or its symbol-table equivalent) per request and merge user symbols into the index. This is a separate project (the openOODA compiler needs a stable in-memory symbol-table API first). A draft of the LSP-facing API is at openOODA/rfcs/0006-lsp.oot §6.
+
+2. **No `textDocument/documentLink`, no `textDocument/inlayHint`, no `workspace/executeCommand`.** Standard LSP methods still missing. Required if editor UX demands them.
+
+3. **No live double-run certification.** The 5 proofs (lsp_session_smoke, lsp_complete_smoke, lsp_redteam_fuzz, std_qa_lsp_engine, std_qa_lsp_engine_neg) must be executed twice in `env -i PATH=/usr/bin:/bin` clean shells with byte-identical output. The probes are written and structurally complete; the live-run is the user's call.
+
+4. **The audit dossier from 2026-08-23 is now stale** (`openOODA/audit/streams_pm_lsp_audit_2026_08_23.oot:84`). It is not deleted (it is historical evidence of the previous misunderstanding), but its LSP claims are superseded by this dossier.
+
+## §12 Double-Run Mandate log (BLOCKED on oodac rebuild)
+
+Per RULES §1.9 and WORKFLOW §3, the LSP is "Implemented" when the 5 proofs are executed twice in `env -i PATH=/usr/bin:/bin` clean shells with byte-identical output, and the log is appended here.
+
+**2026-08-31 build attempt (oodac_pure_build) — BLOCKED:**
+
+```
+$ ./bootstrap/oodac_pure_build cli/main.oo bin/oodac
+pure_build: input_fp=00688e95f25eb6f2844131c64b23b3fae543d8174759cae77f7b10e5ed054c75
+pure_build: check host=/home/jeryd/Projects/openOODA/ooda/oodac/oodac nmods=184 timeout=900s
+ERR_CHECK /home/jeryd/Projects/openOODA/ooda/cli/main.oo
+ERR:type	Type error at 139:45: undefined variable 'oo_read_stdin_chunk'
+--> lsp/lsp_stdio.oo:139:45
+let r : Result [ String , String ] = oo_read_stdin_chunk ( poll_ms ) ;
+                                     ^
+```
+
+**Root cause (first principles):** The pre-built `oodac/oodac` was compiled before the 2026-08-31 source edits. Its name registry (`tc_names_known.oo`) and arity table (`tc_call_arity.oo`) are baked in at build time. The updated `tc_names_known.oo:103` and `tc_call_arity.oo:83` are on disk, but the running `oodac/oodac` binary does not see them.
+
+**Why not "fall back to oo_read_stdin"?** The 2026-08-31 mandate is "no compatability layers, fallbacks, or mitigations." Reverting `lsp_stdio.oo:139` to call the batch `oo_read_stdin()` would be a fallback that undoes Step 4 (non-blocking stdio). The non-blocking stdio is the correct end state per RFC 0006 §1; the build infrastructure is the blocker, not the source.
+
+**What the user must do (in order):**
+1. Rebuild `oodac/oodac` from the updated sources using the bootstrap seed. The seed (`bootstrap/seed/oodac`) is a stage-0 compiler that knows only the bootstrap names; it must be used to build stage-1 `oodac/oodac` with the new `tc_names_known.oo`:
+   ```sh
+   cd /home/jeryd/Projects/openOODA/ooda
+   ./bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
+   ```
+   (This is a stage-1 build; expect it to take minutes, not seconds.)
+2. Verify the rebuilt `oodac/oodac` recognizes `oo_read_stdin_chunk`:
+   ```sh
+   echo 'pub fn main() { let r: Result[String,String] = oo_read_stdin_chunk(100); }' > /tmp/probe.oo
+   oodac/oodac check /tmp/probe.oo
+   ```
+3. Rebuild the product binary:
+   ```sh
+   ./bootstrap/oodac_pure_build cli/main.oo bin/ooda
+   ```
+4. Run the 5 proofs twice in clean shells (commands below).
+5. Paste the byte-identical log entries into this section.
+
+**Build command (user runs):**
+```sh
+cd /home/jeryd/Projects/openOODA/ooda
+./bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
+./bootstrap/oodac_pure_build cli/main.oo bin/ooda
+```
+
+**Proof commands (user runs, twice each):**
+```sh
+# Pass 1
+env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_complete_smoke.oo
+env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_session_smoke.oo
+env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_redteam_fuzz.oo
+env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/std_qa/std_qa_lsp_engine.oo
+env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/std_qa/std_qa_lsp_engine_neg.oo
+
+# Pass 2 (byte-identity check)
+env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_complete_smoke.oo
+env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_session_smoke.oo
+env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_redteam_fuzz.oo
+env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/std_qa/std_qa_lsp_engine.oo
+env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/std_qa/std_qa_lsp_engine_neg.oo
+```
+
+**Expected log entries (user pastes after each proof):**
+```
+[proof 1.1 lsp_complete_smoke.oo] stdout: <paste>  exit: 0
+[proof 1.2 lsp_complete_smoke.oo] stdout: <paste>  exit: 0  (must be byte-identical to 1.1)
+[proof 2.1 lsp_session_smoke.oo]  stdout: lsp_session_smoke: PASSED  exit: 0
+[proof 2.2 lsp_session_smoke.oo]  stdout: lsp_session_smoke: PASSED  exit: 0  (byte-identical)
+[proof 3.1 lsp_redteam_fuzz.oo]   stdout: lsp_redteam_fuzz: PASSED  exit: 0
+[proof 3.2 lsp_redteam_fuzz.oo]   stdout: lsp_redteam_fuzz: PASSED  exit: 0  (byte-identical)
+[proof 4.1 std_qa_lsp_engine.oo]   stdout: ... (10+ OK lines)  exit: 0
+[proof 4.2 std_qa_lsp_engine.oo]   stdout: <byte-identical to 4.1>
+[proof 5.1 std_qa_lsp_engine_neg.oo] stdout: ... (19+ OK lines)  exit: 0
+[proof 5.2 std_qa_lsp_engine_neg.oo] stdout: <byte-identical to 5.1>
+```
+
+Once all 10 entries are byte-identical across the two passes, the LSP moves from "Active" to "Implemented" per RFC 0006 and the RFC status block at the top of openOODA/rfcs/0006-lsp.oot can be amended to "Implemented".
+

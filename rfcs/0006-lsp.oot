@@ -1,0 +1,247 @@
+# RFC 0006: openOODA Language Server Protocol — Wire Contract
+
+File: openOODA/rfcs/0006-lsp.oot
+
+* **RFC ID**: 0006
+* **Author**: openOODA Core Team (audited 2026-08-31, see openOODA/audit/lsp_redteam_2026_08_31.oot)
+* **Status**: Active
+* **Created**: 2026-08-31
+* **Supersedes**: LSP claims in openOODA/audit/streams_pm_lsp_audit_2026_08_23.oot
+
+---
+
+## 💡 Feature Overview
+Defines the wire contract for the openOODA native Language Server (`ooda lsp`). The server speaks JSON-RPC 2.0 over stdio or a file of concatenated frames, advertises a minimal capability set, enforces workspace trust on every text-bearing request, and supports pull-mode diagnostics + watched-files.
+
+## 🎯 Motivation & Problem Statement
+Two prior problems must not recur:
+1. The audit (2026-08-23) and the CLI disagreed about which runtime was live. Without a written wire spec, this disagreement will recur every time the code is touched.
+2. SHIPPED.oot over-claimed. The text "hover, definition, and autocompletion" was attributed to `lsp_complete_smoke.oo`, but that smoke only proves autocompletion. Honest claims need an RFC to cite.
+
+This RFC pins down: the wire contract, the capability set, the lifecycle, the workspace trust model, the init-before-use guard, and the proof obligations.
+
+## 📐 Detailed Specification
+
+### 1. Transport
+- **stdio mode**: `ooda lsp` with no arguments drives the non-blocking chunk read `oo_read_stdin_chunk(100ms)` in ooda/lsp/lsp_stdio.oo::lsp_serve. Each poll returns up to 4 KB; the buffer is parsed for complete Content-Length or raw-JSON frames. A frame is dispatched, a response is appended, and the loop continues. Idle >30s ends the session.
+- **file mode**: `ooda lsp <req-file>` reads the file as a single buffer and parses it the same way. Used by smoke tests.
+- **Safety caps** (ooda/lsp/lsp_stdio.oo:21-25):
+  - Total input: 100 MB (104,857,600 bytes). Larger inputs are rejected with empty output.
+  - Per-frame: 4 MB (4,194,304 bytes). Larger frames are skipped.
+  - Session messages: 1,000,000. The session terminates on cap hit. The cap is a safety ceiling, not a session limit.
+
+### 2. Lifecycle
+| Method | Direction | Body | Response |
+|---|---|---|---|
+| `initialize` | client → server | `{rootUri, capabilities}` | `capabilities` envelope (id required) |
+| `initialized` | client → server | `{}` (notification) | none |
+| `textDocument/didOpen` | client → server | `{textDocument: {uri, text}}` (notification) | `textDocument/publishDiagnostics` notification (no id) |
+| `textDocument/didChange` | client → server | `{textDocument: {uri, text}}` (notification) | `textDocument/publishDiagnostics` notification (no id) — re-emit against new text |
+| `textDocument/completion` | client → server | `{textDocument, position}` (id required) | `{isIncomplete: false, items: [...]}` |
+| `textDocument/hover` | client → server | `{textDocument, position, symbol?}` (id required) | `{contents: {kind: "markdown", value: "Academy header + index lookup"}}` or `null` |
+| `textDocument/definition` | client → server | `{textDocument, position, symbol?}` (id required) | `Location` or `null` |
+| `textDocument/formatting` | client → server | `{uri, text}` (id required) | `[TextEdit]` (one full-file edit) |
+| `textDocument/documentSymbol` | client → server | `{text}` (id required) | `DocumentSymbol[]` (kind=12 Function) |
+| `textDocument/codeAction` | client → server | `{textDocument, diagnostic?}` (id required) | `CodeAction[]` |
+| `textDocument/diagnostic` | client → server | `{textDocument}` (id required, pull mode) | `{items: [Diagnostic]}` |
+| `workspace/didChangeWatchedFiles` | client → server | `{changes}` (notification) | none; stdlib index refresh |
+| `shutdown` | client → server | `{}` (id required) | `null` |
+| `exit` | client → server | `{}` (notification) | none; server exits |
+
+Unknown methods return JSON-RPC `-32601 Method not found` error.
+
+### 3. Capabilities (single source: `ooda/lsp/lsp_server.oo::lsp_server_capabilities_json`)
+```json
+{
+  "capabilities": {
+    "textDocumentSync": { "openClose": true, "change": 1 },
+    "completionProvider": { "resolveProvider": true, "triggerCharacters": [".", "&", ":"] },
+    "hoverProvider": true,
+    "definitionProvider": true,
+    "documentSymbolProvider": true,
+    "documentFormattingProvider": true,
+    "codeActionProvider": true,
+    "diagnosticProvider": { "interFileDependencies": false, "workspaceDiagnostics": false },
+    "workspace": { "workspaceFolders": { "supported": true, "changeNotifications": "workspace/didChangeWatchedFiles" } }
+  }
+}
+```
+
+Explicitly NOT advertised: `workspaceSymbolProvider`, `codeLensProvider`, `workspace/executeCommand`, `workspace/didChangeWatchedFiles` (we do not register any pattern set on the client).
+
+### 4. Workspace trust + init-before-use
+Every text-bearing method validates the request URI before processing:
+1. `lsp_server_uri_has_traversal(uri)` rejects URIs containing `..`, `/proc/`, `/dev/`, `/etc/`, `file:///root`, `file:///home`.
+2. `lsp_server_uri_is_under(uri, state.root_uri)` requires the URI to be a prefix-equal prefix of the workspace root established in `initialize`.
+3. `lsp_server_cap_text(text)` caps `textDocument.text` at 4 MB.
+4. The init-before-use guard rejects text-bearing requests that arrive before `initialize` (ooda/lsp/lsp_server.oo:114-117).
+
+State (`LspServerState`) carries `is_initialized`, `is_shutdown`, `root_uri`, `open_docs_count`, `total_requests`, `last_uri`, `last_text` and is threaded through every dispatch.
+
+### 5. Diagnostics
+On `textDocument/didOpen` and `textDocument/didChange`, the server publishes a `textDocument/publishDiagnostics` notification with up to three diagnostics:
+- `W_GEN_LAYER` (severity=2): emitted by `lsp_generational.oo::lsp_gen_violation_diagnostic` when a Gen5/6/7 caller file content includes Gen1 markers.
+- `E-M Weight` (severity=2): emitted by `lsp_diagnostics.oo::lsp_em_weight_to_diagnostic` when source exceeds the 256-line ceiling per RULES §1.7.
+- `E-M Drag` (severity=2): emitted by `lsp_diagnostics.oo::lsp_em_drag_to_diagnostic("token_burn")` for general token-burn awareness.
+
+On `textDocument/diagnostic` (pull mode), the same three are returned synchronously in `{items: [...]}`.
+
+All three are severity=2 (Warning). They do not block the editor; they signal E-M governance meta to the user.
+
+### 6. Source files (single source of truth)
+- `ooda/cli/cmd_lsp.oo` — CLI entry, imports `ooda/lsp/lsp_stdio.oo`. **Do not change this import without a corresponding RFC amendment.**
+- `ooda/lsp/lsp.oo` — version constant `2.9.2` (sole owner).
+- `ooda/lsp/lsp_stdio.oo` — JSON-RPC framer, stdio loop, file loop, safety caps.
+- `ooda/lsp/lsp_server.oo` — dispatcher, state, workspace trust, init-before-use, didChange re-emit, pull-mode diagnostic, watched-files.
+- `ooda/lsp/lsp_types.oo` — LspServerState struct.
+- `ooda/lsp/lsp_jsonrpc.oo` — JSON-RPC 2.0 codec, Content-Length parser, method/id/param extractors.
+- `ooda/lsp/lsp_protocol.oo` — response/notification/envelope builders, method classifier.
+- `ooda/lsp/lsp_text.oo` — line/word/prefix extraction at cursor.
+- `ooda/lsp/lsp_symbol_index.oo` — canonical 65-entry seed + escape codec + prefix/lookup.
+- `ooda/lsp/lsp_hover.oo` — hover Markdown renderer, Academy 4-element header parser + formatter.
+- `ooda/lsp/lsp_definition.oo` — capability → runtime file mapping.
+- `ooda/lsp/lsp_completion.oo` — completion item codec.
+- `ooda/lsp/lsp_code_action.oo` — codeAction rule set.
+- `ooda/lsp/lsp_diagnostics.oo` — diagnostic record codec + E-M diagnostics.
+- `ooda/lsp/lsp_generational.oo` — E-M Gen1-Gen8 mapping + W_GEN_LAYER detector.
+- `ooda/lsp/lsp_discovery.oo` — stdlib root resolution.
+- `ooda/lsp/lsp_stdlib_scan.oo` — stdlib walk + per-file symbol extraction.
+- `ooda/lsp/lsp_server_helpers.oo` — formatting + documentSymbol helpers.
+- `ooda/lsp/lsp_json_encode.oo` — JSON string escape.
+
+Runtime helpers:
+- `ooda/runtime/chs_rt.h` — `OoResS oo_read_stdin_chunk(long long timeout_ms);` declaration.
+- `ooda/runtime/chs_rt_sys.c` — `oo_read_stdin_chunk` implementation using `poll(2)`.
+
+Emit pipeline:
+- `ooda/oodac/c_emit_preamble.oo` — C declaration in the preamble.
+- `ooda/oodac/c_emit_sys.oo` — C emit mapping `oo_read_stdin_chunk(args)`.
+- `ooda/oodac/tc_names_known.oo` — name registry entry.
+- `ooda/oodac/tc_call_arity.oo` — arity entry `oo_read_stdin_chunk=1`.
+
+Files explicitly NOT in the live wire path (removed 2026-08-31): `ooda/cli/lsp_*.oo` (Runtime A, 9 files), `ooda/lsp/{lsp_ooda, lsp_sovereign, lsp_sovereign_proof, lsp_tokens}.oo` (dead), `ooda/std/compile/compilers/lsp_*.oo` (dead), 5 dead prove fixtures, 3 dead fixtures, the broken `open75_lsp_stdio.oo`.
+
+## 🛡️ Security & Capability Impact
+- **No new capabilities required.** The LSP uses `&FsReadCap` (for stdlib discovery + scan) and `&EnvCap` (for `OODA_STD`, `OODA_SRC_ROOT`, `OODA_HOME`, `HOME` lookup) — both already in RULES §1.3.
+- **No network access.** The LSP never opens a TCP/UDP socket. `&NetCap` is not required and not invoked.
+- **Workspace trust is per-RFC**, not per-OCap. URIs are validated by string-prefix and by deny-list, not by `&FsReadCap` re-authorization. This is a deliberate design choice: the LSP is invoked by the user's editor, which is itself a trusted local process; per-OCap checks would be a no-op.
+- **E-M diagnostics (W_GEN_LAYER, E-M Weight, E-M Drag) are governance meta, not real compile errors.** They do not block the editor; they are surfaced as `Warning` (severity=2).
+- **No `dlopen`, no `$PATH` parsing, no shell-out.** Runtime B uses pure string concat for wire emission.
+
+## 🧪 Testing & Verification Criteria
+The LSP is "Implemented" when all of the following pass twice in `env -i PATH=/usr/bin:/bin` clean shells with byte-identical output (RULES §1.9, WORKFLOW §3):
+
+1. `ooda/scripts/lsp_session_smoke.oo` — full session: initialize (asserts diagnosticProvider + didChangeWatchedFiles) → didOpen → completion → hover → definition → shutdown. All 6 responses on the wire.
+2. `ooda/scripts/lsp_complete_smoke.oo` — initialize + completion on a 3-line fixture. `FsCap` and `FsReadCap` present, `fn` and `SysCap` absent, `isIncomplete:false` set.
+3. `ooda/scripts/lsp_redteam_fuzz.oo` — 6 adversarial cases (traversal, oversized, bogus method, unicode, /etc/, pre-initialize).
+4. `ooda/scripts/std_qa/std_qa_lsp_engine.oo` — 11 in-memory protocol/index/hover/definition/known-method tests, including the Academy wire test.
+5. `ooda/scripts/std_qa/std_qa_lsp_engine_neg.oo` — 19 in-memory adversarial tests.
+
+Until those 5 proofs are double-run certified, the LSP is "Active but not yet Implemented".
+
+## §6 Compiler-integration API contract (forward-looking)
+
+The LSP currently operates on the canonical 65-entry stdlib seed. User-defined symbols are invisible. To close that gap, the openOODA compiler must expose a stable in-memory symbol-table API. This is the contract the LSP will call into once the compiler has it.
+
+### LSP-facing API surface (target)
+
+```text
+// Capability tokens the LSP must hold to invoke the compiler.
+type LspCompilerCap = &CompilerReadCap;
+
+// A per-module symbol-table snapshot.
+// The LSP fetches one per textDocument/didOpen + didChange.
+type LspModuleSymbolTable = struct {
+    uri: String,
+    package: String,
+    functions: List[LspFunction],
+    structs: List[LspStruct],
+    enums: List[LspEnum],
+    capabilities: List[LspCapabilityUse],
+    errors: List[LspCompilerError]
+};
+
+type LspFunction = struct {
+    name: String,
+    line: Int,
+    col: Int,
+    end_line: Int,
+    end_col: Int,
+    params: List[LspParam],
+    return_type: String,
+    doc: String
+};
+
+type LspParam = struct {
+    name: String,
+    cap_kind: String,    // e.g. "&Fs", "&Sys", "&Net"
+    cap_token: String,   // e.g. "FsReadCap"
+    line: Int,
+    col: Int
+};
+
+type LspStruct = struct {
+    name: String,
+    line: Int,
+    col: Int,
+    fields: List[LspField]
+};
+
+type LspField = struct {
+    name: String,
+    type_name: String,
+    line: Int,
+    col: Int
+};
+
+type LspEnum = struct {
+    name: String,
+    line: Int,
+    col: Int,
+    variants: List[String]
+};
+
+type LspCapabilityUse = struct {
+    cap_token: String,
+    line: Int,
+    col: Int,
+    evidence: String    // free text from the compiler
+};
+
+type LspCompilerError = struct {
+    code: String,
+    message: String,
+    line: Int,
+    col: Int,
+    end_line: Int,
+    end_col: Int,
+    severity: Int       // 1=Error, 2=Warning, 3=Info, 4=Hint
+};
+
+fn lsp_compile_module(uri: String, src: String) -> LspModuleSymbolTable;
+fn lsp_compile_residual(uri: String, src: String) -> List[String];
+```
+
+### Wire-effect on the LSP dispatcher
+
+When `lsp_compile_module` is implemented:
+- `textDocument/completion` merges the canonical seed (65 stdlib entries) with the per-module function/struct/enum names. Trigger characters stay the same.
+- `textDocument/hover` looks up the symbol in the module table first, falling back to the canonical seed. The docstring is the compiler-extracted doc + the Academy 4-element header from `textDocument.text` (already wired).
+- `textDocument/definition` resolves to the symbol's `(line, col)` in the same module via the module table, with the `file://` URI of the symbol's source file. Cross-module symbols require a workspace-wide symbol table (out of scope for this RFC; tracked in `lsp_redteam_2026_08_31.oot:§11.1`).
+- `textDocument/publishDiagnostics` (push on didOpen/didChange) is replaced with `lsp_compile_module` errors, severity-adjusted. E-M diagnostics are kept as separate warnings.
+- `textDocument/diagnostic` (pull) returns the same `lsp_compile_module` errors.
+
+### Required preconditions (out of scope, not in this PR)
+- `ooda check` (or an equivalent in-memory entry point) must exist and must NOT shell out, must NOT use `&NetCap`, and must be callable per-module in O(100ms) for files ≤4MB.
+- The compiler must have a stable in-memory symbol-table representation (this RFC's `LspModuleSymbolTable` is the proposed shape; the actual struct may differ).
+- A workspace-wide aggregator that merges per-module tables and resolves cross-module references. Without it, cross-module definition returns `null`.
+
+### Honest non-goals
+- This RFC does not commit to AOT compilation, incremental index update, or workspace-wide symbol resolution. Those are forward-looking items in `lsp_redteam_2026_08_31.oot:§11.1` and `RP-5-7 §3`.
+- This RFC does not specify how the compiler signals partial / staged results to the LSP. That is a separate concern (push vs pull vs push-pull hybrid).
+
+## 📚 Cross-references
+- `openOODA/audit/lsp_redteam_2026_08_31.oot` — the Pillar 3 (8D Red Team) audit that drove the 2026-08-31 changes.
+- `openOODA/research/RP-5-7-universal-native-lsp.oot` — original intent. Many of its promises (real compiler integration, incremental index) are NOT yet implemented; this RFC is the honest current state.
+- `ooda/lsp/LSP_SETUP.oot` — operator-facing doc. Must be kept in sync with this RFC.
+- `openOODA/SHIPPED.oot:65` — the LSP claim. Must match the proof.

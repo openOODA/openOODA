@@ -1,16 +1,26 @@
 # RP-5.7: Universal Native Language Server Protocol Integration
 
-File: research/research/RP-5-7-universal-native-lsp.oot
+File: research/RP-5-7-universal-native-lsp.oot
+
+// Logline: Architectural intent and current implementation status of the openOODA native Language Server. Last revised 2026-08-31 to match the shipped implementation. See openOODA/rfcs/0006-lsp.oot for the wire contract and openOODA/audit/lsp_redteam_2026_08_31.oot for the Pillar 3 audit.
+
+// Setup: This paper is the original architectural intent. Sections 3 and 4 distinguish what is shipped today (ooda v0.211.0+ runtime, "Active" status per RFC 0006) from what is aspirational and tracked as open gaps in lsp_redteam_2026_08_31.oot §11.
+
+// Beats:
+//   1. Abstract and motivation (unchanged from the original intent).
+//   2. What is shipped today: the wire contract, capability set, workspace trust, init-before-use, pull-mode diagnostics, watched-files, non-blocking stdio, Academy header on hover.
+//   3. What is aspirational: incremental in-memory symbol table, per-keystroke sub-millisecond response, user-defined symbol visibility, AOT incremental updates, cross-module definition.
+//   4. The honest path from here to Implemented status per RFC 0006.
 
 ## Abstract
-Modern programming languages require fast and interactive feedback in various editing environments. A dedicated compiler analysis engine often leads to editor lock-in and high maintenance costs. This paper describes the architecture for a universal and native Language Server Protocol daemon for the openOODA programming language. The system embeds the language server directly into the compiler. This ensures a single set of rules for all clients. It provides portability for artificial intelligence agents. It maintains self-hosting purity. The daemon operates with sub-millisecond response times using incremental queries and virtual file systems.
+Modern programming languages require fast and interactive feedback in various editing environments. A dedicated compiler analysis engine often leads to editor lock-in and high maintenance costs. This paper describes the architecture for a universal and native Language Server Protocol daemon for the openOODA programming language. The system embeds the language server directly into the compiler. This ensures a single set of rules for all clients. It provides portability for artificial intelligence agents. It maintains self-hosting purity.
 
 ## 1. Introduction
 Language development teams often release official editor extensions that use private protocols. This practice creates editor lock-in. It requires new implementations for different editors. This leads to different software bugs across environments. It also excludes artificial intelligence agents. These agents typically rely on standard protocols or command-line interfaces.
 
 Building a separate analysis engine incurs high costs. Maintaining a compiler and a separate analyzer requires significant effort. This often results in divergent rules. Conversely, running a standard batch compiler for every keystroke is too slow for interactive use.
 
-The openOODA system requires interactive feedback in less than one millisecond. The proposed architecture achieves this through shared file systems and incremental queries. The system avoids a full compile for each keystroke. The users of this system include human developers using various editors, headless artificial intelligence agents, and continuous integration systems.
+The openOODA system requires interactive feedback. The proposed architecture achieves this through shared file systems and incremental queries. The system avoids a full compile for each keystroke. The users of this system include human developers using various editors, headless artificial intelligence agents, and continuous integration systems.
 
 ## 2. Related Work
 The Language Server Protocol is an open standard that uses JSON-RPC. It supports diagnostics, code completion, hover information, symbol rename, and code actions. Incremental query engines use a dependency graph of calculations to save processing time.
@@ -20,13 +30,54 @@ Industrial systems show various approaches to this problem. Some languages use a
 The openOODA architecture uses compiler libraries to power the Language Server Protocol. It utilizes lazy evaluation. The system analyzes only the data that the user interface requires. The design implements the host in the native language to maintain architectural purity.
 
 ## 3. Architecture and Methodology
-The system architecture operates as a universal, native, pure, and fast engine. It supports any client without editor lock-in. It operates as a compiled daemon rather than a bridge to another language. The system uses the openOODA language exclusively. It shares the exact core logic with the command-line interface. It maps codes and actions directly to source patches. This supports an agent-first workflow. It uses incremental updates to meet a strict time budget.
+The system architecture operates as a universal, native, pure engine. It supports any client without editor lock-in. It operates as a compiled daemon rather than a bridge to another language. The system uses the openOODA language exclusively. It shares the exact wire contract with the command-line interface. It maps codes and actions directly to source patches. This supports an agent-first workflow. It uses incremental updates to meet a strict time budget (where incremental updates are available; the canonical-seed completer is a static lookup and is not incremental).
 
-The architecture consists of an external interface layer. This layer handles JSON-RPC communication. A session and virtual file system layer operates below the external interface. This layer feeds data into an incremental query engine. The query engine connects directly to the core compiler logic.
+The architecture consists of an external interface layer. This layer handles JSON-RPC communication. A session layer operates below the external interface. This layer holds a `LspServerState` (per-session is_initialized, is_shutdown, root_uri, open_docs_count, total_requests, last_uri, last_text). A query layer connects to either the canonical stdlib symbol index (today) or the in-memory compiler symbol table (forward-looking; see §3.4).
 
-The system processes code analysis through a sequence of continuous operations. It maps batch check results to diagnostic outputs in real time. It maintains parsed modules in memory. It deletes these modules only when a source file changes. The system provides symbol indexing, hover information, and definition routing from a shared memory layer. It applies source code patches directly as workspace edits.
+The system processes code analysis through a sequence of operations. On `textDocument/didOpen` and `textDocument/didChange`, it publishes `textDocument/publishDiagnostics` with up to three E-M (Einstein-Markov) governance diagnostics plus, in the future, the compiler's per-module errors. It deletes cached per-module tables only when the corresponding source changes. The system provides symbol indexing, hover information, and definition routing. It applies source code patches directly as workspace edits.
 
 The daemon reads the workspace using an explicit file system capability. It stops network access by default. It operates under a strict workspace trust model. The system maintains self-host purity. An implementation in a different language might ignore capability rules for external plugins.
+
+### 3.1 What is shipped today (ooda v0.211.0+)
+- LSP 3.17 JSON-RPC 2.0 over stdio or a file of concatenated frames. See openOODA/rfcs/0006-lsp.oot for the wire contract.
+- Non-blocking stdin chunk read via `oo_read_stdin_chunk(100ms)` (declared in ooda/runtime/chs_rt.h, implemented in ooda/runtime/chs_rt_sys.c using `poll(2)`). The framing loop is in ooda/lsp/lsp_stdio.oo::lsp_serve.
+- State threading: every dispatch carries an `LspServerState` (ooda/lsp/lsp_types.oo). State is updated on initialize, shutdown, didOpen, didChange.
+- Workspace trust: every text-bearing method runs `lsp_server_uri_has_traversal` and `lsp_server_uri_is_under`. URI traversal (e.g. `..`, `/etc/`, `file:///root`) is rejected. The `textDocument.text` field is capped at 4 MB via `lsp_server_cap_text` (ooda/lsp/lsp_server.oo).
+- Init-before-use guard: text-bearing methods that arrive before `initialize` are rejected with empty response (ooda/lsp/lsp_server.oo:114-117).
+- Academy 4-element header rendering: when `textDocument.text` carries an Academy header, it is parsed by `lsp_hover_parse_academy` and prepended to the hover Markdown (ooda/lsp/lsp_hover.oo:198-220). This means the wire path now shows the Logline/Setup/Beats in addition to the index signature + doc.
+- Pull-mode diagnostics: `textDocument/diagnostic` (LSP 3.16+) returns `{items: [Diagnostic]}` synchronously. The same three E-M diagnostics are returned as the push-mode publishDiagnostics.
+- Watched-files: `workspace/didChangeWatchedFiles` (LSP 3.17) refreshes the canonical stdlib index when files change.
+- Safety caps: 100 MB total input, 4 MB per frame, 1,000,000 messages per session. All three are safety ceilings, not session limits.
+- Zero-network posture: no `&NetCap`, no `dlopen`, no shell-out, no `printf`/`cat` pipe. The wire emission is pure string concat.
+- Capability posture: requires only `&FsReadCap` (for stdlib discovery + scan) and `&EnvCap` (for `OODA_STD` / `OODA_SRC_ROOT` / `OODA_HOME` / `HOME` lookup).
+- Pillar 3 coverage: ooda/scripts/lsp_redteam_fuzz.oo (6 adversarial cases) + ooda/scripts/std_qa/std_qa_lsp_engine_neg.oo (19 in-memory adversarial cases) + ooda/scripts/std_qa/std_qa_lsp_engine.oo (11 positive in-memory tests) + ooda/scripts/lsp_session_smoke.oo (6-message E2E proof).
+- Pillar 4 compliance: 256-line cap enforced on every ooda/lsp/*.oo and ooda/scripts/*lsp*.oo file. Largest is lsp_symbol_index.oo at 247 lines.
+
+### 3.2 What is not yet shipped (the honest gap)
+- **User-defined symbol visibility**: hover, definition, codeAction, and formatting operate on the canonical 65-entry stdlib seed only. User-defined functions, structs, enums, and capability uses are invisible. Required: a stable in-memory compiler symbol-table API. The contract is in openOODA/rfcs/0006-lsp.oot §6.
+- **Cross-module definition**: even when the compiler API exists, resolving a `&MyOtherModule` reference requires a workspace-wide symbol aggregator. Not in scope of the current PR.
+- **Per-keystroke sub-millisecond response**: the canonical completer is a static lookup, not incremental. Sub-millisecond on `&Fs` is achievable; sub-millisecond on a 10K-line user module is not, because it requires the compiler API.
+- **AOT incremental updates**: the stdlib index is rebuilt once per session and refreshed on `workspace/didChangeWatchedFiles`. Per-module incremental updates are not implemented.
+- **Streaming narrative diagnostics**: the audit §11.4 carries this as forward-looking; the current diagnostics are the three E-M ones plus, in the future, the per-module compiler errors.
+- **Double-Run certification**: the 5 proofs are written and structurally complete but a live double-run in `env -i PATH=/usr/bin:/bin` clean shells has not been performed against the new sources. The user must rebuild `./bin/ooda` from the new sources and run the proofs.
+
+### 3.3 Honest non-goals (this PR)
+- A bundled VSCode extension (lives in `openOODA.github.io/tools/vscode`, not in this repo).
+- A bundled Neovim plugin (not in this repo).
+- A webassembly in-browser implementation (out of scope).
+
+### 3.4 Forward path to Implemented
+The path from Active (today) to Implemented (per RFC 0006) is:
+1. Rebuild `./bin/ooda` from the 2026-08-31 sources.
+2. Run the 5 proofs (lsp_session_smoke, lsp_complete_smoke, lsp_redteam_fuzz, std_qa_lsp_engine, std_qa_lsp_engine_neg) twice in `env -i PATH=/usr/bin:/bin` clean shells with byte-identical output.
+3. Append a Double-Run log section to `openOODA/audit/lsp_redteam_2026_08_31.oot` proving byte-identity.
+4. Then the LSP moves from "Active" to "Implemented" per RFC 0006.
+
+Compiler integration is the larger follow-up:
+1. Expose `lsp_compile_module` per openOODA/rfcs/0006-lsp.oot §6 in `ooda check` (or a new `ooda lsp-check` subcommand).
+2. Thread per-module symbol tables into the LSP dispatcher (ooda/lsp/lsp_server.oo).
+3. Merge user symbols into `lsp_index_prefix` and `lsp_hover_from_index`.
+4. Add a workspace-wide aggregator for cross-module definition.
 
 ## 4. Threat and Failure Model
 This system design prevents editor lock-in. It prevents rule divergence because the wrapper shares the core compiler components. It ensures that agents operate without a specific integrated development environment.
@@ -41,12 +92,16 @@ Previous iterations examined several architectural alternatives. A single-editor
 Open research questions remain regarding performance scaling. Future studies must determine the optimal memory limit for a daemon that runs continuously on developer machines. Research must find methods to display capability signatures in hover messages without overwhelming the user with text. Further optimization of incremental deletion for multi-root workspaces is necessary. The investigation of streaming narrative diagnostics as related information within standard diagnostic payloads presents another area for future work.
 
 ## 6. Conclusion
-Integrating the Language Server Protocol natively into the compiler provides a robust, fast, and unified experience. This benefits both human developers and artificial intelligence agents. The architecture shares the core analysis engine and relies on incremental queries. This approach avoids the dual-maintenance problem and ensures consistent behavior across all editing environments.
+Integrating the Language Server Protocol natively into the compiler provides a robust, fast, and unified experience. This benefits both human developers and artificial intelligence agents. The architecture shares the core analysis engine and relies on incremental queries where the compiler API exists, and on a canonical stdlib index where it does not. This approach avoids the dual-maintenance problem and ensures consistent behavior across all editing environments.
+
+The 2026-08-31 ship closes the wire, trust, init-before-use, Academy-hover, pull-mode-diagnostic, watched-files, and non-blocking-stdio gaps. It does NOT yet close the user-defined-symbol gap; that is the next project, gated on a stable in-memory compiler symbol-table API.
 
 ## 7. References
 1. Language Server Protocol Specification.
 2. Salsa Incremental Computation Framework Documentation.
 3. Roslyn Compiler-as-a-Service Design Documents.
+4. openOODA RFC 0006 — LSP wire contract (openOODA/rfcs/0006-lsp.oot).
+5. openOODA audit dossier 2026-08-31 — Pillar 3 (openOODA/audit/lsp_redteam_2026_08_31.oot).
 
 ---
 *Series index: [README.oot](./README.oot).*
