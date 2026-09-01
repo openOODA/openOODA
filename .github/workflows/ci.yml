@@ -32,19 +32,19 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential minisign
 
-      - name: Build Sovereign Engine Bootstrap
+      - name: Validate Governance Isolation — No Runtime, No Binary Artifacts
         run: |
           set -euo pipefail
-          if [ -d ooda ]; then
-            cd ooda
-            ./scripts/oodac_pure_build
-            cd ..
-          fi
+          test -f openOODA/NORTHSTAR.oot
+          test -f openOODA/ROADMAP.oot
+          ! test -f openOODA/bin/ooda || { echo 'FAIL: openOODA must contain no runtime binary'; exit 1; }
+          ! test -d openOODA/runtime || { echo 'FAIL: openOODA must contain no runtime/'; exit 1; }
+          echo 'Tier1 isolation: openOODA contains governance only — zero rebuild drag'
 
-      - name: Verify Tier 1 Epoch Version Floor (v2.9.2)
+      - name: Verify Tier 1 Epoch Version Floor (v2.10.0 SSoT)
         run: |
           set -euo pipefail
-          grep -E 'version = "2\.9\.[0-9]+"' openOODA/ooda.pkg || grep -E 'version = "2\.9\.[0-9]+"' ooda.pkg
+          grep -E 'version = "2\.10\.[0-9]+"' openOODA/ooda.pkg || grep -E 'version = "2\.10\.[0-9]+"' ooda.pkg
 
       - name: Execute Master Governance Linters & Boards
         run: |
@@ -57,6 +57,28 @@ jobs:
             ooda/bin/ooda run openOODA/scripts/format_lint.oo
             ooda/bin/ooda run openOODA/scripts/rfc_lint.oo
           fi
+
+      - name: Double-Run Governance Verification (Fail-Closed)
+        run: |
+          set -euo pipefail
+          if [ -x ooda/bin/ooda ]; then
+            ooda/bin/ooda run openOODA/scripts/enforcer.oo > /tmp/gov_run1.log 2>&1
+            ooda/bin/ooda run openOODA/scripts/enforcer.oo > /tmp/gov_run2.log 2>&1
+            diff -u /tmp/gov_run1.log /tmp/gov_run2.log || { echo "FAIL: enforcer not deterministic"; exit 1; }
+            ooda/bin/ooda run openOODA/scripts/check_board.oo > /tmp/board_run1.log 2>&1
+            ooda/bin/ooda run openOODA/scripts/check_board.oo > /tmp/board_run2.log 2>&1
+            diff -u /tmp/board_run1.log /tmp/board_run2.log || { echo "FAIL: check_board not deterministic"; exit 1; }
+            grep -q "__FAILS__=0" /tmp/gov_run1.log || { echo "FAIL: enforcer __FAILS__!=0"; exit 1; }
+            grep -q "check_board: OK" /tmp/board_run1.log || { echo "FAIL: check_board not OK"; exit 1; }
+            echo "Double-run governance: deterministic and fail-closed"
+          fi
+
+      - name: Verify One-Way DAG & Zero Cross-Repo Cycles
+        run: |
+          set -euo pipefail
+          if grep -r "openOODA\.github" ooda --include="*.oo" | grep -v "qa/" | grep -v "scripts/" | grep -v ".agents" | grep -q .; then echo "FAIL: ooda imports portal"; exit 1; fi
+          if grep -r "\.\./openOODA" ooda --include="*.oo" | grep -v "qa/tests_onboarding" | grep -q .; then echo "FAIL: ooda has parent-rel circular dep"; exit 1; fi
+          echo "DAG: openOODA -> ooda -> openOODA.github.io verified acyclic"
 
   # =========================================================================
   # TIER 2: COMPILER, RUNTIME & TOOLCHAIN ENGINE (ooda)
@@ -89,11 +111,13 @@ jobs:
           ./scripts/oodac_pure_build
           cd ..
 
-      - name: Verify Engine SemVer (v2.9.2)
+      - name: Verify Engine SemVer (v2.10.0 SSoT)
         run: |
           set -euo pipefail
-          ooda/bin/ooda --version | grep -E '^ooda 2\.9\.'
-          grep -E 'version = "2\.9\.' ooda/ooda.pkg
+          ooda/bin/ooda --version | grep -E '^ooda 2\.10\.'
+          grep -E 'version = "2\.10\.' ooda/ooda.pkg
+          grep -E 'version = "2\.10\.' openOODA/ooda.pkg
+          test "$(grep 'version = ' ooda/ooda.pkg | cut -d'"' -f2)" = "$(grep 'version = ' openOODA/ooda.pkg | cut -d'"' -f2)" || { echo 'FAIL: version drift'; exit 1; }
 
       - name: Execute 8-Dimensional Adversarial Red Team Gates
         run: |
@@ -126,7 +150,9 @@ jobs:
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
         run: |
           set -euo pipefail
-          VER=$(grep 'version = ' ooda/ooda.pkg | head -n 1 | cut -d'"' -f2 || echo "2.9.2")
+          VER=$(grep 'version = ' ooda/ooda.pkg | head -n 1 | cut -d'"' -f2)
+          test -n "$VER" || { echo "ERR: ooda.pkg version missing — SSoT violation"; exit 1; }
+          test "$VER" = "$(grep 'version = ' openOODA/ooda.pkg | head -n 1 | cut -d'"' -f2)" || { echo "ERR: version drift between ooda/ooda.pkg and openOODA/ooda.pkg"; exit 1; }
           NAME="ooda-v${VER}-linux-x86_64"
           mkdir -p "dist/${NAME}"
           cp -r ooda/bin ooda/fixtures ooda/oodac ooda/runtime ooda/std "dist/${NAME}/"
