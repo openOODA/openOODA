@@ -3,7 +3,7 @@
 # openOODA Governance & Meta-SSoT
 ### Tier 1 Sovereign Process Architecture, Formal RFCs & Rule Enforcement
 
-[![Version](https://img.shields.io/badge/version-v2.9.2-00f2fe.svg?style=flat-square)](https://github.com/openOODA/openOODA)
+[![Version](https://img.shields.io/badge/version-v2.9.4-00f2fe.svg?style=flat-square)](https://github.com/openOODA/openOODA)
 [![10-Pillar Enforcer](https://img.shields.io/badge/10--Pillar%20Enforcer-PASS%20(__FAILS__%3D0)-00e676.svg?style=flat-square)](scripts/enforcer.oo)
 [![13 Process Boards](https://img.shields.io/badge/13%20Process%20Boards-13%2F13%20VERIFIED-7928ca.svg?style=flat-square)](scripts/verify_all.oo)
 [![8D Red Team](https://img.shields.io/badge/8D%20Red%20Team-PASS%20(9%20Gates)-brightgreen.svg?style=flat-square)](scripts/redteam_hook.oo)
@@ -46,7 +46,7 @@ All organizational state, operational doctrine, architectural constraints, and r
 | 2 | [`RULES.oot`](RULES.oot) | Repository Law, Core Principles, and Invariant Directives | $\le 256$ lines | `scripts/check_board.oo` |
 | 3 | [`NORTHSTAR.oot`](NORTHSTAR.oot) | 100-Year Architectural Vision & Autonomic AI Substrate | $\le 256$ lines | `scripts/check_board.oo` |
 | 4 | [`MOONSHOTS.oot`](MOONSHOTS.oot) | High-Risk High-Reward Breakthrough Projects | $\le 256$ lines | `scripts/check_board.oo` |
-| 5 | [`ROADMAP.oot`](ROADMAP.oot) | Phase & Milestone Timeline (Current: v2.9.2) | $\le 256$ lines | `scripts/check_board.oo` |
+| 5 | [`ROADMAP.oot`](ROADMAP.oot) | Phase & Milestone Timeline (Current: v2.9.4) | $\le 256$ lines | `scripts/check_board.oo` |
 | 6 | [`SHIPPED.oot`](SHIPPED.oot) | Chronological Shipped Artifacts & Releases (Generated) | $\le 256$ lines | `scripts/verify_all.oo` |
 | 7 | [`FORMAT.oot`](FORMAT.oot) | ASD-STE100 Academy Header Standards & Grammar Rules | $\le 256$ lines | `scripts/enforcer.oo` |
 | 8 | [`SECURITY.oot`](SECURITY.oot) | 14 OCap Capability Tokens & Zero Ambient Authority | $\le 256$ lines | `scripts/check_board.oo` |

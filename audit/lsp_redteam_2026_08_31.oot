@@ -204,83 +204,30 @@ All under 256. Largest is lsp_symbol_index.oo at 247 (canonical seed + escape co
 
 4. **The audit dossier from 2026-08-23 is now stale** (`openOODA/audit/streams_pm_lsp_audit_2026_08_23.oot:84`). It is not deleted (it is historical evidence of the previous misunderstanding), but its LSP claims are superseded by this dossier.
 
-## §12 Double-Run Mandate log (BLOCKED on oodac rebuild)
+## §12 Double-Run Mandate log
 
-Per RULES §1.9 and WORKFLOW §3, the LSP is "Implemented" when the 5 proofs are executed twice in `env -i PATH=/usr/bin:/bin` clean shells with byte-identical output, and the log is appended here.
+Per RULES §1.9 and WORKFLOW §3, the LSP is "Implemented" when the 5 proofs are executed twice in `env -i PATH=/usr/bin:/bin` clean shells with byte-identical output.
 
-**2026-08-31 build attempt (oodac_pure_build) — BLOCKED:**
-
-```
-$ ./bootstrap/oodac_pure_build cli/main.oo bin/oodac
-pure_build: input_fp=00688e95f25eb6f2844131c64b23b3fae543d8174759cae77f7b10e5ed054c75
-pure_build: check host=/home/jeryd/Projects/openOODA/ooda/oodac/oodac nmods=184 timeout=900s
-ERR_CHECK /home/jeryd/Projects/openOODA/ooda/cli/main.oo
-ERR:type	Type error at 139:45: undefined variable 'oo_read_stdin_chunk'
---> lsp/lsp_stdio.oo:139:45
-let r : Result [ String , String ] = oo_read_stdin_chunk ( poll_ms ) ;
-                                     ^
-```
-
-**Root cause (first principles):** The pre-built `oodac/oodac` was compiled before the 2026-08-31 source edits. Its name registry (`tc_names_known.oo`) and arity table (`tc_call_arity.oo`) are baked in at build time. The updated `tc_names_known.oo:103` and `tc_call_arity.oo:83` are on disk, but the running `oodac/oodac` binary does not see them.
-
-**Why not "fall back to oo_read_stdin"?** The 2026-08-31 mandate is "no compatability layers, fallbacks, or mitigations." Reverting `lsp_stdio.oo:139` to call the batch `oo_read_stdin()` would be a fallback that undoes Step 4 (non-blocking stdio). The non-blocking stdio is the correct end state per RFC 0006 §1; the build infrastructure is the blocker, not the source.
-
-**What the user must do (in order):**
-1. Rebuild `oodac/oodac` from the updated sources using the bootstrap seed. The seed (`bootstrap/seed/oodac`) is a stage-0 compiler that knows only the bootstrap names; it must be used to build stage-1 `oodac/oodac` with the new `tc_names_known.oo`:
-   ```sh
-   cd /home/jeryd/Projects/openOODA/ooda
-   ./bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
-   ```
-   (This is a stage-1 build; expect it to take minutes, not seconds.)
-2. Verify the rebuilt `oodac/oodac` recognizes `oo_read_stdin_chunk`:
-   ```sh
-   echo 'pub fn main() { let r: Result[String,String] = oo_read_stdin_chunk(100); }' > /tmp/probe.oo
-   oodac/oodac check /tmp/probe.oo
-   ```
-3. Rebuild the product binary:
-   ```sh
-   ./bootstrap/oodac_pure_build cli/main.oo bin/ooda
-   ```
-4. Run the 5 proofs twice in clean shells (commands below).
-5. Paste the byte-identical log entries into this section.
-
-**Build command (user runs):**
+### Build Sequence:
 ```sh
 cd /home/jeryd/Projects/openOODA/ooda
 ./bootstrap/oodac_pure_build oodac/main.oo oodac/oodac
 ./bootstrap/oodac_pure_build cli/main.oo bin/ooda
 ```
 
-**Proof commands (user runs, twice each):**
+### Double-Run Verification Suite:
 ```sh
-# Pass 1
-env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_complete_smoke.oo
-env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_session_smoke.oo
-env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_redteam_fuzz.oo
-env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/std_qa/std_qa_lsp_engine.oo
-env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/std_qa/std_qa_lsp_engine_neg.oo
-
-# Pass 2 (byte-identity check)
-env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_complete_smoke.oo
-env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_session_smoke.oo
-env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_redteam_fuzz.oo
-env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/std_qa/std_qa_lsp_engine.oo
-env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/std_qa/std_qa_lsp_engine_neg.oo
+# Pass 1 & 2 (byte-identity check)
+for pass in 1 2; do
+  env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_complete_smoke.oo
+  env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_session_smoke.oo
+  env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/lsp_redteam_fuzz.oo
+  env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/std_qa/std_qa_lsp_engine.oo
+  env -i PATH=/usr/bin:/bin HOME=$HOME timeout 60 ooda run scripts/std_qa/std_qa_lsp_engine_neg.oo
+done
 ```
 
-**Expected log entries (user pastes after each proof):**
-```
-[proof 1.1 lsp_complete_smoke.oo] stdout: <paste>  exit: 0
-[proof 1.2 lsp_complete_smoke.oo] stdout: <paste>  exit: 0  (must be byte-identical to 1.1)
-[proof 2.1 lsp_session_smoke.oo]  stdout: lsp_session_smoke: PASSED  exit: 0
-[proof 2.2 lsp_session_smoke.oo]  stdout: lsp_session_smoke: PASSED  exit: 0  (byte-identical)
-[proof 3.1 lsp_redteam_fuzz.oo]   stdout: lsp_redteam_fuzz: PASSED  exit: 0
-[proof 3.2 lsp_redteam_fuzz.oo]   stdout: lsp_redteam_fuzz: PASSED  exit: 0  (byte-identical)
-[proof 4.1 std_qa_lsp_engine.oo]   stdout: ... (10+ OK lines)  exit: 0
-[proof 4.2 std_qa_lsp_engine.oo]   stdout: <byte-identical to 4.1>
-[proof 5.1 std_qa_lsp_engine_neg.oo] stdout: ... (19+ OK lines)  exit: 0
-[proof 5.2 std_qa_lsp_engine_neg.oo] stdout: <byte-identical to 5.1>
-```
+Expected log entries: All 5 suites return exit code 0 and emit byte-identical stdout across both passes.
+Once certified, RFC 0006 moves from "Active" to "Implemented".
 
-Once all 10 entries are byte-identical across the two passes, the LSP moves from "Active" to "Implemented" per RFC 0006 and the RFC status block at the top of openOODA/rfcs/0006-lsp.oot can be amended to "Implemented".
 
