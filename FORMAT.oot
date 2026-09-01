@@ -1,7 +1,4 @@
 # FORMAT — Code Academy, Document Standards & Scripting Specification
-Floor: 2
-Thrust: 10
-Patch: 0
 File: openOODA/FORMAT.oot
 
 This document defines formatting standards for code academy headers, process documents, and test harnesses.
@@ -17,7 +14,7 @@ Prohibited file extensions:
 - No `.py` — Python is unauthorized across all workspace directories.
 - No `.sh` — Except `bootstrap/oodac_pure_build` and `install.sh`.
 - No `.oos` — Scripts use the standard `.oo` file extension.
-- No `.md` — All documentation must use `.oot` files.
+- No `.md` — All documentation must use `.oot` files (except root README.md).
 
 Line Limit: Every `.oo` and `.oot` file must contain a maximum of 256 lines. Comments count toward this limit.
 Generated `.oot` files must not exceed 256 lines and must display the text: THIS FILE IS GENERATED — DO NOT EDIT.
@@ -49,31 +46,28 @@ Every product `.oo` file begins with a standardized 4-element Academy header.
 - Beats: Numbered list of 3 to 6 logical beats describing operations in sequence. Do not reference line numbers.
 - Residual: Optional single line immediately following Beats for unbuilt features.
 
-### 1.3 Code Readability Rules
-- Write clear code for both compiler execution and human maintenance.
-- The Academy header summarizes module responsibilities for human maintainers.
-- Choose function and variable names that reveal their exact purpose.
-- Retain standard function naming in compiler modules (e.g. `typecheck_*`, `c_emit_*`, `lex_*`).
-- Do not use script-level control constructs in compiler passes.
-- Write expressive code to minimize the need for inline comments.
+### 1.3 Code Readability & Formatting Rules
+- 2-space compact indentation (no tabs).
+- Vertical alignment for pattern match arms (`Pattern => Result,`).
+- Exactly 1 blank line between logical function beats.
+- Max column width <= 80 characters.
+- Zero struct trailing commas before closing braces.
 - Obey the 256-line limit. Split large files along clear domain interfaces.
 
-### 1.4 Code Quality Loop
-- Run `./oodac/oodac check <file.oo>` after making modifications.
-- If the check passes, proceed to the next module.
-- If the check fails, repair the error immediately before proceeding.
+### 1.4 Submodule Directories & `mod.oo` Entry Points
+- When a subsystem is decomposed into multiple sub-256 line `.oo` files within a directory, the directory MUST contain a `mod.oo` file.
+- `mod.oo` serves as the single public entry door: it imports the private internal sibling files and re-exports only the public API functions.
+- External files import the domain via `mod.oo` (e.g. `import "oodac/emit/mod.oo";`) rather than reaching into private internal siblings.
+- Ban generic names (e.g. `utils.oo`, `common.oo`, `helpers.oo`, `misc.oo`). Every file name must state its exact architectural single responsibility from first principles.
 
 ## 2. Part 2: .oot Document Format
 
 All process boards, RFCs, documentation, and technical notes use the `.oot` format.
 
 ### 2.1 Document Header Structure
-Every `.oot` file begins with a standardized 4-element header block:
+Every `.oot` file begins with a standardized header block:
 
 # <NAME> — <Domain or Purpose Title>
-Floor: 2
-Thrust: 10
-Patch: 0
 File: openOODA/<NAME>.oot
 
 ### 2.2 Section Structure & Formatting
@@ -90,13 +84,10 @@ File: openOODA/<NAME>.oot
   - `open` — In progress during the active sprint.
 - Line Limit: All `.oot` files must contain a maximum of 256 lines.
 
-### 2.3 Generational Semantic Versioning Specification
-All process boards, package manifests, and release tags follow Generational Semantic Versioning:
-- Format: `v<Floor>.<Thrust>.<Patch>` (Verified Ecosystem Release State: `v2.10.0` from `ooda.pkg`).
-- Floor (F): Generational foundation tier substrate (Gen 1-4). Increments on breaking changes to core memory or capability ABI.
-- Thrust (T): Boyd E-M performance improvements, compiler optimization passes, and non-breaking feature additions.
-- Patch (P): Adversarial security remediation, hostile test certifications, and bug repairs.
-- Power Law 80/20 Floor Rule: Increment Floor only when the 20% core foundational primitives change.
+### 2.3 Single Source of Truth (SSoT) Versioning
+- Versioning is strictly centralized in `ooda.pkg` and Git tags.
+- Documentation boards and RFCs do NOT maintain manual patch version numbers.
+- When tools, installer scripts, or web pages require the version, they read `ooda.pkg` directly.
 
 ## 3. Part 3: Test and Tool Script Standards
 
@@ -108,56 +99,3 @@ All process boards, package manifests, and release tags follow Generational Sema
 - All scripts must contain the 4-element Academy header.
 - Scripts must handle capabilities explicitly through `pub fn main(...)`.
 - Failed assertions must terminate execution with non-zero exit codes.
-
-### 3.3 Verification Execution Commands
-- Type check: `./bin/ooda check <file.oo>`
-- Execute program: `./bin/ooda run <file.oo>`
-- Run master governance check: `./bin/ooda run openOODA/scripts/enforcer.oo`
-- Check process board hygiene: `./bin/ooda run openOODA/scripts/check_board.oo`
-
-## 4. Writing Style Quick Reference
-
-Follow these five rules for all documentation:
-1. Max 20 words per sentence for instructions and rules.
-2. Max 25 words per sentence for descriptions.
-3. Put exactly one thought in each sentence.
-4. Use active voice verbs (e.g. "The compiler emits code", not "Code is emitted by the compiler").
-5. State facts directly without rhetorical flourishes or marketing terms.
-
-## 5. Canonical Formatting — Sovereign Aesthetic (RFC 0028)
-
-All product `.oo` files obey §5.1-5.5. The printer `ooda fmt` enforces them. Merkle `oodac check` stays bit-identical after formatting. `fmt; fmt` is idempotent.
-
-### 5.1 2-Space Indent
-* Use exactly 2 spaces per level.
-* Reject tabs and 4-space.
-* Enforcer checks `^\t` and odd indent.
-
-### 5.2 Vertical `=>` Alignment — Radar Table
-* All `=>` in one `match` share one column.
-* Pad left pattern with spaces.
-* `fmt --check` fails on misaligned `=>`.
-
-### 5.3 Pipeline `|>` — OODA Flow
-* `a |> f` desugars to `f(a)`.
-* Break at `EOL |>`, next line `2-space`.
-* Max 2-deep nesting without `let`.
-
-### 5.4 Line Length — Elegance Guideline
-* Aim for readable lines, no hard `80` cap.
-* Prefer short lines and `|>` flow for elegance, but do not fail on length.
-* `fmt --check` does not gate on `awk 'length>80'`.
-
-### 5.5 Single Blank Line — Breathing Room
-* Exactly 1 blank line between `Header → imports → // ## CAPs → type → fn`.
-* No double blank, no missing blank.
-
-Templates `Downloads/example_elegant.oo/.oot` are the oracle. Printer output must match them byte-for-byte.
-
-## 6. Cross References
-- Sovereign Orientation Codex: `openOODA/LLMS.oot`
-- Repository Rules: `openOODA/RULES.oot`
-- Ingress Gate: `openOODA/START.oot`
-- Capability Security: `openOODA/SECURITY.oot`
-- Workflow Protocol: `openOODA/WORKFLOW.oot`
-- Adversarial Red Team: `openOODA/REDTEAM.oot`
