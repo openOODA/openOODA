@@ -12,7 +12,14 @@
 
 fn env_or(env: &EnvCap, key: String, fallback: String) -> String {
     let r: Result[String, String] = env_get(env, key);
-    if r.is_ok() { return match r { Ok(s) => s, Err(_) => fallback }; }
+    if r.is_ok() {
+        let v: String = match r { Ok(s) => s, Err(_) => fallback };
+        if str_contains(v, "..") {
+            println("ERR\tcheck_board\trejected traversal in " + key);
+            process_exit(1);
+        }
+        return v;
+    }
     return fallback;
 }
 
@@ -39,7 +46,6 @@ pub fn purge_root_sludge(fs: &FsReadCap, fsW: &FsWriteCap, base: String) -> Int 
     let n: Int = list_len(files);
     let mut sludge_count: Int = 0;
     let mut i: Int = 0;
-
     while i < n {
         let name: String = list_get(files, i);
         if str_ends_with(name, ".oot") {
@@ -48,7 +54,8 @@ pub fn purge_root_sludge(fs: &FsReadCap, fsW: &FsWriteCap, base: String) -> Int 
                 let path: String = base + "/" + name;
                 let rm: Result[Void, String] = oo_fs_remove_file(fsW, path);
                 if rm.is_err() {
-                    println("  [WARN] failed to remove " + name);
+                    println("ERR\tcheck_board\tfailed to remove " + name + " — fail closed");
+                    process_exit(1);
                 }
                 sludge_count = sludge_count + 1;
             }
@@ -64,7 +71,7 @@ pub fn count_lines(fs: &FsReadCap, path: String) -> Int {
         Ok(text) => {
             let mut n: Int = 0;
             let mut j: Int = 0;
-            let len: Int = text.len();
+            let len: Int = chars_len(text);
             while j < len {
                 let c: String = char_at(text, j);
                 if c == "\n" {
@@ -74,7 +81,10 @@ pub fn count_lines(fs: &FsReadCap, path: String) -> Int {
             }
             return n;
         },
-        Err(_) => { return -1; }
+        Err(e) => {
+            println("ERR\tcheck_board\tunreadable " + path + ": " + e);
+            return 257;
+        }
     }
 }
 
