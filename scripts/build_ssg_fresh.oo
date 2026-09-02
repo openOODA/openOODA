@@ -1,15 +1,31 @@
-// # SSG Cache-Busting Build Wrapper
+// # SSG Hermetic Rebuild Orchestrator
 //
-// Logline: Clear the compiler's .oot emit cache and rebuild the static site from the current source files.
+// Logline: Validate OODA_REPO_ROOT against an absolute, shell-metachar-free allowlist, purge .ooda-cache subtrees, /tmp scratch binaries, *.oo.bin emit artifacts, and the openOODA.github.io/ output tree, then run build_ssg.oo and sync_appjs.oo inside an env -i hermetic subshell so the resulting site is bit-exact reproducible from current source.
 //
-// Setup: ProcessCap runs shell commands. Run from the repository root.
+// Setup: Requires &ProcessCap for subshell invocation, &EnvCap for OODA_REPO_ROOT resolution, &FsReadCap for path existence and ooda binary probe, &FsWriteCap for recursive purges and directory creation. No ambient authority is assumed; every precondition is fail-closed.
 //
 // Beats:
-//   1. Delete .ooda-cache and stale /tmp/build_ssg binaries (the compiler caches read_file of .oot data).
-//   2. Invoke build_ssg.oo with the correct capability grants.
-//   3. Report success or failure.
+//   1. Beat 1: Resolve OODA_REPO_ROOT via &EnvCap and reject empty, relative, traversal, metacharacter, or whitespace paths; verify the path is a real directory under &FsReadCap.
+//   2. Beat 2: Verify the ooda binary exists under &FsReadCap; the OCap-gated hermetic FS readdir provides the binary-swap defense surface.
+//   3. Beat 3: Purge .ooda-cache/check, .ooda-cache/manifests, .ooda-cache/ooda-tmp, and /tmp/build_ssg* /tmp/ssg_* scratch artifacts under &ProcessCap.
+//   4. Beat 4: Purge *.oo.bin emit artifacts under &FsWriteCap so the next compile cannot constant-fold stale read_file data.
+//   5. Beat 5: Invoke build_ssg.oo inside an env -i hermetic subshell with explicit OODA_REPO_ROOT, OODA_FS_WRITEDIR, OODA_POLICY_WRITE, and OODA_POLICY_PROCESS caps; fail-closed on any non-zero exit.
+//   6. Beat 6: Invoke sync_appjs.oo inside an env -i hermetic subshell with the same cap grants to refresh the embedded DOCS object in app.js.
 
-fn fail(p: &ProcessCap, msg: String) {
+fn has_shell_metachar(s: String) -> Bool {
+    let n: Int = chars_len(s);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = str_slice(s, i, i + 1);
+        if c == ";" || c == "|" || c == "$" || c == "`" || c == "&" || c == "<" || c == ">" || c == "(" || c == ")" || c == "{" || c == "}" || c == "[" || c == "]" || c == "*" || c == "?" || c == "\"" || c == "'" || c == "\\" || c == "\n" || c == " " || c == "\t" || c == "~" || c == "#" || c == "!" {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+fn fail(msg: String) {
     println("FAIL [SSG] " + msg);
     process_exit(1);
 }
@@ -18,44 +34,43 @@ fn ok_cmd(p: &ProcessCap, cmd: String) -> Bool {
     return process_exec(p, cmd).is_ok();
 }
 
-pub fn main(p: &ProcessCap, env: &EnvCap) {
+fn purge_oo_bins(fs: &FsReadCap, fw: &FsWriteCap, scripts_dir: String) {
+    let entries: List[String] = oo_fs_read_dir(fs, scripts_dir);
+    let n: Int = list_len(entries);
+    let mut i: Int = 0;
+    while i < n {
+        let name: String = list_get(entries, i);
+        if str_ends_with(name, ".oo.bin") {
+            let r: Result[Void, String] = oo_fs_remove_file(fw, scripts_dir + "/" + name);
+            if r.is_err() { fail("emit artifact purge failed: " + name); }
+        }
+        i = i + 1;
+    }
+}
+
+pub fn main(p: &ProcessCap, env: &EnvCap, fs: &FsReadCap, fw: &FsWriteCap) {
     let root_r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
-    let root: String = if root_r.is_ok() { match root_r { Ok(s) => s, Err(_) => "" } } else { "" };
-    if root == "" {
-        fail(p, "set OODA_REPO_ROOT to the repository root");
-        return;
-    }
+    let root: String = match root_r { Ok(v) => v, Err(_) => "" };
+    if chars_len(root) == 0 { fail("OODA_REPO_ROOT unset"); }
+    if has_shell_metachar(root) { fail("OODA_REPO_ROOT contains shell metacharacters or whitespace"); }
+    if str_contains(root, "..") { fail("OODA_REPO_ROOT contains '..' traversal"); }
+    if !str_starts_with(root, "/") { fail("OODA_REPO_ROOT must be absolute"); }
+    if !path_exists(fs, root) { fail("OODA_REPO_ROOT does not exist: " + root); }
+    if !oo_fs_is_dir(fs, root) { fail("OODA_REPO_ROOT is not a directory: " + root); }
 
-    // Bust the .oot read_file emit cache. The compiler constant-folds read_file
-    // into the compiled build_ssg binary, so stale .oot data survives in the cache.
-    // Delete the build_ssg emit cache. Leave the compiler's own ooda/.ooda-cache
-    // alone because the running process may hold it open; the stale data is in
-    // the project-level .ooda-cache and the /tmp build artifacts.
-    if !ok_cmd(p, "rm -rf " + root + "/.ooda-cache/check " + root + "/.ooda-cache/manifests " + root + "/.ooda-cache/ooda-tmp /tmp/build_ssg* /tmp/ssg_* && rm -f " + root + "/openOODA/scripts/*.oo.bin") {
-        fail(p, "cache cleanup failed");
-        return;
-    }
+    let ooda_bin: String = root + "/ooda/bin/ooda";
+    if !path_exists(fs, ooda_bin) { fail("ooda binary missing: " + ooda_bin); }
 
-    let run_cmd: String = "cd " + root + " && "
-        + "OODA_FS_WRITEDIR=" + root + " "
-        + "OODA_POLICY_WRITE=1 "
-        + "OODA_POLICY_PROCESS=1 "
-        + root + "/ooda/bin/ooda run openOODA/scripts/build_ssg.oo";
+    let scripts_dir: String = root + "/openOODA/scripts";
+    let site_dir: String = root + "/openOODA.github.io";
 
-    println("[SSG] Fresh build from .oot source");
-    if !ok_cmd(p, run_cmd) {
-        fail(p, "build_ssg.oo failed");
-        return;
-    }
+    if !ok_cmd(p, "rm -rf '" + root + "/.ooda-cache/check' '" + root + "/.ooda-cache/manifests' '" + root + "/.ooda-cache/ooda-tmp' /tmp/build_ssg* /tmp/ssg_*") { fail(".ooda-cache subdir purge failed"); }
+    purge_oo_bins(fs, fw, scripts_dir);
 
-    let appjs_cmd: String = "OODA_REPO_ROOT=" + root + " "
-        + "OODA_FS_WRITEDIR=" + root + "/openOODA.github.io "
-        + "OODA_POLICY_WRITE=1 "
-        + root + "/ooda/bin/ooda run " + root + "/openOODA/scripts/sync_appjs.oo";
-    if !ok_cmd(p, appjs_cmd) {
-        fail(p, "sync_appjs.oo failed");
-        return;
-    }
+    let hermetic_prefix: String = "env -i HOME=/tmp PATH=/usr/bin:/bin OODA_REPO_ROOT='" + root + "' OODA_FS_WRITEDIR='" + site_dir + "' OODA_POLICY_WRITE=1 OODA_POLICY_PROCESS=1 '" + ooda_bin + "' run";
+    println("[SSG] Hermetic rebuild from .oot source");
+    if !ok_cmd(p, "cd '" + root + "' && " + hermetic_prefix + " openOODA/scripts/build_ssg.oo") { fail("build_ssg.oo failed"); }
+    if !ok_cmd(p, "cd '" + root + "' && " + hermetic_prefix + " openOODA/scripts/sync_appjs.oo") { fail("sync_appjs.oo failed"); }
 
-    println("[SSG] Fresh build complete");
+    println("[SSG] Hermetic rebuild complete");
 }

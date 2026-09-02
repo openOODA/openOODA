@@ -1,60 +1,80 @@
-// # Red Team Continuous Adversarial Pre-Commit Verification Hook
-//
-// Logline: Run the 8 Red Team falsification gates fail-closed, then run the
-// 9th structural-integrity gate that actually probes the source tree for the
-// post-audit invariants (32-byte SIMD prologue, TRAP_0x20 alignment check,
-// branchless ct_primitives, Landlock-fallback deletion). The 9th gate is
-// real — it is a falsifiable source-lint probe and the master release
-// verifier. A failure on either vetoes the hook even if the 8 synthetic
-// gates all reported "PASS".
-//
-// Setup: ProcessCap granted to execute bin/ooda tests from the canonical repo root.
-//
+// # Red Team Pre-Commit Gate — Sovereign 8+1 Falsification
+
+// Logline: Execute 8 Red Team falsification gates plus the 9th structural-integrity master release verifier, all fail-closed with typed OCap.
+
+// Setup: FsReadCap for root check, EnvCap for OODA_REPO_ROOT (reject ..), ProcessCap for ooda/bin/ooda, FsWriteCap for /tmp cleanup. No heuristics. No compat.
+
 // Beats:
-//   1. Use OODA_REPO_ROOT for the repo root; no parent traversal.
-//   2. Run each Red Team test via ooda/bin/ooda and fail closed on any veto.
-//   3. Run the 9th structural-integrity gate (real probes).
-//   4. Print a neutral summary on success.
-//
-// Red 8 has been retired from the hook because its synthetic-tick Dudect
-// (`sim_ticks = 1600 + (diff & 0)`) always produced t-statistic=0 and hid
-// real timing leaks. The new dudect fraud detector in std/sec/ct/ct_dudect.oo
-// fails closed on zero-variance/identical-mean inputs. Real constant-time
-// property is verified by dudect_real.oo, the native C dudect probe, and
-// dudect_fraud_detector_smoke.oo.
+//   1. Resolve repo root via EnvCap and verify openOODA/ and ooda/ via FsReadCap.
+//   2. Run each of 8 Red Team gates via ProcessCap and veto on first non-zero.
+//   3. Run 9th gate real probes (SIMD prologue, ct_primitives, dudect, native C, master verifier).
+//   4. Print neutral seal on success and cleanup via FsWriteCap.
 
-pub fn main(p: &ProcessCap) {
-    let script_cmd: String = "set -e; "
-        + "root=\"${OODA_REPO_ROOT:-.}\"; ws_root=\"$(cd \"$root\" 2>/dev/null && pwd || echo \"$root\")\"; "
-        + "if [ ! -d \"$ws_root/openOODA\" ] || [ ! -d \"$ws_root/ooda\" ]; then echo \"[ROOT FAIL] missing openOODA or ooda\"; exit 1; fi; "
-        + "cd \"$ws_root\"; OODA=\"$ws_root/ooda/bin/ooda\"; "
-        + "if [ ! -x \"$OODA\" ]; then echo \"ERR\tredteam\t$OODA not executable\"; exit 1; fi; "
-        + "cleanup() { rm -f /tmp/dudect_c_native; find \"$ws_root/ooda\" \"$ws_root/openOODA\" -name '*.oo.bin' -o -name '*.tmp.c' -delete 2>/dev/null || true; }; "
-        + "trap cleanup EXIT INT TERM; "
-        + "export OODA_FS_READDIR=\"$ws_root\"; "
-        + "echo '=== Red Team pre-commit gates ==='; "
-        + "\"$OODA\" run ooda/qa/tests_challenger_1/test_c1_red1_red2_falsification.oo; "
-        + "(cd ooda && \"$OODA\" run scripts/hip_red1_keyword_trap_smoke.oo); "
-        + "(cd ooda && \"$OODA\" run scripts/math_red1_heuristic_smoke.oo); "
-        + "\"$OODA\" run ooda/qa/tests_challenger_2/test_c2_red3_red4_falsification.oo; "
-        + "(cd ooda && \"$OODA\" run scripts/std_red3_datapath_smoke.oo); "
-        + "(cd ooda && \"$OODA\" run scripts/std_red4_hermetic_smoke.oo); "
-        + "\"$OODA\" run ooda/qa/tests_challenger_3/test_c3_red5_temporal_saboteur.oo; "
-        + "\"$OODA\" run ooda/qa/tests_challenger_3/test_c3_red6_drag_assassin.oo; "
-        + "\"$OODA\" run ooda/qa/tests_challenger_4/test_c4_red7_semantic_subverter.oo; "
-        + "echo '=== 9th Gate: Structural Integrity (real probes) ==='; "
-        + "\"$OODA\" run ooda/qa/prove/simd_codegen_probe.oo; "
-        + "\"$OODA\" run ooda/qa/prove/ct_primitives_smoke.oo; "
-        + "\"$OODA\" run ooda/qa/prove/dudect_real.oo; "
-        + "\"$OODA\" run ooda/qa/prove/dudect_fraud_detector_smoke.oo; "
-        + "echo '--- 9th Gate, sub-test: native C Dudect (ns-resolution CLOCK_MONOTONIC) ---'; "
-        + "gcc -O2 -o /tmp/dudect_c_native \"$ws_root/ooda/runtime/dudect_c_native.c\" -lm && /tmp/dudect_c_native; "
-        + "\"$OODA\" run ooda/qa/prove/master_release_verifier.oo; "
-        + "echo 'redteam_hook: OK';";
-
-    let res = sys_exec(p, "sh", "-c", script_cmd);
-    match res {
-        Ok(out) => { println(out); },
-        Err(e) => { println("RED TEAM VETO: " + e); process_exit(1); }
+fn env_root(env: &EnvCap) -> String {
+  let r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
+  if r.is_ok() {
+    let v: String = match r { Ok(s) => s, Err(_) => "." };
+    if str_contains(v, "..") {
+      println("ERR\tredteam\trejected traversal in OODA_REPO_ROOT");
+      process_exit(1);
     }
+    return v;
+  }
+  return ".";
+}
+
+fn gate_run(p: &ProcessCap, root: String, bin: String, rel: String) -> Bool {
+  let cmd: String = "cd \"" + root + "\" && \"" + bin + "\" run \"" + rel + "\"";
+  let res = sys_exec(p, "sh", "-c", cmd);
+  match res {
+    Ok(out) => {
+      println(out);
+      return true;
+    },
+    Err(e) => {
+      println("RED TEAM VETO: " + rel + " → " + e);
+      return false;
+    }
+  }
+}
+
+pub fn main(fs: &FsReadCap, env: &EnvCap, p: &ProcessCap, fsW: &FsWriteCap) {
+  let root_raw: String = env_root(env);
+  let ws: String = root_raw;
+  if !path_exists(fs, ws + "/openOODA") || !path_exists(fs, ws + "/ooda") {
+    println("[ROOT FAIL] missing openOODA or ooda under " + ws);
+    process_exit(1);
+  }
+  let bin: String = ws + "/ooda/bin/ooda";
+  if !path_exists(fs, bin) {
+    println("ERR\tredteam\t" + bin + " not executable");
+    process_exit(1);
+  }
+  println("=== Red Team pre-commit gates ===");
+  let mut veto: Bool = false;
+  if !gate_run(p, ws, bin, "ooda/qa/tests_challenger_1/test_c1_red1_red2_falsification.oo") { veto = true; }
+  if !gate_run(p, ws, bin, "ooda/scripts/hip_red1_keyword_trap_smoke.oo") { veto = true; }
+  if !gate_run(p, ws, bin, "ooda/scripts/math_red1_heuristic_smoke.oo") { veto = true; }
+  if !gate_run(p, ws, bin, "ooda/qa/tests_challenger_2/test_c2_red3_red4_falsification.oo") { veto = true; }
+  if !gate_run(p, ws, bin, "ooda/scripts/std_red3_datapath_smoke.oo") { veto = true; }
+  if !gate_run(p, ws, bin, "ooda/scripts/std_red4_hermetic_smoke.oo") { veto = true; }
+  if !gate_run(p, ws, bin, "ooda/qa/tests_challenger_3/test_c3_red5_temporal_saboteur.oo") { veto = true; }
+  if !gate_run(p, ws, bin, "ooda/qa/tests_challenger_3/test_c3_red6_drag_assassin.oo") { veto = true; }
+  if !gate_run(p, ws, bin, "ooda/qa/tests_challenger_4/test_c4_red7_semantic_subverter.oo") { veto = true; }
+  if veto { println("RED TEAM VETO: 8 gates failed"); process_exit(1); }
+  println("=== 9th Gate: Structural Integrity (real probes) ===");
+  if !gate_run(p, ws, bin, "ooda/qa/prove/simd_codegen_probe.oo") { process_exit(1); }
+  if !gate_run(p, ws, bin, "ooda/qa/prove/ct_primitives_smoke.oo") { process_exit(1); }
+  if !gate_run(p, ws, bin, "ooda/qa/prove/dudect_real.oo") { process_exit(1); }
+  if !gate_run(p, ws, bin, "ooda/qa/prove/dudect_fraud_detector_smoke.oo") { process_exit(1); }
+  println("--- 9th Gate, sub-test: native C Dudect (ns-resolution CLOCK_MONOTONIC) ---");
+  let gcc_cmd: String = "gcc -O2 -o /tmp/dudect_c_native \"" + ws + "/ooda/runtime/dudect_c_native.c\" -lm && /tmp/dudect_c_native";
+  let gcc_res = sys_exec(p, "sh", "-c", gcc_cmd);
+  match gcc_res {
+    Ok(out) => { println(out); },
+    Err(e) => { println("RED TEAM VETO: native dudect → " + e); process_exit(1); }
+  }
+  if !gate_run(p, ws, bin, "ooda/qa/prove/master_release_verifier.oo") { process_exit(1); }
+  let _cleanup = sys_exec(p, "sh", "-c", "rm -f /tmp/dudect_c_native; find \"" + ws + "/ooda\" \"" + ws + "/openOODA\" -name '*.oo.bin' -o -name '*.tmp.c' -delete 2>/dev/null || true");
+  println("redteam_hook: OK");
 }

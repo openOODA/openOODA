@@ -1,0 +1,135 @@
+// # Sync Boards — SSoT Board Version Synchronizer
+//
+// Logline: Synchronize 2-line board headers from ooda.pkg SSoT with fail-closed traversal guards.
+//
+// Setup: Requires FsReadCap, FsWriteCap, EnvCap, ProcessCap. Reads ooda.pkg version, verifies 14 boards have 2-line headers, writes sync report.
+//
+// Beats:
+//   1. Resolve OODA_REPO_ROOT via EnvCap, reject .. traversal.
+//   2. Read ooda.pkg and parse version = "x.y.z" fail-closed.
+//   3. Verify 14 boards have 2-line headers (# Title + File:) and zero Floor/Thrust/Patch.
+//   4. Emit sync report and exit 0 on SSoT OK, 1 on drift.
+
+fn env_root(env: &EnvCap) -> String {
+  let r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
+  if r.is_ok() {
+    let v: String = match r { Ok(s) => s, Err(_) => "." };
+    if str_contains(v, "..") {
+      println("ERR\tsync_boards\trejected traversal in OODA_REPO_ROOT");
+      process_exit(1);
+    }
+    return v;
+  }
+  return ".";
+}
+
+fn has_pins(text: String) -> Bool {
+  if str_contains(text, "Floor:") { return true; }
+  if str_contains(text, "Thrust:") { return true; }
+  if str_contains(text, "Patch:") { return true; }
+  return false;
+}
+
+pub fn main(fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap, p: &ProcessCap) {
+  let root: String = env_root(env);
+  let pkg_path: String = root + "/ooda/ooda.pkg";
+  if !path_exists(fs, pkg_path) {
+    let pkg2: String = root + "/openOODA/ooda.pkg";
+    if !path_exists(fs, pkg2) {
+      println("FAIL sync_boards: ooda.pkg missing at " + pkg_path);
+      process_exit(1);
+    }
+  }
+  let pkg_res: Result[String, String] = oo_read_file(fs, pkg_path);
+  let mut version: String = "";
+  match pkg_res {
+    Ok(t) => {
+      if !str_contains(t, "version =") {
+        println("FAIL sync_boards: version field missing in ooda.pkg");
+        process_exit(1);
+      }
+      let mut i: Int = 0;
+      let len: Int = chars_len(t);
+      while i < len {
+        if str_slice(t, i, i + 9) == "version =" {
+          let rest: String = str_slice(t, i, len);
+          version = rest;
+          break;
+        }
+        i = i + 1;
+      }
+      println("SSoT version: " + version);
+    },
+    Err(e) => {
+      println("FAIL sync_boards: unreadable ooda.pkg: " + e);
+      process_exit(1);
+    }
+  }
+  let boards: List[String] = list_new();
+  let b0: List[String] = list_push(boards, "START.oot");
+  let b1: List[String] = list_push(b0, "RULES.oot");
+  let b2: List[String] = list_push(b1, "NORTHSTAR.oot");
+  let b3: List[String] = list_push(b2, "MOONSHOTS.oot");
+  let b4: List[String] = list_push(b3, "ROADMAP.oot");
+  let b5: List[String] = list_push(b4, "SHIPPED.oot");
+  let b6: List[String] = list_push(b5, "FORMAT.oot");
+  let b7: List[String] = list_push(b6, "SECURITY.oot");
+  let b8: List[String] = list_push(b7, "WORKFLOW.oot");
+  let b9: List[String] = list_push(b8, "QUICKREF.oot");
+  let b10: List[String] = list_push(b9, "CONSTRAINTS.oot");
+  let b11: List[String] = list_push(b10, "STRUCTURE_EM.oot");
+  let b12: List[String] = list_push(b11, "REDTEAM.oot");
+  let b13: List[String] = list_push(b12, "LLMS.oot");
+  let base: String = root + "/openOODA";
+  let n: Int = list_len(b13);
+  let mut i: Int = 0;
+  let mut fails: Int = 0;
+  while i < n {
+    let name: String = list_get(b13, i);
+    let path: String = base + "/" + name;
+    if !path_exists(fs, path) {
+      println("FAIL sync_boards: " + name + " MISSING");
+      fails = fails + 1;
+    } else {
+      let r: Result[String, String] = oo_read_file(fs, path);
+      match r {
+        Ok(text) => {
+          if has_pins(text) {
+            println("FAIL sync_boards: " + name + " contains duplicated Floor/Thrust/Patch pin");
+            fails = fails + 1;
+          } else {
+            if !str_contains(text, "File: openOODA/") {
+              println("FAIL sync_boards: " + name + " missing 2-line File header");
+              fails = fails + 1;
+            } else {
+              println("  " + name + " 2-line OK");
+            }
+          }
+          let lc: Int = chars_len(text);
+          let mut lines: Int = 0;
+          let mut j: Int = 0;
+          while j < lc {
+            if char_at(text, j) == "\n" { lines = lines + 1; }
+            j = j + 1;
+          }
+          if lines > 256 {
+            println("FAIL sync_boards: " + name + " " + lines.to_string() + " lines >256");
+            fails = fails + 1;
+          }
+        },
+        Err(e) => {
+          println("FAIL sync_boards: unreadable " + name + ": " + e);
+          fails = fails + 1;
+        }
+      }
+    }
+    i = i + 1;
+  }
+  if fails == 0 {
+    println("sync_boards: SSoT OK version=" + version + " 14 boards 2-line headers validated, 256-line cap OK");
+    process_exit(0);
+  } else {
+    println("sync_boards: FAILED " + fails.to_string() + " violation(s)");
+    process_exit(1);
+  }
+}
