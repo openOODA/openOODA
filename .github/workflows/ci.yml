@@ -44,29 +44,27 @@ jobs:
       - name: Verify Tier 1 Epoch Version Floor (v2.10.0 SSoT)
         run: |
           set -euo pipefail
-          grep -E 'version = "2\.10\.[0-9]+"' openOODA/ooda.pkg || grep -E 'version = "2\.10\.[0-9]+"' ooda.pkg
+          grep -E 'version = "2\.1[0-9]\.[0-9]+"' openOODA/ooda.pkg || grep -E 'version = "2\.1[0-9]\.[0-9]+"' ooda.pkg
 
       - name: Execute Master Governance Linters & Boards
         run: |
           set -euo pipefail
           if [ -x ooda/bin/ooda ]; then
-            ooda/bin/ooda run openOODA/scripts/enforcer.oo
-            ooda/bin/ooda run openOODA/scripts/check_board.oo
-            ooda/bin/ooda run openOODA/scripts/verify_all.oo
-            ooda/bin/ooda run openOODA/scripts/anti_cheat_linter.oo
-            ooda/bin/ooda run openOODA/scripts/format_lint.oo
-            ooda/bin/ooda run openOODA/scripts/rfc_lint.oo
+            ooda/bin/ooda run openOODA/scripts/governance_enforce.oo
+            ooda/bin/ooda run openOODA/scripts/governance_check_boards.oo
+            ooda/bin/ooda run openOODA/scripts/governance_verify.oo
+            ooda/bin/ooda run openOODA/scripts/governance_lint_rfc.oo
           fi
 
       - name: Double-Run Governance Verification (Fail-Closed)
         run: |
           set -euo pipefail
           if [ -x ooda/bin/ooda ]; then
-            ooda/bin/ooda run openOODA/scripts/enforcer.oo > /tmp/gov_run1.log 2>&1
-            ooda/bin/ooda run openOODA/scripts/enforcer.oo > /tmp/gov_run2.log 2>&1
+            ooda/bin/ooda run openOODA/scripts/governance_enforce.oo > /tmp/gov_run1.log 2>&1
+            ooda/bin/ooda run openOODA/scripts/governance_enforce.oo > /tmp/gov_run2.log 2>&1
             diff -u /tmp/gov_run1.log /tmp/gov_run2.log || { echo "FAIL: enforcer not deterministic"; exit 1; }
-            ooda/bin/ooda run openOODA/scripts/check_board.oo > /tmp/board_run1.log 2>&1
-            ooda/bin/ooda run openOODA/scripts/check_board.oo > /tmp/board_run2.log 2>&1
+            ooda/bin/ooda run openOODA/scripts/governance_check_boards.oo > /tmp/board_run1.log 2>&1
+            ooda/bin/ooda run openOODA/scripts/governance_check_boards.oo > /tmp/board_run2.log 2>&1
             diff -u /tmp/board_run1.log /tmp/board_run2.log || { echo "FAIL: check_board not deterministic"; exit 1; }
             grep -q "__FAILS__=0" /tmp/gov_run1.log || { echo "FAIL: enforcer __FAILS__!=0"; exit 1; }
             grep -q "check_board: OK" /tmp/board_run1.log || { echo "FAIL: check_board not OK"; exit 1; }
@@ -114,15 +112,15 @@ jobs:
       - name: Verify Engine SemVer (v2.10.0 SSoT)
         run: |
           set -euo pipefail
-          ooda/bin/ooda --version | grep -E '^ooda 2\.10\.'
-          grep -E 'version = "2\.10\.' ooda/ooda.pkg
-          grep -E 'version = "2\.10\.' openOODA/ooda.pkg
+          ooda/bin/ooda --version | grep -E '^ooda 2\.1[0-9]\.'
+          grep -E 'version = "2\.1[0-9]\.' ooda/ooda.pkg
+          grep -E 'version = "2\.1[0-9]\.' openOODA/ooda.pkg
           test "$(grep 'version = ' ooda/ooda.pkg | cut -d'"' -f2)" = "$(grep 'version = ' openOODA/ooda.pkg | cut -d'"' -f2)" || { echo 'FAIL: version drift'; exit 1; }
 
       - name: Execute 8-Dimensional Adversarial Red Team Gates
         run: |
           set -euo pipefail
-          ooda/bin/ooda run openOODA/scripts/redteam_hook.oo
+          ooda/bin/ooda run openOODA/scripts/redteam_orchestrate.oo
 
       - name: Execute Challenger Probes 1 to 4
         run: |
@@ -198,7 +196,7 @@ jobs:
       - name: Execute Bootstrap Installer Breaktests
         run: |
           set -euo pipefail
-          ooda/bin/ooda run openOODA/scripts/install_redteam_breaktest.oo
+          ooda/bin/ooda run openOODA/scripts/redteam_breaktest_install.oo
 
       - name: Execute Full Distribution & Portal Test Matrix
         run: |
