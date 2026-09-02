@@ -1,0 +1,63 @@
+# RFC 0005: Tactical Subsystem Template
+
+* **RFC ID**: 0005
+* **Author**: openOODA Core Team
+* **Status**: Accepted
+* **Created**: 2026-09-02
+
+---
+
+## 💡 Feature Overview
+Defines the canonical template that every tactical subsystem (`ooda/<x>/`) follows. `ooda/opm/` is the worked example.
+
+## 📐 Detailed Specification
+
+### 1. Directory Shape
+```
+ooda/<subsystem>/
+  ANCHOR.oo                (front door; replaces mod.oo)
+  <subdirs>/               (functional decomposition, each with its own ANCHOR.oo)
+  qa/                       (self-tests that ship with the package)
+  scripts/                  (build, test, verify, release entry points)
+  VERSION                   (independent version + compat contract)
+  docs/                     (per-package documentation)
+  examples/                 (sample usage)
+```
+
+### 2. The ANCHOR.oo Front Door
+Every dir with content gets `ANCHOR.oo` at the top. The Academy header provides orientation; the import statements register the siblings. Strategic-layer ANCHOR.oo gives the reading order; deeper ANCHOR.oo files are index cards.
+
+ANCHOR.oo replaces `mod.oo` (one unified convention; see RFC-0003 §5).
+
+### 3. qa/ — Self-Tests
+The 8 break-test drivers in `ooda/opm/qa/` (e.g., `today_proof.oo`, `pubgrub_proof.oo`) are concrete examples. Each proof file is a hostile test that the corresponding shipped function must pass. If a proof driver fails, the package fails to release.
+
+### 4. scripts/ — Build, Test, Verify, Release
+- `build.oo`: compile the subsystem lib and commands.
+- `test.oo`: run the qa/ break-test drivers.
+- `verify.oo`: parse VERSION, assert the mod.oo surface matches.
+- `release.oo`: build + test + verify + tarball output.
+
+### 5. VERSION — Independent Version + Compat Contract
+`ooda/<subsystem>/VERSION` declares the subsystem's own version and its requirements on the parent product. Format:
+```
+<sub>=<MAJOR>.<MINOR>.<PATCH>[-<PRERELEASE>]
+<parent>=<min-version>
+<parent>_max=<max-version>
+api_surface=<count>
+```
+The `api_surface` field is a structural check: the loader asserts the mod.oo exposes exactly the declared count of public subdirs.
+
+### 6. docs/ — Per-Package Documentation
+Per-package docs replace global LLMS.oot-style codex dumps. The package's own docs/ANCHOR.oo lists what's available.
+
+### 7. examples/ — Sample Usage
+Samples of manifests, recipes, lockfiles, or whatever the subsystem consumes. Each example is the minimum viable demonstration of one real use case.
+
+## 🛡️ Security & Capability Impact
+No new capabilities introduced. The template is a structural convention.
+
+## 🧪 Testing & Verification Criteria
+- `ooda/opm/qa/` proof drivers demonstrate the pattern.
+- `scripts/verify.oo` enforces the api_surface count.
+- Backfill audit confirms every tactical subsystem matches the template.

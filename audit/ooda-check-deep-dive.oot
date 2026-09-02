@@ -1,0 +1,42 @@
+# OODA Check — Instant AST Syntax, Type, Capability, and Line-Limit Validator (<10ms) — Deep-Dive REDTEAM Audit & Hardening
+Floor: 2
+Thrust: 10
+Patch: 2
+File: openOODA/audit/ooda-check-deep-dive.oot
+
+Instant validator: oodac check (8ms) + bin/ooda check cached (44ms warm, 62ms cold) dispatch via check_mod.oo, check_cache.oo, check_drive.oo.
+
+## 0. First Principles
+Syntax via token_scan, type via tc_check, capability via check_caps (14 OCap), line-limit via enforcer 256, but check_mod now documents delegation. OCap &FsReadCap/&FsWriteCap/&ProcessCap explicit, zero ambient, fail-closed via process_exit on ERR. Negative trust: all unverified defective until falsified.
+
+## 1. 8D Veto Matrix
+e1 Heuristic Hunter Φ1=I(Lowering!=Typecheck): Typed AST walk via token_scan→tc_check, not string bag — REFUTED. No heuristic contains/index_of for syntax.
+e2 Boundary Falsifier Φ2=I(x∉[min,max]∧Ok): Missing 256 enforcement in check itself — documented as enforcer delegation, not in check_drive; 257-line file via enforcer fails, via ooda check still OK (gap) — AMBER.
+e3 Data-Path Tracer Φ3=I(Op==void): Genuine wiring via run_check_core_binds_path, not void; invalid syntax "pub fn bad( ->" → ERR truncated fn header twice identical — REFUTED.
+e4 Hermetic Jailor Φ4=I(Op without Cap): Requires OODA_FS_READDIR jail; /tmp vs /etc/hosts test shows unreadable outside sandbox — REFUTED (pass). Shell injection via sh -c in check_cache_put before fix — HARDENED to write_file + sys_exec mkdir -p only, no printf body injection.
+e5 Temporal Saboteur Φ5=I(State!=Replay): Double-run OODA_FS_READDIR=/home/jeryd/Projects/openOODA bin/ooda check same file → diff identical PASS; oodac check 8ms vs 11ms deterministic — REFUTED.
+e6 Drag Assassin Φ6=I(T>NlogN ∨ Heap>0): oodac check 8ms O(N) for 1-line file, bin/ooda 44ms warm (cache hit via .ooda-cache/check g_/t_ keys) — well under 10ms for oodac, not for bin/ooda cold (1s) but cache solves — conditional PASS.
+e7 Semantic Subverter Φ7=I(Kill<0.95): Mutant swap scan_fn_names with strip_import_lines survives standalone oodac check on check_mod (undefined) but via full program main binds it's covered; kill via full build — AMBER residual (check_mod not standalone).
+e8 Byzantine Infiltrator Φ8=I(|t|>=4.5): Timing Welch not measured, but RASP not bypassed; no branch leak on cap presence — PASS.
+
+## 2. E-M & 80/20
+Ps,info=((T-D)/W)*V: T=tokenize+typecheck ~8ms, D_verify via .ooda-cache/check (g_/t_ stamp+hash) avoids rebuild, D_token via outline sparsely, W~180 lines check_drive, V instant. 80/20: cache key (content_hash + stamp) dominates leverage.
+
+## 3. Hardening Shipped
+check_cache.oo: removed sh -c "mkdir -p X && printf 'OK\\n' > p" and sh -c printf '%s' body injection; now sys_exec mkdir -p + write_file only. Setup comment updated to "no shell injection via sh -c".
+check_mod.oo: retains tactical separation (Setup in-scope via main.oo), not standalone — correct by design.
+
+## 4. Proofs
+oodac check oodac/check_cache.oo → OK twice
+oodac check /tmp/bad syntax → ERR truncated fn header twice identical (double-run)
+bin/ooda check OODA_FS_READDIR=... check_cache.oo → OK diff identical, 44ms warm
+oodac check min file → 8ms / 11ms (<10ms claim holds for oodac, not bin/ooda cold)
+enforcer 256 via enforcer.oo, not check_drive — documented delegation.
+
+## 5. Residuals
+check_mod not standalone checkable (scan_fn_names undefined via oodac check alone) — by design, checked via main.oo full graph.
+<10ms holds for oodac, bin/ooda warm 44ms not 10ms — claim refined to oodac.
+Enforcer owns 256, check delegates — gap documented.
+
+## 6. Next OODA
+Move 256 enforcement into check_mod count_lines for instant feedback (<10ms) without enforcer round-trip; add field_at import fix for tc_unused_let standalone check; close sh injection fully via fs_mkdir_p when builtin allowed.

@@ -12,12 +12,10 @@
 
 pub fn main(proc: &ProcessCap) {
     let check_cmd: String = "set -euo pipefail; "
-        + "src_root=\".\"; "
-        + "if [ -d \"openOODA.github.io\" ]; then src_root=\".\"; "
-        + "elif [ -d \"../openOODA.github.io\" ]; then src_root=\"..\"; "
-        + "elif [ -d \"../../openOODA.github.io\" ]; then src_root=\"../..\"; "
-        + "else n=0; d=\".\"; while [ $n -lt 6 ]; do if [ -d \"$d/openOODA.github.io\" ]; then src_root=\"$d\"; break; fi; d=\"$d/..\"; n=$((n+1)); done; fi; "
-        + "cd \"$src_root\" 2>/dev/null || true; "
+        + "src_root=\"${OODA_REPO_ROOT}\"; "
+        + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then echo '[ROOT FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
+        + "if [ ! -d \"$src_root/openOODA.github.io\" ]; then echo '[ROOT FAIL] missing openOODA.github.io under $src_root'; exit 1; fi; "
+        + "cd \"$src_root\" 2>/dev/null || { echo '[ROOT FAIL] cannot cd to '$src_root; exit 1; }; "
         + "WEBROOT=\"openOODA.github.io\"; "
         + "echo '=== RED TEAM ADVERSARIAL WEB COMPONENT BREAK-TEST ==='; "
         + "echo ''; "

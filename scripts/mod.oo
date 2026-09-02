@@ -1,0 +1,70 @@
+// # openOODA Scripts Subsystem Public Entry Door
+//
+// Logline: Provide a typed manifest and dispatcher for the governance tooling in openOODA/scripts/.
+//
+// Setup: ProcessCap required to spawn ooda run; root and bin paths supplied by caller.
+//
+// Beats:
+//   1. Expose mod_script_list, a manifest of every runnable script in the subsystem.
+//   2. Expose mod_script_rel to resolve a script name to its relative path.
+//   3. Expose mod_run_script to validate a script name and invoke it via ooda run.
+
+pub fn mod_script_list() -> List[String] {
+  let mut names: List[String] = list_new();
+  names = list_push(names, "audit_capabilities");
+  names = list_push(names, "docs_probe");
+  names = list_push(names, "docs_sync_boards");
+  names = list_push(names, "governance_check_boards");
+  names = list_push(names, "governance_enforce");
+  names = list_push(names, "governance_lint_rfc");
+  names = list_push(names, "governance_verify");
+  names = list_push(names, "redteam_breaktest_install");
+  names = list_push(names, "redteam_breaktest_web");
+  names = list_push(names, "redteam_orchestrate");
+  names = list_push(names, "redteam_review_web");
+  names = list_push(names, "registry_bot");
+  names = list_push(names, "shipped_generate");
+  names = list_push(names, "shipped_proof");
+  names = list_push(names, "site_build");
+  names = list_push(names, "site_build_fresh");
+  names = list_push(names, "site_highlight");
+  names = list_push(names, "site_inline");
+  names = list_push(names, "site_markdown");
+  names = list_push(names, "site_minify");
+  names = list_push(names, "site_routes");
+  names = list_push(names, "site_sync_appjs");
+  names = list_push(names, "site_template");
+  names = list_push(names, "taxonomy_breaktest");
+  names = list_push(names, "util_filter_failures");
+  return names;
+}
+
+fn script_rel(name: String) -> Result[String, String] {
+  let names: List[String] = mod_script_list();
+  let mut i: Int = 0;
+  let n: Int = list_len(names);
+  while i < n {
+    if list_get(names, i) == name {
+      return Ok("openOODA/scripts/" + name + ".oo");
+    }
+    i = i + 1;
+  }
+  return Err("ERR\tmod_run_script\tunknown script: " + name);
+}
+
+pub fn mod_script_rel(name: String) -> Result[String, String] {
+  return script_rel(name);
+}
+
+pub fn mod_run_script(p: &ProcessCap, root: String, bin: String, name: String) -> Result[String, String] {
+  let rel_res: Result[String, String] = script_rel(name);
+  match rel_res {
+    Err(e) => {
+      return Err(e);
+    },
+    Ok(rel) => {
+      let cmd: String = "export OODA_REPO_ROOT=\"" + root + "\" && cd \"" + root + "\" && timeout 60 \"" + bin + "\" run \"" + rel + "\"";
+      return sys_exec(p, "sh", "-c", cmd);
+    }
+  }
+}

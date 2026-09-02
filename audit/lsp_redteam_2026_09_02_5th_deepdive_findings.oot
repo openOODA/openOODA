@@ -1,0 +1,225 @@
+# LSP 5th Deep-Dive Findings Detail — 2026-09-02
+# File: openOODA/audit/lsp_redteam_2026_09_02_5th_deepdive_findings.oot
+# Companion to: lsp_redteam_2026_09_02_5th_deepdive.oot (226 lines, under cap)
+
+# ## 0. Methodology: reviewed all 32 .oo files + LSP_SETUP.oot. Cross-referenced
+# every public function definition against actual call sites via grep across the
+# full openOODA tree. Found 3 broken refs, 1 dup, 1 compat stub, 4 prefix
+# families, 26+ dead fns, 5+ dup utilities, 3 re-introduced heuristics, 1 manual
+# struct pattern, 9+ stale doc-drift items, 6 other minor findings.
+
+# ## 1. CRITICAL — BROKEN BUILD
+#
+# C1: lsp_server_build_index undefined
+#   Location: ooda/lsp/lsp_stdio.oo:90, 114. Post-rename audit said it was a
+#   duplicate of lsp_server_refresh_index and should be deleted; the function WAS
+#   removed from lsp_server_handlers.oo but the two call sites in lsp_stdio.oo
+#   were never updated. Every `ooda lsp` invocation fails. The build is broken.
+#   Fix: replace both call sites with lsp_server_refresh_index(fs, env, explicit_root).
+#
+# C2: lsp_compile_scan_user not imported
+#   Location: ooda/lsp/lsp_hover.oo:227. The function is defined in
+#   ooda/oodac/api_lsp.oo:60, NOT imported by lsp_hover.oo. When
+#   lsp_hover_via_compiler is exercised, this fails.
+#   Fix: move lsp_compile_scan_user to ooda/lsp/lsp_compile.oo, add import.
+#
+# C3: lsp_index_from_module undefined
+#   Location: ooda/lsp/lsp_stdlib_scan.oo:174. Referenced but defined nowhere.
+#   lsp_scan_via_compiler depends on it.
+#   Fix: implement in lsp_compiler_merge.oo (extract lsp_compiler_merge_into_index
+#   logic into a from-module conversion).
+
+# ## 2. STALE COMPAT LAYER
+#
+# S1: ooda/oodac/api_lsp.oo is a parallel stub LSP bridge (89 lines)
+#   Duplicates all 7 Lsp* struct defs from ooda/lsp/lsp_types_symbol.oo.
+#   Stub lsp_compile_module (line 26-31) returns empty after checks, no walk.
+#   Stub lsp_compile_residual (line 79-84) returns list_new() after checks.
+#   Real lsp_compile_scan_user (line 60-78) — the ONLY real function. Belongs in
+#   lsp_compile.oo. 5 trivial lsp_module_*_count getters (line 85-89) are
+#   list_len wrappers.
+#   TIME BOMB: any caller importing oodac/api_lsp.oo gets the STUB
+#   lsp_compile_module, not the real one. The shadow will silently break the LSP
+#   if a test or external tool imports the wrong layer.
+#   Fix: delete oodac/api_lsp.oo entirely. Move lsp_compile_scan_user to
+#   ooda/lsp/lsp_compile.oo (also fixes C2).
+
+# ## 3. DUPLICATE FUNCTION DEFINITION
+#
+# D1: lsp_module_empty is defined in 2 files (identical signature + body)
+#   - ooda/lsp/lsp_compile.oo:18 AND ooda/lsp/lsp_types_symbol.oo:29.
+#   Both: pub fn lsp_module_empty(uri: String) -> LspModuleSymbolTable returning
+#   the empty struct with list_new() for all 6 collection fields.
+#   Fix: delete from lsp_compile.oo (canonical is lsp_types_symbol.oo).
+
+# ## 4. PREFIX-MISMATCH FAMILIES (4 more, missed by 3rd pass)
+#
+# P1: ooda/lsp/lsp_code_action.oo has 2 lsp_json_* helpers
+#   lsp_json_skip_ws (15), lsp_json_first_array_object (29). Both used only by
+#   lsp_code_action_resolve. The lsp_json_ prefix is wrong — there's no
+#   lsp_json.oo file. Fix: rename to lsp_code_action_*.
+#
+# P2: ooda/lsp/lsp_definition.oo has 9 lsp_def_* functions
+#   lsp_def_starts_with (18, wrapper), lsp_def_format_location (22),
+#   lsp_def_builtin_path (31), lsp_def_is_builtin (46), lsp_def_resolve (50),
+#   lsp_def_response_json (58), lsp_def_resolve_compiler (65),
+#   lsp_def_find_line (87), lsp_def_line_end (103).
+#   All should be lsp_definition_* per the prefix = file name rule.
+#   Fix: rename 9 functions to lsp_definition_* and update call sites.
+#
+# P3: ooda/lsp/lsp_formatting.oo has 4 lsp_server_* functions (incomplete rename)
+#   lsp_server_normalize_indent (15), lsp_server_handle_formatting (50),
+#   lsp_server_extract_doc_symbols (59), lsp_server_handle_document_symbol (96).
+#   The FILE was renamed lsp_server_helpers.oo → lsp_formatting.oo but the
+#   function prefixes were not updated. lsp_server_* belongs in server dispatch.
+#   Fix: rename 4 functions to lsp_formatting_*.
+#
+# P4: ooda/lsp/lsp_generational.oo has 10 lsp_gen_* functions
+#   lsp_gen_from_compiler (16), lsp_gen_badge_via_compiler (30), lsp_gen_label (35),
+#   lsp_gen_aircraft (46), lsp_gen_badge (57), lsp_gen_has_gen1_marker (61),
+#   lsp_gen_is_violation (77), lsp_gen_violation_msg (83),
+#   lsp_gen_violation_diagnostic (87), lsp_gen_publish_diagnostics (94),
+#   lsp_gen_badge_with_diagnostic (103).
+#   Fix: rename 10 to lsp_generational_* (combine with X2 dead removal).
+
+# ## 5. DEAD CODE (26+ functions across 4 files)
+#
+# X1: ooda/lsp/lsp_diagnostics.oo — 14 DEAD (file is 50% dead, 81→~35 lines)
+#   Form a dead subgraph rooted at lsp_maneuver_collect_live and
+#   lsp_maneuver_collect_diagnostics. The live code path uses
+#   lsp_server_extract_diags in lsp_server_handlers.oo, which calls only
+#   lsp_maneuver_weight_to_diagnostic, lsp_maneuver_pins_to_diagnostic,
+#   lsp_maneuver_ps_to_diagnostic, lsp_maneuver_concat_diags,
+#   lsp_gen_violation_diagnostic. Everything else is dead.
+#   DEAD (line numbers): 33, 34, 40, 48, 49, 50, 51, 52, 62, 63, 64, 71, 74, 76.
+#   Fix: delete 14 dead functions.
+#
+# X2: ooda/lsp/lsp_generational.oo — 2 DEAD
+#   lsp_gen_publish_diagnostics (94), lsp_gen_badge_with_diagnostic (103).
+#   lsp_gen_violation_diagnostic (87) is alive (called by lsp_server_handlers.oo:53).
+#   Fix: delete 2 dead functions.
+#
+# X3: ooda/lsp/lsp_maneuver.oo — 5 DEAD
+#   lsp_maneuver_ps_info (21): returns static string. Academy header documents it.
+#   lsp_maneuver_gauge (31): "Ps=X..." string. Diagnostic version is alive.
+#   lsp_maneuver_caps_text (36): static string. Constants exported as Int already.
+#   lsp_maneuver_gauge_live (112): "Ps=X..." string with live data. Diagnostic is alive.
+#   lsp_maneuver_v_default (120): returns 10. Hardcoded 10 in lsp_server_handlers.oo:57.
+#   Fix: delete 5 dead functions. File shrinks 140→~110 lines.
+#
+# X4: ooda/lsp/lsp_facade.oo — 5 DEAD (file is 83% dead, 31→6 lines)
+#   lsp_cap_text (20), lsp_cap_input (21), lsp_cap_msgs (22): 1-line aliases.
+#   lsp_frame_message (24): 1-line alias.
+#   lsp_query_hover (28): hardcoded id="1" call. Never used.
+#   ALIVE: lsp_version (18) — used by lsp_extras.oo:107 and lsp_double_run_v2.oo:30,31.
+#   Per the "no re-export layers" directive, lsp_facade.oo is a FACADE.
+#   Fix: delete lsp_facade.oo. Move lsp_version into mod.oo (mod_lsp_version).
+
+# ## 6. DUPLICATE TEXT UTILITIES (lsp_text.oo not adopted)
+#
+# T1: ooda/lsp/lsp_hover.oo has 3 duplicates of lsp_text.oo
+#   lsp_hover_line (113), lsp_hover_line_start (96), lsp_hover_trim (124).
+#   Plus lsp_hover_starts_with (26) is a 1-line wrapper for str_starts_with.
+#   Fix: replace with lsp_text.oo. Shrinks lsp_hover.oo by ~40 lines.
+#
+# T2: ooda/lsp/lsp_definition.oo has 1 wrapper + 2 line-scanner duplicates
+#   lsp_def_starts_with (18), lsp_def_line_end (103), lsp_def_find_line (87).
+#   Fix: remove wrapper, use lsp_text.oo utilities.
+#
+# T3: ooda/lsp/lsp_stdio.oo has lsp_skip_ws (25) — 13-line whitespace skipper.
+#   Also `fn` (not `pub fn`), wrong access. Move to lsp_text.oo.
+#
+# T4: ooda/lsp/lsp_code_action.oo has lsp_json_skip_ws (15) — same 13-line pattern.
+#   Use lsp_text_skip_ws from lsp_text.oo.
+#
+# T5: ooda/lsp/lsp_stdlib_scan.oo has 3 hand-rolled utilities
+#   lsp_scan_ends_with (18): str_ends_with is a built-in. STALE FIX.
+#   lsp_scan_skip_ws (58): 9-line whitespace skipper.
+#   lsp_scan_match_at (82): substring match check; could be 1 line.
+
+# ## 7. RE-INTRODUCED HEURISTIC FALLBACKS
+#
+# H1: ooda/lsp/lsp_maneuver.oo:67, 73 — D_alloc/D_search substring counters
+#   Count "heap"+"alloc" and "token_burn"+"search" substrings. Same antipattern
+#   as the removed lsp_gen_from_path. Compiler can give real counts.
+#   A comment containing "realloc" inflates the drag diagnostic. Fix: replace
+#   with real counts from lsp_compile_walk_fns output, or remove.
+#
+# H2: ooda/lsp/lsp_maneuver.oo:53 — ast_weight substring counter
+#   Counts "pub fn "/etc substrings. Same antipattern. Fix: replace with
+#   lsp_compile_walk_fns output.
+#
+# H3: ooda/lsp/lsp_generational.oo:16 — package→Gen if-else table
+#   Function name says "from_compiler" but the mapping is a hardcoded if-else
+#   chain. Per STRUCTURE_EM.oot 3.4, Gen should come from the compiler.
+#   Fix: extend LspModuleSymbolTable with gen field, populated by
+#   lsp_compile_walk_* based on ooda.pkg metadata.
+#
+# H4: ooda/lsp/lsp_generational.oo:61 — chain of 13 str_index_of for Gen1 markers
+#   Data table masquerading as code. Fix: replace with List[String] of markers
+#   + a single str_index_of_any.
+
+# ## 8. MANUAL STRUCT CONSTRUCTION
+#
+# M1: ooda/lsp/lsp_compile.oo — 8 manual struct constructions
+#   Lines 52, 53, 68, 70, 86, 87, 102, 103 manually construct LspFunction,
+#   LspStruct, LspEnum, LspCapabilityUse with all 8 fields spelled out. The
+#   constructors lsp_function_new, lsp_struct_new, lsp_enum_new, lsp_cap_use_new
+#   exist in lsp_types_symbol.oo but are not used. Every manual construction
+#   has a 1-line constructor equivalent. Saves 20+ lines of repetition.
+
+# ## 9. STALE DOC-DRIFT
+#
+# D2: ooda/lsp/LSP_SETUP.oot has 9+ stale references
+#   L17: "3 diags" (actual 6 — added E-M Ps, Pins, SSO);
+#   L18: "65-entry seed" (actual 59);
+#   L25: didChangeWatchedFiles listed (REMOVED in slice D);
+#   L50-51: missing "ooda/" path prefix;
+#   L66: "lsp_server.oo:114-117" (split into 4 files);
+#   L80: "lsp_disc_find_stdlib_root" (renamed);
+#   L84: missing &CompilerReadCap (15th cap);
+#   L96-99: 5 proofs listed (actual 6);
+#   L102-105: "No real compiler integration" STALE (it IS real);
+#   L106-107: "no documentLink/inlayHint/executeCommand" STALE (lsp_extras.oo provides all 3);
+#   L108-112: "No Double-Run log" STALE (lsp_double_run_v2.oo exists).
+#   Fix: rewrite LSP_SETUP.oot to reflect the 8-slice state.
+#
+# D3: ooda/lsp/lsp_diagnostics.oo:5 — Academy header has stale lsp_em.oo reference
+#   // Setup: Imports lsp_types.oo + lsp_em.oo live gauges.
+#   lsp_em.oo was renamed to lsp_maneuver.oo. The import at line 14 is correct
+#   but the Academy header is stale. Fix: update the comment.
+#
+# D4: ooda/lsp/lsp_formatting.oo:1 — Academy header has stale title
+#   // # LSP Server Formatting & Document Symbol Helpers
+#   File was renamed from lsp_server_helpers.oo to lsp_formatting.oo but title
+#   says "Server Formatting". Fix: update to "LSP Document Formatting & Symbols".
+
+# ## 10. OTHER FINDINGS
+#
+# O1: ooda/lsp/mod.oo:16, 17 — duplicate import of lsp_stdio.oo. Delete one.
+#
+# O2: ooda/lsp/lsp_completion.oo:40 — lsp_completion_via_compiler doesn't use
+#   the compiler. Body uses no CompilerReadCap. Rename to lsp_completion_respond
+#   or add the compiler parameter and use it.
+#
+# O3: ooda/lsp/lsp_formatting.oo:86 — hardcoded "file://x" URI and kind:12.
+#   "file://x" is a placeholder URI. kind:12 is LSP SymbolKind.Function. Pass
+#   uri as parameter; use named constant for kind:12.
+#
+# O4: ooda/lsp/lsp_diagnostics.oo:46 — hardcoded end_col: 80. Magic line width.
+#   Name the constant lsp_em_diag_line_width.
+#
+# O5: ooda/lsp/lsp_diagnostics.oo:48 — code-by-substring-search antipattern.
+#   Diagnostic code derived from substring search on the message. If the
+#   message text changes, the code lookup breaks. Fix: have
+#   lsp_maneuver_drag_live_diag return the code along with the message.
+#
+# O6: ooda/lsp/lsp_maneuver.oo:122 — lsp_maneuver_count_substr is O(n*m).
+#   17 lines of hand-rolled counter. If str_count_of exists, use it.
+
+# ## 11. E-M delta
+#
+# Ps_pre  (post-4-passes) = (T_nominal - D_3_broken + 26_dead + 4_prefix +
+#                            5_dup + 3_heuristic + 1_compat) / W * V ≈ 0
+# Ps_post (post-5th-pass) = (T_real - D_~0) / 3126 * HIGH >> 0
+# Each broken ref is W=0 fail-closed. Each dead fn adds 0 to Ps but inflates W.

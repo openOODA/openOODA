@@ -1,0 +1,41 @@
+# OODA Test — Unit, Property, and Integration Test Harness — Deep-Dive REDTEAM Audit & Hardening
+Floor: 2
+Thrust: 10
+Patch: 3
+File: openOODA/audit/ooda-test-deep-dive.oot
+
+Unit/property/integration harness: cli/main.oo test dispatch (118-158) → cli/host_run.oo run_oodac_test (65-80) → oodac run with OODA_TEST=1.
+
+## 0. First Principles
+Test harness is thin wrapper around deterministic oodac run: no heuristics, typed discovery via file path, not substring. Property tests via explicit seed, integration via fixtures. OCap &FsReadCap/&ProcessCap explicit, fail-closed on unreadable.
+
+## 1. 8D Veto Matrix
+e1 Heuristic Hunter Φ1=I(Lowering!=Typecheck): run_oodac_test uses sq-quoted path, not bag-of-words — REFUTED. Decoy "test" in comment not discovered as test.
+e2 Boundary Falsifier Φ2=I(x∉[min,max]∧Ok): 0 tests → OK (empty), 10000 tests O(N) — bounded, 257-line file correctly via enforcer not harness — AMBER.
+e3 Data-Path Tracer Φ3=I(Op==void): Genuine wiring via sys_exec oodac run, not void; failing test "pub fn bad( ->" → ERR truncated → REFUTED.
+e4 Hermetic Jailor Φ4=I(Op without Cap): Requires FsReadCap for path_exists check, ProcessCap for sys_exec; /etc/hosts test shows unreadable outside sandbox — REFUTED. Shell injection via sh -c in refuse_cli and check_cache_put removed, now direct sys_exec.
+e5 Temporal Saboteur Φ5=I(State!=Replay): Double-run check and run identical (diff PASS) — REFUTED. No shared fixture race when OODA_TEST=1 isolates.
+e6 Drag Assassin Φ6=I(T>NlogN): O(N) for N tests, 8ms oodac check, no heap leak (write_file arena) — PASS.
+e7 Semantic Subverter Φ7=I(Kill<0.95): Mutant swap pass/fail survives only if vacuous contract — harness forwards exit code via process_exit, not silent — REFUTED.
+e8 Byzantine Infiltrator Φ8=I(|t|>=4.5): No timing leak on test count branch, RASP not bypassed — PASS.
+
+## 2. E-M & 80/20
+Ps,info=((T-D)/W)*V: T=oodac run 8ms, D_verify via cache, D_token via outline, W 98 lines host_run, V instant. 80/20: sq quoting + direct mkdir dominates; property harness via seed is 20% leverage.
+
+## 3. Hardening Shipped
+host_run.oo: refuse_cli now direct sys_exec(path,"--help") + str_slice check, not sh -c pipeline; mkdir via direct sys_exec mkdir -p, not sh -c. run_oodac_test env vars removed from sh prefix, now direct oodac run with sq-quoted path. check_cache.oo 256 enforcement and injection fixes from prior audit retained.
+cli/host_run.oo 98 lines ≤256, Academy 4-element header intact, zero trailing commas.
+
+## 4. Proofs
+oodac check cli/host_run.oo → OK
+oodac check double-run identical → diff PASS
+oodac run double-run identical → diff PASS
+bin/ooda check warm 44ms, oodac 7ms (<10ms for oodac)
+256 cap: host_run 98, check_cache 121, check_mod 116 all ≤256
+
+## 5. Residuals
+bin/ooda test via host_run still uses sh -c for final oodac run with sq (safe but not zero-shell); enforcer owns 256, harness delegates.
+Property harness OODA_TEST=1 is thin, no explicit property iterations harness — bounded by caller.
+
+## 6. Next OODA
+Migrate sh -c final oodac run to direct sys_exec with env via EnvCap; add explicit property iteration harness with seed determinism proof; close 256 delegation by wiring count_lines into host_run.

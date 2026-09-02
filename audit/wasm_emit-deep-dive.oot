@@ -1,0 +1,42 @@
+# WASM Emit — Deep-Dive REDTEAM Audit & Hardening
+Floor: 2
+Thrust: 10
+Patch: 1
+File: openOODA/audit/wasm_emit-deep-dive.oot
+
+Zero-dependency WASM binary module generator: wasm_binary_builder.oo, wasm_direct_emit.oo, wasm_backend_driver.oo, wasm_leb128.oo.
+
+## 0. Scope & First Principles
+WASM 1.0 spec §5: magic 00 61 73 6d 01 00 00 00, LEB128 varint, func type 0x60, sections type(1)/import(2)/func(3)/memory(5)/export(7)/code(10)/data(11). Typecheck via oodac check OK on all 5 files; wasmtime 47.0.3 validates 238-byte module.
+
+## 1. 8D Veto Matrix
+e1 Heuristic Hunter Φ1: typed AST via tokenize_lines→ast_parse→wasm_lower_* — REFUTED.
+e2 Boundary Falsifier Φ2: encode_u32_leb128 lacked bounds — surviv mutant 4294967296 — HARDENED with u32_negative/u32_overflow fail-closed (process_exit 1).
+e3 Data-Path Tracer Φ3: wasm_direct_emit sh -c printf fallback silent — HARDENED to pure write_file fail-closed, deleted 38 lines.
+e4 Hermetic Jailor Φ4: sh injection via out_path concatenation + OODA_FS_WRITEDIR bypass — HARDENED to &FsWriteCap-only, injection removed.
+e5 Temporal Saboteur Φ5: List append racy under concurrency but single-threaded deterministic — cmp 0 bit-identical proves replay.
+e6 Drag Assassin Φ6: wasm_builder_add_type O(N*flat) dedup — bounded by 4096 fn gate, List copy O(N) — AMBER acceptable.
+e7 Semantic Subverter Φ7: swap sec ids + remove op_end survives magic-only smoke — residual, needs section validator.
+e8 Byzantine Infiltrator Φ8: LEB variable loop timing leak + RASP bypass via sh — fixed via e4 removal, timing low-severity.
+
+## 2. E-M & 80/20
+Ps,info=((T-D)/W)*V: T direct emission, D rebuild/token/alloc minimized, W 747 lines, V sub-second. 80/20 leverage LEB128+frame_sec+locals_slice. Blue ocean: zero-copy bytes_to_str→write_file replaces sh compat layer.
+
+## 3. Hardening
+wasm_direct_emit.oo 128 lines: pure FsWriteCap, guard chars_len==0, compat shim retains &ProcessCap shadow.
+wasm_backend_driver.oo 142 lines: explicit wasi/browser/wasm-gc/wasm-linear else ERR unknown_target.
+wasm_leb128.oo 202 lines: u32 bounds gates.
+wasm/mod.oo 19 lines: tactical entry door per Pillar 6.
+
+## 4. Proofs
+wasmtime build --backend wasm/wasm-gc/wasm-linear → 00 61 73 6d file WebAssembly MVP PASS.
+double-run cmp 0 sha256 61383cd5b177d2207b0eea9880d0f34d32b270dc5c01928e5fde10acc2afb701 PASS.
+hostile LEB overflow PASS, negative PASS, unknown_target code-inspected PASS, empty guard PASS.
+
+## 5. Residuals
+Link duplicate wasm_lower_match/wasm_str_to_byte_list blocks bin/ooda run for driver — pre-existing, oodac build unaffected.
+Kill-rate <95% — add qa/tests_wasm/test_m1_section_order.oo.
+
+## 6. Next OODA
+R2: migrate 51 wasm_*.oo into oodac/wasm/ sibling imports.
+Gen6: ct_select for wasm_encode_f64_lit timing.

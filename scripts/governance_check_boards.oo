@@ -10,18 +10,7 @@
 //   3. Purge unrecognized .oot files and fail closed if any remain.
 //   4. Walk openOODA/audit/ and fail closed on any file > 256 lines.
 
-fn env_or(env: &EnvCap, key: String, fallback: String) -> String {
-    let r: Result[String, String] = env_get(env, key);
-    if r.is_ok() {
-        let v: String = match r { Ok(s) => s, Err(_) => fallback };
-        if str_contains(v, "..") {
-            println("ERR\tcheck_board\trejected traversal in " + key);
-            process_exit(1);
-        }
-        return v;
-    }
-    return fallback;
-}
+import "util_env.oo";
 
 pub fn is_whitelisted_board(name: String) -> Bool {
     if name == "LLMS.oot" { return true; }
@@ -120,7 +109,7 @@ pub fn audit_size_report(fs: &FsReadCap, base: String) -> Int {
 }
 
 pub fn main(fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap) {
-    let root: String = env_or(env, "OODA_REPO_ROOT", ".");
+    let root: String = env_required_dir(fs, env, "OODA_REPO_ROOT");
     let base: String = root + "/openOODA";
     if !path_exists(fs, base) {
         println("FAIL: " + base + " not found");

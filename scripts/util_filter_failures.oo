@@ -9,7 +9,7 @@
 //   2. Re-check each failing module with oodac check.
 //   3. Extract and display the first error diagnostic line.
 
-import "std/str.oo";
+import "std/core/str.oo";
 
 pub fn extract_first_line(s: String) -> String {
     let nl: Int = str_index_of(s, "\n");
@@ -43,13 +43,11 @@ pub fn main(fs: &FsReadCap, p: &ProcessCap, args: List[String]) {
     }
     let get_files_cmd: String = "grep '^Fail: ' " + log_path + " 2>/dev/null | cut -d' ' -f2 || true";
     let get_files_res = sys_exec(p, "sh", "-c", get_files_cmd);
-    
-    let mut files_out: String = "";
-    if get_files_res.is_ok() {
-        files_out = match get_files_res { Ok(s) => s, Err(e) => e };
-    } else {
-        files_out = match get_files_res { Ok(s) => s, Err(e) => e };
-    }
+
+    let files_out: String = match get_files_res {
+        Ok(s) => s,
+        Err(e) => e
+    };
     
     let mut start: Int = 0;
     let n: Int = chars_len(files_out);
@@ -67,13 +65,11 @@ pub fn main(fs: &FsReadCap, p: &ProcessCap, args: List[String]) {
             
             let cmd: String = "oodac check " + shell_escape(f) + " 2>&1 || true";
             let check_res = sys_exec(p, "sh", "-c", cmd);
-            
-            let mut check_out: String = "";
-            if check_res.is_ok() {
-                check_out = match check_res { Ok(s) => s, Err(e) => e };
-            } else {
-                check_out = match check_res { Ok(s) => s, Err(e) => e };
-            }
+
+            let check_out: String = match check_res {
+                Ok(s) => s,
+                Err(e) => e
+            };
             
             if str_index_of(check_out, "ERR") >= 0 {
                 let first: String = extract_first_line(check_out);

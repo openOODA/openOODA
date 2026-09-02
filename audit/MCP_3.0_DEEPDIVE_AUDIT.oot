@@ -1,0 +1,118 @@
+// # MCP Server Deep-Dive Audit v3.0 — Negative-Trust, First-Principles, 8D Red Team
+//
+// Logline: Re-audit the entire MCP server subsystem with negative trust; surface every E-M excess, fake-pass redteam, hardcoded path, and tier drift; deliver a subtractive refactor set with first-principles justifications under OCap, power-law, systems thinking, blue ocean, and strategic/operational/tactical separation.
+//
+// Setup: Audit scope = ooda/mcp/*.oo (33 files), ooda/cli/cmd_mcp*.oo + ooda/cli/safe_mcp_merge.oo (4 files), supporting ooda/std/net/{unix_socket.oo, tcp_conn.oo} and ooda/std/fs/file_writer.oo, ooda/lsp/lsp_{jsonrpc,types,json_encode}.oo, ooda/qa/tests_llms/test_t4_mcp_*.oo (12 files). Total 56 files. Verified state baseline = ooda.pkg v2.11.0. Prior cert MCP_2.9.2_REDTEAM_CERT.oot is FAILURE-INVALID (built on fake-pass infrastructure) and is REPLACED by this audit. Method: read every file in scope (≤256 lines each, confirmed), cross-check against REDTEAM.oot 8D matrix, NORTHSTAR.oot grammar, SECURITY.oot 14-cap table, WORKFLOW.oot 5-component WO protocol, CONSTRAINTS.oot 8 master gates.
+//
+// Beats:
+//   1. Inventory and tier map (33 mcp + 4 cli + 19 support/qa = 56 files; all ≤256 lines; mcp_server.oo and mcp_graph_dynamic.oo at 255-line cap, mcp_dispatch.oo and lsp_types.oo at 250).
+//   2. 8D Red Team e1-e8 deep-dive with empirical evidence and severity.
+//   3. E-M excess power violations (Ps,info = optimal − actual; ranked).
+//   4. OCap token audit (14 caps vs actual mint/audit/usage).
+//   5. Strategic/Operational/Tactical separation drift.
+//   6. Power-law 80/20 + systems-thinking leverage points.
+//   7. Blue-ocean strategic gaps (no 4-action framework claimed; gaps listed).
+//   8. First-principles axioms; subtractive refactor set; 5-component WO handoff.
+//
+// §1 INVENTORY AND CAP-ENFORCEMENT (PASS)
+//
+// All 56 .oo files in scope verified ≤256 lines. Top of distribution: mcp_server.oo 255, mcp_graph_dynamic.oo 255, mcp_dispatch.oo 250, lsp_types.oo 250, mcp_redteam.oo 226, mcp_graph.oo 224. The 256-line cap is ENFORCED at the cap with two files at 255 and two at 250 — those four files are the natural next refactor candidates (decompose the mcp_server.oo act-cascade and mcp_dispatch.oo require_caps table; the two engines stay as thin facades).
+//
+// §2 8D RED TEAM DEEP-DIVE (e1–e8) — 7/8 GATES FAKE, 1 GATE BYPASSED
+//
+// e1 SUBVERSION: mcp_redteam.oo:35-65 — every fire_<gate>() returns hardcoded `mcp_redteam_result(g, name, true, "fake-detail")` with no probe whatsoever. The 8D matrix is supposed to test (1) capability forgery, (2) path traversal, (3) line-size overflow, (4) unicode roundtrip, (5) regex injection, (6) duplicate-id replay, (7) path traversal out-of-root, (8) missing-cap escalation, (9) SHA tampering. None are run. SEVERITY: CATASTROPHIC. The prior cert (67/67 PASS) was based on this stub. Finding F-01.
+//
+// e2 EXHAUSTION: same stub as e1, but the actual code (mcp_server.oo:240 chars_len cap at 1MB) is correct. So the production code is OK; the cert is fake. SEVERITY: LOW (code) / HIGH (cert). Finding F-02.
+//
+// e3 OBFUSCATION: stub. mcp_session.oo:177 mcp_session_seen_id uses linear List scan; O(n) per id. Comment claims "O(1) amortized" — FALSE. The session-id replay-window is also bounded at 256 with naive FIFO drop. SEVERITY: MEDIUM. Finding F-03.
+//
+// e4 INJECTION: stub. mcp_dispatch.oo:67-92 has exact-string match on `method`; this is good. The real risk is in mcp_dispatch_act_resource_read at mcp_dispatch.oo:122-132 which matches `uri` by exact string. No URL-decoding. mcp_orient_uri_is_canonical at mcp_dispatch.oo:96-100 accepts exactly 6 URIs. An attacker with `ooda://orientation/../em/metrics` is REJECTED because the whole string is compared. OK on the surface, but the canonical list is HARDCODED and the resources/list advertises 8 URIs while the gate allows 6 — protocol violation. SEVERITY: MEDIUM. Finding F-04.
+//
+// e5 REPLAY: stub. mcp_session.oo:165-179 mcp_session_seen_id does linear scan over last 256 ids; not O(1) as claimed. The test_t4_real_replay_runtime in test_t4_mcp_protocol.oo:74-79 verifies the duplicate is caught. This is a REAL test against the REAL code, so the underlying defense is sound; the redteam gate e5 is just unlabeled. SEVERITY: LOW (code) / HIGH (cert). Finding F-05.
+//
+// e6 TRAVERSAL: stub. mcp_dispatch_decide calls mcp_orient_uri_is_canonical which rejects anything not in the 6-URI list. test_t4_real_traversal (test_t4_mcp_protocol.oo:67-72) verifies `file:///etc/passwd` returns -32602. REAL test, REAL defense. The 6-URI canonical list is the strongest defense. BUT: the advertise/serve mismatch (resources/list lists 8, gate allows 6) means the server claims to serve `ooda://em/metrics` and `ooda://registry/catalog` then returns -32602. SEVERITY: MEDIUM. Finding F-06.
+//
+// e7 ESCALATION: stub. mcp_dispatch_required_caps (mcp_dispatch.oo:233-249) returns 1 for resources/read and tools/call, 0 for everything else. The audit mcp_dispatch_cap_audit (mcp_dispatch.oo:241-249) returns 0 on match, -32603 on mismatch. This is correct in spirit but the require_caps table is COARSE — it does not distinguish tools/call.get_capability_graph (no cap needed) from tools/call.read_board (FsReadCap needed). The audit is vacuous for fine-grained escalation. SEVERITY: MEDIUM. Finding F-07.
+//
+// e8 INTEGRITY: stub. The hash-chain (mcp_g17_lineage_chain.oo:97-131) IS a real test — test_t4_g17a_chain_tamper (test_t4_mcp_g17.oo:30-37) detects tamper by recomputing SHA-256 over (version|sha|prev|prev_entry|boardCount|epoch). This is the ONLY real defense in the whole redteam. The 8D gate e8 itself is still a stub. SEVERITY: HIGH (cert). Finding F-08.
+//
+// §3 E-M (EXCESS POWER) VIOLATIONS
+//
+// E-01 CRITICAL: Hardcoded dev-machine path at mcp_redteam.oo:100: `let probe: String = "/home/jeryd/Projects/openOODA/ooda/mcp/mcp_session.oo";`. G11 FsReadCap cert only passes on jeryd's machine. Any other host returns "probe file missing" and the cert line is FAIL. This is a TROJAN disguised as a self-cert. Action: REMOVE the path-specific probe; replace with a codex-tied probe (e.g., read the LLMS.oot the codex cache already resolved).
+//
+// E-02 CRITICAL: /usr/local/share/openOODA/LLMS.oot hardcoded in mcp_codex.oo:27-29 (mcp_codex_path_canonical). Action: REMOVE. The user mandate is "no obsolete paths, no fallbacks, no compat layers". Single resolution = $OODACODEX env (no chain).
+//
+// E-03 CRITICAL: Fallback chain in mcp_codex.oo:31-39 (env → canonical → "") is itself a FALLBACK. Action: COLLAPSE to env-only resolve. If unset, the server fails closed (this is the correct sovereign behavior).
+//
+// E-04 HIGH: Hardcoded version string "2.9.2" appears in 8 files: mcp_codex.oo:86,110,147,159; mcp_g13_lineage.oo:20; mcp_g17_lineage_chain.oo:17; mcp_g20_compaction.oo:16; mcp_graph_dynamic.oo:111. The codebase is v2.11.0 (ooda.pkg). Every artifact is SHA-anchored to the wrong version. Action: replace with a single `MCP_PROTOCOL_VERSION` constant or read from ooda.pkg at compile time. Per RULES, version is governance data — strategic → tactical leak.
+//
+// E-05 HIGH: mcp_dynamic_persist (mcp_graph_dynamic.oo:114-120) writes `path + ".tmp"` but NEVER RENAMES to `path`. The entire dynamic-graph persistence is broken; mcp_dynamic_load sees stale or empty data. test_t4_g9_cold_start (test_t4_mcp_protocol.oo:155-166) ASSERTS the load returns 3 entries — this test would fail on a real runtime. Action: append atomic rename: `let rn: Result[Void, String] = oo_fs_rename(fw, tmp, path);`.
+//
+// E-06 HIGH: mcp_engine_session.oo:12-15 redefines `pub type McpSession = struct { id: Int, state: String }` which is INCOMPATIBLE with the real mcp_session.oo:1-194 McpSession (12+ fields: phase, tier, caps_held, client_roots, etc.). If the compiler is strict, this fails to link. If lax, the wrong type is used at every engine_session_* call. Type-system collision. Action: REMOVE mcp_engine_session.oo entirely — it's a stub. Move the zero-drag claim to a comment in engine/mod.oo.
+//
+// E-07 HIGH: mcp_engine_transport.oo:19-29 declares `tcp_connect(tcp, host, port)` and `tcp_bind(bind, port)` but the real std is `tcp_connect(tcp, host, port)` and `tcp_bind(bind, host, port)` (3-arg vs 2-arg). The 2-arg form in mcp_engine_transport.oo:35 calls `tcp_bind(bind, port)` which is WRONG. Then engine/mod.oo:78-80 re-exports mcp_transport_read with 4 args but the underlying takes 2 args (mcp_transport.oo). Two signature mismatches. Action: DELETE mcp_engine_transport.oo and engine/mod.oo's transport section; have engine_server_run call mcp_server_run directly. The "engine" facade is the SOURCE of these mismatches, not a fix.
+//
+// E-08 MEDIUM: mcp_g11_certify_bind (mcp_redteam.oo:125-131) is a fake-pass: comment admits "We don't actually bind" and returns `mcp_g11_cert_line("BindCap", true, "cap referenced; bind happens on mcp --socket path")`. This is a MITIGATION. Action: REMOVE; replace with real unix_socket_bind to a tmp path under the test's .ooda-cache; if it returns Err, report FAIL not pass.
+//
+// E-09 MEDIUM: 9 caps in mcp_g11_self_certify (SysCap, ProcessCap, NetCap, HttpCap, TcpCap, UdpCap, TimeCap, RandCap, AllocCap, FsCap — note 10 listed) go through runtime_*_probe which are hardcoded `return 0 - 1`. The result is `skip` (not `pass`). This is HONEST about not testing, but it means 10 of 14 caps are never exercised. Action: REPLACE each runtime_*_probe with a real probe that calls the corresponding cap-bounded runtime function (e.g., runtime_sys_probe → sys_info under SysCap).
+//
+// E-10 MEDIUM: G10.5 "gate 10" (mcp_redteam.oo:197-202) — there is no gate 10 in REDTEAM.oot (8 gates only). The function is a real 5% regress veto on Ps,info, but the gate id `10` is a NUMERIC LIE. Action: rename to `mcp_redteam_ps_regress_veto` and remove the gate-id field from its return shape (it is not a gate, it is a generation-level veto).
+//
+// E-11 MEDIUM: mcp_g30_certify_real (mcp_g30_real_caps.oo:23-26) returns `skip` for any negative runtime_result. The semantic "skip" is not in the REDTEAM.oot 8D matrix (only pass/fail). Action: collapse to fail (be honest about a missing runtime probe) and log the missing builtin separately.
+//
+// E-12 MEDIUM: 3 broken imports of `fs/file_writer.oo` (mcp_g13_lineage.oo:17, mcp_g17_lineage_chain.oo:14, mcp_g20_compaction.oo:13) — the file lives at `std/fs/file_writer.oo`. Action: fix import paths. This is a STRATEGIC leak: tactical code references a file that doesn't exist where it claims.
+//
+// E-13 LOW: mcp_server.oo:240 `chars_len(out) > 1048576` is a 1MB cap but the response is appended DRAIN-notifications AFTER the cap check, so the actual cap is bypassed. mcp_g21_drain_into_response (mcp_g21_notification_drain.oo:15-28) appends arbitrary number of notifications without re-checking the cap. Action: cap re-check after drain.
+//
+// E-14 LOW: mcp_dynamic_json_* hand-rolled parser (mcp_graph_dynamic.oo:53-95) — fragile, doesn't handle escaped quotes. The test_t4_dynamic_graph asserts `body contains "version"` which is satisfied even with broken JSON. Action: leverage the existing lsp_json_extract_string helper instead of hand-rolling.
+//
+// §4 OCAP TOKEN AUDIT (14 caps vs code)
+//
+// SECURITY.oot 14 caps: FsReadCap(0), FsWriteCap(1), FsCap(2), BindCap(3), NetCap(4), HttpCap(5), TcpCap(6), UdpCap(7), EnvCap(8), SysCap(9), ProcessCap(10), TimeCap(11), RandCap(12), AllocCap(13). mcp_dispatch_required_caps (mcp_dispatch.oo:233-249) returns a single Int bitmask with only 2 of 14 caps actually required by methods. mcp_session_grant_cap (mcp_session.oo:88-93) mints individual bits. mcp_g19_token_to_bit (mcp_g19_cap_encoding.oo:24-39) is the canonical 14-token→bit map. DISCREPANCY: tools/call.get_capability_graph should require 0 caps; tools/call.read_board should require FsReadCap (bit 0); tools/call.refresh_dynamic_graph should require FsWriteCap (bit 1) — none of this granularity is in the dispatch table. Action: replace the coarse require_caps with a per-tool table or a graph-declared cap requirement on each tool descriptor.
+//
+// §5 STRATEGIC/OPERATIONAL/TACTICAL SEPARATION
+//
+// STRATEGIC (openOODA/ governance): should not appear in tactical code. Found: hardcoded version "2.9.2" in 8 mcp/*.oo files (E-04). The dev-machine path /home/jeryd/Projects/openOODA/... in mcp_redteam.oo:100 (E-01). The hardcoded /usr/local/share/openOODA/LLMS.oot in mcp_codex.oo:28 (E-02). Action: remove all three; the codex cache should resolve via $OODACODEX env (operational) and ooda.pkg (strategic) only.
+//
+// OPERATIONAL (ooda/ repos): clean separation. No live dual copies of MCP files found outside ooda/mcp/, ooda/cli/, ooda/std/net/, ooda/std/fs/, ooda/lsp/, ooda/qa/.
+//
+// TACTICAL (ooda/mcp/ and friends): the "engine" subdirectory creates a TACTICAL-TACTICAL confusion. mcp_engine_session.oo redefines McpSession with a 2-field type, shadowing the real 12+-field type (E-06). engine/mod.oo imports mcp_server.oo (circular: server→dispatch→engine→server). The engine subdir is DEAD WEIGHT. Action: delete ooda/mcp/engine/ entirely; rename to ooda/mcp/public/ and have it only re-export the verified-stable dispatch+session+transport types.
+//
+// §6 POWER-LAW 80/20 + SYSTEMS-THINKING LEVERAGE POINTS
+//
+// 80/20: 5 files account for 80% of the LOC: mcp_server.oo (255), mcp_graph_dynamic.oo (255), mcp_dispatch.oo (250), mcp_redteam.oo (226), mcp_graph.oo (224). Of the 13 findings, 8 are in these 5 files. Refactor energy → 5 files, not 33.
+//
+// Systems-thinking leverage (Meadows ranking):
+//   L#12 (constants/parameters): mcp_codex_path_canonical is a parameter; remove (E-02).
+//   L#10 (material flows): the 1MB response cap is a stock; fix the leak (E-13).
+//   L#8 (balancing feedback loops): mcp_g14_invalidate_caches is a feedback loop, intact.\n//   L#6 (information flows): mcp_dispatch_required_caps lacks per-tool info; fix (E-09).
+//   L#3 (rules): the 8D gates are rules; they're wrong (F-01..F-08). Fix the rules.
+//   L#2 (paradigm): sovereignty-as-default-deny is the right paradigm. The current code mostly upholds it; the redteam fakes are the paradigm leak.
+//
+// §7 BLUE-OCEAN STRATEGIC GAPS
+//
+// 1. The MCP server is BIND-capable (TCP/Unix-socket) but has no ZK-proof-of-codex for federation. mcp_g12_federation.oo just concatenates peer JSON; no trust root. Blue ocean: mint a per-federation attestation signed by the local codex SHA-256.
+// 2. The notification drain (mcp_g21) is post-hoc. Blue ocean: stream progress via mcp_stream.oo for long ops; clients cancel via `cancelled_id` (McpOrient field is wired but unused).
+// 3. The 8D redteam is a stub. Blue ocean: real adversarial harness with 8 named probes (cap-forgery, line-overflow, unicode-roundtrip, regex-injection, duplicate-id, path-traversal, cap-missing, sha-tamper) that each invoke a distinct cap and verify the result. This is what the prior cert CLAIMED to do; actually doing it is a differentiator.
+// 4. mcp_dynamic_persist never persists. Blue ocean: a content-addressed dynamic-graph store at .ooda-cache/mcp/dynamic/<sha>.json with WAL for crash safety.
+// 5. mcp_dispatch_cap_audit is per-request. Blue ocean: per-session cumulative cap-audit with revocation, surfaced via notifications/cap_revoked (already in mcp_g20_notification_queue.oo).
+//
+// §8 FIRST-PRINCIPLES AXIOMS + SUBTRACTIVE REFACTOR SET
+//
+// AXIOM A1: A REDTEAM gate that returns pass without running is a LIE, not a defense. Remove the lie; replace with a real probe.
+// AXIOM A2: A path that exists on one developer's machine is a TROJAN. Remove the path; bind the cert to the codex the server already resolved.
+// AXIOM A3: A fallback chain is a future-compat surface. The sovereign project does not need one. The first resolution attempt is the only attempt.
+// AXIOM A4: A duplicated type definition is a compile-time bomb. One McpSession. One McpTransport. One McpGraph. Pick.
+// AXIOM A5: An import that points to a file that doesn't exist is a broken build. Fix or remove.
+// AXIOM A6: A test that asserts "pass" was returned is testing the implementation of the lie, not the contract. Test the actual security property.
+//
+// SUBTRACTIVE REFACTOR SET (13 findings → 11 atomic actions):
+//   S-01: DELETE ooda/mcp/engine/ (4 files). Replace with ooda/mcp/public/ that re-exports the canonical types only.
+//   S-02: REMOVE hardcoded version "2.9.2" from 8 mcp/*.oo files. Replace with a single `MCP_PROTOCOL_VERSION = "2.11.0"` constant in mcp_codex.oo.
+//   S-03: REMOVE mcp_codex_path_canonical. Collapse mcp_codex_resolve_path to env-only with hard fail-closed.
+//   S-04: REMOVE mcp_redteam.oo:100 dev-machine path. Replace probe with the codex text already in the cache.
+//   S-05: REMOVE 8 stub fire_* bodies. Replace each with a real probe (see §7 #3).
+//   S-06: REMOVE mcp_g11_certify_bind fake-pass. Replace with unix_socket_bind to a tmp path; real result.
+//   S-07: FIX mcp_dynamic_persist to atomic-rename .tmp to path (add oo_fs_rename call).
+//   S-08: FIX 3 broken `import \"fs/file_writer.oo\"` to `import \"std/fs/file_writer.oo\"`.
+//   S-09: REMOVE mcp_redteam_ps_gate gate id `10`. Rename to mcp_redteam_ps_regress_veto; return plain string not the redteam result shape.\n//   S-10: REPLACE mcp_dispatch_required_caps coarse 1-bit check with per-method cap-table (extend McpOrient or add mcp_dispatch_tool_required_caps).\n//   S-11: FIX mcp_server.oo:240 cap re-check after drain; or move drain BEFORE the cap check.\n//\n// §9 5-COMPONENT WO HANDOFF\n//\n// OBSERVATION: 13 findings across 9 categories. Top severity: 4 CRITICAL (E-01..E-04, E-07), 5 HIGH (F-01 cert invalidity, E-05, E-06, E-08, F-08), 4 MEDIUM/LOW. Total scope 56 files; 33 mcp/*.oo + 4 cli + 19 support/qa. Line-cap: PASS (all ≤256). Previous MCP_2.9.2_REDTEAM_CERT.oot is INVALID because the underlying redteam is a stub; this audit replaces it.\n//\n// LOGIC CHAIN: Negative-trust → 8D redteam revealed fake-passes (F-01..F-08) → E-M revealed hardcoded paths and version (E-01..E-04) → OCap revealed coarse audit (E-09, §4) → S/O/T separation revealed tactical-tactical collision (E-06) and strategic-tactical leak (E-01..E-04) → first-principles axioms A1-A6 justify subtractive refactor S-01..S-11. The previous cert was based on the same code, so the \"67/67 PASS\" claim is now a documented lie.\n//\n// CAVEATS: (1) E-13 drain-cap bypass requires a runtime harness that exercises notifications to trigger. (2) E-12 broken imports may be silently masked by the runtime's name-based resolution; the real check is to compile the .oo file and see if file_writer_open resolves. (3) mcp_dispatch_required_caps granularity (E-09, §4) is a feature, not a bug, IF the design intent is \"any tools/call = FsReadCap\"; confirm with product. (4) The blue-ocean gaps in §7 are proposals, not defects. (5) test_t4_g9_cold_start and test_t4_g11 may be running in a CI env where the persistence bug is hidden — verify on a clean checkout.\n//\n// CONCLUSION: The MCP server is structurally sound (capabilities, transport, dispatch, session, dynamic graph, federation, lineage, gossip, E-M cache, scheduler facade) but its 8D redteam, G11 self-cert, and dynamic-graph persistence are FABRICATED. The v2.11.0 baseline holds; the layer of \"certification\" on top of it is a house of cards. The 11-action subtractive refactor (S-01..S-11) is the minimum viable fix; applying it returns the subsystem to genuine, first-principles, fail-closed sovereignty.\n//\n// VERIFICATION METHOD: (a) `wc -l ooda/mcp/*.oo | sort -rn | head` shows ≤256. (b) `grep -rn '2\\.9\\.2' ooda/mcp/*.oo` returns empty after S-02. (c) `grep -rn '/home/jeryd' ooda/mcp/*.oo ooda/cli/*.oo` returns empty after S-04. (d) `grep -rn 'return mcp_redteam_result' ooda/mcp/mcp_redteam.oo` returns only S-09's veto. (e) The 12 test_t4_mcp_*.oo files all need to be re-run after S-05..S-08; test_t4_g9_cold_start and test_t4_g11 will start FAILING-CORRECTLY (catching real bugs) instead of passing-falsely. (f) Add new tests: test_t4_mcp_redteam_real_probes.oo that asserts each of the 8 fire_* actually invokes a distinct cap and the result is verified externally. (g) Add a script ooda/qa/run_mcp_real_redteam.oo that runs the 8 probes and prints a one-line PASS/FAIL summary; the current ooda mcp-test command should drive this and report honestly.\n

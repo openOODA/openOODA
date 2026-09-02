@@ -1,53 +1,115 @@
 // # Live Verified Package Registry Bot
 //
-// Logline: Automated registry crawler, package ingestion, cryptographic verification, and catalog generator.
+// Logline: Verify registry catalog, index, and package manifest SHA-256 hashes.
 //
-// Setup: Inspects registry packages, validates SHA-256 and min_pin, and rebuilds catalog under &FsReadCap and &ProcessCap.
+// Setup: &FsReadCap + &EnvCap. Reads openOODA.github.io/registry.
 //
 // Beats:
-//   1. Audit repository package manifests and payloads.
-//   2. Verify Academy headers and 256-line constraint across packages.
-//   3. Validate toolchain min_pin SemVer compatibility.
-//   4. Generate verified registry catalog and index.
+//   1. Load catalog and index.
+//   2. Parse each catalog entry into name, version, caps, deps, and sha256.
+//   3. Read package manifest and payload.
+//   4. Verify manifest fields and SHA-256(payload) against catalog.
+//   5. Ensure catalog and index are identical.
 
-import "ooda/cli/cmd_pm_bot.oo";
+import "util_env.oo";
+import "std/crypto/sha256.oo";
 
-fn fail_bot(msg: String) {
+fn fail(msg: String) {
     println("FAIL: " + msg);
     process_exit(1);
 }
 
-pub fn main(fs: &FsReadCap, p: &ProcessCap) {
-    let mut reg_dir: String = "registry";
-    if !path_exists(fs, reg_dir) {
-        if path_exists(fs, "openOODA.github.io/registry") {
-            reg_dir = "openOODA.github.io/registry";
-        } else if path_exists(fs, "../openOODA.github.io/registry") {
-            reg_dir = "../openOODA.github.io/registry";
-        } else if path_exists(fs, "../registry") {
-            reg_dir = "../registry";
+fn manifest_value(manifest: String, key: String) -> String {
+    let prefix: String = key + "=";
+    let plen: Int = chars_len(prefix);
+    let n: Int = chars_len(manifest);
+    let mut i: Int = 0;
+    while i < n - plen + 1 {
+        if str_slice(manifest, i, i + plen) == prefix {
+            let mut j: Int = i + plen;
+            while j < n && char_at(manifest, j) != "\n" { j = j + 1; }
+            return str_slice(manifest, i + plen, j);
         }
+        i = i + 1;
     }
-    if !path_exists(fs, reg_dir) {
-        fail_bot("missing registry directory");
-    }
+    return "";
+}
 
-    println("=== openOODA Package Registry Verification Bot ===");
-    let mut bot_args: List[String] = list_new();
-    bot_args = list_push(bot_args, "pm");
-    bot_args = list_push(bot_args, "bot");
-    bot_args = list_push(bot_args, reg_dir);
-    bot_args = list_push(bot_args, "--sign");
-    cmd_pm_bot_run(fs, p, bot_args);
-
-    let cat_p: String = reg_dir + "/catalog";
-    let idx_p: String = reg_dir + "/index";
-    if !path_exists(fs, cat_p) {
-        fail_bot("registry/catalog was not generated");
+fn catalog_field(line: String, idx: Int) -> String {
+    let mut pos: Int = 0;
+    let mut field: Int = 0;
+    let n: Int = chars_len(line);
+    let mut i: Int = 0;
+    while i <= n {
+        let sep: Bool = i == n || char_at(line, i) == "|";
+        if sep {
+            if field == idx {
+                return str_slice(line, pos, i);
+            }
+            field = field + 1;
+            pos = i + 1;
+        }
+        i = i + 1;
     }
-    if !path_exists(fs, idx_p) {
-        fail_bot("registry/index was not generated");
-    }
+    return "";
+}
 
-    println("OK: REGISTRY_BOT_PASSED");
+pub fn main(fs: &FsReadCap, env: &EnvCap) {
+    let root: String = env_required_dir(fs, env, "OODA_REPO_ROOT");
+    let reg_dir: String = root + "/openOODA.github.io/registry";
+    let cat_path: String = reg_dir + "/catalog";
+    let idx_path: String = reg_dir + "/index";
+    if !path_exists(fs, cat_path) { fail("missing catalog"); }
+    if !path_exists(fs, idx_path) { fail("missing index"); }
+
+    let cat_r: Result[String, String] = read_file(fs, cat_path);
+    let idx_r: Result[String, String] = read_file(fs, idx_path);
+    if cat_r.is_err() { fail("cannot read catalog"); }
+    if idx_r.is_err() { fail("cannot read index"); }
+    let cat: String = match cat_r { Ok(s) => s, Err(_) => "" };
+    let idx: String = match idx_r { Ok(s) => s, Err(_) => "" };
+    if cat != idx { fail("catalog and index differ"); }
+
+    let mut i: Int = 0;
+    let n: Int = chars_len(cat);
+    let mut line_start: Int = 0;
+    let mut verified: Int = 0;
+    while i <= n {
+        let at_end: Bool = i == n;
+        let at_nl: Bool = !at_end && char_at(cat, i) == "\n";
+        if at_end || at_nl {
+            let line: String = str_slice(cat, line_start, i);
+            if chars_len(line) > 0 {
+                let name: String = catalog_field(line, 0);
+                let ver: String = catalog_field(line, 1);
+                let caps: String = catalog_field(line, 2);
+                let hash: String = catalog_field(line, 4);
+                if name == "" { fail("empty package name in catalog"); }
+
+                let pkg_dir: String = reg_dir + "/" + name;
+                if !path_exists(fs, pkg_dir) { fail("missing package dir: " + name); }
+
+                let man_r: Result[String, String] = read_file(fs, pkg_dir + "/manifest");
+                if man_r.is_err() { fail("missing manifest for " + name); }
+                let man: String = match man_r { Ok(s) => s, Err(_) => "" };
+
+                let mver: String = manifest_value(man, "version");
+                let mcaps: String = manifest_value(man, "caps");
+                let mpayload: String = manifest_value(man, "payload");
+                let mhash: String = manifest_value(man, "sha256");
+                if mver != ver { fail("version mismatch for " + name); }
+                if mcaps != caps { fail("caps mismatch for " + name); }
+                if mhash != hash { fail("manifest hash mismatch for " + name); }
+
+                let payload_r: Result[String, String] = read_file(fs, pkg_dir + "/" + mpayload);
+                if payload_r.is_err() { fail("missing payload for " + name); }
+                let payload: String = match payload_r { Ok(s) => s, Err(_) => "" };
+                if sha256(payload) != hash { fail("payload hash mismatch for " + name); }
+                verified = verified + 1;
+            }
+            line_start = i + 1;
+        }
+        i = i + 1;
+    }
+    println("OK: REGISTRY_BOT_PASSED (" + verified.to_string() + " packages verified)");
 }

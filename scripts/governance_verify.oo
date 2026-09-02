@@ -7,21 +7,11 @@
 // Beats:
 //   1. Locate openOODA/ via EnvCap (reject .. traversal) and verify 14 boards via FsReadCap.
 //   2. Verify SHIPPED.oot generated marker and 256 cap via count_lines.
-//   3. Run rfc_lint via ProcessCap and require RFC lint OK.
+//   3. Run governance_lint_rfc via ProcessCap and require RFC lint OK.
 //   4. Verify test-suite presence (qa/tests, rfcs template) and fail closed on regression.
 
-fn env_or(env: &EnvCap, key: String, fallback: String) -> String {
-  let r: Result[String, String] = env_get(env, key);
-  if r.is_ok() {
-    let v: String = match r { Ok(s) => s, Err(_) => fallback };
-    if str_contains(v, "..") {
-      println("ERR\tverify_all\trejected traversal in " + key);
-      process_exit(1);
-    }
-    return v;
-  }
-  return fallback;
-}
+import "mod.oo";
+import "util_env.oo";
 
 fn count_lines(fs: &FsReadCap, path: String) -> Int {
   let res: Result[String, String] = oo_read_file(fs, path);
@@ -135,7 +125,7 @@ fn verify_test_suites(fs: &FsReadCap, root: String) -> Int {
 }
 
 pub fn main(fs: &FsReadCap, env: &EnvCap, p: &ProcessCap) {
-  let root: String = env_or(env, "OODA_REPO_ROOT", ".");
+  let root: String = env_required_dir(fs, env, "OODA_REPO_ROOT");
   let base: String = root + "/openOODA";
   if !path_exists(fs, base) {
     println("FAIL: " + base + " not found");
@@ -151,20 +141,19 @@ pub fn main(fs: &FsReadCap, env: &EnvCap, p: &ProcessCap) {
     println("FAIL: " + bin + " missing");
     fails = fails + 1;
   } else {
-    let cmd: String = "cd \"" + root + "\" && timeout 60 \"" + bin + "\" run \"openOODA/scripts/rfc_lint.oo\"";
-    let res = sys_exec(p, "sh", "-c", cmd);
+    let res = mod_run_script(p, root, bin, "governance_lint_rfc");
     match res {
       Ok(out) => {
         if !str_contains(out, "RFC lint OK") {
-          println("FAIL: rfc_lint did not OK");
+          println("FAIL: governance_lint_rfc did not OK");
           println(out);
           fails = fails + 1;
         } else {
-          println("rfc_lint OK");
+          println("governance_lint_rfc OK");
         }
       },
       Err(e) => {
-        println("FAIL: rfc_lint did not run: " + e);
+        println("FAIL: governance_lint_rfc did not run: " + e);
         fails = fails + 1;
       }
     }

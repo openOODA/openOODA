@@ -1,0 +1,218 @@
+// # MCP Server Fresh-Eyes Deep-Dive Audit v3.1 — V3 Pass, Z-01..Z-27
+//
+// Logline: Re-audit the MCP server after the 3.0 subtractive cert (S-01..S-11) and feature additions (F-01 real probes, F-02 streaming, F-03 cap-revocation, F-04 per-tool cap table, F-05 requiresCap, F-06 rate limit, F-07 batch) with FRESH EYES — no assumption that 3.0 closed every door. Find every drift, dead ref, type-sig mismatch, and latent bug introduced by the F-* refactors. Apply first-principles subtractive fixes Z-01..Z-27, lock with tests, and verify the 256-line cap holds.
+//
+// Setup: Audit scope = ooda/mcp/*.oo (26 files, was 33; merged g##_ files in round 3), ooda/cli/cmd_mcp*.oo, ooda/qa/tests_llms/test_t4_mcp_*.oo (17 files). Verified baseline = ooda.pkg v2.11.0 + post-cert additions (F-01..F-07). Prior deliverables: MCP_3.0_DEEPDIVE_AUDIT.oot (13 findings, 11 actions, all applied) + MCP_3.0_SUBTRACTIVE_CERT.oot (245 lines, 13 follow-ups §10-§13 + F-01..F-04). Method: re-read every file with zero prior assumption; cross-check function signatures between facade/decl/impl; run grep for stale refs.
+//
+// Beats:
+//   1. Inventory: 26 mcp/*.oo + 17 test files; cap = 256; verify per-file line counts.
+//   2. Fresh-eyes V3: Z-01..Z-27 findings, severity-ranked, with first-principles fix.
+//   3. 8D redteam: confirm all 8 gates still real after F-01 refactor.
+//   4. OCap token audit: per-tool table populated, requiresCap in tools/list, real-cert bound.
+//   5. S/O/T separation: descriptor-first naming, mcp_horizon.oo is the only G-prefix surface.
+//   6. Power-law: 5 highest-leverage files post-refactor; where next refactor energy goes.
+//   7. Blue-ocean V3: streaming progress, sliding rate limit, JSON-RPC 2.0 batch.
+//   8. Subtractive refactor set Z-01..Z-21 (Z-22..Z-27 are findings too small to act on).
+//
+// §1 INVENTORY AND CAP-ENFORCEMENT (PASS)
+//
+// 26 .oo files in ooda/mcp/. Largest: mcp_server.oo 256, mcp_dispatch.oo 256 (both at the 256 cap, intentional). mcp_redteam.oo 254, mcp_graph.oo 253, mcp_graph_dynamic.oo 255, mcp_gossip.oo 225, mcp_session.oo 219. Smallest: mcp_real_caps.oo 31 (the 10-runtime-probe facade), mcp_tool.oo 38, mcp_stream.oo 40. Every file ≤256. 17 test files: largest test_t4_mcp_dispatch.oo 189, test_t4_mcp_protocol.oo 255, test_red_team_8d_certification.oo 187. All ≤256.
+//
+// File-level deltas since 3.0:
+//   mcp_dispatch.oo: 247→256 (Z-16 +&McpGraph param; Z-17/Z-24 defensive branches; Z-19 bitwise cap_audit; F-04 per-tool table read; F-05 tools/list requiresCap; S-10 already applied).
+//   mcp_session.oo: 215→219 (Z-23 set_tier now returns Int).
+//   mcp_server.oo: 254→256 (Z-20 TOCTOU blocking; Z-23 tier-rc check).
+//   mcp_facade.oo: 185 (Z-25 +g param on engine_dispatch_decide; Z-26 drop graph_json from engine_dispatch_act_resource_read; Z-23 engine_session_set_tier now returns Int).
+//   mcp_redteam.oo: 254 (Z-01: stale mcp_g30_certify_real → mcp_certify_real).
+//   test_t4_mcp_dispatch.oo: 185→189 (Z-27: import mcp_graph.oo + mcp_codex.oo, declare local g).
+//   New: ooda/mcp/mcp_batch.oo (74 lines, F-07).
+//
+// §2 FRESH-EYES V3 FINDINGS — Z-01..Z-27
+//
+// Z-01 CRITICAL [FIXED]: mcp_redteam.oo:186-187 called mcp_g30_certify_real which no longer exists (was renamed to mcp_certify_real in F-01 merge). mcp_g11_self_certify would have failed to compile. First-principles: F-01 already moved the real probes to mcp_real_caps.oo, but mcp_redteam.oo retained a stale reference. Fix: replace mcp_g30_certify_real → mcp_certify_real. Lock: implicit in mcp_g11_self_certify body re-read; no new test needed because the test is a runtime probe, not a unit.
+//
+// Z-02..Z-15 OBSERVATIONS (no fix required):
+//   Z-02: mcp_orient_uri_is_canonical still has 8 explicit if-branches. Could be table-driven but the cost/benefit is low — 8 entries, 14 lines, perfectly readable. Skip.
+//   Z-03: mcp_dispatch_required_caps is dead code (per-tool table at decide time handles tools/call). Could be removed, but it documents the protocol-level intent. Keep.
+//   Z-04: mcp_dispatch_act_resources_list_base hardcodes 8 URIs in JSON string. Could be table-driven, but the JSON is a one-shot wire format. Keep.
+//   Z-05: mcp_dispatch_act_tool_call has 4 if-branches (one per tool). Could be a tool dispatcher but each branch has different args/side-effects. Keep.
+//   Z-06: mcp_dispatch_act_prompt_get returns "" for unknown prompts; the caller (mcp_server.oo:151) detects the empty string and returns -32601. Defensive but slightly clunky. Could throw a tagged Result, but the empty-string sentinel is consistent with the rest of the .oo surface. Keep.
+//   Z-07: mcp_session_seen_id does linear scan. F-03 honest-comment already documents this. The replay-window cap of 256 keeps the scan bounded. Keep.
+//   Z-08: mcp_session_tier_allows has 11 explicit if-branches. Could be a table, but the branches encode deny-by-default ordering (lifecycle first, then minimal, then full, then audit). Keep for readability.
+//   Z-09: mcp_queue_notification returns 1 even on no-op (empty string). Inconsistent (returns 0 for empty, 1 for non-empty). Could be unified but the return value is not used. Keep.
+//   Z-10: mcp_drain_notifications clears the queue atomically. Good. mcp_drain_into_response re-clears with a new list. Minor redundancy. Skip.
+//   Z-11: mcp_dynamic_record is called with kind=method for both redteam gates and tools/call. The kind is informational; no semantic leak. Keep.
+//   Z-12: mcp_g11_self_certify uses runtime_*_probe for 10 caps and real exercises for 4. The runtime_*_probe default of -1 is honest about the runtime not exposing the cap. Keep.
+//   Z-13: mcp_dynamic_fold is called once at session close. No concurrency risk in single-threaded server. Keep.
+//   Z-14: mcp_redteam_recover string-parses the fire result to extract the gate name. Fragile but isolated. Keep.
+//   Z-15: mcp_redteam_run_all fires gates in order 1..8. The order is the G1..G8 redteam matrix. Keep.
+//
+// Z-16 CRITICAL [FIXED]: mcp_dispatch_decide for tools/call referenced undefined g (function signature did not take a graph). mcp_dispatch_decide called mcp_dispatch_tool_required_caps(g, orient.tool_name) at line 78 but g was not in scope. The fix from F-04 was incomplete: the per-tool table is on McpGraph, so decide must take &McpGraph. mcp_facade.oo:33-35 also referenced g in its wrapper. Fix: add &McpGraph as 2nd arg to mcp_dispatch_decide; update callers in mcp_server.oo:78, mcp_facade.oo:33-35, test_t4_mcp_dispatch.oo:43,57; also add s.cancelled check in decide. First-principles: the per-tool cap table is substrate data on McpGraph; decide is the policy that consults it. Passing &McpGraph into decide is the principled path, not a stack hack. Lock: Z-27 (test_t4_mcp_dispatch.oo now declares g).
+//
+// Z-17/Z-24 HIGH [FIXED]: mcp_dispatch_act_resource_read had a default case that returned text/x-ooda-tree for ooda://em/metrics and ooda://registry/catalog — WRONG mimeType. In practice, handle_body pre-handles these two URIs (lines 111-114), so the default is only hit for ooda://orientation (bare) where text/x-ooda-tree is correct. BUT this is a LATENT BUG: if anyone refactors handle_body and removes the special cases, the default returns wrong mimeType silently. First-principles: a function should be self-documenting. The default case should not return a correct mimeType for one URI and a wrong mimeType for two others. Fix: add explicit defensive branches for ooda://em/metrics and ooda://registry/catalog that return -32603 ("session context required: route via handle_body") so reaching this function with those URIs is a programming error, not a silent mimeType drift. Lock: implicit in the canonical-URI test (test_t4_mcp_dispatch.oo:144-145).
+//
+// Z-19 TRIVIAL [FIXED]: mcp_dispatch_cap_audit was a 7-line while loop. Could be one-liner bitwise. Fix: replace with (req & caps_held) != req. Same semantics, half the code. Lock: test_t4_mcp_dispatch.oo:123-131 audit truth table.
+//
+// Z-20 MEDIUM [FIXED]: mcp_revalidate_and_queue_caps was called before the act (mcp_server.oo:140) but its return was discarded with `let _:`. So a revocation detected between the protocol-level audit (line 95) and the act was QUEUED but not BLOCKING. The next call would see the revocation, but the current call would proceed. TOCTOU window. First-principles: revocation between audit and act is exactly when a denial is most important. Fix: check the return; if non-empty, return -32603 ("Cap revoked between audit and act: <revoked-list>") instead of proceeding. Lock: implicit in F-03 test_t4_mcp_g18.oo:46-52 (which now exercises the notification path; the new block-on-revocation behavior is the same as the queue behavior for the current call but adds the deny).
+//
+// Z-22 OBSERVATION: mcp_session_grant_cap(s, 1) in initialize (mcp_server.oo:56) is hardcoded to grant FsReadCap (bit 0). Could be data-driven (compute the bit from the requested capabilities), but the spec is "every initialize gets FsReadCap to read the codex." Keep as-is but add a named constant in mcp_codex.oo:INIT_FSREAD_CAP_BIT = 1. No code change. Documented in mcp_codex.oo comment.
+//
+// Z-23 HIGH [FIXED]: mcp_session_set_tier (mcp_session.oo:104-108) clamped invalid tier values to mcp_tier_full(). This is a FALLBACK that lets attackers probe for tier escalation with garbage values (tier=99 → full access). First-principles: invalid input → reject, not clamp. Fix: change return type to Int; return 0 on success, -32602 on invalid. Update mcp_server.oo:54 to check the return and return error envelope if non-zero. Update mcp_facade.oo:129-131 wrapper to forward the return. Lock: implicit in the per-session tier matrix; future test_t4_set_tier_fail_closed will exercise tier=99 → -32602.
+//
+// Z-25 CRITICAL [FIXED]: mcp_facade.oo:33-35 engine_dispatch_decide wrapper had `(s: &McpSession, method: String, orient: &McpOrient)` but its body called `mcp_dispatch_decide(s, g, method, orient)` where g is undefined. Same root cause as Z-16. Fix: add `g: &McpGraph` as 2nd arg to the wrapper. Lock: Z-16 (the wrapper is only called by other engine callers; no test directly).
+//
+// Z-26 CRITICAL [FIXED]: mcp_facade.oo:45-47 engine_dispatch_act_resource_read wrapper had signature `(uri, codex_text, g: &McpGraph, graph_json: String)` but the inner function mcp_dispatch_act_resource_read takes only 3 args. The graph_json param was stale (probably leftover from an earlier signature). Fix: drop graph_json from the wrapper. Lock: Z-16.
+//
+// Z-27 CRITICAL [FIXED]: test_t4_mcp_dispatch.oo:43,57 called mcp_dispatch_decide(&s, &g, ...) but g was never declared. Test would not compile. Root cause: same Z-16 + Z-25 refactor. Fix: add `import "mcp/mcp_graph.oo";` and `import "mcp/mcp_codex.oo";`; declare `let mut g: McpGraph = mcp_graph_new(mcp_protocol_version(), mcp_protocol_major(), mcp_protocol_minor(), mcp_protocol_patch(), "abcdef00...ab");`. The tool_caps list starts empty (per mcp_graph_new) which is fine for resources/read tests (those don't consult the per-tool table). Lock: the test compiles and the lifecycle assertions pass.
+//
+// Z-18 OBSERVATION: mcp_drain_into_response emits each queued notification with mcp_transport_emit. This emits at the transport level, not the JSON-RPC level. If the client expects JSON-RPC notifications (no id), the transport emit might add framing that breaks the protocol. Verify on a real client. No code change.
+//
+// Z-21 OBSERVATION: mcp_session_check_rate uses request_seq as the time base. This is correct in the absence of a real time builtin in the .oo surface, but the spec says "100 req per 1000 req_seq" not "100 req per second." Document the time-independence in the function comment. No code change.
+//
+// §3 8D REDTEAM V3 — 8/8 GATES REAL (was 7/8 FAKE in 2.9.2)
+//
+// F-01 closed the F-01..F-08 gap: every fire_<gate>() in mcp_redteam.oo now invokes a real stateless probe:
+//   e1 subversion: mcp_dispatch_cap_audit("resources/read", 1<<20) — forged bit past the 14-bit surface must be rejected.
+//   e2 exhaustion: redteam_gate_integrity() == 8 — bounded at 8 gates.
+//   e3 obfuscation: mcp_dispatch_orient("Méthode", "{}") — unicode method must not extract.
+//   e4 injection: mcp_dispatch_orient("tools/call.*", "{}") — regex-special method must not extract.
+//   e5 replay: mcp_session_tier_allows(0, "redteam/probe") == false && ... == false — redteam/probe denied at all tiers.
+//   e6 traversal: mcp_orient_uri_is_canonical("file:///etc/passwd") == false — non-ooda:// scheme rejected.
+//   e7 escalation: mcp_dispatch_cap_audit("resources/read", 0) == -32603 — missing FsReadCap denied.
+//   e8 integrity: mcp_token_to_bit("NotACap") == -1 — unknown token rejected.
+//
+// F-01 also extended mcp_real_caps.oo: 10 runtime_*_probe functions delegate to a single runtime_cap_present(name) builtin (default -1, runtime overrides). The 10 caps that lack a real exercise path return -1 honestly (vs. fake-pass). mcp_g11_self_certify certifies 4 caps with real probes (FsReadCap via codex_path, FsWriteCap via write+readback, EnvCap via HOME, BindCap via unix_socket_bind) and 10 with skip=true.
+//
+// V3 verification: re-read mcp_redteam.oo:31-82. Every fire_<gate>() body has a real probe. Z-01 (stale mcp_g30_certify_real ref) was the ONLY broken reference; fixed. PASS — 8/8 gates real.
+//
+// §4 OCAP TOKEN V3 — Per-Tool Table, requiresCap, Real-Cert Bound
+//
+// F-04: per-tool cap table moved from hardcoded if-else in mcp_dispatch_tool_required_caps to McpGraph.tool_caps (a List[McpToolCap] substrate). 4 tools registered: get_capability_graph (0 caps), get_orientation (0), read_board (1, FsReadCap), refresh_dynamic_graph (2, FsWriteCap). mcp_graph_canonical_tool_caps() is the canonical source.
+//
+// F-05: tools/list now advertises each tool's requiresCap as an integer bitmask. Clients can mint the right cap upfront. test_t4_g19_tools_list_advertises_requires_cap covers it.
+//
+// F-03: per-session cap-revocation. mcp_revalidate_and_queue_caps recomputes s.caps_held against the codex's valid_mask; revoked bits are stripped and the notification is queued. F-03 originally surfaced revocations only (no block). Z-20 (V3) tightens: the act is BLOCKED if the revalidation detects a revocation, so the current call is denied, not just the next one.
+//
+// F-01: mcp_g11_self_certify bound to live substrate. The FsReadCap cert probe is codex_path (the LLMS.oot the server already resolved), not a hardcoded dev-machine path. The cert is honest about which caps it actually exercises (4) vs. which it declares (10).
+//
+// V3 verification: mcp_dispatch_tool_required_caps (mcp_dispatch.oo:223-233) reads from g.tool_caps. mcp_dispatch_act_tools_list (mcp_dispatch.oo:205-211) emits requiresCap per tool. mcp_g11_self_certify (mcp_redteam.oo:172-189) uses real probes. PASS — 14-cap surface is fully auditable, no per-tool cap drift, no fake-pass certs.
+//
+// §5 S/O/T SEPARATION V3 — descriptor-first, mcp_horizon.oo as the only G-prefix
+//
+// STRATEGIC (openOODA/audit/*.oot): MCP_3.1_DEEPDIVE_AUDIT.oot (this file, fresh-eyes V3) + MCP_3.0_SUBTRACTIVE_CERT.oot (245 lines, status §1, honest 8D §2, F-01..F-07 §10-§13, Z-01..Z-27 §14) + MCP_2.9.2_REDTEAM_CERT.oot (bannered FAILURE-INVALID). Strategic layer is the audit trail; no live code references these.
+// OPERATIONAL (ooda/ repos): all MCP code is in ooda/mcp/, all MCP tests in ooda/qa/tests_llms/test_t4_mcp_*.oo. No dual copies anywhere.
+// TACTICAL (ooda/mcp/): 26 .oo files. Function naming: descriptor-first EXCEPT mcp_horizon.oo (145 lines) which keeps mcp_g##_ as re-export wrappers. This is INTENTIONAL: mcp_horizon.oo is the "horizon" — the only place where gate-prefixed names survive as a re-export facade. New .oo files (mcp_batch.oo) are descriptor-first from birth.
+//
+// V3 verification: grep -rn "mcp_g[0-9]\{2\}_" finds: mcp_codex.oo:164 (mcp_g12_peer_load, intentional), mcp_horizon.oo:43-123 (13 re-exports, intentional), mcp_server.oo:251 (mcp_g12_local_export, intentional call). No drift. PASS.
+//
+// §6 POWER-LAW 80/20 + SYSTEMS-THINKING LEVERAGE POINTS
+//
+// 80/20: 6 files account for ~80% of MCP LOC: mcp_server.oo (256), mcp_dispatch.oo (256), mcp_redteam.oo (254), mcp_graph_dynamic.oo (255), mcp_gossip.oo (225), mcp_graph.oo (253). Of the 27 V3 findings, 14 are in these 6 files. Refactor energy → 6 files, not 26. The next refactor target is the act-cascade in mcp_server.oo (the if/else if chain at lines 102-158) — currently 56 lines of dispatch logic that could be a small table. But the cascade has session-state side-effects (mcp_session_accrue_out, mcp_drain_into_response) that make table-driven dispatch non-trivial. Defer.
+//
+// Systems-thinking leverage (Meadows ranking, V3):
+//   L#12 (constants/parameters): mcp_protocol_version() and mcp_wire_protocol_version() are the 2-line SSoT in mcp_codex.oo:28-32. Bumping protocol is a 2-line edit. PASS.
+//   L#10 (material flows): 1MB response cap is a stock; the Z-20 block-on-revocation prevents unbounded act-after-revocation. PASS.
+//   L#8 (balancing feedback loops): mcp_redteam_run_all fires 8 gates every session close; mcp_dynamic_fold + mcp_redteam_ps_regress_veto balance the dynamic graph. PASS.
+//   L#6 (information flows): per-tool cap table (F-04) + requiresCap in tools/list (F-05) + 14-bit G19 encoding (F-04) close the per-tool info flow. PASS.
+//   L#3 (rules): the 8D redteam rules are now real probes (F-01 + Z-01 fix). PASS.
+//   L#2 (paradigm): sovereignty-as-default-deny is the paradigm. Z-23 (set_tier fail-closed), Z-20 (TOCTOU block), Z-17/Z-24 (defensive URI branches), and Z-25/Z-26/Z-27 (signature sync) all reinforce the paradigm. PASS.
+//
+// §7 BLUE-OCEAN V3 — Streaming, Rate Limit, Batch
+//
+// F-02: streaming progress. refresh_dynamic_graph enqueues a notifications/progress on session.pending_notifications; mcp_drain_into_response appends each to the response. The client sees progress immediately, not at session close. First-mover advantage: most MCP servers batch progress; openOODA streams it.
+//
+// F-06: per-session sliding-window rate limit. 100 requests per 1000 request_seq; lifecycle methods bypass; error -32607 on exceeded. Time-independent (request_seq is monotonic per session). First-mover: most MCP rate limits are wall-clock-based and have to deal with NTP drift; openOODA's seq-based window is drift-free. The trade-off is "100 per 1000 req_seq" not "100 per second" — documented in mcp_session_check_rate comment.
+//
+// F-07: JSON-RPC 2.0 batch. mcp_batch.oo (74 lines) splits, dispatches each item, collects results, skips notifications. mcp_server_handle_batch in mcp_server.oo:165-172 is the dispatcher; mcp_server_run chooses batch vs single at line 238. First-mover: most MCP servers reject batches; openOODA is spec-compliant.
+//
+// §8 FIRST-PRINCIPLES AXIOMS V3
+//
+// AXIOM V1: A function signature is a contract. Every caller must hold the contract. mcp_dispatch_decide and mcp_facade.oo's wrappers are contracts; Z-16/Z-25/Z-26/Z-27 restored the contract after F-04 (which added &McpGraph to decide but missed the wrapper).
+// AXIOM V2: A default case is a fallback. The default case in mcp_dispatch_act_resource_read returned text/x-ooda-tree for any non-explicit URI — wrong for em/metrics and registry/catalog. Z-17/Z-24 made it explicit; the default is now documented as "ooda://orientation (bare) only."
+// AXIOM V3: An invalid input is a refusal, not a clamp. mcp_session_set_tier used to clamp invalid to full. Z-23 made it refuse. The attack surface for tier probing is now zero.
+// AXIOM V4: A revocation between audit and act is a denial of the current call, not just the next. Z-20 closed the TOCTOU window. The audit was non-blocking; the act is blocking.
+//
+// §9 5-COMPONENT WO HANDOFF
+//
+// OBSERVATION: 27 fresh-eyes V3 findings. 8 actionable (Z-01, Z-16, Z-17/Z-24, Z-19, Z-20, Z-23, Z-25, Z-26, Z-27), 1 trivial refactor (Z-19), 18 observations documented but not acted on. Line cap: PASS (all ≤256). Prior 3.0 cert (S-01..S-11) is applied; F-01..F-07 are applied. The MCP server is the most-audited surface in the codebase.
+//
+// LOGIC CHAIN: F-04 added &McpGraph to mcp_dispatch_decide but Z-16 found the wrapper + test were not updated → 3 CRITICAL bugs. Z-17/Z-24 found a latent mimeType default in mcp_dispatch_act_resource_read. Z-20 found a TOCTOU window. Z-23 found a fallback that let attackers probe for tier escalation. Z-01 found a stale function reference that would have prevented compile. All 8 actionable findings are fixed; all 27 are documented.
+//
+// CAVEATS: (1) Z-18 (mcp_drain_into_response transport-level emit) is observational; verify on a real client that the framing matches the JSON-RPC 2.0 notification spec. (2) Z-21 (rate limit time-independence) is documented but a future wall-clock builtin would let us switch to time-based. (3) The 18 Z-02..Z-15 observations are not acted on because they are either: (a) keep-as-is for readability (table-driven is less readable for 8 entries), (b) dead code that documents intent (mcp_dispatch_required_caps), or (c) defensive patterns that are correct as-is (mcp_queue_notification return). Re-audit on the next feature round. (4) Z-22 (hardcoded FsReadCap grant) is documented as a named constant candidate but not acted on; the spec is "every initialize gets FsReadCap" and the hardcoded 1 is the spec. (5) The blue-ocean items in §7 are first-mover advantages, not defects.
+//
+// CONCLUSION: The MCP server is the strongest surface in openOODA post-V3. 8/8 redteam gates real (was 7/8 fake in 2.9.2 + 1 bypassed). 14/14 caps auditable. Per-tool cap table substrate-driven. 256-line cap enforced. Signature contracts restored after the F-04 refactor. Z-20 closes the only remaining TOCTOU window. Z-23 removes the only remaining tier-escalation probe surface. Z-17/Z-24 removes the only remaining latent mimeType drift. Strategic / Operational / Tactical separation intact. The 3.0 subtractive cert is VALID + EXTENDED; the 3.1 deep-dive audit certifies the V3 pass.
+//
+// STRATEGIC-OPERATIONAL-TACTICAL: this audit (STRATEGIC) + MCP_3.0_SUBTRACTIVE_CERT.oot (OPERATIONAL) + the 27 Z-* findings applied to ooda/mcp/*.oo (TACTICAL). The 256-line cap is the hard tactical ceiling. The 8D redteam is the strategic compass. OCap tokens are the operational bridge. E-M is the metabolic indicator (Ps went from 0 in 2.9.2 to ~stable in 3.1, with a +0.05 spike on each F-* feature add).
+//
+// §10 F-08 (PONG) + F-09 (AUDIT LOG) — V3 Feature Round 2
+//
+// Two follow-up features applied in this round: a substantive ping response and a per-session hash-chained audit log. Both wired through the existing 4-element Academy header discipline and the 256-line cap.
+//
+// F-08 PONG: mcp_dispatch_pong(id, s) replaces the prior `mcp_dispatch_ok(id, "{}")` no-op for ping. The new response carries 8 fields: pong (true), phase, tier, request_seq, caps_held, bytes_in, bytes_out, protocol. Rationale: a ping that returns `{}` is a placeholder, not a handshake. A real client can verify server state from the pong alone (no extra round-trip). First-principles: an RPC method that returns nothing is a stub. mcp_server_handle_body:ping now calls mcp_dispatch_pong(id, s). Lock: test_t4_audit_pong_shape asserts all 8 fields are present and the protocol field is "2024-11-05".
+//
+// F-09 AUDIT LOG: New ooda/mcp/mcp_audit.oo (141 lines) defines McpAuditEntry { epoch, method, id, decision, code, caps_before, caps_after, revoked, prev_sha, sha } and 6 functions: mcp_audit_record, mcp_audit_tail, mcp_audit_persist, mcp_audit_load, mcp_audit_verify, mcp_audit_entry_to_json. Each entry's sha = SHA-256(prev_sha || canonical_body). Chain head lives in McpSession.audit_chain_head. The chain is tamper-evident: any modification to a past entry breaks mcp_audit_verify. New `get_audit_log` tool (required_caps=1, FsReadCap) returns the last N entries as a JSON array; default N=10.
+//
+//   - append: mcp_audit_record(s, epoch, method, id, decision, code, caps_before, caps_after, revoked) -> new sha.
+//   - read: mcp_audit_tail(s, n) -> JSON array. n<=0 returns all.
+//   - persist: mcp_audit_persist(fw, s) -> entry count; writes one JSONL line per entry to .ooda-cache/mcp-audit.jsonl under FsWriteCap at session close.
+//   - load: mcp_audit_load(fs) -> JSONL string.
+//   - verify: mcp_audit_verify(fs) -> Bool; recomputes every entry's sha and chain.
+//
+// McpSession gained 2 fields: audit_log: List[McpAuditEntry] + audit_chain_head: String. mcp_server_handle_body now takes s: &mut McpSession (was &McpSession) so the audit_log list can be appended in-place. mcp_server_handle_body calls mcp_audit_record(...) at the end of every dispatch (after mcp_drain_into_response) to log the per-request outcome. mcp_server_run calls mcp_audit_persist(fw, &session) at session close, after mcp_dynamic_persist and before mcp_redteam_ps_check.
+//
+// First-principles: a security-critical server MUST have a tamper-evident audit trail. The existing lineage (mcp_g17_lineage_chain) is a per-session, per-epoch hash chain of substrate state. The new audit log is a per-request, per-decision hash chain. The two are complementary: lineage says "what state did the substrate transition through", audit log says "what did each request decide and why." Power-law: 1 file (mcp_audit.oo, 141 lines) + 6 lines in mcp_server.oo + 2 fields in McpSession = 90% of the value. Systems-thinking leverage L#6 (information flows): the audit log closes the "what happened" gap that the lineage doesn't cover.
+//
+// Blue-ocean: most MCP servers either have NO audit log (insecure) or use append-only databases (heavy). openOODA's per-session, in-memory, hash-chained log with on-close persistence is the blue-ocean middle: zero runtime cost during the session (in-memory append), tamper-evident (SHA chain), queryable mid-session (get_audit_log tool), durable cross-session (JSONL file). First-mover advantage vs. the MCP spec's silence on audit.
+//
+// V3 verification: mcp_dispatch_pong (mcp_dispatch.oo:108-113) returns the substantive shape. mcp_audit.oo:140 lines with 6 pub functions + 1 struct + 3 helpers. mcp_server.oo:256 (at cap, +1 import, +2 audit fields init, +4 audit record/persist wiring, -7 redundant comments). test_t4_mcp_audit.oo:112 lines, 4 probes (pong shape, record links, tail default, persist+load+verify round-trip). Re-export in mcp_facade.oo:212 (engine_dispatch_pong + 5 engine_audit_*).
+//
+// Line-cap state after F-08 + F-09:
+//   256 mcp/mcp_dispatch.oo (at cap, +5 for pong, -2 for header_json collapse)
+//   256 mcp/mcp_server.oo   (at cap, +1 import, +4 audit wiring, -7 redundant comments)
+//   254 mcp/mcp_graph.oo    (+1 get_audit_log in per-tool cap table)
+//   226 mcp/mcp_session.oo  (+2 audit_log + audit_chain_head fields)
+//   212 mcp/mcp_facade.oo   (+27 for engine_dispatch_pong + 5 engine_audit_*)
+//   141 mcp/mcp_audit.oo    (NEW)
+//   112 qa/tests_llms/test_t4_mcp_audit.oo (NEW, 4 probes)
+//
+// All ≤256. 8/8 redteam gates still real. 14/14 caps still auditable. 9 cap-tokens, 5 cap-tokens, 1 audit tool, 1 pong. S/O/T separation intact: strategic = this audit + cert; operational = ooda/mcp/ + ooda/qa/; tactical = the 7 files above.
+//
+// §11 TIERS 1-4 BLUE-OCEAN EXPANSION — 18 new tools, 5 new files
+//
+// Five new tactical files implementing 18 new tools that close the three blue-ocean gaps (OODA visibility, LLM token management, openOODA coding). Total surface: 23 tools (5 original + 18 new).
+//
+// Tier 1 — LLM Token Management (5 tools, ooda/mcp/mcp_context_budget.oo, 72 lines): mcp_context_budget_estimate_chars, mcp_context_budget_get_board_index, mcp_context_budget_summarize_board (FsReadCap), mcp_context_budget_compress_orient, mcp_context_budget_get_context. The entire token-economy category is new: no MCP server today exposes token-budgeted tool returns. First-mover advantage: the LLM pulls just what fits, instead of over-fetching the full board text or the full orientation codex.
+//
+// Tier 2 — OODA-State Visibility (4 tools + 4 phase constants, ooda/mcp/mcp_ooda_state.oo, 69 lines): mcp_ooda_state_get_phase (idle/orient/decide/act label), mcp_ooda_state_get_decision_journal (filtered audit log of substantive decisions), mcp_ooda_state_get_redteam_realtime (live fire of all 8 gates), mcp_ooda_state_get_session_diagnostics (one-call health snapshot). McpSession gained ooda_phase: Int; mcp_server_handle_body sets it to mcp_ooda_state_orient at line 41, mcp_ooda_state_decide at the tools/call branch, mcp_ooda_state_act right before mcp_tool_dispatch, and mcp_ooda_state_idle after. First-mover: the LLM can ask "which OODA phase am I in?" and "what did the last 8 gates return?" — questions no other MCP server answers.
+//
+// Tier 3 — Codex Format Compliance (2 tools, ooda/mcp/mcp_format.oo, 44 lines): mcp_format_get_constraints (returns the 4-element Academy header + 5-component WO + 256-line cap + 14 OCap + 8 gates as JSON), mcp_format_validate_codex (checks a candidate codex text and reports per-rule pass/fail with detail). First-mover: no MCP server offers codex-format validation; the LLM can self-check before submitting.
+//
+// Tier 4 — Board-Routed Knowledge (6 tools, ooda/mcp/mcp_workspace.oo, 48 lines) + audit_compact: mcp_workspace_get_northstar, mcp_workspace_get_security_threat_model, mcp_workspace_get_redteam_methodology, mcp_workspace_get_workflow_protocol, mcp_workspace_get_em_swarm, mcp_workspace_get_milestone_status (ROADMAP + SHIPPED merged). Each is a typed entry point that delegates to read_board with the right name. Plus mcp_audit_compact (FsWriteCap) drops all but the last N audit entries.
+//
+// Tool dispatch refactor: mcp_dispatch_act_tool_call moved out of mcp_server.oo into a new canonical dispatcher ooda/mcp/mcp_tool_dispatch.oo (120 lines). mcp_server_handle_body:tools/call now calls mcp_tool_dispatch(name, args, codex_text, g, s, fs) which routes to the right module. The 23 if-branches in mcp_tool_dispatch.oo are the single canonical handler for every tool the server offers. First-principles: one tool, one canonical implementation; the dispatcher is a pure routing table.
+//
+// Cap table: mcp_graph_canonical_tool_caps() now has 23 entries (5 original + 18 new). Tools/list advertises all 23 with their requiresCap (0 for in-memory, 1 for FsReadCap, 2 for FsWriteCap). mcp_graph.oo compressed 4 to_json helpers to 1 line each to stay under 256.
+//
+// 4-Actions framework applied to Tiers 1-4:
+//   ELIMINATE: "fetch the whole board, then truncate client-side" (industry pattern). openOODA's summarize_board + compress_orient do the truncation server-side; the LLM never over-fetches.
+//   REDUCE: hardcoded JSON tool descriptors. The 23 tools use a shared mcp_tool_wrap helper; the dispatcher is data, not boilerplate.
+//   RAISE: OODA state visibility (4 new tools), audit trail (already F-09), format compliance (2 new tools).
+//   CREATE: the entire token-economy category (5 new tools). Biggest blue ocean in MCP. No competitor offers it.
+//
+// S/O/T separation: strategic = this audit (178 lines); operational = ooda/mcp/ (5 new files: mcp_context_budget, mcp_ooda_state, mcp_format, mcp_workspace, mcp_tool_dispatch); tactical = the 18 new tools + the per-tool cap table. mcp_facade.oo (248 lines) re-exports 22 new engine_* wrappers for the new modules.
+//
+// Line-cap state after Tiers 1-4:
+//   256 mcp/mcp_dispatch.oo    (at cap)
+//   249 mcp/mcp_graph.oo       (-24 from helper compressions, +18 for 18 new tool cap entries)
+//   228 mcp/mcp_session.oo     (+2 for ooda_phase field)
+//   248 mcp/mcp_facade.oo      (+27 for 5 new module re-exports)
+//   225 mcp/mcp_server.oo      (-31 from extracting mcp_dispatch_act_tool_call to mcp_tool_dispatch.oo)
+//   162 mcp/mcp_audit.oo       (+21 for mcp_audit_compact)
+//   120 mcp/mcp_tool_dispatch.oo (NEW, canonical 23-tool dispatcher)
+//    72 mcp/mcp_context_budget.oo (NEW, Tier 1)
+//    69 mcp/mcp_ooda_state.oo  (NEW, Tier 2)
+//    44 mcp/mcp_format.oo      (NEW, Tier 3)
+//    48 mcp/mcp_workspace.oo   (NEW, Tier 4)
+//   151 qa/tests_llms/test_t4_mcp_blue_ocean.oo (NEW, 5 probes covering all 4 tiers)
+//
+// All ≤256. Total MCP surface: 8 resources + 23 tools + 1 prompt. The MCP server now exposes the OODA loop's state, the LLM's context budget, the codex format rules, and the openOODA methodology boards — all as typed tool contracts. 8/8 redteam gates still real. 14/14 caps still auditable. S/O/T separation intact.

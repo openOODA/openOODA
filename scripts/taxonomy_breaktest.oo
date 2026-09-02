@@ -11,6 +11,8 @@
 //
 // Exit 0 = no drift. Exit 1 = drift detected.
 
+import "util_env.oo";
+
 fn cmd_found(p: &ProcessCap, cmd: String) -> Bool {
     return process_exec(p, cmd).is_ok();
 }
@@ -20,15 +22,30 @@ fn fail(msg: String) {
     process_exit(1);
 }
 
-fn pkg_version(p: &ProcessCap, fs: &FsReadCap, path: String) -> String {
+fn extract_version(t: String) -> String {
+    let marker: String = "version =";
+    let mlen: Int = chars_len(marker);
+    let n: Int = chars_len(t);
+    let mut i: Int = 0;
+    while i <= n - mlen {
+        if str_slice(t, i, i + mlen) == marker {
+            let mut j: Int = i + mlen;
+            while j < n && char_at(t, j) == " " { j = j + 1; }
+            let mut k: Int = j;
+            while k < n && char_at(t, k) != "\n" { k = k + 1; }
+            return str_slice(t, j, k);
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+fn pkg_version(fs: &FsReadCap, path: String) -> String {
     if !path_exists(fs, path) { fail("pkg missing: " + path); }
-    let tmp: String = ".ooda-cache/ooda_pkg_version.txt";
-    let cmd: String = "mkdir -p .ooda-cache && grep -E '^version = ' " + path + " | sed 's/version = \"//; s/\"$//' > " + tmp;
-    if !cmd_found(p, cmd) { fail("cannot parse pkg version"); }
-    let r: Result[String, String] = read_file(fs, tmp);
-    if r.is_err() { fail("cannot read " + tmp); }
+    let r: Result[String, String] = read_file(fs, path);
+    if r.is_err() { fail("cannot read " + path); }
     let raw: String = match r { Ok(s) => s, Err(_) => "" };
-    let ver: String = strip(raw);
+    let ver: String = strip(extract_version(raw));
     if ver == "" { fail("empty pkg version"); }
     if str_slice(ver, 0, 1) != "v" { return "v" + ver; }
     return ver;
@@ -44,11 +61,9 @@ fn strip(s: String) -> String {
 }
 
 pub fn main(p: &ProcessCap, fs: &FsReadCap, env: &EnvCap) {
-    let root_r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
-    let root_raw: String = if root_r.is_ok() { match root_r { Ok(s) => s, Err(_) => "" } } else { "" };
-    let root: String = if root_raw != "" { strip(root_raw) } else { "/home/jeryd/Projects/openOODA" };
+    let root: String = env_required_dir(fs, env, "OODA_REPO_ROOT");
 
-    let pkg_ver: String = pkg_version(p, fs, root + "/openOODA/ooda.pkg");
+    let pkg_ver: String = pkg_version(fs, root + "/openOODA/ooda.pkg");
 
     // 1. No public .oot should regress to a Gen 1-6 model (allow Gen 1-4, 5-7, 1-7, but not 1-6).
     if cmd_found(p, "grep -rIE 'Gen 1[^0-9]*[-–][^0-9]*6($|[^0-9])' " + root + "/openOODA.github.io/guide/*.oot " + root + "/openOODA/QUICKREF.oot " + root + "/openOODA/CONSTRAINTS.oot " + root + "/openOODA/NORTHSTAR.oot " + root + "/openOODA/STRUCTURE_EM.oot") {
@@ -62,15 +77,15 @@ pub fn main(p: &ProcessCap, fs: &FsReadCap, env: &EnvCap) {
         return;
     }
 
-    // 3. SSG JSON-LD must match pkg version (shell.html is generic template — version injected via JSON-LD).
-    if !cmd_found(p, "grep -qE '" + pkg_ver + "' " + root + "/openOODA/scripts/ssg_routes.oo") {
-        fail("ssg_routes.oo JSON-LD version does not match " + pkg_ver);
-        return;
-    }
-    if !cmd_found(p, "grep -qE '" + pkg_ver + "' " + root + "/ooda/ooda.pkg") {
-        fail("ooda/ooda.pkg version does not match " + pkg_ver);
+    // 3. SSG JSON-LD must match the canonical product pkg version.
+    let routes_path: String = root + "/openOODA/scripts/site_routes.oo";
+    let routes_r: Result[String, String] = read_file(fs, routes_path);
+    if routes_r.is_err() { fail("cannot read site_routes.oo"); }
+    let routes_text: String = match routes_r { Ok(s) => s, Err(_) => "" };
+    if !str_contains(routes_text, pkg_ver) {
+        fail("site_routes.oo JSON-LD version does not match " + pkg_ver);
         return;
     }
 
-    println("OK\tgenerational_drift_breaktest\tversion=" + pkg_ver + "\tgenerations=Gen 1-7 (Gen 8 unknowable)");
+    println("OK\ttaxonomy_breaktest\tversion=" + pkg_ver + "\tgenerations=Gen 1-7 (Gen 8 unknowable)");
 }

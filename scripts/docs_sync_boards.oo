@@ -2,25 +2,32 @@
 //
 // Logline: Synchronize 2-line board headers from ooda.pkg SSoT with fail-closed traversal guards.
 //
-// Setup: Requires FsReadCap, FsWriteCap, EnvCap, ProcessCap. Reads ooda.pkg version, verifies 14 boards have 2-line headers, writes sync report.
+// Setup: Requires FsReadCap and EnvCap. Reads openOODA/ooda.pkg version and verifies 14 boards have 2-line headers.
 //
 // Beats:
-//   1. Resolve OODA_REPO_ROOT via EnvCap, reject .. traversal.
+//   1. Resolve OODA_REPO_ROOT via EnvCap and validate it is an absolute directory with no traversal.
 //   2. Read ooda.pkg and parse version = "x.y.z" fail-closed.
 //   3. Verify 14 boards have 2-line headers (# Title + File:) and zero Floor/Thrust/Patch.
-//   4. Emit sync report and exit 0 on SSoT OK, 1 on drift.
+//   4. Emit sync report to stdout and exit 0 on SSoT OK, 1 on drift.
 
-fn env_root(env: &EnvCap) -> String {
-  let r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
-  if r.is_ok() {
-    let v: String = match r { Ok(s) => s, Err(_) => "." };
-    if str_contains(v, "..") {
-      println("ERR\tsync_boards\trejected traversal in OODA_REPO_ROOT");
-      process_exit(1);
+import "util_env.oo";
+
+fn extract_version(t: String) -> String {
+  let marker: String = "version =";
+  let mlen: Int = chars_len(marker);
+  let n: Int = chars_len(t);
+  let mut i: Int = 0;
+  while i <= n - mlen {
+    if str_slice(t, i, i + mlen) == marker {
+      let mut j: Int = i + mlen;
+      while j < n && char_at(t, j) == " " { j = j + 1; }
+      let mut k: Int = j;
+      while k < n && char_at(t, k) != "\n" { k = k + 1; }
+      return str_slice(t, j, k);
     }
-    return v;
+    i = i + 1;
   }
-  return ".";
+  return "";
 }
 
 fn has_pins(text: String) -> Bool {
@@ -30,33 +37,21 @@ fn has_pins(text: String) -> Bool {
   return false;
 }
 
-pub fn main(fs: &FsReadCap, fsW: &FsWriteCap, env: &EnvCap, p: &ProcessCap) {
-  let root: String = env_root(env);
-  let pkg_path: String = root + "/ooda/ooda.pkg";
+pub fn main(fs: &FsReadCap, env: &EnvCap) {
+  let root: String = env_required_dir(fs, env, "OODA_REPO_ROOT");
+  let pkg_path: String = root + "/openOODA/ooda.pkg";
   if !path_exists(fs, pkg_path) {
-    let pkg2: String = root + "/openOODA/ooda.pkg";
-    if !path_exists(fs, pkg2) {
-      println("FAIL sync_boards: ooda.pkg missing at " + pkg_path);
-      process_exit(1);
-    }
+    println("FAIL sync_boards: ooda.pkg missing at " + pkg_path);
+    process_exit(1);
   }
   let pkg_res: Result[String, String] = oo_read_file(fs, pkg_path);
   let mut version: String = "";
   match pkg_res {
     Ok(t) => {
-      if !str_contains(t, "version =") {
+      version = extract_version(t);
+      if chars_len(version) == 0 {
         println("FAIL sync_boards: version field missing in ooda.pkg");
         process_exit(1);
-      }
-      let mut i: Int = 0;
-      let len: Int = chars_len(t);
-      while i < len {
-        if str_slice(t, i, i + 9) == "version =" {
-          let rest: String = str_slice(t, i, len);
-          version = rest;
-          break;
-        }
-        i = i + 1;
       }
       println("SSoT version: " + version);
     },

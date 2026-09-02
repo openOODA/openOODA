@@ -2,16 +2,16 @@
 //
 // Logline: Adversarial install tests for the 4-gate protocol.
 //
-// Setup: ProcessCap, FsReadCap, FsWriteCap, EnvCap. Run from repo root.
+// Setup: ProcessCap, FsReadCap, EnvCap. Run from repo root.
 //
 // Beats:
 //   1. Happy path: Gen 3 pack install succeeds.
 //   2. Boundary: --to outside OODA_FS_WRITEDIR rejected.
 //   3. Hermetic: missing OODA_POLICY_WRITE rejects env write.
 //   4. Data path: invalid --from fails closed.
-//   5. Gen 2 source re-install fallback from checkout.
 
 import "std/fs/path.oo";
+import "util_env.oo";
 
 fn fail(msg: String) {
     println("FAIL: " + msg);
@@ -41,11 +41,9 @@ fn ok_cmd(p: &ProcessCap, cmd: String) -> Bool {
     return process_exec(p, cmd).is_ok();
 }
 
-pub fn main(p: &ProcessCap, fs_r: &FsReadCap, fw: &FsWriteCap, env: &EnvCap) {
-    let root_r: Result[String, String] = env_get(env, "OODA_REPO_ROOT");
-    let root_raw: String = if root_r.is_ok() { match root_r { Ok(s) => s, Err(_) => "" } } else { "" };
-    let root: String = if root_raw != "" { strip(root_raw) } else { "/home/jeryd/Projects/openOODA" };
-    let pack_root: String = root + "/ooda/dist/ooda-v2.10.0-linux-x86_64";
+pub fn main(p: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap) {
+    let root: String = env_required_dir(fs_r, env, "OODA_REPO_ROOT");
+    let pack_root: String = root + "/ooda/dist/ooda-v2.11.0-linux-x86_64";
     let pack_tar: String = pack_root + ".tar.gz";
     let ooda_bin: String = root + "/ooda/bin/ooda";
     let install_sh: String = root + "/openOODA.github.io/install.sh";
@@ -96,18 +94,7 @@ pub fn main(p: &ProcessCap, fs_r: &FsReadCap, fw: &FsWriteCap, env: &EnvCap) {
         failures = failures + 1;
     }
 
-    // 5. Gen 2 source re-install fallback
-    let home5: String = tmp_home(p, fs_r, "t5");
-    let src: String = root + "/ooda";
-    let cmd5: String = "rm -rf " + home5 + " && mkdir -p " + home5 + " && OODA_COMPILER=" + root + "/ooda/bin/oodac OODA_FS_READDIR=" + src + " OODA_FS_WRITEDIR=" + home5 + " OODA_POLICY_WRITE=1 OODA_CHECKOUT=" + src + " " + ooda_bin + " install --from " + src + " --to " + home5;
-    if ok_cmd(p, cmd5) && path_exists(fs_r, home5 + "/.local/bin/ooda") {
-        pass("Gate 2-4: Gen 2 source re-install fallback");
-    } else {
-        fail("Gate 2-4: Gen 2 source re-install fallback");
-        failures = failures + 1;
-    }
-
-    // 6. Verify receipt claims 4 gates passed
+    // 5. Verify receipt claims 4 gates passed
     let receipt: String = home1 + "/.local/share/ooda/share/INSTALL_RECEIPT.txt";
     if path_exists(fs_r, receipt) {
         let body_r: Result[String, String] = read_file(fs_r, receipt);

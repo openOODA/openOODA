@@ -9,6 +9,8 @@
 //   2. Recursively read_file every .oo under ooda/std, including crypto, fs, net, sec, db_storage, and simd.
 //   3. Print scanned count, cluster hits, violations, and a Zero Ambient Authority verdict.
 
+import "util_env.oo";
+
 fn audit_library_capabilities_ident(c: String) -> Bool {
     if char_is_alpha(c) { return true; }
     if char_is_digit(c) { return true; }
@@ -91,11 +93,11 @@ fn audit_library_capabilities_detect(src: String) -> Bool {
     return false;
 }
 
-fn std_root(fs: &FsReadCap) -> String {
-    if path_exists(fs, "../ooda/std") { return "../ooda/std"; }
-    if path_exists(fs, "ooda/std") { return "ooda/std"; }
-    if path_exists(fs, "../../ooda/std") { return "../../ooda/std"; }
-    println("FAIL missing ooda/std");
+fn std_root(fs: &FsReadCap, env: &EnvCap) -> String {
+    let root: String = env_required_dir(fs, env, "OODA_REPO_ROOT");
+    let std_dir: String = root + "/ooda/std";
+    if path_exists(fs, std_dir) { return std_dir; }
+    println("FAIL missing ooda/std: " + std_dir);
     process_exit(1);
     return "";
 }
@@ -117,7 +119,7 @@ fn skip_name(name: String) -> Bool {
     return false;
 }
 
-pub fn main(fs: &FsReadCap) {
+pub fn main(fs: &FsReadCap, env: &EnvCap) {
     let ambient: String = "fn go() { process_exec(\"x\"); read_file(\"a\"); fetch(\"http://x\"); }";
     let capped: String = "fn go(p: &ProcessCap, fs: &FsReadCap, n: &HttpCap) { process_exec(p, \"x\"); read_file(fs, \"a\"); fetch(n, \"http://x\"); }";
     if !audit_library_capabilities_detect(ambient) {
@@ -144,7 +146,7 @@ pub fn main(fs: &FsReadCap) {
     println("audit_library_capabilities: synthetic comment-fetch=CLEAN");
     println("audit_library_capabilities: domains crypto fs net sec db_storage simd");
 
-    let root: String = std_root(fs);
+    let root: String = std_root(fs, env);
     println("audit_library_capabilities: std_root=" + root);
     let mut q: List[String] = list_new();
     q = list_push(q, root);

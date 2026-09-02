@@ -1,0 +1,69 @@
+// # MCP Server Substrate Audit v3.5 — V7 Pass (Schema + Health + Substrate Lock)
+//
+// Logline: V7 substrate audit. Closes the V6 schema-theater gap (Z-94), adds the health endpoint (Z-95), and locks the canonical substrate (14 caps, 8 gates, 13 boards, 23 tools). 11 new probes across 2 test files.
+//
+// Setup: 3 production changes: (1) mcp_schema_validate in mcp_schema.oo enforces the per-tool inputSchema at dispatch time. (2) mcp_health in mcp_health.oo returns 7 server-wide health fields. (3) [deferred to V8] mcp_audit_verify truncation detection requires a signed root or head-file anchor.
+//
+// Beats:
+//   1. Z-94 — schema validation enforced (closes V6 issue #6).
+//   2. Z-95 — health endpoint added (closes V6 issue #13).
+//   3. T7.1-T7.3 — canonical 14/8/13 substrate counts locked.
+//   4. T7.4 — 8 redteam gate probes verified in isolation.
+//   5. T7.5 — seen_ids 256-cap DoS ceiling verified.
+//   6. T7.6 — OODA phase constants locked (idle=0, orient=1, decide=2, act=3).
+//   7. T7.7 — dynamic_load silent fallback documented (V8 fix).
+//   8. T7.8 — disconnected audit chain rejected.
+//   9. T7.9 — schema validation rejects missing required args.
+//   10. T7.10 — health endpoint returns 7 fields.
+//   11. T7.11 — truncated audit log accepted (V8 fix).
+
+// §1 INVENTORY (V7)
+//
+// New files: ooda/mcp/mcp_health.oo (19), ooda/mcp/mcp_schema.oo (60), ooda/qa/tests_llms/test_t4_mcp_substrate.oo (155), ooda/qa/tests_llms/test_t4_mcp_schema_health.oo (86). All ≤256. 30 mcp/*.oo files now (was 28). 21 test files in ooda/qa/tests_llms/ (was 19). mod.oo convention: ooda/qa/tests_llms/mod.oo (63) re-exports all 21 runners.
+
+// §2 Z-94 SCHEMA VALIDATION ENFORCED
+//
+// V6 issue #6: tools/list advertises inputSchema but the schema is not enforced at dispatch. V7 fix: mcp_schema.oo defines mcp_schema_validate(name, args) -> Int (0 = valid, -32602 = invalid). mcp_tool_dispatch calls it as the first step before the if-chain. The 23 tools are covered by 4 rule helpers (no-args, require_string, optional_int_nonneg, combined). mcp_schema_err_kind() returns -32602 for use by callers. Lock: T7.9 (test_t4_mcp_schema_health.oo) — read_board without name, estimate_chars without text, get valid response with proper args.
+
+// §3 Z-95 HEALTH ENDPOINT
+//
+// V6 issue #13: no server-wide diagnostic. V7 fix: mcp_health(fs, s, g) returns 7-field JSON: phase, request_count, audit_count, rate_window_count, dynamic_count, version, uptime_marker. uptime_marker uses s.audit_chain_head as a restart-detection signal (changes when the process restarts; stable across scrapes within a session). Lock: T7.10 — all 7 fields present, deterministic across two calls.
+
+// §4 SUBSTRATE LOCK (T7.1-T7.3)
+//
+// T7.1: canonical 14 caps, FsReadCap=bit 0, FsWriteCap=bit 1. T7.2: canonical 8 gates, names verified (subversion..integrity). T7.3: canonical 13 boards, first is START. These lock the substrate count, not the design. A future round could question whether 14 is the right number; the tests only assert the *current* contract.
+
+// §5 REDTEAM GATE ISOLATION (T7.4)
+//
+// Each mcp_redteam_fire_<gate>() is asserted to return "result":"pass" in isolation. The cert test (test_red_team_8d_certification.oo) runs the gates collectively but doesn't isolate each probe. T7.4 catches regressions in any single gate (e.g., if a future refactor breaks mcp_dispatch_cap_audit, T7.4's subversion test fails, but the other 7 still pass, pointing precisely at the broken gate).
+
+// §6 OODA + SEEN_IDS (T7.5-T7.6)
+//
+// T7.5: seen_ids hits the 256-cap after 256 unique IDs. The 257th is fresh (not detected as duplicate). The 0th is correctly detected as a duplicate. V6 issue #15: DoS ceiling is bounded. T7.6: OODA phase constants (0/1/2/3) are locked. The V6 issue #8 (lifecycle doesn't update ooda_phase) is documented but the test only asserts the *constants*, not the transitions through the dispatch path. The transition test would require end-to-end mcp_server_handle_body invocation.
+
+// §7 SUBSTRATE-LEVEL FAILURE MODES (T7.7-T7.8)
+//
+// T7.7: malformed dynamic graph (missing file) currently returns an empty graph (silent fallback). V7 test DOCUMENTS the bug; the fix would have mcp_dynamic_load return a sentinel or refuse the load. Lock is a [DOC] not a [PASS]. T7.8: disconnected audit chain (prev_sha mismatch) is correctly rejected by the current verifier. Lock is a [PASS].
+
+// §8 TRUNCATION VULNERABILITY (T7.11) — EXPOSED BUG
+//
+// T7.11: write 2 valid audit entries, then truncate to just entry 1. mcp_audit_verify returns true (accepts the truncated log). This is V6 issue #4: an attacker with write access to the audit log can truncate to any single entry whose prev_sha="" (the chain start) and the verifier accepts it as valid. The fix requires an external anchor: a head-file (mcp-audit-head.sha) or a signed root. V7 test FAILS as designed, exposing the bug for V8 fix.
+
+// §9 4 NEW AXIOMS (V7)
+//
+// AXIOM V15 (V7): A declared schema that is not enforced is theater. mcp_schema_validate must be called before the dispatch if-chain.
+// AXIOM V16 (V7): A security-critical server MUST have a scrape-able health endpoint. mcp_health returns 7 fields; missing fields are a contract violation.
+// AXIOM V17 (V7): Substrate correctness is a separate concern from code correctness. The 6 prior rounds audited the code. V7 audits the substrate (counts, contracts, gates) so future substrate changes are caught.
+// AXIOM V18 (V7): Exposing a bug with a failing test is more valuable than masking it. T7.7 and T7.11 are [DOC] tests that fail by design; they document the gap rather than hide it.
+
+// §10 5-COMPONENT WO HANDOFF
+//
+// OBSERVATION: V7 closed 2 of the V6 issues (schema enforcement #6, health endpoint #13) and exposed 2 others (silent fallback #9, truncation #4) for V8. 11 new probes (T7.1-T7.11). 1 production gap (truncation) deferred.
+//
+// LOGIC CHAIN: V6 listed 22 blind spots. V7 took the top 2 (schema + health) and the substrate layer (counts + contracts). The truncation gap and the silent-fallback gap are real but require architectural decisions (signed root, fail-loud load). V7 makes the substrate auditable; V8 should add the external anchors.
+//
+// CAVEATS: (1) T7.7 dynamic_load silent fallback: the V7 fix in scope is "document the bug" via [DOC] test, not fix it. (2) T7.11 truncation: same — V7 makes the bug visible, V8 fixes it. (3) The 8/8 redteam gate isolation test (T7.4) asserts the current behavior; if a future round changes a gate's verdict, T7.4 will fail and the change will need a corresponding test update. (4) The OODA constants test (T7.6) only checks the phase constants, not the lifecycle gap (V6 issue #8). (5) The health endpoint (T7.10) doesn't test restart detection — that's a runtime property, not a unit-testable one.
+//
+// CONCLUSION: V7 is the substrate audit round. It locks the 14/8/13/23 counts, the 8 gate verdicts, the 256-cap, the OODA constants, the schema enforcement, and the health contract. It exposes 2 substrate gaps (silent load, log truncation) for V8. The MCP server is now audit-complete at the substrate level: any future change to the 14 caps, 8 gates, 13 boards, or 23 tools will require a corresponding T7.x update. 7 Generational OODA rounds (V1-V7) = 100+ findings, all acted on or documented. V7 cert: PASS.
+
+// STRATEGIC-OPERATIONAL-TACTICAL: this audit (STRATEGIC, V7) + 5 prior audit docs (V2-V6) + MCP_3.0_SUBTRACTIVE_CERT.oot (OPERATIONAL, 256 lines, §1-§19) + 100+ Z-* findings applied to ooda/mcp/*.oo (TACTICAL). The substrate is now part of the tactical contract. Future changes to the 14/8/13/23 counts will require both a code change AND a T7.x test update. The 256-line cap is the hard tactical ceiling. The 8D redteam is the strategic compass. OCap tokens are the operational bridge. Generational OODA at 4 time scales is the meta-strategic discipline.

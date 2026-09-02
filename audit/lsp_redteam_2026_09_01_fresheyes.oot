@@ -1,0 +1,115 @@
+# LSP Deep-Dive Fresh-Eyes Audit — 2026-09-01 (v2.11.0 SSoT)
+# File: openOODA/audit/lsp_redteam_2026_09_01_fresheyes.oot
+#
+# Method: re-inspect the post-7-slice LSP state with negative trust. Treat the 2026-09-01_deepdive.oot as a claim to be falsified, not a verdict to be inherited. Look for what the previous audit missed.
+#
+# Result: 17 NEW findings, 0 false positives in the previous audit (its 7 slices still hold). The new findings cluster in 4 categories: wrong semantic mappings, heuristic fallbacks, duplicate string helpers, magic numbers.
+#
+# ## 0. Fresh-eyes surface scan
+#
+# Re-read all 23 .oo files in ooda/lsp/ from disk (after 7-slice state). Read 8 files NOT deeply audited in the previous session: lsp_code_action.oo, lsp_diagnostics.oo, lsp_generational.oo, lsp_stdlib_root.oo, lsp_stdlib_scan.oo, lsp_extras.oo, lsp_formatting.oo, lsp_types.oo. The previous audit focused on: lsp_server.oo, lsp_stdio.oo, lsp_compile.oo, lsp_compiler_merge.oo, lsp_text.oo, lsp_maneuver.oo, lsp_rpc_methods.oo, lsp_jsonrpc.oo, lsp_hover.oo, lsp_completion.oo, lsp_generational.oo (escape dedup only). Files I did not deeply read on disk in the previous session: lsp_code_action.oo, lsp_diagnostics.oo, lsp_stdlib_root.oo, lsp_stdlib_scan.oo, lsp_extras.oo, lsp_formatting.oo.
+#
+# ## 1. New findings (17 total)
+#
+# ### Category A: WRONG SEMANTIC MAPPING (2)
+#
+# **Finding A1** (lsp_code_action.oo:149): The code action that auto-fixes "broad cap usage" suggests the WRONG target. It says "Attenuate: &SysCap -> &FsReadCap+&EnvCap" but per the migration table, &SysCap should be attenuated to &ProcessCap (process ops), NOT to &FsReadCap/&EnvCap. This is a real bug that misguides developers into using fs/env caps when they actually need process cap.
+#
+# **Finding A2** (lsp_diagnostics.oo:41): The cap-attenuation diagnostic says "Cap attenuation: broad &SysCap narrow to &FsReadCap/&EnvCap". Same wrong mapping. Both functions should be updated to the correct cap-attenuation mapping per the migration table.
+#
+# ### Category B: HEURISTIC FALLBACKS (3) - the user's "no fallback" directive applies
+#
+# **Finding B1** (lsp_generational.oo:5): Setup comment says "Heuristic substring is residual fallback." The function lsp_gen_from_path uses substring matching against package names (quantum, swarm, etc.) as a fallback when CompilerReadCap doesn't return a package. This is an explicit documented mitigation. Per the user's directive "Do Not keep compatability layers, fallbacks, or mitigations" — this should be removed or made fail-closed.
+#
+# **Finding B2** (lsp_stdlib_root.oo:5): Setup comment says "CompilerReadCap-gated probe is primary; filesystem walk is residual." The function lsp_disc_find_via_compiler calls lsp_compile_module with EMPTY text, which produces an empty symbol table. The "compiler" path is a no-op; the real work happens in the fallback lsp_disc_find_stdlib_root. This is a fake primary path with a real fallback. Either implement the compiler probe properly or remove the function.
+#
+# **Finding B3** (lsp_stdlib_scan.oo:5): Setup comment says "CompilerReadCap-gated scan is primary; filesystem oo_fs_read_dir walk is residual heuristic." Same pattern: documented "primary" path that doesn't actually do real work, with a real "residual" fallback. Per the user's directive, this should be one or the other, not both with a "primary" facade.
+#
+# ### Category C: DUPLICATE STRING HELPERS (6)
+#
+# **Finding C1** (lsp_generational.oo:42-60): Hand-rolled substring search function lsp_gen_find_substr. The codebase has str_index_of as a built-in. Duplicate code, O(n*m) inefficiency.
+#
+# **Finding C2** (lsp_generational.oo:62-64): lsp_gen_contains wraps lsp_gen_find_substr returning >= 0. Wrapper layer on a function that should be a built-in call. Should be: `lsp_gen_contains(hay, needle) = str_index_of(hay, needle) >= 0`.
+#
+# **Finding C3** (lsp_stdlib_scan.oo:18-26): lsp_scan_starts_with is a hand-rolled starts_with. The codebase has str_starts_with as a built-in.
+#
+# **Finding C4** (lsp_stdlib_scan.oo:28-36): lsp_scan_ends_with is a hand-rolled ends_with. The codebase has str_ends_with as a built-in.
+#
+# **Finding C5** (lsp_stdlib_scan.oo:38-46): lsp_scan_line_end is a hand-rolled line-end scanner. The canonical lsp_text_lines / lsp_text_count_lines are in lsp_text.oo (added in the previous session). Duplicate.
+#
+# **Finding C6** (lsp_stdlib_scan.oo:69-77): lsp_scan_skip_ws is a 9-line whitespace skipper. Could be a 3-line util using char comparisons.
+#
+# ### Category D: MAGIC NUMBERS & DEAD CODE (3)
+#
+# **Finding D1** (lsp_formatting.oo:53): The lsp_server_handle_formatting response hardcodes `99999` as the end line of a "format the whole document" range. Magic number. Should be computed from the actual line count.
+#
+# **Finding D2** (lsp_diagnostics.oo:60): The `while list_len(out) > 5` loop silently truncates diagnostic lists to 5 entries. Magic number 5, undocumented behavior, and silent failure mode.
+#
+# **Finding D3** (lsp_code_action.oo:138): Dead code. The condition `if list_len(actions) > 5 { return actions; } return actions;` is a no-op (both branches return the same thing). Likely a half-finished truncation or filtering logic.
+#
+# ### Category E: SILENT JSON FALLBACKS (2)
+#
+# **Finding E1** (lsp_code_action.oo:39): The lsp_json_first_array_object function returns `"{}"` when no array is found. Per the spec, malformed JSON should return an error, not silently produce an empty object. The caller then may produce a misleading "no actions" result.
+#
+# **Finding E2** (lsp_code_action.oo:67): Same pattern: returns `"{}"` for malformed JSON input. Silent failure mode.
+#
+# ### Category F: TITLE/EDIT MISMATCH (1)
+#
+# **Finding F1** (lsp_code_action.oo:149): The code action title says "Attenuate: &SysCap -> &FsReadCap+&EnvCap" but the actual edit text (parameter 3 of lsp_action_simple_new) is just "&FsReadCap" with the "+&EnvCap" claim being false. The title lies about what the edit does. (Compounds with Finding A1.)
+#
+# ## 2. 8D Red Team gates re-applied
+#
+# ### e1 Lowering AST Integrity: not applicable to LSP
+# ### e2 Boundary Falsifier
+#   - e2 Finding: URI trust guard exists and is fail-closed (lsp_server_trust_check returns -32602 on traversal/outside-root). PASS.
+#   - e2 NEW: lsp_server_handle_formatting hardcodes 99999 as end line. Out-of-bounds request. (Finding D1)
+# ### e3 Data-Path Tracer
+#   - e3 Finding: silent JSON fallback (return "{}") on malformed input. (Findings E1, E2)
+#   - e3 NEW: dead code in lsp_code_action.oo:138 silently does nothing.
+# ### e4 Hermetic Jailor
+#   - e4 Finding: CompilerReadCap real, workspace trust enforced, init-before-use guard, 4MB text cap. PASS.
+# ### e5 Temporal Saboteur
+#   - e5 Finding: double-run proof, immutable state stamping. PASS.
+# ### e6 Drag Assassin
+#   - e6 Finding: 4 escape dupes removed, 1 parse_int dupe removed, canonical text utilities added. PASS.
+#   - e6 NEW: 6 hand-rolled string helpers duplicate built-ins. (Findings C1-C6)
+# ### e7 Semantic Subverter
+#   - e7 NEW: 2 WRONG cap-attenuation mappings (Findings A1, A2). These actively mislead developers.
+#   - e7 NEW: 1 title/edit mismatch (Finding F1).
+# ### e8 Byzantine Infiltrator: not applicable to LSP
+#
+# Net: e1, e4, e5 still PASS. e2, e3, e6, e7 each have NEW findings.
+#
+# ## 3. E-M delta
+#
+# Ps_pre (post-7-slice) = (T_real_CompilerReadCap - D_heuristic_residual_fallbacks) / W * V
+#                    = (HIGH - HIGH_3_heuristic_fallbacks) / 3126 * HIGH
+#                    = approximately ~0 (residual fallbacks still drag down T)
+# Ps_post (post-fresh-eyes audit) = (T_real - D_~0) / W * V
+#                                = (HIGH - ~0) / 3126 * HIGH
+#                                = >>0 (clean post-slices)
+#
+# ## 4. Files needing action (9 files)
+#
+# 1. ooda/lsp/lsp_code_action.oo (Findings A1, D3, E1, E2, F1)
+# 2. ooda/lsp/lsp_diagnostics.oo (Findings A2, D2, dupes)
+# 3. ooda/lsp/lsp_generational.oo (Findings B1, C1, C2)
+# 4. ooda/lsp/lsp_stdlib_root.oo (Finding B2)
+# 5. ooda/lsp/lsp_stdlib_scan.oo (Findings B3, C3, C4, C5, C6)
+# 6. ooda/lsp/lsp_formatting.oo (Finding D1)
+# 7. ooda/lsp/lsp_diagnostics.oo (C-continued: lsp_drag_to_diagnostic / lsp_drag_live_to_diagnostic duplicate, lsp_em_line_count duplicate)
+#
+# ## 5. Slice plan
+#
+# Slice 1: Fix 2 WRONG cap-attenuation mappings (A1, A2)
+# Slice 2: Remove dead code in lsp_code_action.oo:138 (D3)
+# Slice 3: Replace silent JSON fallbacks (E1, E2) with explicit empty list returns
+# Slice 4: Replace magic numbers with computed values (D1, D2)
+# Slice 5: Remove or implement heuristic fallbacks (B1, B2, B3)
+# Slice 6: Dedupe 6 string helpers (C1-C6)
+# Slice 7: Dedupe lsp_diagnostics.oo:47/48 and lsp_em_line_count
+# Slice 8: Fix title/edit mismatch in lsp_code_action.oo:149
+#
+# ## 6. Verification
+#
+# All files must remain <=256 lines. All functions must remain correct. No new behavior added beyond removing fallbacks / fixing wrong mappings.
