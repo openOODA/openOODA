@@ -1,0 +1,235 @@
+// # ooda/std Standard Library Audit TLDR
+//
+// Logline: 8-Dimensional Red Team audit of the ooda/std standard library (6605 .oo files across 37 subdirectories). Documents the systemic Pillar 6 mod.oo seam violation, the 256-line cap compliance, the representative crypto/mod.oo fix applied, and the audit verdict for the 35 subdirectories that still lack a mod.oo entry door.
+//
+// Setup: This is a project documentation file at the strategic governance plane, sibling to openOODA/runtime/SUBSTRATE_AUDIT_TLDR.oot. The audit covers the entire ooda/std/ tree.
+//
+// Beats:
+//   1. Beat 1: Audit methodology and scope.
+//   2. Beat 2: 256-line cap compliance verification.
+//   3. Beat 3: Pillar 6 mod.oo seam violation inventory (35/37 subdirectories affected at audit time).
+//   4. Beat 4: Representative first-principles fix: crypto/mod.oo created.
+//   5. Beat 5: Audit verdict and path forward for the remaining 34 subdirectories.
+//   6. Beat 6: Batch 1 Pillar 6 closure progress (Sept 1 2026): 5 subdirectories closed (core, math, hash, io, collections). 24 still pending.
+
+# === Beat 1: Audit methodology ===
+
+// The audit used the 8-Dimensional Red Team matrix (probes e1 through e8)
+// per REDTEAM.oot against the ooda/std/ tree. Scope: 6605 .oo files
+// across 37 first-level subdirectories plus 10 root-level .oo files.
+// The audit focused on two systemic questions:
+//   (1) Is the 256-line cap (per FORMAT.oot §1.3) enforced?
+//   (2) Is the Pillar 6 mod.oo seam rule (per FORMAT.oot §1.4) enforced?
+//
+// Subdirectories surveyed: actor, ai, archive, bio, chem, cli, collections,
+// compression, compile, core, crypto, data, diag, econ, encoding, fmt,
+// formal_proofs, fs, hash, hw, io, markup, math, net, os, phys, principles,
+// proof_verifiers, robot, sec, simd, sync, test, text, time, ui. (35 of 37
+// lack mod.oo; only fmt/ and net/ have it.)
+
+# === Beat 2: 256-line cap compliance ===
+
+// The 256-line cap is per-FORMAT.oot §1.3 a project-wide invariant for
+// .oo and .oot files. A targeted scan of the largest .oo files in
+// ooda/std found:
+//
+//   std/simd/simd_ops_body.oo         250 lines  (within cap)
+//   std/crypto/chacha20.oo            249 lines  (within cap)
+//   std/crypto/sha512.oo              231 lines  (within cap)
+//   std/crypto/curve25519.oo          244 lines  (within cap)
+//   std/crypto/sha256_engine.oo       224 lines  (within cap)
+//   std/crypto/keys_engine.oo         226 lines  (within cap)
+//
+// Conclusion: the .oo files in ooda/std are 256-line compliant. The cap
+// invariant holds at the file level. (Earlier suspicion of > 256 lines
+// was a size-based false positive -- crypto and SIMD files have very
+// long single-line constants, not excess code.)
+
+# === Beat 3: Pillar 6 mod.oo seam violation inventory ===
+
+// Per FORMAT.oot §1.4: "When a subsystem is decomposed into multiple
+// sub-256 line .oo files within a directory, the directory MUST contain
+// a mod.oo file. mod.oo serves as the single public entry door."
+//
+// Survey: 35 of 37 first-level subdirectories lack mod.oo. Only fmt/
+// and net/ have it. This is a systemic Pillar 6 violation.
+//
+//   Subdirectory   mod.oo  .oo files   Status
+//   actor          NO      17          violation
+//   ai             NO      32          violation (stub only; see Batch 2)
+//   archive        NO      21          violation
+//   bio            NO      43          violation
+//   chem           NO      17          violation
+//   cli            NO      17          violation
+//   collections    YES     74          compliant (Batch 1, Sept 1 2026)
+//   compression    NO      17          violation
+//   compile        NO      11          violation
+//   core           YES     18          compliant (Batch 1, Sept 1 2026)
+//   crypto         YES     61          compliant (FIXED -- see Beat 4)
+//   data           NO      17          violation
+//   diag           NO      33          violation
+//   econ           NO      20          violation
+//   encoding       NO      37          violation
+//   formal_proofs  NO       8          violation
+//   fs             NO      22          violation
+//   hash           YES     41          compliant (Batch 1, Sept 1 2026)
+//   hw             NO      14          violation
+//   io             YES     39          compliant (Batch 1, Sept 1 2026)
+//   markup         NO      28          violation
+//   math           YES     91          compliant (Batch 1, Sept 1 2026)
+//   net            YES     71          compliant
+//   os             NO      42          violation
+//   phys           NO      11          violation (stub only; see Batch 2)
+//   principles     NO      23          violation
+//   proof_verifiers NO      8          violation
+//   robot          NO      54          violation
+//   sec            NO      51          violation
+//   simd           NO      34          violation (stub only; see Batch 2)
+//   sync           NO      52          violation
+//   test           NO      17          violation
+//   text           NO      53          violation (stub only; see Batch 2)
+//   time           NO      12          violation
+//   ui             NO      18          violation
+//   fmt            YES      5          compliant
+//
+// 24 of 37 subdirectories still violate Pillar 6. (Was 34 before
+// Batch 1 on Sept 1 2026; 5 closed + 4 stub upgrades pending.)
+
+# === Beat 4: Representative first-principles fix: crypto/mod.oo ===
+
+// The crypto/ subdirectory was chosen as the most security-critical
+// representative. It contains 61 .oo files implementing SHA-256/512,
+// HMAC, AES, chacha20, chacha20-poly1305, ed25519, curve25519, ECDSA,
+// ML-KEM, BLS, Diffie-Hellman, HKDF, PBKDF2, Argon2, Merkle trees, and
+// the constant-time primitive surface.
+//
+// Fix: created ooda/std/crypto/mod.oo as the single public entry door.
+// The mod.oo imports the public-API siblings and re-exports them with
+// a stable crypto_mod_* prefix to avoid name collisions with the
+// private internal siblings (cores, stubs, invariants, theory,
+// principle, kat).
+//
+// Public API surface (11 functions re-exported):
+//   crypto_mod_hash_sha256
+//   crypto_mod_hash_hmac_sha256
+//   crypto_mod_sym_aes_encrypt
+//   crypto_mod_sym_aes_decrypt
+//   crypto_mod_sym_chacha20_encrypt
+//   crypto_mod_sym_chacha20_decrypt
+//   crypto_mod_asy_ed25519_sign_hex
+//   crypto_mod_asy_ed25519_verify_hex
+//   crypto_mod_asy_curve25519_diffie_hellman
+//   crypto_mod_kdf_hkdf
+//   crypto_mod_kdf_pbkdf2
+//
+// Private siblings documented (do not import directly):
+//   _core files: chacha20_core.oo, blake3_pure_core.oo, poly1305_core.oo
+//   _stubs files: fhe_stubs.oo, keys_stubs.oo, attestation_stubs.oo
+//   _invariants files: crypto_invariants.oo
+//   _theory files: ml_kem_theory.oo, bls_signature_aggregation_law.oo
+//   _principle files: constant_time_principle.oo, diffie_hellman_principle.oo
+//   _kat files: crypto_kat.oo
+//   _inv, _types, _store internal helpers
+//
+// Empirical verification: ooda/qa/tests_sovereign/tier1_features/test_t1_f22_crypto_mod_seam.oo
+//   (15 assertions, 5 beats, 11 surface functions verified) is in the
+//   working tree and parses/type-checks under ooda run.
+//
+// The mod.oo compiles cleanly under ooda check: "OK".
+
+# === Beat 5: Audit verdict and path forward ===
+
+// First-principles design (E-M / 80-20 / blue ocean):
+//   Thrust -- the crypto/mod.oo fix closes the Pillar 6 seam violation
+//     for the most security-critical subdirectory in one move. 80/20:
+//     1 file (~100 lines) closes the violation for 61 internal files.
+//   Drag -- none added. mod.oo is pure re-export; no new allocations,
+//     no new subshells, no new process invocations.
+//   Weight -- net +116 lines (mod.oo) +128 lines (test) = +244 lines
+//     for the seam. 34 subdirectories still lack mod.oo.
+//   Velocity -- unchanged for external callers (the re-exports are
+//     trivial wrapper functions). Internal callers continue to be
+//     importable directly; the mod.oo is a new entry point, not a
+//     replacement.
+//
+// Path forward for the 24 remaining subdirectories:
+//   1. Identify the 5-15 most-used public functions per subdirectory.
+//   2. Create <subdir>/mod.oo with the re-export pattern (see crypto/).
+//   3. Add a tier1 seam verification test (see test_t1_f22_).
+//   4. Update openOODA/std/AUDIT_TLDR.oot to mark the subdirectory
+//      as compliant.
+//
+// This is a mechanical but large refactor (~340 lines of mod.oo
+// + ~150 lines per test, x 34 subdirectories = ~17,000 lines). Out
+// of scope for this audit pass; the crypto/ fix is the representative
+// proof-of-concept.
+//
+// Progress: Batch 1 (Sept 1 2026) closed 5 of the 34 subdirectories
+// (core, math, hash, io, collections), bringing the remaining count
+// to 24 plus 4 stub upgrades (ai, phys, simd, text). See Beat 6.
+
+# === Beat 6: Batch 1 Pillar 6 closure progress (Sept 1 2026) ===
+
+// Five high-leverage subdirectories were closed in Batch 1, following
+// the representative crypto/mod.oo pattern. Each new mod.oo re-exports
+// a stable <subdir>_mod_* surface for the most-used public functions,
+// documents the private sibling inventory, and is verified by a
+// tier1 seam test (test_t1_f22_<subdir>_mod_seam.oo) with 15+ assertions
+// and 5 beats covering type-stability, prefix-stability, and triple-run
+// referential transparency.
+//
+// Batch 1 deliverables:
+//   ooda/std/core/mod.oo                  (68 lines, 24 re-exports)
+//   ooda/std/math/mod.oo                  (58 lines, 15 re-exports)
+//   ooda/std/hash/mod.oo                  (69 lines, 15 re-exports)
+//   ooda/std/io/mod.oo                    (59 lines, 10 re-exports)
+//   ooda/std/collections/mod.oo           (62 lines, 16 re-exports)
+//
+//   ooda/qa/tests_sovereign/tier1_features/test_t1_f22_core_mod_seam.oo        (142 lines)
+//   ooda/qa/tests_sovereign/tier1_features/test_t1_f22_math_mod_seam.oo        (130 lines)
+//   ooda/qa/tests_sovereign/tier1_features/test_t1_f22_hash_mod_seam.oo        (132 lines)
+//   ooda/qa/tests_sovereign/tier1_features/test_t1_f22_io_mod_seam.oo          (123 lines)
+//   ooda/qa/tests_sovereign/tier1_features/test_t1_f22_collections_mod_seam.oo (133 lines)
+//
+// Public surfaces exposed:
+//   core_mod_*        : Option (5), Result (5), List (4), Str (4), JSON (2), DomainCert (2), Hash (2)
+//   math_mod_*        : Stats (4), BigInt (2), Complex (4), Matrix (2), Constants (3)
+//   hash_mod_*        : SHA-2 (2), SHA-3 (2), Keccak (2), BLAKE3 (1), Legacy (2), NonCrypto (6)
+//   io_mod_*          : Reader (2), Writer (2), Cursor (1), MemStream (2), LineReader (1), Bit (2)
+//   collections_mod_* : Catalog (2), Vec (3), Queue (3), Stack (3), Deque (1), HashMap (3), HashSet (1)
+//
+// Verification: each test asserts 15-19 invariants (T1.F22.1 through
+// T1.F22.19), including surface-length, prefix-stability for every
+// documented name, and triple-run referential transparency.
+//
+// Remaining work:
+//   - Batch 2 (next): upgrade 4 stubs (ai, phys, simd, text) to full
+//     crypto-style re-export pattern with 4-element Academy header and
+//     <subdir>_mod_* surface.
+//   - Batches 3-6: close the remaining 24 subdirectories: actor,
+//     archive, bio, chem, cli, compile, compression, data, diag, econ,
+//     encoding, formal_proofs, fs, hw, markup, os, principles,
+//     proof_verifiers, robot, sec, sync, test, time, ui.
+//
+// Residual structural concerns:
+//   A. Cross-subdirectory imports: a few internal siblings are
+//      imported by external callers via "crypto/sha256.oo" etc.
+//      Pillar 6 says these should be "crypto/mod.oo". Migration is
+//      non-breaking (mod.oo coexists with sibling files) but should
+//      be enforced via the enforcer in a future pass.
+//   B. Root-level .oo files (byte.oo, math.oo, option.oo, etc.) are
+//      10 standalone .oo files at ooda/std/ root. They predate the
+//      mod.oo rule and serve a similar purpose for primitives. They
+//      should be migrated to ooda/std/core/mod.oo or similar.
+//   C. The audit was a static review. No dynamic analysis (e.g.,
+//      "which private siblings are actually imported by external
+//      callers") was performed. Recommended for a follow-up audit.
+
+# === Audit verdict ===
+
+// The ooda/std standard library is 256-line compliant at the file level
+// (a notable achievement for a 6605-file codebase). After Batch 1
+// (Sept 1 2026), 12 of 37 first-level subdirectories now have a
+// mod.oo seam (3 original: fmt, net, crypto + 5 from Batch 1: core,
+// math, hash, io, collections + 4 stubs pending upgrade: ai, phys,
+// simd, text). 24 of 37 still need the full re-export pattern.
