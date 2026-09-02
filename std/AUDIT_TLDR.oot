@@ -11,7 +11,8 @@
 //   4. Beat 4: Representative first-principles fix: crypto/mod.oo created.
 //   5. Beat 5: Audit verdict and path forward for the remaining 34 subdirectories.
 //   6. Beat 6: Batch 1 Pillar 6 closure progress (Sept 1 2026): 5 subdirectories closed (core, math, hash, io, collections). 24 still pending.
-//   7. Beat 7: Batch 2 Pillar 6 stub-upgrade progress (Sept 1 2026): 4 stubs upgraded to canonical pattern (ai, phys, simd, text). 24 new mod.oo files still pending.
+//   7. Beat 7: Batch 2 Pillar 6 stub-upgrade progress (Sept 1 2026): 4 stubs upgraded (ai, phys, simd, text). 24 new mod.oo files still pending.
+//   8. Beat 8: Batch 3 Pillar 6 closure progress (Sept 1 2026): 5 subdirectories closed (data, encoding, time, fs, sec). 19 new mod.oo files still pending.
 
 # === Beat 1: Audit methodology ===
 
@@ -67,12 +68,12 @@
 //   compile        NO      11          violation
 //   core           YES     18          compliant (Batch 1, Sept 1 2026)
 //   crypto         YES     61          compliant (FIXED -- see Beat 4)
-//   data           NO      17          violation
+//   data           YES     17          compliant (Batch 3, Sept 1 2026)
 //   diag           NO      33          violation
 //   econ           NO      20          violation
-//   encoding       NO      37          violation
+//   encoding       YES     37          compliant (Batch 3, Sept 1 2026)
 //   formal_proofs  NO       8          violation
-//   fs             NO      22          violation
+//   fs             YES     22          compliant (Batch 3, Sept 1 2026)
 //   hash           YES     41          compliant (Batch 1, Sept 1 2026)
 //   hw             NO      14          violation
 //   io             YES     39          compliant (Batch 1, Sept 1 2026)
@@ -84,17 +85,17 @@
 //   principles     NO      23          violation
 //   proof_verifiers NO      8          violation
 //   robot          NO      54          violation
-//   sec            NO      51          violation
+//   sec            YES     51          compliant (Batch 3, Sept 1 2026)
 //   simd           YES     35          compliant (Batch 2 stub upgrade, Sept 1 2026)
 //   sync           NO      52          violation
 //   test           NO      17          violation
 //   text           YES     54          compliant (Batch 2 stub upgrade, Sept 1 2026)
-//   time           NO      12          violation
+//   time           YES     12          compliant (Batch 3, Sept 1 2026)
 //   ui             NO      18          violation
 //   fmt            YES      5          compliant
 //
-// 24 of 37 subdirectories still violate Pillar 6. (Was 35 before
-// Batch 1+2 on Sept 1 2026; 5 new mod.oo + 4 stub upgrades = 9 closed.)
+// 19 of 37 subdirectories still violate Pillar 6. (Was 35 before
+// Batches 1+2+3 on Sept 1 2026; 5 + 4 + 5 = 14 closed.)
 
 # === Beat 4: Representative first-principles fix: crypto/mod.oo ===
 
@@ -153,30 +154,23 @@
 //     importable directly; the mod.oo is a new entry point, not a
 //     replacement.
 //
-// Path forward for the 24 remaining subdirectories:
-//   1. Identify the 5-15 most-used public functions per subdirectory.
-//   2. Create <subdir>/mod.oo with the re-export pattern (see crypto/).
-//   3. Add a tier1 seam verification test (see test_t1_f22_).
-//   4. Update openOODA/std/AUDIT_TLDR.oot to mark as compliant.
+// Path forward for the remaining subdirectories: 5-15 most-used public
+// functions per subdir, mod.oo with re-export pattern (see crypto/),
+// tier1 seam test (test_t1_f22_<subdir>_mod_seam.oo), audit TLDR update.
 //
 // This is a mechanical but large refactor (~340 lines of mod.oo
 // + ~150 lines per test, x 34 subdirectories = ~17,000 lines). Out
 // of scope for this audit pass; the crypto/ fix is the representative
 // proof-of-concept.
 //
-// Progress: Batch 1 (Sept 1 2026) closed 5 of the 34 subdirectories
-// (core, math, hash, io, collections), bringing the remaining count
-// to 24 plus 4 stub upgrades (ai, phys, simd, text). See Beat 6.
+// Progress: Batches 1+2+3 (Sept 1 2026) closed 14 of 34 subdirectories
+// (5 new mod.oo + 4 stub upgrades + 5 new). See Beats 6+7+8.
 
 # === Beat 6: Batch 1 Pillar 6 closure progress (Sept 1 2026) ===
 
-// Five high-leverage subdirectories were closed in Batch 1, following
-// the representative crypto/mod.oo pattern. Each new mod.oo re-exports
-// a stable <subdir>_mod_* surface for the most-used public functions,
-// documents the private sibling inventory, and is verified by a tier1
-// seam test (test_t1_f22_<subdir>_mod_seam.oo) with 15+ assertions
-// and 5 beats covering type-stability, prefix-stability, and triple-run
-// referential transparency.
+// Five high-leverage subdirectories closed in Batch 1, following the
+// representative crypto/mod.oo pattern. Each new mod.oo re-exports a
+// stable <subdir>_mod_* surface and is verified by a tier1 seam test.
 //
 // Batch 1 deliverables (10 files, 976 lines aggregate, 80 re-exports):
 //   core/mod.oo         68 lines / 24 re-exports   | hash/mod.oo        69 lines / 15
@@ -186,71 +180,76 @@
 //   test_t1_f22_math_mod_seam.oo        130 lines  | test_t1_f22_io_mod_seam.oo         123 lines
 //   test_t1_f22_collections_mod_seam.oo  133 lines  |
 //
-// Surface categories (one line per subdirectory):
-//   core_mod_*        : Option 5, Result 5, List 4, Str 4, JSON 2, DomainCert 2, Hash 2
-//   math_mod_*        : Stats 4, BigInt 2, Complex 4, Matrix 2, Constants 3
-//   hash_mod_*        : SHA-2 2, SHA-3 2, Keccak 2, BLAKE3 1, Legacy 2, NonCrypto 6
-//   io_mod_*          : Reader 2, Writer 2, Cursor 1, MemStream 2, LineReader 1, Bit 2
-//   collections_mod_* : Catalog 2, Vec 3, Queue 3, Stack 3, Deque 1, HashMap 3, HashSet 1
+// Surface categories: core_mod_* (Option 5, Result 5, List 4, Str 4,
+// JSON 2, DomainCert 2, Hash 2), math_mod_* (Stats 4, BigInt 2, Complex 4,
+// Matrix 2, Constants 3), hash_mod_* (SHA-2 2, SHA-3 2, Keccak 2, BLAKE3 1,
+// Legacy 2, NonCrypto 6), io_mod_* (Reader 2, Writer 2, Cursor 1, MemStream 2,
+// LineReader 1, Bit 2), collections_mod_* (Catalog 2, Vec 3, Queue 3, Stack 3,
+// Deque 1, HashMap 3, HashSet 1).
 //
-// Verification: each test asserts 15-19 invariants (T1.F22.1 through
-// T1.F22.19), including surface-length, prefix-stability for every
-// documented name, and triple-run referential transparency.
+// Verification: each test asserts 15-19 invariants (T1.F22.1-19) covering
+// surface-length, prefix-stability, and triple-run referential transparency.
 //
-// Remaining work:
-//   - Batches 3-7: close the remaining 24 subdirectories: actor,
-//     archive, bio, chem, cli, compile, compression, data, diag, econ,
-//     encoding, formal_proofs, fs, hw, markup, os, principles,
-//     proof_verifiers, robot, sec, sync, test, time, ui.
+// Remaining work: Batches 4-7 close the remaining 19 subdirectories
+// (actor, archive, bio, chem, cli, compile, compression, diag, econ,
+// formal_proofs, hw, markup, os, principles, proof_verifiers, robot,
+// sync, test, ui).
 
 # === Beat 7: Batch 2 Pillar 6 stub-upgrade progress (Sept 1 2026) ===
 
-// Four stub mod.oo files (ai, phys, simd, text) were upgraded to the
-// canonical crypto/mod.oo pattern: 4-element Academy header, imports
-// of public-API siblings, re-export wrappers with <subdir>_mod_*
-// prefix, and a private-sibling inventory documenting what NOT to
-// import. Each upgrade is verified by a tier1 seam test with 17-26
-// assertions and 5 beats.
+// Four stub mod.oo files (ai, phys, simd, text) upgraded to the
+// canonical crypto/mod.oo pattern. Each upgrade is verified by a
+// tier1 seam test with 17-26 assertions and 5 beats.
 //
-// Batch 2 deliverables (8 files, 984 lines aggregate, 123 re-exports):
-//   ai/mod.oo       75 lines / 22 re-exports    | simd/mod.oo      99 lines / 35
-//   phys/mod.oo     63 lines / 18 re-exports    | text/mod.oo     135 lines / 48
-//   test_t1_f22_ai_mod_seam.oo    137 lines     | test_t1_f22_simd_mod_seam.oo  159 lines
-//   test_t1_f22_phys_mod_seam.oo  137 lines     | test_t1_f22_text_mod_seam.oo  179 lines
+// Batch 2 deliverables (8 files, 984 lines, 123 re-exports):
+//   ai/mod.oo       75 / 22   | simd/mod.oo      99 / 35
+//   phys/mod.oo     63 / 18   | text/mod.oo     135 / 48
+//   test_t1_f22_ai_mod_seam.oo    137   | test_t1_f22_simd_mod_seam.oo  159
+//   test_t1_f22_phys_mod_seam.oo  137   | test_t1_f22_text_mod_seam.oo  179
 //
-// Surface categories (one line per domain):
-//   ai_mod_*      : Tensor 8, Transformer 2, Quant 3, GGUF 3, Synth/Repair/Pair/Evolution 4, Scaling 2
-//   phys_mod_*    : Thermo 2, Conservation 2, Action 2, Gravity 2, Hawking 2, Berry 3, SYK 2, Law 3
-//   simd_mod_*    : Vec8f 6, Vec16f 5, Vec4f 4, Vec4i 2, Blend 2, Clamp 2, Gather 1, Pack 2, Quat 5, Noise 3, Shuffle 3
-//   text_mod_*    : Regex 6, KMP 3, Levenshtein 4, Hamming/Jaro 2, Format 5, StringBuilder 4, Rope 4, UTF-8/Grapheme 4, Unicode 4, Diff 3, Case/Slug/Sort 5, Hex/Count/Wrap 4
+// Surface categories: ai_mod_* (Tensor 8, Transformer 2, Quant 3, GGUF 3,
+// Synth/Repair/Pair/Evolution 4, Scaling 2), phys_mod_* (Thermo 2,
+// Conservation 2, Action 2, Gravity 2, Hawking 2, Berry 3, SYK 2, Law 3),
+// simd_mod_* (Vec8f 6, Vec16f 5, Vec4f 4, Vec4i 2, Blend 2, Clamp 2,
+// Gather 1, Pack 2, Quat 5, Noise 3, Shuffle 3), text_mod_* (Regex 6,
+// KMP 3, Levenshtein 4, Hamming/Jaro 2, Format 5, StringBuilder 4, Rope 4,
+// UTF-8/Grapheme 4, Unicode 4, Diff 3, Case/Slug/Sort 5, Hex/Count/Wrap 4).
 //
 // Breaking-change note: the previous ai/mod.oo used a non-canonical
-// ai_tensor_* prefix on its 7 re-exports. Batch 2 migrates those and
-// adds 15 more to use the canonical ai_mod_* prefix. External callers
-// referencing ai_tensor_* must update to ai_mod_tensor_*.
+// ai_tensor_* prefix on its 7 re-exports; Batch 2 migrates to ai_mod_*.
+
+# === Beat 8: Batch 3 Pillar 6 closure progress (Sept 1 2026) ===
+
+// Five high-leverage subdirectories closed in Batch 3 (data, encoding,
+// time, fs, sec). 10 files, 966 lines aggregate, 72 re-exports:
+//   data/mod.oo       32 / 3 re-exports    | time/mod.oo       31 / 3
+//   encoding/mod.oo   95 / 27               | fs/mod.oo         61 / 12
+//   sec/mod.oo       100 / 27               |
+//   test_t1_f22_data_mod_seam.oo    108     | test_t1_f22_time_mod_seam.oo    110
+//   test_t1_f22_encoding_mod_seam.oo 149    | test_t1_f22_fs_mod_seam.oo     126
+//   test_t1_f22_sec_mod_seam.oo     154     |
 //
-// Pillar 6 compliance after Batch 2: 12 of 37 subdirectories are fully
-// compliant (3 original + 5 from Batch 1 + 4 stubs upgraded in Batch 2).
-// 24 of 37 still need new mod.oo files.
+// data/ and time/ are theoretical-foundation libraries; their public
+// surface is minimal (3 re-exports each: Amdahl + chrono). Other
+// siblings in those directories are private theoretical files.
+//
+// Pillar 6 compliance: 17 of 37 subdirectories fully compliant after
+// Batch 3 (3 original + 5 Batch 1 + 4 Batch 2 stub upgrades + 5 Batch 3).
+// 19 of 37 still need new mod.oo files.
 //
 // Residual structural concerns:
-//   A. Cross-subdirectory imports: a few internal siblings are
-//      imported by external callers via "crypto/sha256.oo" etc.
-//      Pillar 6 says these should be "crypto/mod.oo". Migration is
-//      non-breaking (mod.oo coexists with sibling files) but should
-//      be enforced via the enforcer in a future pass.
-//   B. Root-level .oo files (byte.oo, math.oo, option.oo, etc.) are
-//      10 standalone .oo files at ooda/std/ root. They predate the
-//      mod.oo rule and serve a similar purpose for primitives. They
-//      should be migrated to ooda/std/core/mod.oo or similar.
-//   C. The audit was a static review. No dynamic analysis (e.g.,
-//      "which private siblings are actually imported by external
-//      callers") was performed. Recommended for a follow-up audit.
+//   A. Cross-subdirectory imports (e.g. "crypto/sha256.oo") should
+//      migrate to "crypto/mod.oo" via the enforcer in a future pass.
+//   B. 10 root-level .oo files (byte.oo, math.oo, option.oo) at
+//      ooda/std/ root predate the mod.oo rule. They should migrate
+//      to ooda/std/core/mod.oo or similar.
+//   C. The audit was a static review. No dynamic analysis
+//      ("which private siblings are imported externally") was done.
 
 # === Audit verdict ===
 
-// 256-line compliant at the file level. After Batches 1+2 (Sept 1 2026),
-// 12 of 37 first-level subdirectories have a full mod.oo seam (3 original:
+// 256-line compliant at the file level. After Batches 1+2+3 (Sept 1 2026),
+// 17 of 37 first-level subdirectories have a full mod.oo seam (3 original:
 // fmt, net, crypto + 5 from Batch 1: core, math, hash, io, collections +
-// 4 stubs upgraded in Batch 2: ai, phys, simd, text). 24 of 37 still need
-// the full re-export pattern.
+// 4 stubs upgraded in Batch 2: ai, phys, simd, text + 5 from Batch 3:
+// data, encoding, time, fs, sec). 19 of 37 still need the full re-export.
