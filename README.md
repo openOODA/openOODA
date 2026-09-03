@@ -54,7 +54,7 @@ opm install openOODA/std
 | Tactical | [openOODA/std](https://github.com/openOODA/std) | Standard library (8 domains) |
 | Tactical | [openOODA/ooda](https://github.com/openOODA/ooda) | Compiler + runtime monorepo |
 | Meta | [openOODA/.github](https://github.com/openOODA/.github) | Org-wide profile & workflows |
-| Meta | [openOODA/openOODA.github.io](https://github.com/openOODA/openOODA.github.io) | Website source |
+| Meta | [openOODA/website](https://github.com/openOODA/website) | Website source |
 
 The [Three-Layer Law](RULES.oot) (RULES.oot §1.23) holds the topology stationary:
 governance changes never cascade into compiler rebuilds; compiler changes never alter
