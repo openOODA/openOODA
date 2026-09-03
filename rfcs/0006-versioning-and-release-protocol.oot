@@ -1,0 +1,107 @@
+# RFC 0006: Versioning and Release Protocol
+File: openOODA/rfcs/0006-versioning-and-release-protocol.oot
+
+* **RFC ID**: 0006
+* **Author**: openOODA Core Team
+* **Status**: Accepted
+* **Created**: 2026-09-03
+* **Supersedes**: (none — the previous version of this protocol was implicit and unenforced)
+
+---
+
+## 💡 Feature Overview
+Defines the canonical relationship between the `VERSION` file, the git tag, and the GitHub
+release. The three artifacts are one number in three forms. The invariant is enforced by a
+runtime check (`openOODA/scripts/release_invariant.oo`) that runs at release time.
+
+## 📐 Detailed Specification
+
+### 1. The Three Artifacts, One Number
+Every repo in the polyrepo ships its public state through exactly three artifacts:
+
+| Artifact | What it is | Where |
+|---|---|---|
+| **Version** | The product's semver, declared in `VERSION` | repo root |
+| **Tag** | A git pointer; its name is `v<version>` | `.git/refs/tags/v*` |
+| **Release** | The GitHub release: the tag + a title + notes | github.com/openOODA/<repo>/releases |
+
+The number is the same number in all three. The form changes; the value does not.
+
+### 2. The `VERSION` File Format
+Each repo's `VERSION` file holds the product version (`<repo>=X.Y.Z`) and the release
+assertion (`release_tag=X.Y.Z`). The two fields are the same number after every release
+and diverge only during the window between a VERSION bump and the tag that ships it.
+
+```
+# Standard form (post-release)
+<repo>=X.Y.Z
+release_tag=X.Y.Z
+ooda=<compat>
+ooda_max=<compat>
+oodac=<compat>
+[api_surface=N]    # structural count, see RFC-0005 §5
+```
+
+### 3. Semver Rules
+- **MAJOR** (X.0.0): incompatible API change. Consumers must update their imports.
+- **MINOR** (0.X.0): backwards-compatible feature. Consumers continue to work.
+- **PATCH** (0.0.X): backwards-compatible bug fix or doc/structural change.
+
+ANCHOR.oo additions, file-ref fixes, and `release_invariant.oo`-style enforcement code
+are PATCH changes. They are real public surface (other agents read the ANCHOR.oo) — not
+just doc typos — but they do not break consumers.
+
+### 4. The Order of Operations
+The release sequence is fixed and has exactly four steps. Skipping a step or reordering
+is a release violation.
+
+1. **Bump VERSION.** Edit `<repo>=X.Y.Z` and `release_tag=X.Y.Z` to the new value.
+   Other fields (`ooda=`, `ooda_max=`, `api_surface=`, etc.) are updated as needed.
+2. **Commit.** `git commit -am "<repo>: vX.Y.Z — <one-line change summary>"`.
+3. **Tag.** `git tag vX.Y.Z`. The tag name MUST equal the `release_tag=` value with a
+   `v` prefix. The tag is created locally and pushed in step 4.
+4. **Push and release.** `git push origin main vX.Y.Z` then
+   `gh release create vX.Y.Z --title "vX.Y.Z — <title>" --notes "<notes>"`.
+
+The runtime check in `openOODA/scripts/release_invariant.oo` runs at step 3 (the tag step)
+and refuses to create the tag if `VERSION` does not match the proposed tag. This is the
+structural enforcement: drift becomes a failure, not a footgun.
+
+### 5. The Drift Rule
+If `VERSION` says one number and the most recent git tag says another, the repo is in a
+drift state. Drift is treated as a bug. Recovery:
+
+- **If `VERSION` is older than the tag:** the tag was made without bumping VERSION. Revert
+  the tag (`git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z`), bump VERSION to
+  match, then re-tag and re-release.
+- **If `VERSION` is newer than the tag:** the VERSION was bumped but the tag was not
+  made. Tag from the current HEAD at the version the VERSION file declares.
+
+The drift rule is enforced by `openOODA/scripts/release_invariant.oo`, which exits non-zero
+on any drift.
+
+### 6. Worked Examples
+Today's drift was created by following the order in reverse: the tag was made first,
+then the commit, then the release — but VERSION was not updated. The recovery is to bump
+the four affected repos' `VERSION` and `release_tag` fields to match the tags, and add
+`release_tag=1.0.4` to `openOODA/openOODA/VERSION` for the first time.
+
+### 7. Banned Drift Patterns
+- Tagging a release with a name that does not match `VERSION` (e.g. tagging `v1.0.4` when
+  `VERSION` says `1.0.3`).
+- Bumping `VERSION` without creating the matching tag.
+- Creating a GitHub release whose title does not match the tag (e.g. tagging `v1.0.4` and
+  releasing as "v1.0.3 — typo fix").
+- Adding a `release_tag=` field that does not match the most recent git tag.
+
+## 🛡️ Security & Capability Impact
+None. The protocol is a process discipline, not a runtime mechanism. The `release_tag=`
+field is a self-assertion; the runtime check (`release_invariant.oo`) is the enforcement.
+
+## 🧪 Testing & Verification Criteria
+- `openOODA/scripts/release_invariant.oo` is the canonical verifier. It runs at
+  release time and exits 0 only when `VERSION` and the most recent git tag agree.
+- Manual verification: `git describe --tags --abbrev=0` and `grep release_tag VERSION`
+  must return the same value (modulo the `v` prefix).
+- The four-step sequence (§4) is the only sanctioned workflow. Any other sequence
+  produces drift and is a violation.

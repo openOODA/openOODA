@@ -1,0 +1,85 @@
+// # release_invariant.oo — Version Drift Check
+//
+// Logline: Read VERSION + git describe and assert they agree.
+//
+// Setup: Pure read. No state changes. Safe to run any time.
+//        Run before tagging, before pushing, or in CI.
+//
+// Beats:
+//   1. Parse the `VERSION` file at the repo root for `release_tag=X.Y.Z`.
+//   2. Run `git describe --tags --abbrev=0` to get the most recent tag.
+//   3. Compare. If they disagree, print both and exit 1.
+//   4. If they agree, print "OK" and exit 0.
+//
+// Usage:
+//   ooda run scripts/release_invariant.oo
+//
+// Exits:
+//   0  — VERSION and tag agree
+//   1  — drift (VERSION != tag)
+//   2  — VERSION file missing
+//   3  — release_tag field missing
+//   4  — no git tags yet (legitimate for a fresh repo)
+
+import "std/fs/path.oo";
+import "std/process/sys.oo";
+import "std/text/str.oo";
+import "std/io.oo";
+
+pub fn main() -> Int {
+  let version_path: String = "VERSION";
+  if !path_exists(version_path) {
+    io.eprintln("release_invariant: VERSION not found at " + version_path);
+    return 2;
+  }
+
+  let version_text: String = path_read_text(version_path);
+
+  // Parse release_tag=X.Y.Z line
+  let release_tag: Option[String] = parse_field(version_text, "release_tag");
+  if release_tag.is_none() {
+    io.eprintln("release_invariant: no release_tag= field in VERSION");
+    return 3;
+  }
+  let expected: String = release_tag.unwrap();
+
+  // Get the most recent git tag
+  let tag_out: Result[String, String] = sys_exec_capture("git", ["describe", "--tags", "--abbrev=0"]);
+  if tag_out.is_err() {
+    io.eprintln("release_invariant: no git tags yet (or git failed)");
+    return 4;
+  }
+  let actual_tag: String = tag_out.unwrap().trim();
+  let actual: String = if str_starts_with(actual_tag, "v") {
+    str_substring(actual_tag, 1, str_len(actual_tag))
+  } else {
+    actual_tag
+  };
+
+  if expected != actual {
+    io.eprintln("release_invariant: DRIFT");
+    io.eprintln("  VERSION release_tag = " + expected);
+    io.eprintln("  git tag (latest)   = v" + actual);
+    io.eprintln("");
+    io.eprintln("These must agree. See RULES.oot §1.24 and rfcs/0006-versioning-and-release-protocol.oot.");
+    io.eprintln("If VERSION is older than the tag, the tag was made without bumping VERSION (revert + re-tag).");
+    io.eprintln("If VERSION is newer than the tag, the VERSION was bumped but the tag was not made (tag now).");
+    return 1;
+  }
+
+  io.println("release_invariant: OK (v" + actual + ")");
+  return 0;
+}
+
+fn parse_field(text: String, key: String) -> Option[String] {
+  // Iterate lines, find one starting with "<key>=", return the value.
+  // Pure-stdlib, no regex.
+  let lines: List[String] = str_split(text, "\n");
+  for line in lines {
+    let prefix: String = key + "=";
+    if str_starts_with(line, prefix) {
+      return Some(str_substring(line, str_len(prefix), str_len(line)));
+    }
+  }
+  return None;
+}

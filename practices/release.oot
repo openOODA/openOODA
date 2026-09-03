@@ -1,0 +1,145 @@
+# RELEASE — Versioning & Release Workflow
+File: openOODA/practices/release.oot
+
+This is the day-to-day workflow for shipping a release in any openOODA repo. The protocol
+is specified in `openOODA/rfcs/0006-versioning-and-release-protocol.oot`; the law that
+backs it is `RULES.oot §1.24`. This file is the cheat sheet.
+
+## The 4-Step Sequence
+
+Every release is exactly these four steps, in this order, no skipping:
+
+```
+1. Bump VERSION
+2. Commit
+3. Tag
+4. Push + Release
+```
+
+The runtime check (`openOODA/scripts/release_invariant.oo`) runs at step 3 and refuses to
+let you tag if `VERSION` does not match the proposed tag. Drift becomes a failure, not a
+footgun.
+
+## Step 1: Bump VERSION
+
+Edit the `VERSION` file at the repo root. Two fields must change together:
+
+```
+<repo>=X.Y.Z            # the new product version
+release_tag=X.Y.Z      # the assertion of the new release
+```
+
+Other fields (`ooda=`, `ooda_max=`, `api_surface=`, etc.) change as needed by the change
+itself. The `release_tag=` line is the one that the runtime check verifies against the
+git tag.
+
+### When to bump MAJOR vs MINOR vs PATCH
+
+- **MAJOR**: API change that breaks consumers. Renamed or removed public symbols. New
+  required fields. Callers must update their imports.
+- **MINOR**: backwards-compatible feature. New public symbols, new optional fields, new
+  ANCHOR.oo, new `release_tag=` enforcement.
+- **PATCH**: backwards-compatible bug fix. ANCHOR.oo content corrections, stale
+  `File:` references, VERSION drift recovery, structural enforcement scripts.
+
+## Step 2: Commit
+
+```
+git add VERSION
+git commit -m "<repo>: vX.Y.Z — <one-line summary of the change>"
+```
+
+The commit message starts with the repo name and version. The summary is one line. Full
+context goes in the GitHub release notes at step 4, not in the commit message.
+
+## Step 3: Tag (the structural check fires here)
+
+```
+git tag vX.Y.Z
+```
+
+The tag name MUST equal the `release_tag=` value in `VERSION`, with a `v` prefix. The
+runtime check (`openOODA/scripts/release_invariant.oo`) reads the proposed tag name, reads
+the `VERSION` file, and exits non-zero if they disagree. No tag is created if the check
+fails.
+
+The check is a pure read — it does not modify the tag, the file, or any state. It is
+safe to invoke any time:
+
+```
+# Manual verification (any time, no side effects)
+ooda run openOODA/scripts/release_invariant.oo
+```
+
+## Step 4: Push and Release
+
+```
+git push origin main vX.Y.Z
+gh release create vX.Y.Z \
+  --title "vX.Y.Z — <short marketing title>" \
+  --notes "<release notes>"
+```
+
+The `--title` MUST start with the version (`vX.Y.Z — ...`) so the release list is
+self-describing. The `--notes` is a multi-line description: what changed, why, and the
+artifact summary (companion commits, deploy steps, etc.).
+
+## Drift Recovery
+
+If `VERSION` and the most recent tag disagree, the repo is in drift. Recovery depends
+on which one is ahead:
+
+### Case A: VERSION older than the tag (the common mistake)
+
+The tag was made without bumping VERSION. Revert the tag, bump VERSION, re-tag, re-release.
+
+```
+# 1. Delete the local and remote tag
+git tag -d vX.Y.Z
+git push origin :refs/tags/vX.Y.Z
+
+# 2. Fix VERSION
+# (edit <repo>= and release_tag= to the right value)
+
+# 3. Commit, tag, push, release
+git add VERSION
+git commit -m "<repo>: vX.Y.Z — drift recovery (VERSION < tag)"
+git tag vX.Y.Z
+git push origin main vX.Y.Z
+gh release create vX.Y.Z --title "vX.Y.Z — drift recovery" --notes "..."
+```
+
+### Case B: VERSION newer than the tag
+
+The VERSION was bumped but the tag was not made. Tag from the current HEAD at the value
+VERSION declares.
+
+```
+git tag vX.Y.Z    # the value VERSION declares
+git push origin main vX.Y.Z
+gh release create vX.Y.Z --title "vX.Y.Z — ..." --notes "..."
+```
+
+## Common Mistakes
+
+- **Tagging without bumping VERSION.** Creates drift. Recovery: Case A above.
+- **Bumping VERSION without tagging.** The change is in `main` but not released. Recovery:
+  Case B above.
+- **Release title does not match tag.** The release list is unsorted and unauditable.
+  Recovery: delete the release (`gh release delete vX.Y.Z`) and re-create with the right
+  title.
+- **Multiple tags for the same commit.** The release list shows two versions for one
+  change. Recovery: delete the duplicate tag.
+
+## Why this is a practice, not a law
+
+The 4-step sequence is mechanical and inviolable (see `RULES.oot §1.24`). The
+*judgment* — when to bump MAJOR vs MINOR, what the release notes say, how to phrase
+the title — evolves with the project. The law fixes the invariant; this practice is the
+working how-to.
+
+## Cross-references
+
+- `RULES.oot §1.24` — Versioning Discipline (the law)
+- `rfcs/0006-versioning-and-release-protocol.oot` — Versioning and Release Protocol (the spec)
+- `scripts/release_invariant.oo` — the runtime check that enforces the invariant
