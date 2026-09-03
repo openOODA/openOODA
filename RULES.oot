@@ -78,13 +78,14 @@ The 23 laws below do not change. They apply across all repository directories.
   A test that always passes does not provide proof.
   If a task fails mid-execution, restore the repository to a clean state.
   Follow the adversarial verification protocols in WORKFLOW.oot.
-  Update SHIPPED.oot only through `scripts/shipped_generate.oo` based on verified on-disk locks.
+  Verified on-disk features are recorded by the per-repo shipped proof scripts. The
+  governance repo has no shipped ledger; each tactical/operational repo records its own.
 
 ### 1.8 Code Quality & Line Limits (Pillar 2)
   Every file must contain a maximum of 256 lines. Split large files along domain seams.
   Free all allocated memory. Use linear arenas with bulk resets for temporary allocations.
   Delete debug files, obsolete code, and temporary artifacts when work is complete.
-  Zero intermediate artifacts (*.tmp.c, *.protos.c, *.tu.c, *.bin, *.txt) permitted in ooda/std/.
+  Zero intermediate artifacts (*.tmp.c, *.protos.c, *.tu.c, *.bin, *.txt) permitted in openOODA/std/.
   Ensure that implementation behavior matches specification documentation.
 
 ### 1.9 Incremental Modifications
@@ -93,7 +94,7 @@ The 23 laws below do not change. They apply across all repository directories.
 ### 1.10 Negative Trust & Adversarial Validation (Pillar 3)
   Assume that unverified stubs, docstrings, and tests contain defects until proven.
   Apply active falsification: Test code with corrupted tokens, invalid inputs, and boundary values.
-  Deploy the 8-Dimensional Red Team roles defined in `REDTEAM.oot`:
+  Deploy the 8-Dimensional Red Team roles defined in `practices/8d-red-team.oot`:
     - Red 1 (Heuristic Hunter / e1): Lowering AST integrity and keyword decoy immunity.
     - Red 2 (Boundary Falsifier / e2): Dynamic parameter bounds and line limit verification.
     - Red 3 (Data-Path Tracer / e3): Genuine execution wiring and fallback rejection.
@@ -102,7 +103,7 @@ The 23 laws below do not change. They apply across all repository directories.
     - Red 6 (Drag Assassin / e6): Algorithmic complexity, arena leaks, and GC pause elimination.
     - Red 7 (Semantic Subverter / e7): AST mutant kill rate (>= 95%) and non-vacuous contracts.
     - Red 8 (Byzantine Infiltrator / e8): Constant-time cryptography (|t_Welch| < 4.5) and RASP rollback.
-  Follow the 8-Gate Blocking Veto Protocol in `REDTEAM.oot` for candidate code.
+  Follow the 8-Gate Blocking Veto Protocol in `practices/8d-red-team.oot` for candidate code.
   Follow the Double-Run Law: Execute `./bin/ooda run <test.oo>` twice in fresh processes.
   Do not trust plain board text; execute verification scripts directly.
 
@@ -141,21 +142,23 @@ The 23 laws below do not change. They apply across all repository directories.
     - Never create `.py` files. Python is unauthorized across all directories.
     - Never create `.sh` files, except the two authorized host scripts.
     - Never create `.js`, `.ts`, `.rb`, or `.pl` files outside editor extensions.
-    - Never create `.md` files.
+    - Never create `.md` files, except the top-level `README.md` of the openOODA governance repo.
   Two-Binary Architecture (Pillar 8): The compiler (`oodac`) is decoupled from the workflow driver (`ooda`).
-  Gen 1 C/H Substrate Isolation (Pillar 9): All low-level C shims (`chs_rt_*.c`, `chs_rt.h`) strictly confined to `ooda/runtime/`. Zero C header leaks into `ooda/std/`.
+  Gen 1 C/H Substrate Isolation (Pillar 9): All low-level C shims (`chs_rt_*.c`, `chs_rt.h`) strictly confined to the ooda/ monorepo runtime. Zero C header leaks into openOODA/std/.
   Clean Workspaces (Pillar 10): Zero unmanaged/unheaded `.oo` files in roots; zero struct trailing commas.
-  Directory naming responsibilities:
-    `oodac/*.oo` — Compiler implementation modules.
-    `cli/*.oo` — Product CLI commands and entrypoint.
-    `std/*.oo` — Standard library modules.
-    `fixtures/*.oo` — Test fixtures and verification programs.
-    `ooda/scripts/*.oo` — Pure `.oo` smoke tests, proofs, and tooling.
+  Polyrepo directory naming responsibilities (each repo owns its own subtree):
+    `ooda/oodac/*.oo`    — Compiler implementation modules (ooda/ monorepo).
+    `ooda/runtime/*`     — Gen 1 C shims and Landlock sandbox (ooda/ monorepo).
+    `ooda/cli/*.oo`      — Product CLI commands and entrypoint (cli/ repo).
+    `openOODA/std/*.oo`  — Standard library modules, 8 functional domains (std/ repo).
+    `cli/`, `lsp/`, `mcp/`, `opm/` — Operational drivers and protocol servers (own repos).
   Every `.oo` file must contain a 4-element Academy header and contain <= 256 lines.
   Two host scripts are permitted: `bootstrap/oodac_pure_build` and `install.sh`.
 
 ### 1.15 Automated Enforcement
-  Execute `scripts/governance_enforce.oo` and `scripts/governance_check_boards.oo` before completing any task.
+  Each tactical/operational repo owns its own governance linters and tests. The
+  governance repo enforces only its own subtree: 256-line cap, file-type bans, and
+  the 8-D Red Team pre-commit gates described in `practices/8d-red-team.oot`.
   Any commit that introduces unauthorized file types or oversized files fails closed.
 
 ### 1.17 Power Law 80/20 Leverage
@@ -197,15 +200,16 @@ The 23 laws below do not change. They apply across all repository directories.
   - Power Law 80/20 Floor Rule: Increment Floor only when the 20% core substrate changes.
 
 ### 1.22 Standard Library Reuse Directive
-  Do not create new files in `ooda/std/` unless the user explicitly requests standard library expansion.
-  Inspect and reuse existing modules in `ooda/std/` before implementing new utility code.
+  Do not create new files in `openOODA/std/` unless the user explicitly requests standard library expansion.
+  Inspect and reuse existing modules in `openOODA/std/` (8 functional domains, 173 ANCHOR.oo) before implementing new utility code.
 
 
-### 1.23 Three-Layer Architecture (Strategic, Operational, Tactical)
-openOODA operates as a 3-Tier Multi-Repository Architecture:
-- **Strategic Governance** (`openOODA/`): process boards, RFCs, governance linters, the laws.
-- **Operational Logistics** (`ooda/cli/`): commands, drivers, the workflow surface.
-- **Tactical Code Physics** (`ooda/oodac/`, `ooda/runtime/`, `ooda/std/`, `ooda/opm/`, ...): libraries, subsystems, the actual code.
+### 1.23 Three-Layer Architecture (Strategic, Operational, Tactical) — Polyrepo
+openOODA operates as a 3-Tier Multi-Repository Architecture across 9 repos:
+- **Strategic Governance** (`openOODA/openOODA/`): this repo. Process boards, RFCs, the 23 laws. No compiler code.
+- **Operational Logistics** (`openOODA/cli/`, `openOODA/lsp/`, `openOODA/mcp/`, `openOODA/opm/`): drivers, servers, and the workflow surface. No stdlib or compiler internals.
+- **Tactical Code Physics** (`openOODA/std/`, `openOODA/ooda/`): the actual code. `std/` holds the 8-domain standard library; `ooda/` is the compiler + runtime monorepo (oodac, runtime C shims, smoke tests, fixtures).
+- **Meta** (`openOODA/.github/`, `openOODA/openOODA.github.io/`): org profile and website source.
 
 Governance modifications must not trigger compiler rebuild cascades.
 Compiler modifications must not alter governance process boards.
@@ -216,10 +220,11 @@ This is the 3-Layer Law. See openOODA/rfcs/0004-engineering-model.oot for the fu
 
   Focus: Select at most 5 tasks during a single execution turn.
   File size: Keep all files strictly <= 256 lines.
-  Sprint alignment: Select active tasks directly from ROADMAP.oot.
-  Execution rhythm: Follow the Observe-Orient-Decide-Act cycle in WORKFLOW.oot.
+  Sprint alignment: Select active tasks from the open RFC backlog and accepted RFCs in
+  `openOODA/rfcs/`. The polyrepo has no central ROADMAP.oot; each repo owns its sprint.
+  Execution rhythm: Follow the Observe-Orient-Decide-Act cycle in `practices/ooda-workflow.oot`.
   Task prioritization:
     1. Fix broken tests and compilation errors first.
     2. Fix security vulnerabilities second (see openOODA/rfcs/0001-capability-security.oot).
-    3. Implement scheduled features from ROADMAP.oot third.
+    3. Implement scheduled features from accepted RFCs third.
     4. Refactor and clean up code last.
