@@ -10,7 +10,7 @@
 
 ### openOODA — Sovereign Systems Language for the AI Era
 
-[openooda.org](https://openooda.org) · [Docs](https://openooda.org/guide/) · [Registry](https://registry.openooda.org/)
+[openooda.org](https://openooda.org) · [Docs](https://openooda.org/guide/) · [Registry](https://openooda.org/#registry)
 
 </div>
 
