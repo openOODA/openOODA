@@ -1,0 +1,119 @@
+# RFC 0007: Blackbox Flight Recorder & Crash Autopsy Engine
+File: openOODA/rfcs/0007-blackbox-flight-recorder.oot
+
+* **RFC ID**: 0007
+* **Author**: openOODA Core Team
+* **Status**: Accepted
+* **Created**: 2026-09-04
+
+---
+
+## 💡 Feature Overview
+Defines the openOODA Blackbox subsystem: an agent-native execution flight
+recorder and crash autopsy engine. Combines zero-heap C substrate signal
+interception in `oodar` with a tactical diagnostic engine in `blackbox`.
+Provides a 1-turn root-cause autopsy contract for autonomous AI agents.
+
+## 🎯 Motivation & Problem Statement
+Col. Boyd's Energy-Maneuverability law states that turnover velocity
+$V_{\text{ooda}}$ governs software combat. Fatal crashes and capability
+traps stall agents in multi-turn diagnostic loops. Interactive debuggers
+fail in non-interactive CI and autonomous swarms.
+
+Blackbox records execution flight events into an in-memory ring buffer.
+On unhandled signals or capability traps, the substrate flushes an
+autonomous autopsy report. AI agents parse the autopsy to locate failure
+coordinates, inspect stack frames, and apply patches in exactly one turn.
+
+## 📐 Detailed Specification
+
+### 1. 3-Layer Architecture Placement
+- Strategic Governance (`openOODA/rfcs/0007-*.oot`): this specification.
+- Tactical Substrate (`openOODA/oodar/core/blackbox/`): zero-heap flight
+  sensor and async-signal-safe crash interceptor.
+- Tactical Engine (`openOODA/blackbox/`): RFC-0005 compliant diagnostics,
+  AST diffing, CLI dispatch, and MCP tool bindings.
+
+### 2. Telemetry Schemas & In-Memory Ring Buffer
+The sensor allocates a static circular buffer of 1024 slots during startup.
+Recording consumes zero heap allocations. Monotonic sequence numbers order
+all flight records. The buffer wraps automatically.
+
+Flight event record structure:
+```ooda
+type FlightRecord = struct {
+  seq: u64,
+  timestamp_ns: u64,
+  event_type: u16,
+  cap_token: u32,
+  file_id: u32,
+  line: u32,
+  col: u16,
+  detail: String
+};
+```
+Event types include: `PHASE_CHANGE`, `CAP_REQUIRE`, `AST_NODE`, `ARENA_MARK`,
+`IO_DISPATCH`, and `TRAP_SIGNAL`.
+
+### 3. Crash Signal Interception & Async-Signal Safety
+The substrate registers `sigaction` handlers for fatal POSIX signals:
+- `SIGSEGV` (11): Invalid memory reference or null pointer access.
+- `SIGABRT` (6): Runtime abort, contract breach, or assertion failure.
+- `SIGBUS` (7): Hardware alignment fault or physical memory error.
+- `SIGILL` (4): Illegal instruction or corrupted execution pointer.
+
+Handlers execute on a dedicated alternate signal stack (`sigaltstack`).
+Handlers obey strict async-signal safety:
+- Zero heap allocations (`malloc`, `free`, `realloc` forbidden).
+- Zero buffered C I/O (`printf`, `fopen` forbidden).
+- Output writes directly to `.blackbox/autopsy.json` via Linux `write()`.
+- Formatting uses a pre-allocated 64KB static buffer and stack formatters.
+- Handlers re-raise the signal under `SIG_DFL` to preserve POSIX exit codes.
+
+### 4. Capability Trap Specifications
+Capability checks in `oo_cap_require_*` trap violations fail-closed.
+When a capability is missing, forged, or attenuated outside rights:
+1. The substrate intercepts the trap before process termination.
+2. The trap records the capability bit, expected token, received token,
+   caller address, and source coordinate.
+3. The substrate formats a capability autopsy and terminates immediately.
+Zero ambient authority operations proceed after a trap.
+
+### 5. The 1-Turn Agent Diagnostic Contract
+The engine emits `.blackbox/autopsy.json`. The `blackbox autopsy` tool
+parses the JSON and renders a compact diagnostic card:
+- `failure`: signal name, numeric code, fault address, and exit status.
+- `coordinate`: source file, line number, column, and function name.
+- `stack_trace`: symbolized stack frames with instruction pointers.
+- `flight_events`: last 32 recorded events preceding failure.
+- `root_cause`: classified defect type and violated `RULES.oot` law.
+- `remediation`: prescriptive directive for 1-turn automated repair.
+
+### 6. Tactical Subsystem Topology (`openOODA/blackbox`)
+Adheres strictly to RFC 0005:
+- `ANCHOR.oo`: Academy front door re-exporting all subdirs.
+- `record/`: Ring buffer schemas and flight event ledgers.
+- `autopsy/`: Autopsy parser, coordinate locator, and root-cause engine.
+- `diff/`: AST pass comparison and semantic diff engine.
+- `bridge/`: Subprocess runner under `&ProcessCap` and `.blackbox` watcher.
+- `cli/`: `main.oo` dispatching `autopsy`, `diff`, and `trace`.
+- `qa/`: Adversarial break-test drivers and crash fixtures.
+- `scripts/`: Operational scripts (`build.oo`, `test.oo`, `verify.oo`).
+- `docs/`: ASD-STE100 documentation and `ANCHOR.oo`.
+
+## 🛡️ Security & Capability Impact
+- Substrate sensor requires no external capability tokens; it binds directly
+  to process signals and static memory.
+- Diagnostic CLI requires `&FsReadCap` to read `.blackbox/autopsy.json`.
+- Bridge execution runner requires `&ProcessCap` and `&FsReadCap`.
+- Autopsy files sanitize secret token values and strip environment secrets.
+
+## 🧪 Testing & Verification Criteria
+- `qa/crash_sigsegv_proof.oo`: Intentionally dereferences null pointer;
+  verifies `SIGSEGV` interception and valid `autopsy.json` generation.
+- `qa/trap_cap_proof.oo`: Attempts unauthorized I/O without capability;
+  verifies capability trap interception and fail-closed termination.
+- Double-Run Invariant: `blackbox autopsy` produces identical diagnostic
+  AST output across consecutive executions ($\text{Run}_1 \equiv \text{Run}_2$).
+- File Law Audit: All files in `blackbox/` strictly $\le 256$ lines and use
+  Academy 4-element headers (`# Title`, `Logline`, `Setup`, `Beats`).
