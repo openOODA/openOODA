@@ -27,15 +27,15 @@ The nine polyrepo repos (as of 2026-09-03):
 
 | Repo        | Role                                                   | Status      |
 |-------------|--------------------------------------------------------|-------------|
-| `openOODA/` | Governance: rules, north star, RFCs, polyrepo topology | v1.0.7      |
-| `ooda/`     | Legacy monorepo (will be killed when oodac/oodar fully replace it) | deprecated |
+| `openOODA/` | Governance: rules, north star, RFCs, polyrepo topology | v1.0.8      |
+| `ooda/`     | Legacy monorepo (cleanup gated on oodac; see §5)       | deprecated |
 | `std/`      | Standard library: 8 functional domains, 173 modules     | v1.0.3      |
 | `opm/`      | Package manager: CAS-by-sha, capability-tagged         | v0.8.x      |
 | `ooda/`     | The `ooda` binary driver, 13 subcommands                | v0.2.1      |
-| `lsp/`      | Language server: 16 methods, 5 editor integrations     | v0.6.2      |
+| `lsp/`      | Language server: 16 methods, 5 editor integrations     | v0.6.3      |
 | `mcp/`      | MCP server: 23 tools, 5 tiers                          | v0.6.x      |
-| `oodar/`    | Gen 1 C host substrate: 30 capability tokens, Landlock, arena, PQC, 6-subdir layout (core/sec/fs/net/hw/app) | v2.0.0 |
-| `oodac/`    | Compiler (extracted from `ooda/`; gemini v0.1.x reorg + cap-ABI alignment) | v0.1.x |
+| `oodar/`    | Gen 1 C host substrate: 26 capability tokens (14 NORTHSTAR core + 12 future-state), Landlock, OoPathCap, 6-subdir layout, Floor-broken to v3.0.0 (cap-gated oo_read_stdin / oo_file_stamp / oo_metrics_*) | v3.0.0 |
+| `oodac/`    | Compiler (extracted from `ooda/`; gemini v0.1.x reorg + cap-ABI alignment with oodar v3.0.0) | v0.1.x |
 
 ## 3. Where to go next
 
@@ -43,9 +43,42 @@ The nine polyrepo repos (as of 2026-09-03):
   `openOODA/{repo}/docs/` directory.
 - **The 14 capability tokens.** They appear across the LSP, MCP, and
   std visualisations. There is no ambient authority anywhere in the
-  stack.
+  stack. (oodar v3.0.0 added the 26th token, `Metrics`, which
+  re-uses the v2.1.0-reserved bit 0x800 for the cap-gated
+  `oo_metrics_*` family.)
 - **The polyrepo topology.** See `openOODA/RULES.oot` §1.23 for the
   why behind the split.
+
+## 5. ooda/ cleanup chain (gated on oodac)
+
+The `ooda/` legacy monorepo cannot be killed until oodac is fully
+shipped. The chain (in execution order) is:
+
+1. **oodac ships as a polyrepo sibling** — gemini is working on this
+   (`ooda/oodac/` currently at v0.1.4, commit `c9b9e13b8`).
+   When gemini signals done, the source in `ooda/oodac/*` is moved
+   to the `oodac/` polyrepo and the canonical location flips.
+2. **oodac emit backends point at oodar v3.0.0 paths.** Currently
+   `ooda/oodac/emit/c/c_emit_temps.oo`, `c_emit_args.oo`,
+   `c_emit_preamble.oo`, `ooda/oodac/emit/llvm/llvm_emit_olist.oo`,
+   and `ooda/oodac/emit/llvm/llvm_jit_engine.oo` all reference
+   `chs_rt_*` paths. After step 1, they flip to
+   `oodar/<subdir>/<file>.c` per the v3.0.0 6-subdir layout (and
+   thread cap tokens for the v3.0.0 public surface).
+3. **Delete `ooda/runtime/`** — 71 stale `chs_rt_*.c` duplicates
+   that the oodar extraction (v0.1.0) was meant to kill but
+   couldn't because the emit backends still pointed at them.
+4. **Delete `ooda/oodac/`** (now empty after step 1).
+5. **Audit ooda/ remaining** (`fixtures/`, `qa/`, `scripts/`,
+   `tests/`, `site/`, `templates/`, `tools/`, `vendor/`) — anything
+   still referenced by the extracted oodac moves with it;
+   everything else is dead.
+6. **Kill the `ooda/` monorepo** — the final "this is the legacy
+   coordination shell, no longer here" commit.
+
+The gate is gemini's "oodac is done" signal. Per the standing rule
+("we can't clean up ooda until oodac is done"), nothing in
+`ooda/odac/` or `ooda/runtime/` is touched in the meantime.
 
 > The install command lives at the top and bottom of this page —
 > it is the same component, not duplicated content.
