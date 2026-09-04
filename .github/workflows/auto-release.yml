@@ -1,0 +1,61 @@
+name: auto-release
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute next tag and release notes
+        id: prep
+        run: |
+          set -e
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LAST_NUM=${LAST_TAG#v}
+          IFS=. read -r MAJOR MINOR PATCH <<< "$LAST_NUM"
+          # PATCH bump on every push
+          PATCH=$((PATCH + 1))
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+
+          # Notes: commits since last tag (or all if no tag exists)
+          if [ "$LAST_TAG" = "v0.0.0" ]; then
+            NOTES=$(git log --pretty=format:"- %s" | head -50)
+          else
+            NOTES=$(git log "${LAST_TAG}..HEAD" --pretty=format:"- %s" | head -50)
+          fi
+          if [ -z "$NOTES" ]; then
+            NOTES="- update from $(git rev-parse --short HEAD)"
+          fi
+
+          echo "new_tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${NOTES}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        run: |
+          set -e
+          git config user.name "openOODA Auto-Release"
+          git config user.email "ops@openooda.org"
+          git tag "${{ steps.prep.outputs.new_tag }}"
+          git push origin "${{ steps.prep.outputs.new_tag }}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.prep.outputs.new_tag }}
+          name: ${{ steps.prep.outputs.new_tag }}
+          body: ${{ steps.prep.outputs.notes }}
+          generate_release_notes: false

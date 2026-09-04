@@ -1,107 +1,101 @@
-# RFC 0006: Versioning and Release Protocol
+# RFC 0006: Auto-Release Protocol
 File: openOODA/rfcs/0006-versioning-and-release-protocol.oot
 
 * **RFC ID**: 0006
 * **Author**: openOODA Core Team
 * **Status**: Accepted
 * **Created**: 2026-09-03
-* **Supersedes**: (none — the previous version of this protocol was implicit and unenforced)
+* **Supersedes**: the previous, manual release protocol (which required a hand-maintained `VERSION` file, manual `git tag`, and manual `gh release create`)
 
 ---
 
 ## 💡 Feature Overview
-Defines the canonical relationship between the `VERSION` file, the git tag, and the GitHub
-release. The three artifacts are one number in three forms. The invariant is enforced by a
-runtime check (`openOODA/scripts/release_invariant.oo`) that runs at release time.
+Every push to main is a release. The version is derived from git history. The tag is
+auto-created. The GitHub release is auto-generated. The maintainer writes code, commits,
+and pushes. The CI does the rest.
 
 ## 📐 Detailed Specification
 
-### 1. The Three Artifacts, One Number
-Every repo in the polyrepo ships its public state through exactly three artifacts:
+### 1. The Trigger
+The auto-release workflow runs on every push to a `main` branch. It also accepts a
+`workflow_call` from consumer repos that use the reusable workflow from
+`openOODA/openOODA/.github/workflows/auto-release.yml`. No other trigger exists.
 
-| Artifact | What it is | Where |
-|---|---|---|
-| **Version** | The product's semver, declared in `VERSION` | repo root |
-| **Tag** | A git pointer; its name is `v<version>` | `.git/refs/tags/v*` |
-| **Release** | The GitHub release: the tag + a title + notes | github.com/openOODA/<repo>/releases |
+### 2. The Version
+The version is computed from the git tag history. The workflow:
+1. Reads the most recent tag (`git describe --tags --abbrev=0`). If no tag exists, starts
+   at `v0.0.0`.
+2. Increments the PATCH component. The new tag is `v{MAJOR}.{MINOR}.{PATCH+1}`.
+3. The first tag ever is `v0.0.1`.
 
-The number is the same number in all three. The form changes; the value does not.
+Conventional commits are NOT used. `feat:`, `fix:`, `BREAKING:` prefixes are not parsed.
+Every push is a PATCH release. If a maintainer wants MAJOR or MINOR semantics, they can
+push with a manual tag (`git tag v2.0.0 && git push origin v2.0.0`); the next push
+increments from that tag.
 
-### 2. The `VERSION` File Format
-Each repo's `VERSION` file holds the product version (`<repo>=X.Y.Z`) and the release
-assertion (`release_tag=X.Y.Z`). The two fields are the same number after every release
-and diverge only during the window between a VERSION bump and the tag that ships it.
+### 3. The Release Notes
+The release notes are auto-generated as a bulleted list of commit messages since the
+previous tag. If a commit has no message, the workflow substitutes a default of
+`- update from {short-hash}`.
 
 ```
-# Standard form (post-release)
-<repo>=X.Y.Z
-release_tag=X.Y.Z
-ooda=<compat>
-ooda_max=<compat>
-oodac=<compat>
-[api_surface=N]    # structural count, see RFC-0005 §5
+- fix: cap token validation off-by-one
+- docs: clarify the install line
+- refactor: split dogfight engine into per-state files
 ```
 
-### 3. Semver Rules
-- **MAJOR** (X.0.0): incompatible API change. Consumers must update their imports.
-- **MINOR** (0.X.0): backwards-compatible feature. Consumers continue to work.
-- **PATCH** (0.0.X): backwards-compatible bug fix or doc/structural change.
+The notes are not editable after the release is created. If the maintainer wants
+curated notes, they can pass `--notes` to the workflow via a future enhancement.
 
-ANCHOR.oo additions, file-ref fixes, and `release_invariant.oo`-style enforcement code
-are PATCH changes. They are real public surface (other agents read the ANCHOR.oo) — not
-just doc typos — but they do not break consumers.
+### 4. The Reusable Workflow
+`openOODA/openOODA/.github/workflows/auto-release.yml` is the canonical workflow.
+Each consumer repo's CI calls it:
 
-### 4. The Order of Operations
-The release sequence is fixed and has exactly four steps. Skipping a step or reordering
-is a release violation.
+```yaml
+name: ci
+on:
+  push:
+    branches: [main]
+jobs:
+  auto-release:
+    uses: openOODA/openOODA/.github/workflows/auto-release.yml@v1.0.6
+  deploy:
+    needs: auto-release
+    # ... existing deploy steps
+```
 
-1. **Bump VERSION.** Edit `<repo>=X.Y.Z` and `release_tag=X.Y.Z` to the new value.
-   Other fields (`ooda=`, `ooda_max=`, `api_surface=`, etc.) are updated as needed.
-2. **Commit.** `git commit -am "<repo>: vX.Y.Z — <one-line change summary>"`.
-3. **Tag.** `git tag vX.Y.Z`. The tag name MUST equal the `release_tag=` value with a
-   `v` prefix. The tag is created locally and pushed in step 4.
-4. **Push and release.** `git push origin main vX.Y.Z` then
-   `gh release create vX.Y.Z --title "vX.Y.Z — <title>" --notes "<notes>"`.
+Consumer repos pin to a specific tag of the governance workflow. The pin is opt-in:
+when the governance repo ships a new version, consumer repos stay on the old pin until
+they choose to upgrade. This is the stationary topology invariant (RFC-0004 §3) applied
+to CI: consumers do not cascade-update.
 
-The runtime check in `openOODA/scripts/release_invariant.oo` runs at step 3 (the tag step)
-and refuses to create the tag if `VERSION` does not match the proposed tag. This is the
-structural enforcement: drift becomes a failure, not a footgun.
+### 5. The Tag Operation
+The workflow uses `git tag` and `git push origin {tag}` to create the tag. Tags are
+created with the workflow's GITHUB_TOKEN, which has permission to push to the repo.
+No human action is required.
 
-### 5. The Drift Rule
-If `VERSION` says one number and the most recent git tag says another, the repo is in a
-drift state. Drift is treated as a bug. Recovery:
-
-- **If `VERSION` is older than the tag:** the tag was made without bumping VERSION. Revert
-  the tag (`git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z`), bump VERSION to
-  match, then re-tag and re-release.
-- **If `VERSION` is newer than the tag:** the VERSION was bumped but the tag was not
-  made. Tag from the current HEAD at the version the VERSION file declares.
-
-The drift rule is enforced by `openOODA/scripts/release_invariant.oo`, which exits non-zero
-on any drift.
-
-### 6. Worked Examples
-Today's drift was created by following the order in reverse: the tag was made first,
-then the commit, then the release — but VERSION was not updated. The recovery is to bump
-the four affected repos' `VERSION` and `release_tag` fields to match the tags, and add
-`release_tag=1.0.4` to `openOODA/openOODA/VERSION` for the first time.
-
-### 7. Banned Drift Patterns
-- Tagging a release with a name that does not match `VERSION` (e.g. tagging `v1.0.4` when
-  `VERSION` says `1.0.3`).
-- Bumping `VERSION` without creating the matching tag.
-- Creating a GitHub release whose title does not match the tag (e.g. tagging `v1.0.4` and
-  releasing as "v1.0.3 — typo fix").
-- Adding a `release_tag=` field that does not match the most recent git tag.
+### 6. The Release Operation
+The workflow uses `gh release create` with the new tag as the release target. The
+title is the tag (`v0.0.5`). The body is the auto-generated notes. No human action
+is required.
 
 ## 🛡️ Security & Capability Impact
-None. The protocol is a process discipline, not a runtime mechanism. The `release_tag=`
-field is a self-assertion; the runtime check (`release_invariant.oo`) is the enforcement.
+The workflow uses `GITHUB_TOKEN` (provided automatically by GitHub Actions). It does
+not require any secrets, custom tokens, or external credentials. The only capability
+needed is `contents: write` (default for `GITHUB_TOKEN` on push events to main).
 
 ## 🧪 Testing & Verification Criteria
-- `openOODA/scripts/release_invariant.oo` is the canonical verifier. It runs at
-  release time and exits 0 only when `VERSION` and the most recent git tag agree.
-- Manual verification: `git describe --tags --abbrev=0` and `grep release_tag VERSION`
-  must return the same value (modulo the `v` prefix).
-- The four-step sequence (§4) is the only sanctioned workflow. Any other sequence
-  produces drift and is a violation.
+- Push to main in any of the 7 repos → tag is created, release is published within
+  ~30 seconds.
+- Push 3 times in a row → tags `v0.0.1`, `v0.0.2`, `v0.0.3` are created.
+- The release notes match the commit messages since the previous tag.
+- A maintainer who manually tags `v2.0.0` and pushes → the next push is `v2.0.1`.
+- The maintainer can opt into a new governance workflow version by changing the `uses:`
+  pin in their CI YAML.
+
+## 📜 Banned Patterns
+- Hand-maintained `VERSION` file at the repo root (deleted in this design).
+- Manual `git tag` followed by `git push origin {tag}` (the workflow does this).
+- Manual `gh release create` (the workflow does this).
+- Conventional commit prefix required for a release to ship (not required; every push
+  is a PATCH release).
