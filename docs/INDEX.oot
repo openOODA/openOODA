@@ -51,34 +51,68 @@ The nine polyrepo repos (as of 2026-09-03):
 
 ## 5. ooda/ cleanup chain (gated on oodac)
 
-The `ooda/` legacy monorepo cannot be killed until oodac is fully
-shipped. The chain (in execution order) is:
+**Actual state (2026-09-03):** the old `ooda/` monorepo was
+**deleted** by the user and `cli/` was **renamed to `ooda/`**.
+The current `ooda/` is the renamed CLI tool, which still
+contains a `runtime/` subdir with 71 stale `chs_rt_*.c` files
+that duplicate `oodar/`. The `oodac/` compiler is a separate
+polyrepo at `/home/jeryd/Projects/openOODA/oodac/` (v0.2.0).
 
-1. **oodac ships as a polyrepo sibling** — gemini is working on this
-   (`ooda/oodac/` currently at v0.1.4, commit `c9b9e13b8`).
-   When gemini signals done, the source in `ooda/oodac/*` is moved
-   to the `oodac/` polyrepo and the canonical location flips.
-2. **oodac emit backends point at oodar v3.0.0 paths.** Currently
-   `ooda/oodac/emit/c/c_emit_temps.oo`, `c_emit_args.oo`,
-   `c_emit_preamble.oo`, `ooda/oodac/emit/llvm/llvm_emit_olist.oo`,
-   and `ooda/oodac/emit/llvm/llvm_jit_engine.oo` all reference
-   `chs_rt_*` paths. After step 1, they flip to
-   `oodar/<subdir>/<file>.c` per the v3.0.0 6-subdir layout (and
-   thread cap tokens for the v3.0.0 public surface).
-3. **Delete `ooda/runtime/`** — 71 stale `chs_rt_*.c` duplicates
-   that the oodar extraction (v0.1.0) was meant to kill but
-   couldn't because the emit backends still pointed at them.
-4. **Delete `ooda/oodac/`** (now empty after step 1).
-5. **Audit ooda/ remaining** (`fixtures/`, `qa/`, `scripts/`,
-   `tests/`, `site/`, `templates/`, `tools/`, `vendor/`) — anything
-   still referenced by the extracted oodac moves with it;
-   everything else is dead.
-6. **Kill the `ooda/` monorepo** — the final "this is the legacy
-   coordination shell, no longer here" commit.
+The cleanup chain (in execution order) is:
 
-The gate is gemini's "oodac is done" signal. Per the standing rule
-("we can't clean up ooda until oodac is done"), nothing in
-`ooda/odac/` or `ooda/runtime/` is touched in the meantime.
+1. **oodac/ polyrepo flips its build paths off `chs_rt_*`.**
+   Currently 5 files in `oodac/` still reference
+   `chs_rt.c` / `chs_rt_*.c`:
+   - `oodac/cli/cli_build_cc.oo` (the parallel-build linker)
+   - `oodac/cli/cli_build_targets.oo` (build target table)
+   - `oodac/emit/c/c_emit_temps.oo` (C99 temp emission)
+   - `oodac/emit/c/c_emit_args.oo` (C99 arg passing)
+   - `oodac/emit/c/c_emit_preamble.oo` (C99 preamble)
+
+   When gemini ships oodac v1.0 (or a stable release that drops
+   the chs_rt_* references), these flip to
+   `oodar/<subdir>/<file>.c` per the oodar v3.0.0 6-subdir layout
+   (core, sec, fs, net, hw, app). The C99 emit backends also
+   thread the v3.0.0 cap tokens for the public surface
+   (oo_alloc, oo_free, oo_write_int, oo_read_int, oo_checkpoint,
+   oo_rollback, the 12 oo_weak_*/oo_control_block_* mutators,
+   oo_read_stdin, oo_file_stamp, the 5 oo_metrics_*).
+
+2. **Delete `ooda/runtime/`** — the 71 stale `chs_rt_*.c`
+   duplicates that the oodar extraction (v0.1.0) was meant to
+   kill but couldn't, because the oodac emit backends still
+   pointed at them. They are byte-equivalent to (and outdated
+   copies of) the canonical oodar/ files.
+
+3. **Audit `ooda/` remaining** (the renamed CLI: `build/`,
+   `fix/`, `fmt/`, `token/`, `main.oo`, `bin/`, `docs/`,
+   `examples/`, `qa/`, `scripts/`, `LICENSE`, `README.md`,
+   `ANCHOR.oo`) — anything still referenced by the oodac build
+   moves with it; everything else is dead. The renamed CLI
+   itself may be the right final home (or may be killed
+   entirely if its functionality is now subsumed by oodac's
+   own build driver).
+
+4. **Kill `ooda/`** if step 3 leaves it empty, OR
+   **retire `ooda/` to a tarball** if the renamed CLI is still
+   useful. The final "this is the legacy coordination shell, no
+   longer here" commit (or archive).
+
+The gate is gemini's "oodac v1.0 is shipped, build paths flipped"
+signal. Per the standing rule ("we can't clean up ooda until
+oodac is done"), nothing in `ooda/runtime/` or any `oodac/`
+build path is touched in the meantime. The `ooda/` directory
+itself CAN be touched for the renamed-CLI content (it was a
+rename, not a monorepo); only the `runtime/` chs_rt_*.c
+duplicates are off-limits.
+
+**v1.0.8 governance update:** the previous v1.0.7 §5 referenced
+the old `ooda/` monorepo (which has since been deleted) and
+`ooda/odac/` (which never existed in this form). This v1.0.8
+revision corrects both — the actual current state is the
+renamed `cli/` at `/home/jeryd/Projects/openOODA/ooda/` with a
+stale `runtime/` subdir, and the `oodac/` compiler as a
+separate polyrepo.
 
 > The install command lives at the top and bottom of this page —
 > it is the same component, not duplicated content.
