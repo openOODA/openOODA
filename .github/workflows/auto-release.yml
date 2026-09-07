@@ -109,18 +109,41 @@ jobs:
           merge-multiple: true
           path: dist/
 
-      # Validate assets exist and are flat files
+      # Validate assets exist, are flat files, and each binary has a matching .sha256 sidecar
       - name: Validate release assets
         if: ${{ inputs.artifact_pattern != '' && inputs.artifact_pattern != null }}
         run: |
           set -euo pipefail
           test -d dist || { echo "ERROR: dist/ directory missing"; exit 1; }
-          count=$(find dist/ -maxdepth 1 -type f | wc -l)
+          count=$(find dist/ -maxdepth 1 -type f ! -name '*.sha256' | wc -l)
           if [ "$count" -eq 0 ]; then
             echo "ERROR: No release binary files found in dist/"
             exit 1
           fi
-          echo "Validated $count asset(s) ready for release:"
+          missing=0
+          mismatch=0
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            case "$f" in *.sha256) continue ;; esac
+            base=$(basename "$f")
+            sidecar="dist/${base}.sha256"
+            if [ ! -s "$sidecar" ]; then
+              echo "ERROR: missing SHA-256 sidecar for $base"
+              missing=1
+              continue
+            fi
+            expected=$(awk '{print $1}' "$sidecar" | tr -d '\r\n ')
+            actual=$(sha256sum "$f" | awk '{print $1}')
+            if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+              echo "ERROR: SHA-256 mismatch for $base expected=${expected:-empty} actual=$actual"
+              mismatch=1
+            fi
+          done
+          if [ "$missing" -ne 0 ] || [ "$mismatch" -ne 0 ]; then
+            echo "ERROR: every dist/ binary must have a matching .sha256 sidecar"
+            exit 1
+          fi
+          echo "Validated $count asset(s) with matching .sha256 sidecars:"
           ls -lh dist/
 
       # Create and push tag only after assets are verified and if tag is new
