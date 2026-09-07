@@ -16,16 +16,17 @@ The other repos are siblings.
 
 ## 2. Surface
 
-Twelve repos. Git tags as of 2026-09-04.
+Twelve repos. Git tags as of 2026-09-07.
 Each website page cites `openOODA/{repo}/docs/`.
 
 | Repo | Role | Tag |
 |------|------|-----|
-| openOODA | Laws, RFCs, practices | v1.0.20 |
-| oodar | Gen 1 C host | v4.0.0 |
-| oodac | Compiler | v0.2.2 |
-| std | Standard library | v1.0.8 |
-| ooda | `ooda` driver | v0.2.7 |
+| openOODA | Laws, RFCs, practices | v2.10.3 |
+| oodar | Gen 1 C host | v4.0.5 |
+| oodac | Compiler | v0.2.8 |
+| std | Standard library | v1.0.11 |
+| ooda | `ooda` driver | v0.2.16 |
+| blackbox | Flight recorder | v0.0.3 |
 | install | apt, dnf, pacman | v0.1.6 |
 | opm | Package manager | v0.8.8 |
 | catalog | Public package list | v0.0.1 |
@@ -41,7 +42,7 @@ Repo `packaging` was renamed `install`. Public
 
 - **The submenu.** Each repo has its own page sourced from its
   `openOODA/{repo}/docs/` directory.
-- **The 14 capability tokens.** They appear across the LSP, MCP, and
+- **The 20 capability tokens.** They appear across the LSP, MCP, and
   std visualisations. There is no ambient authority anywhere in the
   stack. (oodar v3.0.0 added the 26th token, `Metrics`, which
   re-uses the v2.1.0-reserved bit 0x800 for the cap-gated
@@ -49,81 +50,22 @@ Repo `packaging` was renamed `install`. Public
   CRITICALs found by the depth-first audit; v3.2.0 added a 56-row
   contract test for fail-closed on cap=0; v3.3.0 added the Rule 2
   bitmask subset check via `oo_cap_attenuate_v2`. The cap table
-  is published at `oodar/sec/cap/cap_table.json` for lsp + oodac.)
+  is published at `oodar/sec/cap/cap_table.json` for lsp + oodac; north_star is 20.)
 - **The polyrepo topology.** See `RULES.oot` §1.23 for the
   why behind the split.
 
-## 5. ooda/ cleanup chain (gated on oodac)
+## 5. Substrate home is oodar
 
-**Actual state (2026-09-03):** the old `ooda/` monorepo was
-**deleted** by the user and `cli/` was **renamed to `ooda/`**.
-The current `ooda/` is the renamed CLI tool, which still
-contains a `runtime/` subdir with 71 stale `chs_rt_*.c` files
-that duplicate `oodar/`. The `oodac/` compiler is a separate
-polyrepo at `/home/jeryd/Projects/openOODA/oodac/` (v0.2.0).
+**Actual state (2026-09-07):** `oodac/` has no `runtime/` tree.
+Product build and `unique_fns` compile `oodar/oodar.c` plus a
+host_rt TU (emit-tmp helpers and the Landlock jail ctor).
+`ooda/` has no `runtime/` tree. The Gen 1 `oo_*` ABI lives in
+`oodar/` (6 per-domain subdirs, 104 .c files, v4.0.5). `oo_slist_slice` and
+`oo_sys_exec_wait` are real oodar symbols. `spawn`/`wait`/`kill`/
+`epoll`/`inotify`/`prctl` refuse in oodar after a cap check.
 
-The cleanup chain (in execution order) is:
-
-1. **oodac/ polyrepo flips its build paths off `chs_rt_*`.**
-   Currently 8 source files in `oodac/` still reference
-   `chs_rt.c` / `chs_rt_*.c`:
-   - `oodac/cli/cli_build_cc.oo` (the parallel-build linker)
-   - `oodac/cli/cli_build_targets.oo` (build target table)
-   - `oodac/emit/c/c_emit_temps.oo` (C99 temp emission)
-   - `oodac/emit/c/c_emit_args.oo` (C99 arg passing)
-   - `oodac/emit/c/c_emit_preamble.oo` (C99 preamble)
-   - `oodac/emit/llvm/llvm_emit_olist.oo` (LLVM IR oplist emission)
-   - `oodac/emit/llvm/llvm_native_bin.oo` (LLVM native bin emission)
-   - `oodac/emit/llvm/llvm_jit_engine.oo` (LLVM JIT engine)
-
-   (The remaining `chs_rt` hits in `oodac/.ooda-cache/` are
-   build artifacts, not source. The cache will be invalidated
-   after step 1.)
-
-   When gemini ships oodac v1.0 (or a stable release that drops
-   the chs_rt_* references), these flip to
-   `oodar/<subdir>/<file>.c` per the oodar v3.0.0 6-subdir layout
-   (core, sec, fs, net, hw, app). The C99 emit backends also
-   thread the v3.0.0 cap tokens for the public surface
-   (oo_alloc, oo_free, oo_write_int, oo_read_int, oo_checkpoint,
-   oo_rollback, the 12 oo_weak_*/oo_control_block_* mutators,
-   oo_read_stdin, oo_file_stamp, the 5 oo_metrics_*).
-
-2. **Delete `ooda/runtime/`** — the 71 stale `chs_rt_*.c`
-   duplicates that the oodar extraction (v0.1.0) was meant to
-   kill but couldn't, because the oodac emit backends still
-   pointed at them. They are byte-equivalent to (and outdated
-   copies of) the canonical oodar/ files.
-
-3. **Audit `ooda/` remaining** (the renamed CLI: `build/`,
-   `fix/`, `fmt/`, `token/`, `main.oo`, `bin/`, `docs/`,
-   `examples/`, `qa/`, `scripts/`, `LICENSE`, `README.md`,
-   `ANCHOR.oo`) — anything still referenced by the oodac build
-   moves with it; everything else is dead. The renamed CLI
-   itself may be the right final home (or may be killed
-   entirely if its functionality is now subsumed by oodac's
-   own build driver).
-
-4. **Kill `ooda/`** if step 3 leaves it empty, OR
-   **retire `ooda/` to a tarball** if the renamed CLI is still
-   useful. The final "this is the legacy coordination shell, no
-   longer here" commit (or archive).
-
-The gate is gemini's "oodac v1.0 is shipped, build paths flipped"
-signal. Per the standing rule ("we can't clean up ooda until
-oodac is done"), nothing in `ooda/runtime/` or any `oodac/`
-build path is touched in the meantime. The `ooda/` directory
-itself CAN be touched for the renamed-CLI content (it was a
-rename, not a monorepo); only the `runtime/` chs_rt_*.c
-duplicates are off-limits.
-
-**v1.0.8 governance update:** the previous v1.0.7 §5 referenced
-the old `ooda/` monorepo (which has since been deleted) and
-`ooda/odac/` (which never existed in this form). This v1.0.8
-revision corrects both — the actual current state is the
-renamed `cli/` at `/home/jeryd/Projects/openOODA/ooda/` with a
-stale `runtime/` subdir, and the `oodac/` compiler as a
-separate polyrepo.
+The old cleanup chain (drop `chs_rt_*` from oodac, then delete
+`ooda/runtime/`) is done. Do not re-add C shims under `oodac/`.
 
 > The install command lives at the top and bottom of this page —
 > it is the same component, not duplicated content.
