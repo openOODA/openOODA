@@ -19,11 +19,12 @@ ooda/<subsystem>/
   ANCHOR.oo                (front door; replaces mod.oo)
   <subdirs>/               (functional decomposition, each with its own ANCHOR.oo)
   qa/                       (self-tests that ship with the package)
-  scripts/                  (build, test, verify, release entry points)
+  .github/workflows/        (build, test, verify, release entry points, gh-owned)
   VERSION                   (independent version + compat contract)
   docs/                     (per-package documentation)
   examples/                 (sample usage)
 ```
+No `scripts/` directory with `.oo` runners. CI is the entry point.
 
 ### 2. The ANCHOR.oo Front Door
 Every dir with content gets `ANCHOR.oo` at the top. The Academy header provides orientation; the import statements register the siblings. Strategic-layer ANCHOR.oo gives the reading order; deeper ANCHOR.oo files are index cards.
@@ -33,11 +34,14 @@ ANCHOR.oo replaces `mod.oo` (one unified convention; see RFC-0003 §5).
 ### 3. qa/ — Self-Tests
 The 8 break-test drivers in `ooda/opm/qa/` (e.g., `today_proof.oo`, `pubgrub_proof.oo`) are concrete examples. Each proof file is a hostile test that the corresponding shipped function must pass. If a proof driver fails, the package fails to release.
 
-### 4. scripts/ — Build, Test, Verify, Release
-- `build.oo`: compile the subsystem lib and commands.
-- `test.oo`: run the qa/ break-test drivers.
-- `verify.oo`: parse VERSION, assert the mod.oo surface matches.
-- `release.oo`: build + test + verify + tarball output.
+### 4. .github/workflows/ — Build, Test, Verify, Release (gh-owned)
+Build, test, verify, and release entry points live in `.github/workflows/`
+as GitHub Actions steps, not in `.oo` runner files. `qa/` holds test code
+and proof drivers; CI invokes them directly.
+- `ci.yml` test job: run the `qa/` break-test drivers (via `oodac check`,
+  `emit-c` + `gcc` + run, or one `qa/` suite runner binary).
+- `ci.yml` build job: compile the subsystem lib and commands, upload assets.
+- Release: push to main; auto-release tags (RFC-0006). No `release.oo`.
 
 ### 5. VERSION — Independent Version + Compat Contract
 `ooda/<subsystem>/VERSION` declares the subsystem's own version and its requirements on the parent product. Format:
