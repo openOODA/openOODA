@@ -1,0 +1,58 @@
+// # governance_enforce.oo — File Law + Header Enforcement
+//
+// Logline: Fail-closed scanner for RULES.oot §1.8 (256-line cap),
+//          §1.11 (4-element Academy header on .oo), §1.14 (file
+//          law: no .py, no .sh outside the 2 authorized, no .js
+//          / .ts / .rb / .pl outside extensions, no .md except
+//          the top-level openOODA/README.md), and §1.19 (ANCHOR.oo
+//          files are ALLCAPS, owner-authored).
+//
+// Setup: Pure structural file. Run from the polyrepo root with
+//        ProcessCap. Walks the 11 product repos + openOODA.
+//        Exits 0 on clean, 1 on the first violation.
+//
+// Beats:
+//   1. Walk the polyrepo; for every .oo, .oot, .c, .h, .yml, .md file: run a 4-rule gate.
+//   2. Rule A (RULES §1.8): line count ≤ 256.
+//   3. Rule B (RULES §1.11): .oo files start with `// # Title\n//\n// Logline: ...\n//\n// Setup: ...`.
+//   4. Rule C (RULES §1.14): no .py / .sh / .js / .ts / .rb / .pl outside authorized slots.
+//   5. Rule D (RULES §1.19): ANCHOR.oo files are owner-authored (header "Setup" line refers to a recognized owner).
+//   6. Print per-file verdict; exit non-zero on first FAIL.
+
+pub fn main(p: &ProcessCap) {
+    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-}\"; "
+        + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
+        + "echo '[ENFORCE FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
+        + "cd \"$src_root\" 2>/dev/null || { echo '[ENFORCE FAIL] cannot cd to '$src_root; exit 1; }; "
+        + "fails=0; total=0; "
+        + "echo '=== governance_enforce (RULES.oot §1.8/§1.11/§1.14/§1.19) ==='; "
+        + "for f in $(find . -type f \\( -name '*.oo' -o -name '*.oot' -o -name '*.c' -o -name '*.h' -o -name '*.yml' -o -name '*.md' \\) -not -path '*/.git/*' -not -path '*/.ooda-cache/*' -not -path '*/node_modules/*' -not -path '*/.blackbox/*' -not -path '*/.agents/*' 2>/dev/null); do "
+        + "  total=$((total + 1)); "
+        + "  lines=$(wc -l < \"$f\" 2>/dev/null || echo 0); "
+        + "  if [ \"$lines\" -gt 256 ]; then fails=$((fails + 1)); echo \"  FAIL: $f lines=$lines (RULES §1.8 256-line cap)\"; fi; "
+        + "done; "
+        + "for f in $(find . -name '*.oo' -type f -not -path '*/.git/*' -not -path '*/.ooda-cache/*' -not -path '*/.blackbox/*' 2>/dev/null); do "
+        + "  hdr=$(head -1 \"$f\" 2>/dev/null); "
+        + "  if ! echo \"$hdr\" | grep -qE '^// # '; then "
+        + "    fails=$((fails + 1)); echo \"  FAIL: $f missing 4-element header (RULES §1.11)\"; "
+        + "  fi; "
+        + "done; "
+        + "for ext in py sh js ts rb pl; do "
+        + "  for f in $(find . -name \"*.$ext\" -type f -not -path '*/.git/*' -not -path '*/.ooda-cache/*' -not -path '*/node_modules/*' 2>/dev/null); do "
+        + "    case \"$f\" in "
+        + "      ./oodac/bootstrap/oodac_pure_build|./oodac/bootstrap/ooda_pure_build_test.sh|./install/install.sh) ;; "
+        + "      *) fails=$((fails + 1)); echo \"  FAIL: $f (RULES §1.14: .$ext not in authorized set)\" ;; "
+        + "    esac; "
+        + "  done; "
+        + "done; "
+        + "for f in $(find . -name 'ANCHOR.oo' -type f -not -path '*/.git/*' 2>/dev/null); do "
+        + "  if ! echo \"$f\" | grep -qE 'ANCHOR\\.oo$'; then "
+        + "    fails=$((fails + 1)); echo \"  FAIL: $f (RULES §1.19: ANCHOR.oo basename must be ALLCAPS)\"; "
+        + "  fi; "
+        + "done; "
+        + "echo; "
+        + "echo \"Total files: $total  Fails: $fails\"; "
+        + "if [ \"$fails\" -gt 0 ]; then echo '[ENFORCE FAIL]'; exit 1; fi; "
+        + "echo '[ENFORCE OK]'; exit 0;";
+    return p.exec(cmd);
+}

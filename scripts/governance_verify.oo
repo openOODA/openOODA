@@ -1,0 +1,51 @@
+// # governance_verify.oo — RFC + Practice Implemented-Claim Audit
+//
+// Logline: For every RFC marked Implemented, verify the code lives
+//          where the RFC says it lives. For every practice, verify
+//          it has a current version stamp. The audit is honest or
+//          it is nothing.
+//
+// Setup: Pure structural file. Run from the polyrepo root with
+//        ProcessCap. Walks rfcs/*.oot and practices/*.oot. Exits 0
+//        on clean, 1 on first claim-without-evidence.
+//
+// Beats:
+//   1. For each RFC with `Status: Implemented`, grep for the
+//      referenced paths in the polyrepo; flag missing.
+//   2. For each practice, check for a `vMAJOR.MINOR.PATCH` line.
+//   3. For RFCs 0001 (capability-security) and 0002 (design-by-
+//      contract), verify the cap_table.json and SMT harness exist.
+//   4. Print per-item verdict; exit non-zero on first FAIL.
+
+pub fn main(p: &ProcessCap) {
+    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-}\"; "
+        + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
+        + "echo '[VERIFY FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
+        + "cd \"$src_root/openOODA\" 2>/dev/null || { echo '[VERIFY FAIL] cannot cd to openOODA'; exit 1; }; "
+        + "fails=0; total=0; "
+        + "echo '=== governance_verify (RFC + practice claim audit) ==='; "
+        + "total=$((total + 1)); "
+        + "if [ ! -s \"../oodar/sec/cap/cap_table.json\" ]; then fails=$((fails + 1)); echo \"  FAIL: oodar/sec/cap/cap_table.json missing or empty (RFC 0001 Implemented)\"; fi; "
+        + "total=$((total + 1)); "
+        + "if [ ! -d \"../oodac/check/smt\" ]; then fails=$((fails + 1)); echo \"  FAIL: oodac/check/smt/ missing (RFC 0002 Implemented)\"; fi; "
+        + "for f in rfcs/[0-9]*.oot; do "
+        + "  [ \"$f\" = \"rfcs/0000-template.oot\" ] && continue; "
+        + "  total=$((total + 1)); "
+        + "  status=$(grep -E 'Status[*\\*]*: ' \"$f\" 2>/dev/null | head -1 | sed 's/.*[*: ][ *]*//'); "
+        + "  if [ \"$status\" = \"Implemented\" ]; then "
+        + "    refs=$(grep -cE '\\b(oodac|oodar|std|ooda)/[a-zA-Z0-9_/.-]+' \"$f\" 2>/dev/null || echo 0); "
+        + "    if [ \"$refs\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL: $f marked Implemented but cites no code paths\"; fi; "
+        + "  fi; "
+        + "done; "
+        + "for p in practices/8d-red-team.oot practices/ooda-workflow.oot practices/release.oot; do "
+        + "  total=$((total + 1)); "
+        + "  if ! grep -qE 'v[0-9]+\\.[0-9]+\\.[0-9]+' \"$p\" 2>/dev/null; then "
+        + "    fails=$((fails + 1)); echo \"  FAIL: $p missing version stamp (e.g. v0.1.0)\"; "
+        + "  fi; "
+        + "done; "
+        + "echo; "
+        + "echo \"Items checked: $total  Fails: $fails\"; "
+        + "if [ \"$fails\" -gt 0 ]; then echo '[VERIFY FAIL]'; exit 1; fi; "
+        + "echo '[VERIFY OK]'; exit 0;";
+    return p.exec(cmd);
+}

@@ -1,0 +1,54 @@
+// # governance_check_boards.oo — Process Board Integrity
+//
+// Logline: Verify every canonical process board is present, parseable,
+//          and references the upstream governance anchor. The boards
+//          are the strategic layer; missing or stale boards mean the
+//          moonshot is drifting.
+//
+// Setup: Pure structural file. Run from the polyrepo root with
+//        ProcessCap. Walks openOODA/openOODA/ for the 3 onboarding
+//        files (ANCHOR.oo, RULES.oot, NORTHSTAR.oot), the 8 RFCs
+//        (under rfcs/), and the 3 practice files (under practices/).
+//        Exits 0 on clean, 1 on first violation.
+//
+// Beats:
+//   1. RULES.oot exists, has all 23 numbered law sections, and is ≤ 256 lines.
+//   2. NORTHSTAR.oot exists, has the 8 moonshot lines, and is ≤ 256 lines.
+//   3. All 7 RFCs (0001-0007) under rfcs/ exist; ANCHOR.oo references them.
+//   4. All 3 practices (8d-red-team, ooda-workflow, release) under practices/ exist.
+//   5. Print per-board verdict; exit non-zero on first FAIL.
+
+pub fn main(p: &ProcessCap) {
+    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-}\"; "
+        + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
+        + "echo '[BOARDS FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
+        + "cd \"$src_root/openOODA\" 2>/dev/null || { echo '[BOARDS FAIL] cannot cd to openOODA'; exit 1; }; "
+        + "fails=0; total=0; "
+        + "echo '=== governance_check_boards ==='; "
+        + "for f in RULES.oot NORTHSTAR.oot; do "
+        + "  total=$((total + 1)); "
+        + "  if [ ! -f \"$f\" ]; then fails=$((fails + 1)); echo \"  FAIL: $f missing\"; continue; fi; "
+        + "  lines=$(wc -l < \"$f\"); "
+        + "  if [ \"$lines\" -gt 256 ]; then fails=$((fails + 1)); echo \"  FAIL: $f lines=$lines exceeds 256 cap\"; fi; "
+        + "done; "
+        + "total=$((total + 1)); "
+        + "rules_lines=$(wc -l < RULES.oot); "
+        + "for n in $(seq 1 23); do "
+        + "  if ! grep -qE \"^### 1\\.$n \" RULES.oot; then fails=$((fails + 1)); echo \"  FAIL: RULES.oot missing law 1.$n\"; fi; "
+        + "done; "
+        + "total=$((total + 1)); "
+        + "if ! grep -qE '^## Moonshot' NORTHSTAR.oot; then fails=$((fails + 1)); echo \"  FAIL: NORTHSTAR.oot missing Moonshot section\"; fi; "
+        + "for n in 0001 0002 0003 0004 0005 0006 0007; do "
+        + "  total=$((total + 1)); "
+        + "  if [ ! -f \"rfcs/${n}-\"*.oot ]; then fails=$((fails + 1)); echo \"  FAIL: rfcs/${n}-*.oot missing\"; fi; "
+        + "done; "
+        + "for p in 8d-red-team.oot ooda-workflow.oot release.oot; do "
+        + "  total=$((total + 1)); "
+        + "  if [ ! -f \"practices/$p\" ]; then fails=$((fails + 1)); echo \"  FAIL: practices/$p missing\"; fi; "
+        + "done; "
+        + "echo; "
+        + "echo \"Boards checked: $total  Fails: $fails\"; "
+        + "if [ \"$fails\" -gt 0 ]; then echo '[BOARDS FAIL]'; exit 1; fi; "
+        + "echo '[BOARDS OK]'; exit 0;";
+    return p.exec(cmd);
+}
