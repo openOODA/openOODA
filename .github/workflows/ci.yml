@@ -1,0 +1,66 @@
+name: openOODA CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target_tag:
+        description: 'Specific release tag to target or rebuild (optional, e.g. v2.11.0)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout openOODA
+        uses: actions/checkout@v4
+        with:
+          path: openOODA
+      - name: install openOODA toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL https://openooda.org/install.sh | bash
+          echo "$HOME/.openooda/bin" >> "$GITHUB_PATH"
+      - name: run governance verifiers (RULES §1.8/§1.11/§1.14/§1.19)
+        working-directory: ${{ github.workspace }}
+        env:
+          OODA_COMPILER: ${{ github.workspace }}/.openooda/bin/oodac
+          OODA_FS_READDIR: ${{ github.workspace }}
+          OODA_FS_WRITEDIR: ${{ github.workspace }}
+          OODA_NO_JAIL: '1'
+          OODA_REPO_ROOT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          echo '=== governance_enforce.oo ==='
+          ~/.openooda/bin/ooda run openOODA/openOODA/scripts/governance_enforce.oo
+          echo '=== governance_check_boards.oo ==='
+          ~/.openooda/bin/ooda run openOODA/openOODA/scripts/governance_check_boards.oo
+          echo '=== governance_verify.oo ==='
+          ~/.openooda/bin/ooda run openOODA/openOODA/scripts/governance_verify.oo
+          echo '=== redteam_orchestrate.oo ==='
+          ~/.openooda/bin/ooda run openOODA/openOODA/scripts/redteam_orchestrate.oo
+      - name: run moonshot scorecard proof (NORTHSTAR 8th line)
+        working-directory: ${{ github.workspace }}
+        env:
+          OODA_COMPILER: ${{ github.workspace }}/.openooda/bin/oodac
+          OODA_FS_READDIR: ${{ github.workspace }}
+          OODA_FS_WRITEDIR: ${{ github.workspace }}
+          OODA_NO_JAIL: '1'
+          OODA_REPO_ROOT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          echo '=== proof_of_today.oo ==='
+          ~/.openooda/bin/ooda run openOODA/openOODA/scripts/proof_of_today.oo
+
+  auto-release:
+    needs: [verify]
+    uses: ./.github/workflows/auto-release.yml@main
+    with:
+      artifact_pattern: 'release-assets-*'
+      target_tag: ${{ inputs.target_tag || '' }}
