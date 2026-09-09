@@ -18,11 +18,13 @@
 //   4. All 3 practices (8d-red-team, ooda-workflow, release) under practices/ exist.
 //   5. Print per-board verdict; exit non-zero on first FAIL.
 
+import "std/fs/process/process.oo";
+
 pub fn main(p: &ProcessCap) {
     let cmd: String = "src_root=\"${OODA_REPO_ROOT:-}\"; "
         + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "echo '[BOARDS FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
-        + "cd \"$src_root/openOODA\" 2>/dev/null || { echo '[BOARDS FAIL] cannot cd to openOODA'; exit 1; }; "
+        + "cd \"$src_root/openOODA\" || { echo '[BOARDS FAIL] cannot cd to openOODA'; exit 1; }; "
         + "fails=0; total=0; "
         + "echo '=== governance_check_boards ==='; "
         + "for f in RULES.oot NORTHSTAR.oot; do "
@@ -50,5 +52,8 @@ pub fn main(p: &ProcessCap) {
         + "echo \"Boards checked: $total  Fails: $fails\"; "
         + "if [ \"$fails\" -gt 0 ]; then echo '[BOARDS FAIL]'; exit 1; fi; "
         + "echo '[BOARDS OK]'; exit 0;";
-    return p.exec(cmd);
+    let r: Result[String, String] = process_exec(p, cmd);
+    let out: String = match r { Ok(s) => s, Err(e) => "ERR: " + e };
+    print(out);
+    return r;
 }

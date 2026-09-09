@@ -22,29 +22,31 @@
 //   8. D8 Scorecard: openOODA/scripts/moonshot_scorecard.oot exists and is current.
 //   9. Print per-dimension verdict; exit 1 if any FAIL.
 
+import "std/fs/process/process.oo";
+
 pub fn main(p: &ProcessCap) {
     let cmd: String = "src_root=\"${OODA_REPO_ROOT:-}\"; "
         + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "echo '[REDTEAM FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
-        + "cd \"$src_root\" 2>/dev/null || { echo '[REDTEAM FAIL] cannot cd to '$src_root; exit 1; }; "
+        + "cd \"$src_root\" || { echo '[REDTEAM FAIL] cannot cd to '$src_root; exit 1; }; "
         + "fails=0; total=0; "
         + "echo '=== redteam_orchestrate (8-D Red Team) ==='; "
         + "total=$((total + 1)); "
-        + "slots=$(python3 -c 'import json,sys; print(len(json.load(open(\"oodar/sec/cap/cap_table.json\"))))' 2>/dev/null || echo 0); "
+        + "slots=$(python3 -c 'import json,sys; print(len(json.load(open(\"oodar/sec/cap/cap_table.json\"))))' || echo 0); "
         + "if [ \"$slots\" -lt 20 ]; then fails=$((fails + 1)); echo \"  FAIL D1: cap_table slots=$slots (need ≥ 20, RULES §1.18)\"; else echo \"  PASS D1: cap_table slots=$slots\"; fi; "
         + "total=$((total + 1)); "
-        + "smt_harnesses=$(find oodac/check/smt -name '*.oo' -type f 2>/dev/null | wc -l); "
+        + "smt_harnesses=$(find oodac/check/smt -name '*.oo' -type f | wc -l); "
         + "if [ \"$smt_harnesses\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D2: SMT harness count=$smt_harnesses (need ≥ 1, RFC 0002)\"; else echo \"  PASS D2: SMT harnesses=$smt_harnesses\"; fi; "
         + "total=$((total + 1)); "
         + "pinned=0; "
         + "for r in oodar ooda opm install mcp lsp catalog blackbox website; do "
-        + "  if grep -qE 'uses: openOODA/openOODA/\\.github/workflows/auto-release\.yml@[^m]' $r/.github/workflows/ci.yml 2>/dev/null; then pinned=$((pinned + 1)); fi; "
+        + "  if grep -qE 'uses: openOODA/openOODA/\\.github/workflows/auto-release\.yml@[^m]' $r/.github/workflows/ci.yml; then pinned=$((pinned + 1)); fi; "
         + "done; "
         + "if [ \"$pinned\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D3: zero consumer ci.yml pin a non-main tag (need ≥ 1, RFC 0006 §4)\"; else echo \"  PASS D3: pinned consumers=$pinned/9\"; fi; "
         + "total=$((total + 1)); "
         + "gated=0; "
         + "for r in oodar ooda opm install mcp lsp catalog blackbox website; do "
-        + "  if grep -q 'blackbox-gate:' $r/.github/workflows/ci.yml 2>/dev/null; then gated=$((gated + 1)); fi; "
+        + "  if grep -q 'blackbox-gate:' $r/.github/workflows/ci.yml; then gated=$((gated + 1)); fi; "
         + "done; "
         + "if [ \"$gated\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D4: zero consumer ci.yml has blackbox-gate (need ≥ 1, RULES §1.10)\"; else echo \"  PASS D4: blackbox-gated consumers=$gated/9\"; fi; "
         + "total=$((total + 1)); "
@@ -61,5 +63,8 @@ pub fn main(p: &ProcessCap) {
         + "echo \"Dimensions: $total  Fails: $fails\"; "
         + "if [ \"$fails\" -gt 0 ]; then echo '[REDTEAM FAIL]'; exit 1; fi; "
         + "echo '[REDTEAM OK]'; exit 0;";
-    return p.exec(cmd);
+    let r: Result[String, String] = process_exec(p, cmd);
+    let out: String = match r { Ok(s) => s, Err(e) => "ERR: " + e };
+    print(out);
+    return r;
 }

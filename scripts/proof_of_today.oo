@@ -16,15 +16,20 @@
 //   3. Score the 8 moonshot lines from on-disk evidence.
 //   4. Print the table and exit 0 if headline ≥ 5/10, else 1 (fail-closed).
 
+import "std/fs/process/process.oo";
+
 pub fn main(p: &ProcessCap) {
     let cmd: String = "src_root=\"${OODA_REPO_ROOT:-}\"; "
         + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "echo '[PROOF FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
-        + "cd \"$src_root\" 2>/dev/null || { echo '[PROOF FAIL] cannot cd to '$src_root; exit 1; }; "
+        + "cd \"$src_root\" || { echo '[PROOF FAIL] cannot cd to '$src_root; exit 1; }; "
+        + "export GIT_PAGER=cat PAGER=cat; "
         + "date_stamp=$(date -u +%Y-%m-%d); "
         + "echo '=== Moonshot 10/10 Scorecard — '\"$date_stamp\"' ==='; "
         + "echo; "
-        + "drift_commits=$(git -C openOODA log --oneline --since='2 days ago' 2>/dev/null | grep -cE 'truth-drift|fix(.*website|.*catalog|.*blackbox|.*openOODA)' || echo 0); "
+        + "drift_commits=$(git --no-pager -C openOODA log --oneline --since='2 days ago' 2>&1 | grep -cE 'truth-drift|fix(.*website|.*catalog|.*blackbox|.*openOODA)' || echo 0); "
+        + "drift_commits=$(echo \"$drift_commits\" | tail -1 | tr -dc '0-9'); "
+        + "[ -z \"$drift_commits\" ] && drift_commits=0; "
         + "s1=$(( drift_commits > 4 ? 8 : 5 )); "
         + "echo \"1. No trust without proof          $s1/10  (drift fixes this session: $drift_commits)\"; "
         + "caps_ok=0; "
@@ -32,25 +37,26 @@ pub fn main(p: &ProcessCap) {
         + "s2=$(( caps_ok == 1 ? 9 : 3 )); "
         + "echo \"2. Capabilities replace trusted... $s2/10  (cap_table.json present: $caps_ok)\"; "
         + "contract_ok=0; "
-        + "cd_contracts=$(git -C oodac log -1 --oneline 2>/dev/null | grep -c 'typed artifact v3'); "
-        + "cd_contracts=$(( cd_contracts + 0 )); "
+        + "cd_contracts=$(git --no-pager -C oodac log -1 --oneline 2>&1 | grep -c 'typed artifact v3'); "
+        + "cd_contracts=$(echo \"$cd_contracts\" | tail -1 | tr -dc '0-9'); "
+        + "[ -z \"$cd_contracts\" ] && cd_contracts=0; "
         + "[ \"$cd_contracts\" -ge 1 ] && contract_ok=1; "
         + "s3=$(( contract_ok == 1 ? 6 : 2 )); "
         + "echo \"3. Contracts replace trusted...    $s3/10  (typed artifact v3 landed: $cd_contracts)\"; "
         + "wired=0; pinned=0; "
         + "for r in oodar ooda opm install mcp lsp catalog blackbox website; do "
-        + "  if grep -q 'uses: openOODA/openOODA/.github/workflows/auto-release' $r/.github/workflows/*.yml 2>/dev/null; then wired=$((wired + 1)); fi; "
-        + "  if grep -q 'uses: openOODA/openOODA/.github/workflows/auto-release\.yml@[^m]' $r/.github/workflows/*.yml 2>/dev/null; then pinned=$((pinned + 1)); fi; "
+        + "  if grep -q 'uses: openOODA/openOODA/.github/workflows/auto-release' $r/.github/workflows/*.yml; then wired=$((wired + 1)); fi; "
+        + "  if grep -q 'uses: openOODA/openOODA/.github/workflows/auto-release\.yml@[^m]' $r/.github/workflows/*.yml; then pinned=$((pinned + 1)); fi; "
         + "done; "
-        + "cd \"$src_root\" 2>/dev/null; "
+        + "cd \"$src_root\"; "
         + "s4=$(( wired * 5 / 9 + pinned * 5 / 9 )); "
         + "[ \"$s4\" -gt 10 ] && s4=10; "
         + "echo \"4. Reproducible builds...          $s4/10  (wired: $wired/9  pinned: $pinned/9)\"; "
         + "ci_red=0; "
         + "for r in oodar ooda opm install mcp lsp catalog blackbox website; do "
-        + "  if grep -qE 'redteam|double-run|8d-red|blackbox autopsy' $r/.github/workflows/*.yml 2>/dev/null; then ci_red=$((ci_red + 1)); fi; "
+        + "  if grep -qE 'redteam|double-run|8d-red|blackbox autopsy' $r/.github/workflows/*.yml; then ci_red=$((ci_red + 1)); fi; "
         + "done; "
-        + "cd \"$src_root\" 2>/dev/null; "
+        + "cd \"$src_root\"; "
         + "s5=$(( ci_red * 10 / 9 )); "
         + "[ \"$s5\" -gt 10 ] && s5=10; "
         + "echo \"5. Even evidence is verified       $s5/10  (repos with 8D Red Team in CI: $ci_red/9)\"; "
@@ -77,5 +83,8 @@ pub fn main(p: &ProcessCap) {
         + "fi; "
         + "echo '[PROOF OK] headline ≥ 5/10; release-permitted.'; "
         + "exit 0; ";
-    return p.exec(cmd);
+    let r: Result[String, String] = process_exec(p, cmd);
+    let out: String = match r { Ok(s) => s, Err(e) => "ERR: " + e };
+    print(out);
+    return r;
 }
