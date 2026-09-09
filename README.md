@@ -50,5 +50,4 @@ All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://
 
 ## License
 
-Dual-licensed under your choice of MIT or Apache 2.0. See [LICENSE](LICENSE)
-for full text and the canonical URLs.
+Licensed under MIT. See [LICENSE](LICENSE) for full text.
