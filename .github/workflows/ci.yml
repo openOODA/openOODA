@@ -22,33 +22,43 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: openOODA
-      - name: install openOODA toolchain
+      - name: checkout oodac (prebuilt compiler)
+        uses: actions/checkout@v4
+        with:
+          repository: openOODA/oodac
+          path: oodac
+      - name: checkout oodar (Gen 1 C host, for the std/fs/net/secrets bindings)
+        uses: actions/checkout@v4
+        with:
+          repository: openOODA/oodar
+          path: oodar
+      - name: require compiler
         run: |
           set -euo pipefail
-          curl -fsSL https://openooda.org/install.sh | bash
-          echo "$HOME/.openooda/bin" >> "$GITHUB_PATH"
+          test -x oodac/bin/oodac || chmod +x oodac/bin/oodac
+          test -f oodar/core/blackbox/blackbox.c || { echo "missing oodar/core/blackbox/blackbox.c"; exit 1; }
       - name: run governance verifiers (RULES §1.8/§1.11/§1.14/§1.19)
         working-directory: ${{ github.workspace }}
         env:
-          OODA_COMPILER: ${{ github.workspace }}/.openooda/bin/oodac
-          OODA_FS_REREADIR: ${{ github.workspace }}
+          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac
+          OODA_FS_READDIR: ${{ github.workspace }}
           OODA_FS_WRITEDIR: ${{ github.workspace }}
           OODA_NO_JAIL: '1'
           OODA_REPO_ROOT: ${{ github.workspace }}
         run: |
           set -euo pipefail
           echo '=== governance_enforce.oo ==='
-          ~/.openooda/bin/ooda run openOODA/openOODA/scripts/governance_enforce.oo
+          "$OODA_COMPILER" run openOODA/openOODA/scripts/governance_enforce.oo
           echo '=== governance_check_boards.oo ==='
-          ~/.openooda/bin/ooda run openOODA/openOODA/scripts/governance_check_boards.oo
+          "$OODA_COMPILER" run openOODA/openOODA/scripts/governance_check_boards.oo
           echo '=== governance_verify.oo ==='
-          ~/.openooda/bin/ooda run openOODA/openOODA/scripts/governance_verify.oo
+          "$OODA_COMPILER" run openOODA/openOODA/scripts/governance_verify.oo
           echo '=== redteam_orchestrate.oo ==='
-          ~/.openooda/bin/ooda run openOODA/openOODA/scripts/redteam_orchestrate.oo
+          "$OODA_COMPILER" run openOODA/openOODA/scripts/redteam_orchestrate.oo
       - name: run moonshot scorecard proof (NORTHSTAR 8th line)
         working-directory: ${{ github.workspace }}
         env:
-          OODA_COMPILER: ${{ github.workspace }}/.openooda/bin/oodac
+          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac
           OODA_FS_READDIR: ${{ github.workspace }}
           OODA_FS_WRITEDIR: ${{ github.workspace }}
           OODA_NO_JAIL: '1'
@@ -56,4 +66,4 @@ jobs:
         run: |
           set -euo pipefail
           echo '=== proof_of_today.oo ==='
-          ~/.openooda/bin/ooda run openOODA/openOODA/scripts/proof_of_today.oo
+          "$OODA_COMPILER" run openOODA/openOODA/scripts/proof_of_today.oo
