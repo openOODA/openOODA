@@ -1,0 +1,144 @@
+// # publish_daily_audit.oo — Daily Audit Page Publisher
+//
+// Logline: Run proof_of_today in double-run, format the verdict, and
+//          write a one-page `.oot` to the website pulled folder.
+//
+// Setup: Pure structural file. Run with OODA_REPO_ROOT set to the
+//        polyrepo root (absolute, no ..). proof_of_today.oo embeds
+//        its shell in a `let cmd: String = "..."` literal; that
+//        embedded shell is the host-runnable form (oodac build is
+//        broken on the print call in llvm emit). publish_daily_audit
+//        writes a small Python extractor to a temp dir via heredoc,
+//        uses it to pull the embedded shell from each .oo lock file,
+//        runs each twice in fresh subshells, and writes the page.
+//        The page lands at <website>/pulled/daily_audit_<YYYY-MM-DD>.oot.
+//
+// Beats:
+//   1. Validate OODA_REPO_ROOT (absolute, no ..).
+//   2. Write Python extractor to temp dir; extract proof_of_today shell.
+//   3. Double-run extracted proof shell; capture headline + diff hash.
+//   4. Capture tag-drift count (12 product repos vs INDEX.oot).
+//   5. Write the daily page; print the path.
+//   6. Exit 0 on pass (headline >= 5), 1 on fail.
+
+import "std/fs/process/process.oo";
+
+pub fn main(p: &ProcessCap) {
+    let cmd: String = "set -e; "
+        + "src_root=\"${OODA_REPO_ROOT:-}\"; "
+        + "case \"$src_root\" in /*) ;; *) echo '[PUBLISH FAIL] OODA_REPO_ROOT must be set to an absolute path'; exit 1 ;; esac; "
+        + "case \"$src_root\" in *..*) echo '[PUBLISH FAIL] OODA_REPO_ROOT must not contain ..'; exit 1 ;; esac; "
+        + "cd \"$src_root\" || { echo '[PUBLISH FAIL] cannot cd to '\"$src_root\"; exit 1; }; "
+        + "export GIT_PAGER=cat PAGER=cat; "
+        + "date_stamp=$(date -u +%Y-%m-%d); "
+        + "out_dir=\"$src_root/website/pulled\"; "
+        + "out_file=\"$out_dir/daily_audit_${date_stamp}.oot\"; "
+        + "mkdir -p \"$out_dir\"; "
+        + "tmp=$(mktemp -d); trap 'rm -rf \"$tmp\"' EXIT; "
+        + "echo '=== publish_daily_audit — '\"$date_stamp\"' ==='; "
+        + "cat > \"$tmp/extract.py\" <<'PYEOF'\n"
+        + "import re, sys\n"
+        + "src = open(sys.argv[1]).read()\n"
+        + "lines = []\n"
+        + "in_cmd = False\n"
+        + "for line in src.splitlines():\n"
+        + "    if line.lstrip().startswith('//'):\n"
+        + "        continue\n"
+        + "    if not in_cmd and re.search(r'let cmd: String = \"', line):\n"
+        + "        in_cmd = True\n"
+        + "        m = re.search(r'\"(.*)\"\\s*$', line)\n"
+        + "        if m:\n"
+        + "            lines.append(m.group(1))\n"
+        + "        continue\n"
+        + "    if in_cmd:\n"
+        + "        if re.search(r'\";\\s*$', line):\n"
+        + "            break\n"
+        + "        m = re.search(r'\\+ \"(.*)\"\\s*$', line)\n"
+        + "        if m:\n"
+        + "            lines.append(m.group(1))\n"
+        + "shell = ''.join(lines)\n"
+        + "shell = shell.replace('\\\\\"', '\"').replace('\\\\\\\\', '\\\\')\n"
+        + "sys.stdout.write(shell)\n"
+        + "PYEOF\n"
+        + "python3 \"$tmp/extract.py\" openOODA/scripts/proof_of_today.oo > \"$tmp/proof.sh\"; "
+        + "chmod +x \"$tmp/proof.sh\"; "
+        + "for run in 1 2; do OODA_REPO_ROOT=\"$src_root\" bash \"$tmp/proof.sh\" > \"$tmp/proof_${run}.out\" 2>&1 || true; done; "
+        + "h1=$(sha256sum \"$tmp/proof_1.out\" | awk '{print $1}'); "
+        + "h2=$(sha256sum \"$tmp/proof_2.out\" | awk '{print $1}'); "
+        + "if [ \"$h1\" != \"$h2\" ]; then pdiv=no; else pdiv=yes; fi; "
+        + "headline=$(grep -oE 'Headline: [0-9]+' \"$tmp/proof_1.out\" | awk '{print $2}'); "
+        + "[ -z \"$headline\" ] && headline=0; "
+        + "drift=0; "
+        + "for r in openOODA oodar oodac std ooda install opm catalog lsp mcp blackbox website; do "
+        + "  got=$(cd $r && git describe --tags --abbrev=0 2>/dev/null); "
+        + "  exp=$(awk -F'|' -v R=\"$r\" '$0 ~ \"\\\\| \"R\" \\\\\\|\" {gsub(/ /,\"\",$4); print $4; exit}' openOODA/docs/INDEX.oot); "
+        + "  if [ \"$got\" != \"$exp\" ]; then drift=$((drift + 1)); fi; "
+        + "done; "
+        + "session=\"mvs_b2115d13599946ac965f975f0e628547\"; "
+        + "{ "
+        + "  echo '# Daily Audit — '\"$date_stamp\"; "
+        + "  echo; "
+        + "  echo 'File: website/pulled/daily_audit_'\"$date_stamp\"'.oot'; "
+        + "  echo; "
+        + "  echo 'Source: openOODA/openOODA/docs/audit-history/'; "
+        + "  echo; "
+        + "  echo 'Publisher: Mavis, session '\"$session\"; "
+        + "  echo; "
+        + "  echo '## Headline'; "
+        + "  echo; "
+        + "  if [ \"$headline\" -ge 5 ]; then "
+        + "    echo 'Verdict: PASS — '\"$headline\"'/10 (>= 5/10 threshold; RULES.oot sec 1.17).'; "
+        + "  else "
+        + "    echo 'Verdict: FAIL — headline '\"$headline\"'/10 (below 5/10 release block).'; "
+        + "  fi; "
+        + "  echo; "
+        + "  echo '## proof_of_today (double-run, RULES.oot sec 1.10)'; "
+        + "  echo; "
+        + "  echo 'Run1 sha256: '\"$h1\"; "
+        + "  echo 'Run2 sha256: '\"$h2\"; "
+        + "  echo 'Divergent: '\"$pdiv\"; "
+        + "  echo; "
+        + "  echo '## Moonshot scorecard (proof_of_today.oo)'; "
+        + "  echo; "
+        + "  echo '```'; "
+        + "  grep -E '^[0-9]\\. |Headline:' \"$tmp/proof_1.out\" || true; "
+        + "  echo '```'; "
+        + "  echo; "
+        + "  echo '## Drift'; "
+        + "  echo; "
+        + "  echo 'Tag-drift count (12 product repos vs openOODA/docs/INDEX.oot): '\"$drift\"; "
+        + "  echo; "
+        + "  if [ \"$drift\" -gt 0 ]; then echo 'INDEX.oot snapshot is stale. Re-run drift-refresh.'; else echo 'INDEX.oot snapshot is current.'; fi; "
+        + "  echo; "
+        + "  echo '## Deferred to other mcode (compiler / host lane)'; "
+        + "  echo; "
+        + "  echo '- oodac/check/smt/ missing (RFC-0002 evidence gap, CRITICAL).'; "
+        + "  echo '- 3 files exceed 256-line cap (oodac CI, oodac fixture, oodar CHANGES).'; "
+        + "  echo '- 2 .oo files missing 4-element Academy header (ooda/fix/text.oo, oodac/qa/scratch_lineno.oo).'; "
+        + "  echo '- oodac build fails at LLVM emit on print call; 3 oodac_* MCP tools broken.'; "
+        + "  echo '- oodac/check/diag_json.oo:100 fix_hint references deleted openOODA/SHIPPED.oot.'; "
+        + "  echo; "
+        + "  echo '## Uncommitted artifacts (flagged, not shipped)'; "
+        + "  echo; "
+        + "  echo '- install/audit/2026-09-10-mcp-lsp-blackbox-usability.oot (install/ lane).'; "
+        + "  echo; "
+        + "  echo '## Cross-references'; "
+        + "  echo; "
+        + "  echo '- openOODA/docs/INDEX.oot — tag snapshot (drift SSoT).'; "
+        + "  echo '- openOODA/scripts/moonshot_scorecard.oot — moonshot mirror.'; "
+        + "  echo '- openOODA/scripts/proof_of_today.oo — scorecard driver.'; "
+        + "  echo '- RULES.oot sec 1.10 — double-run law.'; "
+        + "  echo '- RULES.oot sec 1.17 — 80/20 leverage; 5/10 release block.'; "
+        + "} > \"$out_file\"; "
+        + "echo; "
+        + "echo \"Wrote: $out_file\"; "
+        + "lines=$(wc -l < \"$out_file\"); "
+        + "if [ \"$lines\" -gt 256 ]; then echo \"[PUBLISH FAIL] page is $lines lines (> 256 cap)\"; exit 1; fi; "
+        + "if [ \"$headline\" -lt 5 ]; then echo '[PUBLISH FAIL] headline below 5/10 release block'; exit 1; fi; "
+        + "if [ \"$pdiv\" = \"no\" ]; then echo '[PUBLISH FAIL] proof_of_today runs divergent'; exit 1; fi; "
+        + "echo '[PUBLISH OK]'; exit 0;";
+    let r: Result[String, String] = process_exec(p, cmd);
+    let out: String = match r { Ok(s) => s, Err(e) => "ERR: " + e };
+    print(out);
+    return r;
+}
