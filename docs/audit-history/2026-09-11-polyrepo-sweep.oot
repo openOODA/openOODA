@@ -1,0 +1,190 @@
+// # 2026-09-11 Polyrepo Sweep — All 13 Repos
+//
+// Logline: Whole-tree audit of the openOODA polyrepo on 2026-09-11,
+//          one day after the 2026-09-10 focused-audit round. File law,
+//          structure, cross-reference drift, and zero-trust execution
+//          against the installed release binaries (~/.openooda/bin).
+//          Priority lane: std/ (26 dirty files). One report, this one;
+//          per-repo focused reports where findings warrant.
+//
+// Setup:  Authored 2026-09-11 by Devin (interactive audit session).
+//         Binary-parity note: checks ran on BOTH on-PATH binaries
+//         (~/.local/bin, stale 2026-09-09) and the certified set
+//         (~/.openooda/bin, 2026-09-11) — see finding C1. Evidence is
+//         file:line on disk plus executed probes. Prior-round audits:
+//         docs/audit-history/2026-09-10-* and <repo>/audit/.
+//
+// Beats:
+//   1. Per-repo verdict table (13 repos).
+//   2. File law results (line cap, headers, extensions, anchors).
+//   3. Zero-trust execution (release binary, double-run).
+//   4. Binary parity (RULES §1.10 uncommitted amendment).
+//   5. Findings by severity (CRITICAL/MAJOR/MINOR/NOTE).
+//   6. Cross-references to RULES / prior audits.
+
+// ## 1. Per-repo verdict
+
+// | Repo        | Files | Dirty | Verdict | Note |
+// |-------------|-------|-------|---------|------|
+// | openOODA    | 39    | 4     | MIXED   | RULES.oot §1.10 rewrite + 8d-red-team.oot uncommitted; qa/polyrepo_suite.oo new, checks OK. File: drift n6. |
+// | ooda        | 76    | 21    | OK-WIP  | All modified files check OK; all 12 qa probes wired into suite.oo; ci.yml adds real binary-parity gate. Prior findings closed. |
+// | oodac       | 688   | 10    | OK-WIP  | LLVM-emit repair WIP; all 11 modified files check OK. qa/scratch_lineno.oo unheaded; 3 File: drifts; emit-llvm build still fails (known). |
+// | oodar       | 249   | 0     | OK      | Clean. Last commit syncs VERSION 4.0.7→4.0.8 + bump-version.yml. 37 ANCHOR.oo. |
+// | std         | 5905  | 26    | FAIL    | MAJOR: net/ANCHOR.oo fails `oodac check` (use-after-move in net/http_resp_parse.oo:81-84, committed since 2026-09-02). Details: std/audit/2026-09-11-focused-std.oot. |
+// | opm         | 116   | 2     | OK-WIP  | New qa/suite.oo checks OK; prior audit file uncommitted. |
+// | catalog     | 39    | 1     | OK      | index.sig + index.minisig + registry.pub present; audit file uncommitted. |
+// | lsp         | 107   | 2     | OK-WIP  | New qa/suite.oo checks OK; audit/ dir uncommitted. |
+// | mcp         | 87    | 1     | OK      | tools/list returns exactly 26 tools (docs claim 26). Audit file uncommitted. |
+// | install     | 38    | 1     | MIXED   | install.sh fail-closed verified (missing sidecar/mismatch → refuse). Re-install achieved dist==installed parity but left the ~/.local/bin stale shadow — see install/audit/2026-09-11-focused-install.oot. |
+// | blackbox    | 70    | 1     | OK      | Binary works; audit/ dir uncommitted. |
+// | website     | 89    | 1     | OK      | 43 residual .js = documented deploy surface (audit/file-law.oot); tests/test_copy.js is a test script — count held vs prior audit. |
+// | .github     | 17    | 0     | MINOR   | ISSUE_TEMPLATE/*.oot (2 files) carry YAML frontmatter, no .oot header — platform files; flagged for consistency. |
+
+// ## 2. File law (mechanical pass, all repos)
+
+// | Check | Result | Evidence |
+// |-------|--------|----------|
+// | 256-line cap (§1.8) | PASS | 7,047 oo/oot scanned; only over-cap file is oodac/tests/fixtures/boundary_257_lines.oo:257 — a deliberate boundary fixture. |
+// | Academy header on .oo (§1.11) | 2 FAIL | oodac/qa/scratch_lineno.oo (no header, scratch leftover); std/qa/probe_sdl_window.oo (3-element, missing Setup:). The 104 headerless files under oodac/bootstrap/corpus/ are compiler pass/fail fixtures, not product modules. |
+// | .oot header (§1.19) | PASS | All docs carry `# Title`+`File:` or the audit-style `// #` 4-element form; except .github/ISSUE_TEMPLATE (YAML frontmatter). |
+// | Forbidden extensions (§1.14) | PASS | 0 .py/.rb/.pl anywhere. website/src/**.js is the documented hand-maintained deploy residual. install/*.sh all match the §1.14 carve-out list (install.sh, */profile.d.sh, tests/test_*.sh, bootstrap/corpus/*/diffrun.sh). |
+// | ANCHOR.oo ALLCAPS | PASS | 280 anchors, 0 lowercase. |
+// | Loose unheaded .oo in roots (P10) | PASS | Only install/harness_wire.oo loose in a root — it is fully headed. |
+// | Struct trailing commas (P10) | PASS | 0 hits for `,\n}` pattern in std; match-arm `},` is required grammar, not a violation. |
+
+// ## 3. Zero-trust execution (installed release binaries)
+
+// | Probe | Command | Result |
+// |-------|---------|--------|
+// | oodac check | `oodac check corpus/check/pass/ok_main.oo` | OK |
+// | emit-c | `oodac emit-c corpus/emit-c/pass/fn_ret_int.oo` | real C emitted |
+// | emit-llvm | `oodac emit-llvm corpus/emit-llvm/pass/fn_ret_int.oo` | real LLVM IR emitted |
+// | std cap_fs | `oodac build --backend c std/qa/probe_cap_fs.oo` + run | PASS (&FsReadCap/&FsWriteCap verified) |
+// | double-run | probe_cap_fs ×2, fresh processes | byte-identical (§1.10 filter) |
+// | std 5 new probes | cap_net, cap_process, cap_system, cap_falsify, repl_direct, sandbox_m1 | all BUILD-OK + PASS |
+// | oodac WIP files | check ll_emit/ll_stmt/ll_tok/types_core/qa/suite.oo | all OK |
+// | suites | check opm/qa/suite.oo, lsp/qa/suite.oo, openOODA/qa/polyrepo_suite.oo, ooda/main.oo | all OK |
+// | emit-llvm build | `oodac build --backend llvm std/qa/probe_cap_fs.oo` | FAIL `ERR build emit-llvm failed` — IR prints to stdout, no object step. Known 2026-09-10 breakage, compiler lane. |
+// | mcp tools | `tools/list` via ooda-mcp-call | exactly 26 tools, matches docs/TOOLS.oot |
+// | install.sh | read fetch_and_verify + install_component | fail-closed on missing sidecar and on mismatch (install.sh:510-540) |
+
+// ## 4. Binary parity (RULES §1.10, uncommitted amendment)
+
+// Two measurements — installer re-ran mid-audit (~05:42-05:44):
+//   Run A (~05:40): dist/ooda 9a922dd5… ≠ ~/.openooda/bin/ooda
+//     41f2d583… ≠ ~/.local/bin/ooda 23e5c3f0… — three-way divergence.
+//   Run B (~05:50): dist/ooda bce47457… == ~/.openooda/bin/ooda
+//     bce47457… — dist-vs-installed parity now HOLDS for ooda.
+//     ~/.local/bin/ooda still 23e5c3f0… (596,856 B, 2026-09-09) —
+//     the stale shadow set was NOT removed by the re-install.
+// Residuals after the fix:
+//   - ~/.local/bin still shadows: ooda, oodac, ooda-lsp, ooda-mcp,
+//     blackbox, opm (all 2026-09-09) — `which -a` resolves them first
+//     (~/.local/bin PATH position 1 vs ~/.openooda/bin position 3).
+//   - Provenance drift: ~/.openooda/bin/ooda.tmp.sha256 records
+//     41f2d583… (the downloaded release) but the file is now
+//     bce47457… — a local dist build overwrote the release artifact;
+//     the sidecar no longer describes the installed binary.
+//   - Re-verified on current binaries: net/ANCHOR.oo check still
+//     FAILS (M1 stands); probe_cap_fs rebuild+double-run identical.
+// The ci.yml parity gate (ooda/.github/workflows/ci.yml:44-58,113-120)
+// checks dist-vs-installed inside CI but cannot see a ~/.local/bin
+// shadow — and on this host the shadow is real.
+
+// ## 5. Findings by severity
+
+// CRITICAL (1):
+//   C1. Binary Parity Law violated on this host (RULES §1.10
+//       uncommitted, §1.21). Post-fix state: dist == installed holds
+//       for ooda, but the stale 2026-09-09 toolchain in ~/.local/bin
+//       (ooda sha 23e5c3f0… + oodac/lsp/mcp/blackbox/opm) was never
+//       removed and still wins PATH resolution — the binary users and
+//       PATH-resolving probe suites execute is NOT the certified one.
+//       Root cause: installer migration gap — a prior layout installed
+//       to ~/.local/bin; current install.sh repairs OODA_COMPILER rc
+//       references (install.sh:551-553) but never deletes the files.
+//       Detail: install/audit/2026-09-11-focused-install.oot.
+
+// MAJOR (1):
+//   M1. std/net/ANCHOR.oo fails `oodac check` on the release binary:
+//       `ERR move use after move rest at 83` — root cause
+//       std/net/http_resp_parse.oo:81-84 (`let mut val = rest;` moves,
+//       then `char_at(rest,0)` and `str_slice(rest,…)` use the moved
+//       binding). Committed code, untouched since the 2026-09-02 split.
+//       The net/ front door does not typecheck; any file importing it
+//       transitively fails. RULES §1.1, §1.4, §1.5.
+
+// MINOR (7):
+//   m1. std/net/ANCHOR.oo:122 — `net_mod_tcp_read` still calls
+//       net_tcp_read(tcp,fd) with 2 args; the uncommitted tcp.oo diff
+//       added required `max_bytes`. Masked today by M1; surfaces when
+//       M1 is fixed. Uncommitted-API-change fallout (§1.4).
+//   m2. oodac/qa/scratch_lineno.oo — committed scratch file, no Academy
+//       header (§1.11, Pillar 10).
+//   m3. std/qa/probe_sdl_window.oo — 3-element header, missing Setup:
+//       (§1.11).
+//   m4. std/qa/probe_repl_direct.tmp.bin — 332KB ELF artifact untracked
+//       in qa/, not gitignored (Pillar 10 clean workspace). Suite
+//       deletes tmp.bins; this one leaked from a manual run.
+//   m5. File:-path drift ×6 — rename residue declaring wrong repo paths:
+//       oodac/docs/TOKEN_OPT.oot → "ooda/docs/…";
+//       oodac/docs/CAP_LEGACY_SUPERSEDE_REMOVAL_TODO.oot → "openOODA/oodac/…";
+//       oodac/bootstrap/seed/{README,SIGNING}.oot → "ooda/bootstrap/…";
+//       std/README.oot → "ooda/std/…";
+//       openOODA/scripts/moonshot_scorecard.oot → "openOODA/openOODA/…"
+//       (double prefix). §1.4 silent drift.
+//   m6. std: 6 untracked probes pass but are not wired into qa/suite.oo
+//       (probe_repl_direct, probe_repl_m1_audit, probe_repl_m1_test2,
+//       probe_sandbox_adv1, probe_sandbox_m1, probe_sandbox_stress) —
+//       uncommitted test gates (§1.4). meta/test/{em_gauge,moonshot_score}.oo
+//       likewise untracked. Contrast ooda/, where all 12 probes ARE wired.
+//   m7. ooda/main.oo:106 — version fallback "v0.2.16" (env-overridable
+//       via OODA_VERSION per :35, but the baked default lags the real
+//       tag). 2026-09-10 finding n3 restated more precisely (§1.21).
+
+// NOTE (5):
+//   n1. Uncommitted 2026-09-10 audit reports sit as ?? in 8 repos
+//       (ooda, lsp, mcp, catalog, install, blackbox, website,
+//       openOODA/docs/audit-history) — audit trail not yet in git (§1.4).
+//   n2. Uncommitted RULES.oot rewrites §1.10 (Binary Parity + Universal
+//       QA + `ooda qa` law) and §1.4 — legitimate law evolution, but
+//       "The 23 laws below do not change" vs. live amendments is worth
+//       an RFC note (§1.13).
+//   n3. .github/ISSUE_TEMPLATE/{bug_report,feature_request}.oot — YAML
+//       frontmatter, no .oot header. GitHub requires the frontmatter;
+//       suggest keeping the files but documenting the carve-out in
+//       RULES §1.14 alongside the .sh list.
+//   n4. oodac/bootstrap/corpus/** (104 .oo) carry no headers and the
+//       corpus tree has no ANCHOR.oo — fixtures, but undocumented as
+//       such; a one-line corpus/ANCHOR.oo would close the ambiguity.
+//   n5. 37 std/qa graphics/SDL probes (cube_3d, ray_3d, sdl_*, …) are
+//       not in suite.oo — presumably manual-only (need GPU/SDL); the
+//       suite doc-comment says "every probe" which overclaims (§1.4).
+
+// ## 6. Cross-references
+
+// | Finding | RULES              | Prior audit |
+// |---------|--------------------|-------------|
+// | C1      | §1.10 (new), §1.21 | install/audit/2026-09-10-mcp-lsp-blackbox-usability.oot |
+// | M1      | §1.1, §1.4, §1.5   | (new — split-era latent bug) |
+// | m1      | §1.4               | (new — uncommitted API change) |
+// | m2-m4   | §1.11, P10         | — |
+// | m5      | §1.4               | same class as 2026-09-10 "silent drift" rows |
+// | m6      | §1.4               | — |
+// | m7      | §1.21              | ooda/audit/2026-09-10-focused-ooda.oot n3 |
+// | n1      | §1.4               | — |
+// | n2      | §1.13              | — |
+
+// ## 7. Recommended same-commit repairs (per-lane)
+
+// 1. install/ + host: remove or refresh the stale ~/.local/bin ooda*
+//    set; decide ONE bin dir and make install.sh enforce it (C1).
+// 2. std/: fix net/http_resp_parse.oo:81 — bind `val` without moving
+//    `rest` (slice first, or clone), then update net_mod_tcp_read for
+//    the 3-arg signature (M1+m1, same commit per §1.4).
+// 3. oodac/: delete qa/scratch_lineno.oo or give it a header + purpose
+//    (m2); fix the 3 File: lines (m5).
+// 4. std/: add Setup: to probe_sdl_window.oo; gitignore/remove the
+//    tmp.bin; wire or document the 6 orphan probes (m3,m4,m6).
+// 5. openOODA/: commit the RULES.oot §1.10 amendment + polyrepo_suite
+//    together with this audit chain (n1,n2).
