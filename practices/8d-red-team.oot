@@ -1,7 +1,7 @@
 # REDTEAM — Adversarial Auditing, 8-Dimensional Negative-Trust Verification & Veto Gate Specification
 File: openOODA/practices/8d-red-team.oot
 
-## Version: v0.0.1 (2026-09-09)
+## Version: v0.1.0 (2026-09-10)
 
 This document defines the Negative-Trust Doctrine, the 8-Dimensional Canonical Verification Matrix, the 8-Gate Blocking Veto Protocol, and the Pre-Commit Falsification Gate. All software modules, compiler passes, and pull requests in openOODA must pass adversarial certification before completion.
 
@@ -18,9 +18,22 @@ This document defines the Negative-Trust Doctrine, the 8-Dimensional Canonical V
    Adversarial testing actively attacks implementation assumptions.
    Every feature implementation and defect fix must begin with a hostile break-test that fails closed on existing code.
 
-3. The Sequential Double-Run Law:
+3. The Sequential Double-Run Determinism Filter:
    Execute every verification probe twice in fresh, isolated processes.
-   Both executions must produce identical outputs, zero warnings, and zero exit codes to prove determinism.
+   Both executions must produce identical outputs, zero warnings, and zero exit codes.
+   Double-run execution is a necessary determinism filter, never a proof of functional correctness.
+   Determinism without hostile boundary testing proves only that defects are reproducible.
+
+4. The Cryptographic Binary Parity Mandate:
+   Release certification must run against the bit-identical binary installed for the user:
+   `sha256sum ~/.openooda/bin/<tool> == sha256sum dist/<tool>`.
+   Audits must execute strictly through external OS process execution (`sys_exec` / `fork`+`execve`).
+   In-memory function mocks, synthetic wrappers, and internal compiler shortcut harnesses are prohibited.
+
+5. Negative-Trust Edge Falsification Mandate:
+   Single-sided happy-path test suites provide zero verification proof.
+   Every tool and subsystem must fail closed when subjected to boundary extremes:
+   0-byte inputs, files exceeding 256 lines, malformed envelopes, and corrupted capability tokens.
 
 ## 1. 8-Row Canonical Verification Matrix
 
@@ -29,7 +42,7 @@ Multi-agent swarms and human engineers deploy eight specialized Red Team auditor
 | Role | Axis | Metric | Veto Trigger |
 |---|---|---|---|
 | Red 1: Heuristic Hunter | e1 | Lowering AST Integrity: Phi_1 = I(Lowering(S) != Typecheck(AST(S))) | Lowering uses token bags or string matching instead of typed AST inspection. |
-| Red 2: Boundary Falsifier | e2 | Dynamic Parameter Bounds: Phi_2 = I(x not in [x_min, x_max] and Result == Ok) | Validator accepts out-of-bounds inputs without returning Result::Err. |
+| Red 2: Boundary Falsifier | e2 | Dynamic Parameter Bounds & Edge Falsification: Phi_2 = I((x not in [x_min, x_max] or EdgeInput) and Result == Ok) | Validator accepts out-of-bounds inputs (0-byte, >256 lines, malformed envelopes, corrupted tokens) without failing closed; single-sided happy-path suite detected. |
 | Red 3: Data-Path Tracer | e3 | Execution Path Wiring: Phi_3 = I(Op(x) == void or Route(k) == fallback) | Interface connects without genuine execution path or uses silent fallback route. |
 | Red 4: Hermetic Jailor | e4 | Capability Isolation: Phi_4 = I(Op(x) without Cap or Path not in Sandbox) | Operation breaches capability sandbox or accesses ambient authority. |
 | Red 5: Temporal Saboteur | e5 | Concurrency & Replay: Phi_5 = I(State(t_N) != Replay(t_N) or Race(tau) > 0) | Unpinned streams fail-closed, memory races occur, or replay state drifts. |
@@ -37,7 +50,54 @@ Multi-agent swarms and human engineers deploy eight specialized Red Team auditor
 | Red 7: Semantic Subverter | e7 | AST Mutation & Contracts: Phi_7 = I(KillRate < 0.95 or VacuousContract) | AST mutant kill rate drops below 95% or formal contract accepts vacuous proof. |
 | Red 8: Byzantine Infiltrator | e8 | Cryptographic Timing & RASP: Phi_8 = I(|t_Welch| >= 4.5 or Delta_RAM != Rollback) | Dudect crypto timing leakage (|t| >= 4.5) or RASP fails autonomic rollback. |
 
-## 2. The 8-Gate Blocking Veto Protocol
+## 2. Concrete Audit Criteria: Edge Falsification & Binary Parity
+
+### 2.1 Concrete Audit Criteria: Negative-Trust Edge Falsification (Gate 2 / e2)
+Every CLI command, compiler pass, and runtime interface must satisfy five negative-trust criteria:
+1. Zero-Byte Boundary Verification (Criterion F1):
+   - Supply empty files (0 bytes) and empty string arguments to inputs expecting file paths or tokens.
+   - Pass: Process fails closed, returns Result::Err or exits with syntax/argument error code 2.
+   - Veto Trigger: Process returns exit code 0, hangs, or crashes via unhandled signal.
+2. Oversized File Limit Verification (Criterion F2):
+   - Supply inputs strictly exceeding the 256-line architectural limit (e.g. 257+ lines).
+   - Pass: Parser or scanner rejects the file immediately and exits with code 2.
+   - Veto Trigger: Code lowerer processes lines beyond 256 without error.
+3. Malformed CLI Envelope Verification (Criterion F3):
+   - Supply unknown flags (e.g. `--bogus`), missing positional arguments, and inverted options.
+   - Pass: CLI dispatcher emits ASD-STE100 error diagnostics and terminates with exit code 2.
+   - Veto Trigger: Dispatcher ignores unknown flags, uses silent fallback defaults, or panics.
+4. Corrupted Capability Token Verification (Criterion F4):
+   - Supply forged tokens, expired TTL timestamps, or truncated capability bitmasks.
+   - Pass: Security subsystem triggers capability trap and exits with capability denial code 3.
+   - Veto Trigger: Operation executes without capability verification or leaks ambient authority.
+5. Positive-Only Suite Prohibition (Criterion F5):
+   - Inspect challenger test suites for negative probes.
+   - Pass: Test suite contains paired positive and hostile negative falsification probes.
+   - Veto Trigger: Test suite contains only positive path assertions (`assert ok`).
+
+### 2.2 Concrete Audit Criteria: Cryptographic Binary Parity (Release Gate)
+All release candidates and shipped binaries must satisfy four cryptographic parity criteria:
+1. Cryptographic Digest Identity (Criterion P1):
+   - Compare SHA-256 digest of built artifact (`dist/<tool>`) against installed user binary (`~/.openooda/bin/<tool>`).
+   - Pass: `sha256sum(~/.openooda/bin/<tool>) == sha256sum(dist/<tool>)`.
+   - Veto Trigger: Any bit-level discrepancy between build target and user binary.
+2. Sovereign OS Process Execution (Criterion P2):
+   - Verification probes invoke the target binary exclusively via external process execution (`sys_exec` / `fork`+`execve` under `&ProcessCap`).
+   - Pass: Probe runs external binary and observes real process termination.
+   - Veto Trigger: In-memory test mocks, linked module shortcuts, or synthetic stubs.
+3. Sovereign Exit Code Matrix (Criterion P3):
+   - Probe asserts exact exit codes across execution scenarios:
+     - `0`: Valid command execution and verified assertion.
+     - `2`: Syntax errors, unknown flags (`--bogus`), missing arguments, or boundary violations.
+     - `3`: Capability denial, sandbox restriction, or security trap.
+   - Pass: Observed exit codes match the sovereign exit code matrix exactly.
+   - Veto Trigger: Exit code drift (e.g. exit code 1 or 0 on malformed input).
+4. Determinism Filter Verification (Criterion P4):
+   - Execute the binary parity probe twice in fresh subshells.
+   - Pass: `Run_1 == Run_2` with identical terminal output, digests, and exit codes.
+   - Veto Trigger: Replay drift, timestamp variance, or unpinned random outputs.
+
+## 3. The 8-Gate Blocking Veto Protocol
 
 Every pull request, architectural modification, and release candidate must clear all eight sequential gates:
 
@@ -57,24 +117,24 @@ Every pull request, architectural modification, and release candidate must clear
 5. Full Pipeline Re-Certification:
    After code modification, all eight gates must re-execute sequentially starting from Gate 1.
 
-## 3. Pre-Commit Falsification Gate & PR Certification
+## 4. Pre-Commit Falsification Gate & PR Certification
 
-### 3.1 Pre-Modification Ingress Checklist
+### 4.1 Pre-Modification Ingress Checklist
 Before modifying product code, the engineer or autonomous agent must:
 1. Milestone: Declare the active accepted RFC or the repo sprint.
 2. Axiom: Identify the governing RULES.oot axiom.
 3. Hostile Break-Test: Author a hostile falsification probe that reproduces the defect or proves missing capability.
 4. Fail-Closed Verification: Execute the hostile probe and verify fail-closed failure on current code before writing fixes.
 
-### 3.2 PR Victory Claim Certification Gate
+### 4.2 PR Victory Claim Certification Gate
 Before claiming task completion or merging a pull request:
 1. Execute all 8 Red Team empirical falsification test suites across challenger harnesses.
-2. See `.github/workflows/` for the governance runners (gh-owned;
-   no `.oo` runners). Verify the 256-line cap by inspection.
-3. Verify that all modified files contain <= 256 lines in ASD-STE100 technical English.
-4. Perform sequential double-run verification in fresh processes to ensure bit-identical determinism.
+2. Execute Negative-Trust Edge Falsification probes (0-byte files, >256 lines, malformed envelopes, corrupted tokens) and confirm fail-closed exit codes.
+3. Execute Cryptographic Binary Parity probe (`qa/probe_binary_parity.oo`) confirming `sha256sum ~/.openooda/bin/<tool> == sha256sum dist/<tool>` via external process spawning.
+4. Perform sequential double-run verification in fresh processes as a determinism filter (`Run_1 == Run_2`).
+5. Verify that all modified files contain <= 256 lines in ASD-STE100 technical English.
 
-## 4. Test Suite Organization & Verification Hooks
+## 5. Test Suite Organization & Verification Hooks
 
 1. Challenger Test Suites Layout (`qa/`):
    - `qa/tests_challenger_1/`: Gate 1 (Heuristic Hunter) and Gate 2 (Boundary Falsifier) suites (`test_c1_*.oo`).
@@ -87,7 +147,7 @@ Before claiming task completion or merging a pull request:
    - See `.github/workflows/` for the governance runners
      (gh-owned; no `.oo` runners).
 
-## 5. Cross References
+## 6. Cross References
 Paths below are from this repo root. Do not prefix openOODA/.
 - Agent Ingress Gate: `ANCHOR.oo`
 - Repository Law & Core Principles: `RULES.oot`

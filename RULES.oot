@@ -42,7 +42,7 @@ The 23 laws below do not change. They apply across all repository directories.
 ### 1.4 Honesty & Complete Delivery
   If a task remains incomplete, document the unfinished components explicitly.
   Do not leave trailing TODO markers, incomplete stubs, or uncommitted test gates.
-  Verify every component end-to-end and certify with a double-run test before marking complete.
+  Verify every component end-to-end, execute hostile edge falsification, and pass the double-run determinism filter before marking complete.
   Adversarial Falsification Before Victory:
     Do not declare a feature or bug fix complete without writing and executing a negative-trust test.
     The test must actively probe and break boundary conditions (e.g. oversized dimensions, invalid types, or non-target sources).
@@ -78,8 +78,7 @@ The 23 laws below do not change. They apply across all repository directories.
   A test that always passes does not provide proof.
   If a task fails mid-execution, restore the repository to a clean state.
   Follow the adversarial verification protocols in practices/ooda-workflow.oot.
-  Verified on-disk features are recorded by the per-repo shipped proof scripts. The
-  governance repo has no shipped ledger; each tactical/operational repo records its own.
+  Verified on-disk features are recorded by per-repo shipped proof scripts; each repo records its own.
 
 ### 1.8 Code Quality & Line Limits (Pillar 2)
   Every file must contain a maximum of 256 lines. Split large files along domain seams.
@@ -91,21 +90,23 @@ The 23 laws below do not change. They apply across all repository directories.
 ### 1.9 Incremental Modifications
   Make small, focused modifications. Small changes are easier to test and verify.
 
-### 1.10 Negative Trust & Adversarial Validation (Pillar 3)
-  Assume that unverified stubs, docstrings, and tests contain defects until proven.
-  Apply active falsification: Test code with corrupted tokens, invalid inputs, and boundary values.
-  Deploy the 8-Dimensional Red Team roles defined in `practices/8d-red-team.oot`:
-    - Red 1 (Heuristic Hunter / e1): Lowering AST integrity and keyword decoy immunity.
-    - Red 2 (Boundary Falsifier / e2): Dynamic parameter bounds and line limit verification.
-    - Red 3 (Data-Path Tracer / e3): Genuine execution wiring and fallback rejection.
-    - Red 4 (Hermetic Jailor / e4): Capability isolation and Landlock sandboxing.
-    - Red 5 (Temporal Saboteur / e5): Concurrency races, stream synchronization, and replay drift.
-    - Red 6 (Drag Assassin / e6): Algorithmic complexity, arena leaks, and GC pause elimination.
-    - Red 7 (Semantic Subverter / e7): AST mutant kill rate (>= 95%) and non-vacuous contracts.
-    - Red 8 (Byzantine Infiltrator / e8): Constant-time cryptography (|t_Welch| < 4.5) and RASP rollback.
-  Follow the 8-Gate Blocking Veto Protocol in `practices/8d-red-team.oot` for candidate code.
-  Follow the Double-Run Law: Execute `./bin/ooda run <test.oo>` twice in fresh processes.
-  Do not trust plain board text; execute verification scripts directly.
+### 1.10 Negative Trust, Binary Parity & Universal QA (Pillar 3)
+  Assume unverified stubs, docstrings, and passing test suites contain defects until falsified.
+  Mandate Negative-Trust Edge Falsification: Prohibit single-sided happy-path suites. Releases require
+  fail-closed validation on boundary inputs (0-byte files, >256 lines, malformed envelopes, corrupted tokens).
+  The Sequential Double-Run Determinism Filter:
+    Execute verification probes twice in fresh processes (Run_1 == Run_2). Double-run execution
+    is a necessary determinism filter, not a proof of correctness.
+  The Binary Parity Law (Cryptographic Binary Parity):
+    Release certification must run against the bit-identical binary installed for the user:
+    `sha256sum ~/.openooda/bin/<tool> == sha256sum dist/<tool>`. Verification must execute strictly
+    through external OS process invocation (`sys_exec` / `fork`+`execve`) with zero in-memory test mocks.
+  Universal QA Law (`ooda qa`):
+    The standard library (`std/qa/`) houses foundational and cross-domain QA suites; each repo
+    maintains a `qa/` dir for repo-specific probes. Invocations of `ooda qa` execute context-aware local
+    suites; `ooda qa --all` triggers the Universal Polyrepo Suite (`openOODA/qa/polyrepo_suite.oo`).
+  Deploy the 8-Dimensional Red Team roles and 8-Gate Blocking Veto Protocol in `practices/8d-red-team.oot`:
+    - e1 (AST), e2 (limits), e3 (wiring), e4 (sandbox), e5 (replay), e6 (heap), e7 (mutation), e8 (crypto).
 
 ### 1.11 ASD-STE100 & Academy 4-Element Headers (Pillar 4)
   All agent text and documentation must follow ASD-STE100 Simplified Technical English.
@@ -158,7 +159,6 @@ The 23 laws below do not change. They apply across all repository directories.
     `openOODA/std/*.oo`  — Standard library modules, 8 functional domains (std/ repo).
     `ooda/`, `lsp/`, `mcp/`, `opm/` — Operational drivers and protocol servers (own repos).
   Every `.oo` file must contain a 4-element Academy header and contain <= 256 lines.
-  Two user-facing host scripts are permitted: `bootstrap/oodac_pure_build` and `install.sh`.
 
 ### 1.15 Automated Enforcement
   Each tactical/operational repo owns its own governance linters and tests. The
@@ -207,7 +207,6 @@ The 23 laws below do not change. They apply across all repository directories.
 ### 1.22 Standard Library Reuse Directive
   Do not create new files in `openOODA/std/` unless the user explicitly requests standard library expansion.
   Inspect and reuse existing modules in `openOODA/std/` (8 functional domains, 188 ANCHOR.oo) before implementing new utility code.
-
 
 ### 1.23 Three-Layer Architecture (Strategic, Operational, Tactical) — Polyrepo
 openOODA operates as a 3-Tier Multi-Repository Architecture across 13 repos:
