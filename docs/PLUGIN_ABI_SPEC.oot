@@ -1,0 +1,129 @@
+# Plugin ABI & Allocation Contract Specification
+# OpenOODA Desktop & Screensaver Substrate ABI Specification
+# Version: 1.0.0
+# Status: Normative Contract
+
+## 1. Executive Summary
+
+This specification governs dynamic shared library plugins (.so) loaded by OpenOODA hosts, specifically screensavers, terminal visualizers, and desktop widget runners. It defines symbol export conventions, memory ownership contracts, struct alignments, and lifecycle boundaries.
+
+---
+
+## 2. Invariants & Rules
+
+1. Deterministic C-ABI: All foreign plugin interfaces MUST use the platform C Application Binary Interface (SysV AMD64 on x86_64, AAPCS64 on AArch64).
+2. Pure Unmangled Symbols: Exported functions MUST be declared with `export fn` and emitted with `__attribute__((visibility("default")))` without name mangling.
+3. Symmetrical State Ownership: All plugin heap allocations MUST be freed by the plugin itself.
+4. Caller-Allocates, Callee-Fills: Video framebuffers, terminal cell grids, and rendering arrays MUST be allocated and owned by the host application. Plugins MUST write into caller-supplied memory buffers and MUST NEVER free or reallocate host grids.
+5. Fail-Closed Sandboxing: Plugins operate under explicit capability bounds. Host processes MUST attenuate privileges (Landlock LSM, seccomp-bpf) before invoking foreign plugin code.
+
+---
+
+## 3. Memory Ownership & Allocation Contract
+
+### 3.1 Framebuffer & Grid Buffers ("Caller-Allocates, Callee-Fills")
+- Host Responsibility:
+  - Allocates contiguous memory for `TerminalCell` or `GpuCell` structures matching screen dimensions `width * height`.
+  - Retains exclusive ownership of the grid buffer across frames.
+  - Passes raw pointer `grid: *mut TerminalCell` along with `width: u32` and `height: u32` to the plugin rendering function.
+  - Deallocates the grid buffer upon window resize or shutdown.
+- Plugin Responsibility:
+  - Writes cell glyphs, colors, and attributes directly into `grid[y * width + x]`.
+  - MUST NOT call `free()`, `realloc()`, or runtime memory managers on `grid`.
+  - MUST NOT store dangling pointers to `grid` across render invocations.
+  - MUST respect `width` and `height` bounds to avoid buffer overruns.
+
+### 3.2 Plugin State Lifecycle ("Symmetrical State Ownership")
+- For stateful plugins (e.g. physics simulations, particle systems, procedural art):
+  - Creation: Host invokes `plugin_create() -> *mut void`. The plugin allocates its internal state struct on its heap and returns an opaque pointer.
+  - Execution: Host passes the opaque pointer `state: *mut void` into `plugin_tick()` and `plugin_render()`.
+  - Destruction: Host invokes `plugin_destroy(state: *mut void)`. The plugin frees all internal heap allocations and releases resources.
+- For stateless plugins:
+  - `plugin_create()` MAY return `NULL` (pointer value 0).
+  - `plugin_destroy()` MUST safely ignore `NULL` pointers.
+
+---
+
+## 4. Standard C-ABI Function Signatures
+
+Every OpenOODA compliant screensaver or visualizer plugin MUST export the following unmangled symbols:
+
+```c
+/* Returns plugin API version. Host verifies compatibility before proceeding. */
+uint32_t plugin_api_version(void);
+
+/* Allocates and initializes plugin private state. Returns opaque handle. */
+void *plugin_create(void);
+
+/* Advances simulation by delta_ms milliseconds. */
+void plugin_tick(void *state, uint32_t delta_ms);
+
+/* Renders visual state into caller-owned TerminalCell grid buffer. */
+void plugin_render(void *state, TerminalCell *grid, uint32_t width, uint32_t height);
+
+/* Frees plugin private state and all associated heap allocations. */
+void plugin_destroy(void *state);
+```
+
+In OpenOODA (`.oo`):
+```oo
+export fn plugin_api_version() -> u32 {
+    return 1;
+}
+
+export fn plugin_create() -> *mut void {
+    // Allocate and return state handle
+}
+
+export fn plugin_tick(state: *mut void, delta_ms: u32) {
+    // Advance simulation
+}
+
+export fn plugin_render(state: *mut void, grid: *mut TerminalCell, width: u32, height: u32) {
+    // Populate caller grid buffer
+}
+
+export fn plugin_destroy(state: *mut void) {
+    // Clean up internal allocations
+}
+```
+
+---
+
+## 5. Struct Memory Layout Contracts (repr(C))
+
+### 5.1 TerminalCell Layout (16 Bytes)
+Memory alignment matches standard 32-bit scalar layout with 4-byte alignment:
+- Offset +0  (4 bytes): `codepoint: u32` (Unicode codepoint, UTF-32 LE)
+- Offset +4  (4 bytes): `fg: u32`        (Packed 24-bit RGB foreground or ANSI index)
+- Offset +8  (4 bytes): `bg: u32`        (Packed 24-bit RGB background or ANSI index)
+- Offset +12 (4 bytes): `attrs: u32`     (Bitflags: 1=Bold, 2=Dim, 4=Italic, 8=Underline, 16=Blink, 32=Inverse)
+- Total Size: 16 bytes. Alignment: 4 bytes.
+
+### 5.2 GpuCell Layout (24 Bytes)
+Memory alignment matches single-precision IEEE 754 float and packed RGBA:
+- Offset +0  (4 bytes): `x: f32`         (Normalized vertex position X: -1.0 to 1.0)
+- Offset +4  (4 bytes): `y: f32`         (Normalized vertex position Y: -1.0 to 1.0)
+- Offset +8  (4 bytes): `u: f32`         (Texture coordinate U: 0.0 to 1.0)
+- Offset +12 (4 bytes): `v: f32`         (Texture coordinate V: 0.0 to 1.0)
+- Offset +16 (4 bytes): `fg_rgba: u32`   (32-bit packed RGBA foreground color)
+- Offset +20 (4 bytes): `bg_rgba: u32`   (32-bit packed RGBA background color)
+- Total Size: 24 bytes. Alignment: 4 bytes.
+
+---
+
+## 6. Shared Library Build Specification
+
+Plugins are compiled to native position-independent shared objects (`.so`):
+1. Compilation Flags: `gcc -shared -fPIC -O2 -fstack-protector-strong`
+2. No Executable Entry Point: Plugins MUST NOT include `main()` or host runtime stubs.
+3. Linker Resolution: Plugins link `liboodar.a` compiled with `-fPIC` to resolve OpenOODA standard runtime primitives without symbol collision.
+4. Visibility: Exported API symbols carry `default` visibility; internal helper functions are marked `static` or `hidden` to guarantee zero symbol collision when multiple plugins are loaded in a single process.
+
+---
+
+## 7. Versioning & Extensibility
+
+- `plugin_api_version()` returns monotonically increasing integers (starting at `1`).
+- Future revisions MUST preserve backward compatibility for `TerminalCell` and `GpuCell` offsets.
+- Extended capabilities (e.g. Wayland subsurface embedding, audio synthesis) MUST query optional extension exports via `dlsym()`.
