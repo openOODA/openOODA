@@ -17,7 +17,7 @@ You are operating within the openOODA polyrepo ecosystem. Your execution must be
 - **Pure Files:** Only `.oo` and `.oot` files are permitted for logic (no Python, Bash, etc.).
 - **Line Limits:** Absolute maximum of 256 lines per file.
 - **Academy Headers:** All `.oo` files must begin with the exact 4-element Academy header (`// # Title`, `// Logline:`, `// Setup:`, `// Beats:`).
-- **Subtractive Design:** Fix the base before the tower. Delete what earns nothing. Subtraction always beats addition (Boyd's E-M Invariant).
+- **Subtractive Design:** Fix the base before the tower. Delete what earns nothing. Subtraction always beats addition (RULES.oot §1.2).
 
 ## 4. Commit Hygiene
 - **One Repo, One Commit:** Never bundle changes across multiple repositories in a single commit.
