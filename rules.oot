@@ -1,11 +1,11 @@
-# RULES — Repository Law & Core Principles
-File: openOODA/RULES.oot
+# rules — Repository Law & Core Principles
+File: openOODA/rules.oot
 
 These governance rules do not change. They apply across all repository directories.
 
 ## 1. Basic Rules
 
-The 23 laws below do not change. They apply across all repository directories.
+The 24 laws below do not change. They apply across all repository directories.
 
 ### 1.1 First Principles & Specification Derivation
   Identify the root cause of a defect. Implement structural repairs rather than temporary workarounds.
@@ -128,7 +128,7 @@ The 23 laws below do not change. They apply across all repository directories.
   When writing networking code, adhere strictly to published IETF RFC specifications.
   Record the relevant RFC number in the source file header.
 
-### 1.14 Pure .oo/.oot File Laws, Two-Binary & Clean Workspaces
+### 1.14 Pure .oo/.oot File Laws, N-Binary & Clean Workspaces
   All source code, tools, proofs, fixers, and test harnesses must use `.oo` files.
   All process boards, research papers, RFCs, and specifications must use `.oot` files.
   Strictly Prohibited:
@@ -141,15 +141,19 @@ The 23 laws below do not change. They apply across all repository directories.
     `tests/*_inner.sh`, `qa/*.sh` (std/oodar), `scripts/repro_*.sh` and
     `scripts/double_run.sh`, `bootstrap/corpus/*/diffrun.sh`. Any other
     `.sh` is a governance violation; add new categories by RFC, not analogy.
-  Two-Binary Architecture: The compiler (`oodac`) is decoupled from the workflow driver (`ooda`).
+  N-Binary Architecture: The compiler (`oodac`) is decoupled from all workflow drivers. Multiple driver binaries (`cli`, `ooda`, `opm`, `lsp`, `mcp`) coexist; each owns a single domain and may call into the others via `process_exec` with explicit capability grants. The legacy `ooda` binary is the back-compat router that forwards to `cli`, `opm`, `lsp`, `mcp`.
   C/H Substrate Isolation: All low-level C shims (`oodar.c`, `oodar.h`, `types.h`, plus the 100 .c files in the 6 per-domain subdirs) strictly confined to the oodar/ repo. Zero C header leaks into openOODA/std/. The oodar/ public ABI is the set of oo_* symbols exported by the umbrella TU.
   Clean Workspaces: Zero unmanaged/unheaded `.oo` files in roots; zero struct trailing commas.
   Polyrepo directory naming responsibilities (each repo owns its own subtree):
     `oodac/*.oo`         — Compiler implementation modules (oodac/ repo).
     `oodar/*`            — C shims and Landlock sandbox (oodar/ repo).
-    `ooda/*.oo`          — Product CLI commands and entrypoint (ooda/ repo).
+    `cli/*.oo`           — Language CLI driver (build, run, test, fmt, install,
+                            update, init, qa, context, fix; cli/ repo).
+    `ooda/*.oo`          — Back-compat router that forwards to cli, opm, lsp, mcp
+                            (ooda/ repo). Owns `spawn.oo` and `find_compiler.oo`.
     `openOODA/std/*.oo`  — Standard library modules, 8 functional domains (std/ repo).
-    `ooda/`, `lsp/`, `mcp/`, `opm/` — Operational drivers and protocol servers (own repos).
+    `cli/`, `ooda/`, `lsp/`, `mcp/`, `opm/`, `bb/` — Operational drivers,
+                            protocol servers, and diagnostic surface (own repos).
   Every `.oo` file must contain a 4-element Academy header and contain <= 256 lines.
 
 ### 1.15 Automated Enforcement
@@ -163,7 +167,7 @@ The 23 laws below do not change. They apply across all repository directories.
   direct technical English. Marketing metaphors, military jargon, and
   generational hierarchies are prohibited.
 
-  Replacements (see `Requirements.oot`): "Pillar X" → "Requirement X"; "Gen X" →
+  Replacements (see `requirements.oot`): "Pillar X" → "Requirement X"; "Gen X" →
   "version" / "Layer X"; "moonshot" → "target"; "sovereign" → "primary" or drop;
   combat/fighter/missile/drone/stealth/dogfight → DELETE; "multi-agent swarm" →
   "multi-process"; supervisor/hypervisor (metaphor) → "manager" / "sandbox".
@@ -183,16 +187,17 @@ The 23 laws below do not change. They apply across all repository directories.
     - Zero ambient authority capability model with 20 explicit unforgeable tokens.
     - Self-hosted compiler bootstrapping directly emitting native binaries.
 
-### 1.19 .oot File Naming Conventions
-  Two naming rules determine document provenance by letter case:
-  1. ALLCAPS.oot — Owner-Authored Canonical Files:
-     - Apply ALLCAPS naming to ANCHOR.oo, RULES.oot, NORTHSTAR.oot, and FLOOR.oo.
-     - Apply ALLCAPS naming to backlog chapters in `backlog/` if present.
-     - Apply ALLCAPS naming to files that a human engineer writes and maintains.
-  2. lowercase.oot — Agent-Generated Files:
-     - Apply lowercase naming to all files in `audit/` and `.agents/` directories.
-     - Apply lowercase naming to RFC specifications in `rfcs/` (e.g. `0001-name.oot`).
-     - Apply lowercase naming to session rollups, test reports, and audit logs.
+### 1.19 Canonical File Naming & Lowercase Migration
+  All canonical governance files, entrypoints, and module hubs use lowercase naming:
+  1. Universal Lowercase Canonical Files:
+     - Entrypoints and governance: anchor.oo, floor.oo, rules.oot, northstar.oot, requirements.oot, roadmap.oot, and building.md.
+     - Subrepo entrypoints: anchor.oo in every module and domain directory.
+     - RFC specifications: rfcs/0001-name.oot (sequential 4-digit lowercase).
+     - Practices and documentation: all .oot files in docs/ and practices/.
+     - Historical audits and agent logs: lowercase in audit/ and .agents/.
+  2. Brand Capitalization Law:
+     - The brand token openOODA strictly retains its mixed-case capitalization.
+     - Never lowercase openOODA in repository paths, URLs, or document titles.
 
 ### 1.20 Three Fundamental Operational Laws
   All compiler passes, agent workflows, and runtime subsystems must obey three laws:
@@ -209,13 +214,13 @@ The 23 laws below do not change. They apply across all repository directories.
 
 ### 1.22 Standard Library Reuse Directive
   Do not create new files in `openOODA/std/` unless the user explicitly requests standard library expansion.
-  Inspect and reuse existing modules in `openOODA/std/` (8 functional domains, 188 ANCHOR.oo) before implementing new utility code.
+  Inspect and reuse existing modules in `openOODA/std/` (8 functional domains, 188 anchor.oo) before implementing new utility code.
 
 ### 1.23 Three-Layer Architecture (Strategic, Operational, Tactical) — Polyrepo
 openOODA operates as a 3-Tier Multi-Repository Architecture across 13 repos:
 - **Strategic Governance** (`openOODA/openOODA/`): process boards, RFCs, the 23 laws.
-- **Operational Logistics** (`ooda/`, `lsp/`, `mcp/`, `opm/`, `install/`, `catalog/`, `blackbox/`): drivers, servers, installer, catalog, flight recorder.
-- **Tactical Code Physics** (`std/`, `oodac/`, `oodar/`): the actual code. `std/` is the 8-domain standard library (188 ANCHOR.oo); `oodac/` is the compiler; `oodar/` is the C host substrate (oo_* runtime across 6 per-domain subdirs, 103 .c files, v4.0.7 layout: 26 capability tokens, Landlock sandbox, PQC primitives ML-KEM-768 + ML-DSA-65, GPU HIP/ROCm dispatch).
+- **Operational Logistics** (`cli/`, `ooda/`, `lsp/`, `mcp/`, `opm/`, `install/`, `catalog/`, `bb/`): drivers, servers, installer, catalog, flight recorder. `cli/` holds the language CLI driver; `ooda/` is the back-compat router that forwards to it. `bb/` (formerly `blackbox/`, renamed 2026-09-13) is the crash autopsy and flight recorder; the C ABI in `oodar/core/blackbox/` and the `blackbox_*` exported symbols stay put.
+- **Tactical Code Physics** (`std/`, `oodac/`, `oodar/`): the actual code. `std/` is the 8-domain standard library (188 anchor.oo); `oodac/` is the compiler; `oodar/` is the C host substrate (oo_* runtime across 6 per-domain subdirs, 103 .c files, v4.0.7 layout: 26 capability tokens, Landlock sandbox, PQC primitives ML-KEM-768 + ML-DSA-65, GPU HIP/ROCm dispatch).
 - **Meta** (`.github/`, `website/`): org profile and website source.
 
 Governance modifications must not trigger compiler rebuild cascades. Compiler
@@ -224,32 +229,16 @@ remains stationary: `Delta_path = 0`. See rfcs/0004-engineering-model.oot.
 
 ### 1.24 Auto-Release Discipline — Push to main is the Release
 The version number is derived from git history, not declared by hand. The git tag is
-auto-created on every push to main. The GitHub release is auto-generated from the
-commit messages.
-
+auto-created on every push to main. The GitHub release is auto-generated from commits.
 There is no `VERSION` file, no manual `git tag`, no manual `gh release create`. The
-`.github/workflows/auto-release.yml` workflow (or the reusable workflow from
-`openOODA/openOODA/.github/workflows/auto-release.yml`) does all three.
-
-PATCH bumps on every push. Conventional commits are NOT required; the release notes
-are the commit messages. Operational rule: write the code, commit, push — the release
-happens. Drift is impossible by construction.
-
-See `rfcs/0006-versioning-and-release-protocol.oot` for the spec, and
-`practices/release.oot` for the workflow.
-
-**Single explicit exception — `openOODA/install/`.** The installer is a bash
-tarball with no git history at install time, so it reads `install/VERSION`
-(load-bearing at `install/install.sh:1093`). The install repo hand-bumps the file
-and hand-pushes the tag; it does not consume the auto-release workflow. Every other
-repo does. A future exception requires an RFC; do not add by analogy.
+reusable workflow `openOODA/openOODA/.github/workflows/auto-release.yml` handles all three.
+PATCH bumps on every push. Release notes are commit messages. Operational rule: write code,
+commit, push — release happens. Drift is impossible by construction. See `practices/release.oot`.
+Single exception: `openOODA/install/` reads `install/VERSION` (load-bearing at `install/install.sh`).
 
 ## 2. Planning Rules
-
-  Focus: Select at most 5 tasks per execution turn. File size: every file <= 256 lines.
-  Sprint alignment: select from the open RFC backlog and accepted RFCs in `rfcs/`. The
-  polyrepo has no central ROADMAP.oot; each repo owns its sprint. Execution rhythm:
-  follow the OODA loop in `practices/ooda-workflow.oot`.
-  Task prioritization: (1) fix broken tests and compile errors, (2) fix security
-  vulnerabilities (see rfcs/0001-capability-security.oot), (3) implement scheduled
-  features from accepted RFCs, (4) refactor and clean up code last.
+Focus: Select at most 5 tasks per execution turn. File size: every file <= 256 lines.
+Sprint alignment: select from near-term task backlog in roadmap.oot and accepted RFCs in rfcs/.
+Near-term milestones are tracked in roadmap.oot; repos deliver components to schedule.
+Task prioritization: (1) fix broken tests and compile errors, (2) fix security vulnerabilities
+(rfcs/0001-capability-security.oot), (3) implement scheduled features, (4) refactor code last.

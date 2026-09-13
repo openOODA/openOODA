@@ -6,7 +6,7 @@
  * 3. 16-byte struct-by-value argument passing under System V AMD64 ABI.
  * 4. Dynamic library loading (dlopen -> dlsym -> ffi_call -> dlclose) round-trip.
  *
- * Complies with RULES.oot <= 256 lines.
+ * Complies with rules.oot <= 256 lines.
  */
 #define _GNU_SOURCE
 #include <stdio.h>

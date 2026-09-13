@@ -24,8 +24,8 @@
 
 import "std/fs/process/process.oo";
 
-pub fn main(p: &ProcessCap) {
-    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-}\"; "
+pub fn main(p: &ProcessCap) -> Result[Int, String] {
+    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
         + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "echo '[REDTEAM FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
         + "cd \"$src_root\" || { echo '[REDTEAM FAIL] cannot cd to '$src_root; exit 1; }; "
@@ -66,5 +66,8 @@ pub fn main(p: &ProcessCap) {
     let r: Result[String, String] = process_exec(p, cmd);
     let out: String = match r { Ok(s) => s, Err(e) => "ERR: " + e };
     print(out);
-    return r;
+    if r.is_err() {
+        return Err("redteam orchestrate failed");
+    }
+    return Ok(0);
 }

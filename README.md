@@ -8,7 +8,7 @@
       /_/                   \___/ \___/|____/_/   \_\
 </pre>
 
-### openOODA — Sovereign Systems Language for the AI Era
+### openOODA — Primary Systems Language for the AI Era
 
 [openooda.org](https://openooda.org)
 
@@ -18,7 +18,7 @@
 
 ## This repo: openOODA
 
-Strategic governance, RFCs, and the 23 laws. The front door.
+Strategic governance, RFCs, and the 24 laws. The front door.
 
 ## Install
 

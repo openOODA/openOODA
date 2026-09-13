@@ -1,13 +1,13 @@
 // # proof_of_today.oo — Daily Target Scorecard Driver
 //
 // Logline: Print today's 10/10 scorecard. Fail closed if the headline
-//          drops below the 5/10 threshold (RULES.oot §1.17, 80/20).
+//          drops below the 5/10 threshold (rules.oot §1.17, 80/20).
 //
 // Setup: Pure structural file. oodac-compiled. Reads OODA_REPO_ROOT
 //        (absolute, no ..), and lives at the polyrepo governance
 //        root. The 8 target lines are scored from on-disk evidence
 //        in this driver, not from the markdown scoreboard — code is
-//        ground truth (RULES.oot §1.4). The markdown scoreboard
+//        ground truth (rules.oot §1.4). The markdown scoreboard
 //        (target_scorecard.oot) is the human-readable mirror.
 //
 // Beats:
@@ -18,8 +18,8 @@
 
 import "std/fs/process/process.oo";
 
-pub fn main(p: &ProcessCap) {
-    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-}\"; "
+pub fn main(p: &ProcessCap) -> Result[Int, String] {
+    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
         + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "echo '[PROOF FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
         + "cd \"$src_root\" || { echo '[PROOF FAIL] cannot cd to '$src_root; exit 1; }; "
@@ -78,7 +78,7 @@ pub fn main(p: &ProcessCap) {
         + "echo; "
         + "echo \"Headline: $headline/10\"; "
         + "if [ \"$headline\" -lt 5 ]; then "
-        + "  echo '[PROOF FAIL] headline below 5/10; release-blocked (RULES.oot §1.17)'; "
+        + "  echo '[PROOF FAIL] headline below 5/10; release-blocked (rules.oot §1.17)'; "
         + "  exit 1; "
         + "fi; "
         + "echo '[PROOF OK] headline ≥ 5/10; release-permitted.'; "
@@ -86,5 +86,8 @@ pub fn main(p: &ProcessCap) {
     let r: Result[String, String] = process_exec(p, cmd);
     let out: String = match r { Ok(s) => s, Err(e) => "ERR: " + e };
     print(out);
-    return r;
+    if r.is_err() {
+        return Err("proof of today failed");
+    }
+    return Ok(0);
 }

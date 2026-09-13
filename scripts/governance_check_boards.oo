@@ -3,57 +3,71 @@
 // Logline: Verify every canonical process board is present, parseable,
 //          and references the upstream governance anchor. The boards
 //          are the strategic layer; missing or stale boards mean the
-//          moonshot is drifting.
+//          target is drifting.
 //
 // Setup: Pure structural file. Run from the polyrepo root with
-//        ProcessCap. Walks openOODA/openOODA/ for the 3 onboarding
-//        files (ANCHOR.oo, RULES.oot, NORTHSTAR.oot), the 8 RFCs
-//        (under rfcs/), and the 3 practice files (under practices/).
+//        ProcessCap. Walks openOODA/openOODA/ for the 4 onboarding
+//        files (rules.oot, northstar.oot, requirements.oot, roadmap.oot),
+//        the 7 RFCs (under rfcs/), and the 3 practice files (under practices/).
 //        Exits 0 on clean, 1 on first violation.
 //
 // Beats:
-//   1. RULES.oot exists, has all 23 numbered law sections, and is ≤ 256 lines.
-//   2. NORTHSTAR.oot exists, has the 8 moonshot lines, and is ≤ 256 lines.
-//   3. All 7 RFCs (0001-0007) under rfcs/ exist; ANCHOR.oo references them.
-//   4. All 3 practices (8d-red-team, ooda-workflow, release) under practices/ exist.
-//   5. Print per-board verdict; exit non-zero on first FAIL.
+//   1. rules.oot exists, has all 24 numbered law sections, and is <= 256 lines.
+//   2. northstar.oot exists, has Target section, and is <= 256 lines.
+//   3. requirements.oot and roadmap.oot exist, <= 256 lines.
+//   4. Uppercase deprecated boards absent.
+//   5. All 7 RFCs (0001-0007) under rfcs/ exist; anchor.oo references them.
+//   6. All 3 practices (8d-red-team, ooda-workflow, release) under practices/ exist.
+//   7. Print per-board verdict; exit non-zero on first FAIL.
 
 import "std/fs/process/process.oo";
 
-pub fn main(p: &ProcessCap) {
-    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-}\"; "
+pub fn main(p: &ProcessCap) -> Result[Int, String] {
+    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
         + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "echo '[BOARDS FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
         + "cd \"$src_root/openOODA\" || { echo '[BOARDS FAIL] cannot cd to openOODA'; exit 1; }; "
         + "fails=0; total=0; "
         + "echo '=== governance_check_boards ==='; "
-        + "for f in RULES.oot NORTHSTAR.oot; do "
+        + "for f in rules.oot northstar.oot requirements.oot roadmap.oot; do "
         + "  total=$((total + 1)); "
         + "  if [ ! -f \"$f\" ]; then fails=$((fails + 1)); echo \"  FAIL: $f missing\"; continue; fi; "
         + "  lines=$(wc -l < \"$f\"); "
         + "  if [ \"$lines\" -gt 256 ]; then fails=$((fails + 1)); echo \"  FAIL: $f lines=$lines exceeds 256 cap\"; fi; "
         + "done; "
-        + "total=$((total + 1)); "
-        + "rules_lines=$(wc -l < RULES.oot); "
-        + "for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 17 18 19 20 21 22 23 24; do "
-        + "  if ! grep -qE \"^### 1\\.$n \" RULES.oot; then fails=$((fails + 1)); echo \"  FAIL: RULES.oot missing law 1.$n\"; fi; "
+        + "for upper in RULES.oot RULES.OOT NORTHSTAR.oot NORTHSTAR.OOT REQUIREMENTS.oot REQUIREMENTS.OOT ROADMAP.oot ROADMAP.OOT FLOOR.oo FLOOR.OO ANCHOR.oo ANCHOR.OO; do "
+        + "  if [ -f \"$upper\" ]; then fails=$((fails + 1)); echo \"  FAIL: deprecated uppercase board $upper is present\"; fi; "
         + "done; "
         + "total=$((total + 1)); "
-        + "if ! grep -qE '^## Moonshot' NORTHSTAR.oot; then fails=$((fails + 1)); echo \"  FAIL: NORTHSTAR.oot missing Moonshot section\"; fi; "
+        + "rules_file=\"rules.oot\"; "
+        + "for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do "
+        + "  if ! grep -qE \"^### 1\\.$n \" \"$rules_file\"; then fails=$((fails + 1)); echo \"  FAIL: $rules_file missing law 1.$n\"; fi; "
+        + "done; "
+        + "total=$((total + 1)); "
+        + "ns_file=\"northstar.oot\"; "
+        + "if ! grep -qE '^## Target' \"$ns_file\"; then fails=$((fails + 1)); echo \"  FAIL: $ns_file missing Target section\"; fi; "
+        + "total=$((total + 1)); "
+        + "if ! grep -qE '^## 1\\. The 10 Requirements' requirements.oot; then fails=$((fails + 1)); echo \"  FAIL: requirements.oot missing Requirements section\"; fi; "
+        + "total=$((total + 1)); "
+        + "if ! grep -qE '^## 1\\. Active Release Milestones' roadmap.oot; then fails=$((fails + 1)); echo \"  FAIL: roadmap.oot missing Milestones section\"; fi; "
         + "for n in 0001 0002 0003 0004 0005 0006 0007; do "
         + "  total=$((total + 1)); "
         + "  if [ ! -f \"rfcs/${n}-\"*.oot ]; then fails=$((fails + 1)); echo \"  FAIL: rfcs/${n}-*.oot missing\"; fi; "
         + "done; "
-        + "for p in 8d-red-team.oot ooda-workflow.oot release.oot; do "
+        + "for pr in 8d-red-team.oot ooda-workflow.oot release.oot; do "
         + "  total=$((total + 1)); "
-        + "  if [ ! -f \"practices/$p\" ]; then fails=$((fails + 1)); echo \"  FAIL: practices/$p missing\"; fi; "
+        + "  if [ ! -f \"practices/$pr\" ]; then fails=$((fails + 1)); echo \"  FAIL: practices/$pr missing\"; fi; "
         + "done; "
         + "echo; "
         + "echo \"Boards checked: $total  Fails: $fails\"; "
         + "if [ \"$fails\" -gt 0 ]; then echo '[BOARDS FAIL]'; exit 1; fi; "
+        + "echo 'check_board: OK'; "
         + "echo '[BOARDS OK]'; exit 0;";
     let r: Result[String, String] = process_exec(p, cmd);
     let out: String = match r { Ok(s) => s, Err(e) => "ERR: " + e };
     print(out);
-    return r;
+    if r.is_err() {
+        return Err("boards check failed");
+    }
+    return Ok(0);
 }

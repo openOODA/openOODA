@@ -17,15 +17,15 @@
 //   1. Validate OODA_REPO_ROOT (absolute, no ..).
 //   2. Write Python extractor to temp dir; extract proof_of_today shell.
 //   3. Double-run extracted proof shell; capture headline + diff hash.
-//   4. Capture tag-drift count (12 product repos vs INDEX.oot).
+//   4. Capture tag-drift count (12 product repos vs index.oot).
 //   5. Write the daily page; print the path.
 //   6. Exit 0 on pass (headline >= 5), 1 on fail.
 
 import "std/fs/process/process.oo";
 
-pub fn main(p: &ProcessCap) {
+pub fn main(p: &ProcessCap) -> Result[Int, String] {
     let cmd: String = "set -e; "
-        + "src_root=\"${OODA_REPO_ROOT:-}\"; "
+        + "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
         + "case \"$src_root\" in /*) ;; *) echo '[PUBLISH FAIL] OODA_REPO_ROOT must be set to an absolute path'; exit 1 ;; esac; "
         + "case \"$src_root\" in *..*) echo '[PUBLISH FAIL] OODA_REPO_ROOT must not contain ..'; exit 1 ;; esac; "
         + "cd \"$src_root\" || { echo '[PUBLISH FAIL] cannot cd to '\"$src_root\"; exit 1; }; "
@@ -70,8 +70,8 @@ pub fn main(p: &ProcessCap) {
         + "[ -z \"$headline\" ] && headline=0; "
         + "drift=0; "
         + "for r in openOODA oodar oodac std ooda install opm catalog lsp mcp blackbox website; do "
-        + "  got=$(cd $r && git describe --tags --abbrev=0 2>/dev/null); "
-        + "  exp=$(awk -F'|' -v R=\"$r\" '$0 ~ \"\\\\| \"R\" \\\\\\|\" {gsub(/ /,\"\",$4); print $4; exit}' openOODA/docs/INDEX.oot); "
+        + "  got=$(cd $r && git describe --tags --abbrev=0 2>\"$tmp/err.log\" || true); "
+        + "  exp=$(awk -F'|' -v R=\"$r\" '$0 ~ \"\\\\| \"R\" \\\\\\|\" {gsub(/ /,\"\",$4); print $4; exit}' openOODA/docs/index.oot); "
         + "  if [ \"$got\" != \"$exp\" ]; then drift=$((drift + 1)); fi; "
         + "done; "
         + "session=\"mvs_b2115d13599946ac965f975f0e628547\"; "
@@ -87,18 +87,18 @@ pub fn main(p: &ProcessCap) {
         + "  echo '## Headline'; "
         + "  echo; "
         + "  if [ \"$headline\" -ge 5 ]; then "
-        + "    echo 'Verdict: PASS — '\"$headline\"'/10 (>= 5/10 threshold; RULES.oot sec 1.17).'; "
+        + "    echo 'Verdict: PASS — '\"$headline\"'/10 (>= 5/10 threshold; rules.oot sec 1.17).'; "
         + "  else "
         + "    echo 'Verdict: FAIL — headline '\"$headline\"'/10 (below 5/10 release block).'; "
         + "  fi; "
         + "  echo; "
-        + "  echo '## proof_of_today (double-run, RULES.oot sec 1.10)'; "
+        + "  echo '## proof_of_today (double-run, rules.oot sec 1.10)'; "
         + "  echo; "
         + "  echo 'Run1 sha256: '\"$h1\"; "
         + "  echo 'Run2 sha256: '\"$h2\"; "
         + "  echo 'Divergent: '\"$pdiv\"; "
         + "  echo; "
-        + "  echo '## Moonshot scorecard (proof_of_today.oo)'; "
+        + "  echo '## Target scorecard (proof_of_today.oo)'; "
         + "  echo; "
         + "  echo '```'; "
         + "  grep -E '^[0-9]\\. |Headline:' \"$tmp/proof_1.out\" || true; "
@@ -106,9 +106,9 @@ pub fn main(p: &ProcessCap) {
         + "  echo; "
         + "  echo '## Drift'; "
         + "  echo; "
-        + "  echo 'Tag-drift count (12 product repos vs openOODA/docs/INDEX.oot): '\"$drift\"; "
+        + "  echo 'Tag-drift count (12 product repos vs openOODA/docs/index.oot): '\"$drift\"; "
         + "  echo; "
-        + "  if [ \"$drift\" -gt 0 ]; then echo 'INDEX.oot snapshot is stale. Re-run drift-refresh.'; else echo 'INDEX.oot snapshot is current.'; fi; "
+        + "  if [ \"$drift\" -gt 0 ]; then echo 'index.oot snapshot is stale. Re-run drift-refresh.'; else echo 'index.oot snapshot is current.'; fi; "
         + "  echo; "
         + "  echo '## Deferred to other mcode (compiler / host lane)'; "
         + "  echo; "
@@ -124,11 +124,11 @@ pub fn main(p: &ProcessCap) {
         + "  echo; "
         + "  echo '## Cross-references'; "
         + "  echo; "
-        + "  echo '- openOODA/docs/INDEX.oot — tag snapshot (drift SSoT).'; "
+        + "  echo '- openOODA/docs/index.oot — tag snapshot (drift SSoT).'; "
         + "  echo '- openOODA/scripts/target_scorecard.oot — target scorecard mirror.'; "
         + "  echo '- openOODA/scripts/proof_of_today.oo — scorecard driver.'; "
-        + "  echo '- RULES.oot sec 1.10 — double-run law.'; "
-        + "  echo '- RULES.oot sec 1.17 — 80/20 leverage; 5/10 release block.'; "
+        + "  echo '- rules.oot sec 1.10 — double-run law.'; "
+        + "  echo '- rules.oot sec 1.17 — 80/20 leverage; 5/10 release block.'; "
         + "} > \"$out_file\"; "
         + "echo; "
         + "echo \"Wrote: $out_file\"; "
@@ -140,5 +140,8 @@ pub fn main(p: &ProcessCap) {
     let r: Result[String, String] = process_exec(p, cmd);
     let out: String = match r { Ok(s) => s, Err(e) => "ERR: " + e };
     print(out);
-    return r;
+    if r.is_err() {
+        return Err("publish daily audit failed");
+    }
+    return Ok(0);
 }

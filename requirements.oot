@@ -1,0 +1,107 @@
+# openOODA Ecosystem Functional Requirements & Capability Contracts
+File: openOODA/requirements.oot
+
+This document establishes the authoritative functional specifications and capability
+contracts delivered across the 11 components of the openOODA polyrepo ecosystem.
+Mechanical invariants and negative laws are governed exclusively by rules.oot.
+Target architectural posture and grammar are defined in northstar.oot.
+Release milestones and task backlogs are tracked in roadmap.oot.
+
+## 1. The 10 Requirements — Ecosystem Capability Contracts
+
+### Requirement 1 — Sovereign Compiler Pipeline (`oodac`)
+  Delivers ahead-of-time verification and native binary compilation:
+  - Multi-stage pipeline: lexing, concrete AST, Merkle AST subtree hashing,
+    typechecking, borrow checking, and contract verification.
+  - Multi-backend emission: portable C99 (linking oodar runtime), LLVM IR
+    (for optimization and SIMD vectorization), and direct standalone ELF64/WASM.
+  - Generates machine-readable diagnostics with automated one-turn repairs.
+
+### Requirement 2a — Language CLI Workflow Driver (`cli`)
+  Delivers developer ergonomics and language-specific execution workflows:
+  - Unified command dispatch: `build`, `run`, `test`, `fmt`, `install`,
+    `update`, `upgrade`, `init`, `qa`, `context`, `fix`.
+  - Stationary workspace topology: executes in-place with zero path drift.
+  - Deterministic test orchestration with sequential double-run verification.
+
+### Requirement 2b — Operational Router (`ooda`)
+  Delivers backwards-compat routing for the legacy `ooda` binary surface:
+  - Argv router that forwards to `cli`, `opm`, `lsp`, `mcp`, plus the legacy
+    `mcp-merge` passthrough to `ooda-mcp mcp-merge`.
+  - Owns the spawn dispatcher (`build/spawn.oo`) and compiler locator
+    (`build/find_compiler.oo`).
+  - No in-process driver work; every verb forwards via `process_exec`.
+
+### Requirement 3 — Runtime Substrate & Security Sandbox (`oodar`)
+  Delivers low-level host runtime primitives in isolated C translation units:
+  - Sandboxed execution: Landlock LSM filesystem confinement and seccomp-bpf filters.
+  - Security model: 26 substrate capability bits (20 language tokens subset).
+  - Linear arena allocator: contiguous memory layout with O(1) bulk resets.
+  - Crash flight sensor: zero-heap signal interceptor and autopsy emission.
+
+### Requirement 4 — Modular Standard Library (`std`)
+  Delivers pure, idiomatic standard library modules across 8 functional domains:
+  - Domains: `core`, `fs`, `net`, `sec`, `science`, `app`, `hw`, `meta`.
+  - Zero-heap allocation: arena-backed data structures and zero-copy buffer slicing.
+  - Modular encapsulation: strict <= 256 lines per file and 4-element Academy headers.
+
+### Requirement 5 — Flight Recorder & Crash Autopsy Subsystem (`bb`)
+  Delivers agent-native execution recording and post-mortem analysis:
+  - In-memory ring buffer: zero-allocation telemetry recording during execution.
+  - Signal interception: captures `SIGSEGV`, `SIGABRT`, `SIGBUS`, and `SIGILL`.
+  - Diagnostic engine: parses `.blackbox/autopsy.json` for 1-turn root cause analysis.
+  - Compiler stage diffing: AST semantic diff comparison via `bb diff`.
+
+### Requirement 6 — Language Server Protocol Daemon (`lsp`)
+  Delivers rich editor integration conforming to the JSON-RPC 2.0 protocol:
+  - Language features: real-time diagnostics, hover tooltips, completion, definition jumps.
+  - Capability inspection: static visibility into required capability tokens.
+
+### Requirement 7 — Model Context Protocol Server (`mcp`)
+  Delivers structured tool interfaces for autonomous AI agents:
+  - Tool dispatch: exposes AST slicing, build verification, and rule checking.
+  - Capability attenuation: dynamically constrains agent permissions per turn.
+
+### Requirement 8 — Cryptographic Package Manager (`opm`)
+  Delivers reproducible, verified dependency resolution and package distribution:
+  - Manifest parsing: validates `ooda.pkg` manifests and lockfiles.
+  - Cryptographic verification: minisign signature and SHA-256 integrity validation.
+  - Capability auditing: verifies dependency capability declarations ahead-of-time.
+
+### Requirement 9 — Central Package Index & Ecosystem Catalog (`catalog`)
+  Delivers public registry metadata, package discovery, and security proofs:
+  - Curated registry of verified openOODA libraries and tools.
+  - Automated capability auditing and tamper-proof cryptographic proofs.
+
+### Requirement 10 — Machine Landing & Web Platform (`install` & `website`)
+  Delivers seamless installation, system integration, and documentation:
+  - Multi-platform installer (`install.sh`, apt, dnf, pacman): idempotent landing,
+    pre-flight dependency checks, fail-closed SHA-256 sidecars, and clean uninstalls.
+  - Web platform (`website`): official documentation, architecture portals, and demos.
+
+## 2. Subsystem Interface Contracts
+
+### 2.1 Standard Exit Codes
+  All CLI entrypoints (`oodac`, `ooda`, `bb`, `opm`) conform to standard exit codes:
+  - `0`: Success (all operations, checks, or tests passed).
+  - `1`: Execution failure (runtime exception, test failure, build error).
+  - `2`: Invocation error (invalid CLI flags, unrecognized arguments, syntax error).
+  - `3`: Capability violation (unauthorized operation, sandbox escape attempt, `E_CAP`).
+
+### 2.2 IPC Protocols & Wire Schemas
+  - Language Server Protocol: JSON-RPC 2.0 over standard I/O for editor communication.
+  - Model Context Protocol: MCP standard JSON schemas for agent tool invocation.
+  - Crash Autopsy Format: Structured JSON schema written to `.blackbox/autopsy.json`.
+
+### 2.3 Environment Variable Contract
+  - `OODA_COMPILER`: Absolute path to the sovereign compiler binary executable.
+  - `OODA_REPO_ROOT`: Absolute path to the polyrepo root directory.
+  - `OODA_FS_READDIR`: Colon-separated whitelist paths permitted for filesystem reads.
+  - `OODA_FS_WRITEDIR`: Colon-separated whitelist paths permitted for filesystem writes.
+
+## 3. Boundary Demarcation & Out-of-Scope
+
+  The functional requirements define what the ecosystem delivers. They do not cover:
+  - Negative constitutional invariants and mechanical limits (governed by rules.oot).
+  - Target language grammar, AST schemas, and type system vision (governed by northstar.oot).
+  - Ephemeral release milestones and sprint backlogs (governed by roadmap.oot).

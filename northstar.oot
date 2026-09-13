@@ -1,20 +1,12 @@
-# NORTHSTAR — Architecture North Star, Language Grammar, AST & Type System Specification
-File: openOODA/NORTHSTAR.oot
+# northstar — Architecture North Star, Language Grammar, AST & Type System Specification
+File: openOODA/northstar.oot
 
 This document defines the target architecture, formal grammar, AST design, and type system.
-Version SSoT is git tags plus per-repo VERSION files; see RULES.oot §1.21 and rfcs/0006.
+Version SSoT is git tags plus per-repo VERSION files; see rules.oot §1.21 and rfcs/0006.
 For the current per-repo tag list, run `git ls-remote --tags https://github.com/openOODA/<repo>`
-or `bin/ooda version`. The line that used to hardcode the verified release state
-in this file drifted; per RULES.oot §1.24 the version number is derived from git
-history, not declared by hand.
+or `bin/ooda version`.
 
 openOODA is a systems programming language engineered for safe, high-performance, deterministic software.
-
-Note: per the 2026-09-02 governance refactor, the 13 canonical
-process boards are now 3 onboarding files (ANCHOR.oo, this file,
-RULES.oot), 7 RFCs under rfcs/, and 3 practice files under
-practices/. The entry point is ANCHOR.oo next to this file.
-Do not prefix another openOODA/ segment onto that path.
 The compiler verifies source code ahead-of-time.
 All side effects and privileged operations require explicit, unforgeable capability tokens.
 Functions declare verifiable contracts (`requires`, `ensures`, `spec`).
@@ -33,70 +25,36 @@ Per-target 10/10 scores measure how completely trust has been replaced by eviden
 
 ## 1. Architectural Foundation
 
-### 1.1 The 10 Strategic Governance Requirements
-The 10 requirements that govern the openOODA polyrepo are defined in
-`Requirements.oot` at the repo root. That file is the canonical
-authoritative reference; this section is a brief index.
-
-- Requirement 1 — First Principles & Pure File Extension Laws.
-- Requirement 2 — Performance & Subtractive Design.
-- Requirement 3 — Adversarial Validation & Double-Run Invariant.
-- Requirement 4 — Academy 4-Element Headers.
-- Requirement 5 — Capability Security & Zero Ambient Authority.
-- Requirement 6 — Multi-Process Coordination Safety.
-- Requirement 7 — Formal RFC Template Compliance.
-- Requirement 8 — Two-Binary Architecture.
-- Requirement 9 — C/H Substrate Isolation.
-- Requirement 10 — Clean Workspaces.
-
-Plus the three operational laws (RULES.oot §1.20): Subtractive Optimization,
-Deterministic Execution, 100% Specified Contracts.
-
-See `Requirements.oot` for the full description and the RULES.oot
-cross-reference table.
-
-### 1.2 Architectural Layer Model
+### 1.1 Architectural Layer Model
 Each layer stabilizes a deterministic foundation for the layer above it:
-- Layer 1 (Silicon Substrate): Page tables (x86_64 PML4, RISC-V Sv39), SIMD registers, MMU, and APIC/GIC interrupt routing. Canonical home: `openOODA/oodar/` (the C host substrate; oo_* symbols across 6 per-domain subdirs per the v2.0.0 layout).
-- Layer 2 (Self-Hosted Compiler & IR): Lexer, parser, Merkle AST, SSA mem2reg, optimization passes, and direct ELF64/WASM emission.
-- Layer 3 (Deterministic Runtime & Memory): Linear arena allocators with O(1) bulk resets, deterministic ARC, and Landlock isolation.
-- Layer 4 (Language Semantics & Type System): ADTs, 20 capability tokens, refinement types, typestates, SECRET taint tracking, and SMT contracts.
+- Layer 1 (Silicon Substrate): Page tables (x86_64 PML4, RISC-V Sv39), SIMD registers, MMU,
+  and APIC/GIC interrupt routing. Canonical home: `openOODA/oodar/` (the C host substrate;
+  oo_* symbols across 6 per-domain subdirs per the v2.0.0 layout).
+- Layer 2 (Self-Hosted Compiler & IR): Lexer, parser, Merkle AST, SSA mem2reg,
+  optimization passes, and direct ELF64/WASM emission.
+- Layer 3 (Deterministic Runtime & Memory): Linear arena allocators with O(1) bulk resets,
+  deterministic ARC, and Landlock isolation.
+- Layer 4 (Language Semantics & Type System): ADTs, 20 capability tokens, refinement types,
+  typestates, SECRET taint tracking, and SMT contracts.
 - Layer Encapsulation: Layers 1-4 form a stable library base for higher-level tooling and coordination.
 
-### 1.3 Memory & Concurrency Model
+### 1.2 Memory & Concurrency Model
 - Linear arena allocators provide zero-heap standard library operations with bulk resets.
 - Automatic Reference Counting (ARC) reclaims memory deterministically when reference counts reach zero.
 - Buffer slicing operates with zero memory copies.
 - Actor-based concurrency isolates memory heaps behind typed, bounded channels.
 - Speculative execution uses transactional rollback buffers before commits.
 
-### 1.4 Fundamental Operational Laws
-- Law of Substratum Integrity: Fix base memory and concurrency drag before implementing high-level orchestration.
-- Law of Hermetic Encapsulation: Treat each subsystem as an encapsulated module with explicit capability tokens.
-- Law of Bounded Promotion: Require formal SMT proofs or invariant checks before runtime promotion of dynamic code.
-
-### 1.5 Semantic Versioning
-- Version Syntax: `v<MAJOR>.<MINOR>.<PATCH>` (semver; see RULES.oot §1.21). One number per repo, used in the VERSION file, git tags, and CHANGES.md — they must match.
-- MAJOR: Increments on breaking changes to memory invariants, capability ABI, or bootstrap compiler.
-- MINOR: Increments on additive features.
-- PATCH: Increments on bug repairs and security remediation.
-
 ## 2. Language Grammar & Concrete Syntax
 
-### 2.1 File & Module Organization
-- Source files use `.oo`; documentation files use `.oot`.
-- Each `.oo` file represents an isolated module.
-- All files must contain a maximum of 256 lines.
-- Product modules must begin with a 4-element Academy header (Title, Logline, Setup, Beats).
-
-### 2.2 Core Syntax Rules
+### 2.1 Core Syntax Rules
 - Bindings are immutable by default (`let x = val;`); mutable bindings require `let mut x = val;`.
 - Expressions yield values: blocks, `if/else`, and `match` expressions return results.
 - The language contains no null pointers; use `Option[T]` and `Result[T, E]`.
 - Handlers must explicitly process `Result` and `Option` returns using `match` or `?`.
 - Functions declare contract clauses (`requires`, `ensures`, `spec`).
 
-### 2.3 Formal EBNF Grammar
+### 2.2 Formal EBNF Grammar
 ```
 Program           ::= { Item } ;
 Item              ::= FunctionDecl | TypeDecl | TraitDecl | ImportDecl ;
@@ -158,8 +116,12 @@ CallExpr          ::= PrimaryExpr "(" [ ArgList ] ")" [ "?" ] ;
 - Pattern Matching: `match` expressions must exhaustively handle all variants.
 
 ### 4.2 Static Capability Verification (20 Language Tokens + 26 Substrate Caps)
-- 20 language tokens: `FsReadCap`, `FsWriteCap`, `NetCap`, `TcpCap`, `UdpCap`, `SysCap`, `ProcessCap`, `EnvCap`, `TimeCap`, `RandCap`, `AllocCap`, `ThreadCap`, `GpuCap`, `FfiCap`, `FsCap`, `ArenaCap`, `MetricsCap`, `SignCap`, `BindCap`, `CompilerReadCap` — the `NORTHSTAR` 20, type-checked by `oodac`. Bit positions are `oodar/sec/cap/cap_table.json`. MCP and oodac must use those bits. There is no 14-token map.
-- 26 substrate caps: the `oodar` `cap_table.json`/`sec/cap/caps.h` `26` (`20` implemented + `6` `future-state` `AUDIO`/`CAMERA`/`USB`/`HID`/`WINDOW`/`FRAME`) — the `20` are the `subset` of the `26`.
+- 20 language tokens: `FsReadCap`, `FsWriteCap`, `NetCap`, `TcpCap`, `UdpCap`, `SysCap`,
+  `ProcessCap`, `EnvCap`, `TimeCap`, `RandCap`, `AllocCap`, `ThreadCap`, `GpuCap`,
+  `FfiCap`, `FsCap`, `ArenaCap`, `MetricsCap`, `SignCap`, `BindCap`, `CompilerReadCap`.
+  Bit positions are mapped in `oodar/sec/cap/cap_table.json`.
+- 26 substrate caps: canonical host runtime capabilities in `oodar/sec/cap/caps.h`
+  (20 active language tokens + 6 reserved device capabilities).
 - Functions accept borrowed capability references (`&FsReadCap`) without taking ownership.
 - Capability attenuation allows token holders to derive strictly narrowed subsets.
 - Calling privileged functions without valid capability tokens fails compilation (`E_CAP`).
@@ -177,37 +139,32 @@ CallExpr          ::= PrimaryExpr "(" [ ArgList ] ")" [ "?" ] ;
 - Taint analysis tracks dataflow through assignments, struct packing, and function calls.
 - Compiler prevents tainted values from reaching unsealed sinks (`process_exec`, unencrypted I/O).
 
-### 4.6 Boundary Physics & Decidability Limits
-- Rice's Decidability Bound: Restrict contracts to decidable SMT logics (QF_LIA, QF_BV) with deterministic timeouts.
-- CAP Monotonic Leases: Prioritize safety and consistency over availability during network partitions.
-- Landauer Minimal Entropy: Structure memory in contiguous linear arenas with O(1) bulk resets.
+### 4.6 SMT Decidability Limits
+- Restrict verification contracts to decidable SMT logics (QF_LIA for linear arithmetic,
+  QF_BV for bitvector operations) with deterministic solver timeouts.
 
 ## 5. Compiler Backends & Execution Targets
 
 ### 5.1 Backend Hierarchy
 - Direct ELF64 Emission: Pure `.oo` backend emitting standalone ELF64 and WASM binaries directly.
-- C Code Emission: Generates portable C code linking the oodar runtime (sourced from `openOODA/oodar/`, v2.0.0 6-subdir layout; the canonical single-TU build is `gcc oodar.c`); compiles with `gcc` or `clang`. The 18 public symbols that gained capability parameters in v2.0.0 (oo_alloc/free/write_int/read_int/checkpoint/rollback and the 12 oo_weak_*/oo_control_block_* mutators) must be emitted with the correct cap.
+- C Code Emission: Generates portable C code linking the oodar runtime (sourced from
+  `openOODA/oodar/`, v2.0.0 layout; canonical single-TU build is `gcc -c oodar.c`).
 - LLVM IR Generation: Direct LLVM IR generation for optimization passes and SIMD vectorization.
-- WebAssembly Target: Compiles to sandboxed WASM for browser environments with zero ambient authority.
+- WebAssembly Target: Compiles to sandboxed WASM for browser and edge environments.
 - Bare-Metal Target: Minimal runtime profile for embedded architectures (x86_64, RISC-V).
 
 ### 5.2 Build Determinism & Data Layouts
 - Bit-identical compilation produces reproducible binaries with normalized paths and sorted symbols.
 - Support for Struct-of-Arrays (SoA) layout enables high-throughput vector processing.
 
-## 6. Architecture Policies & Guidelines
-- Builds produce bit-identical binaries by default.
-- Hot paths use linear arena allocators with bulk resets; long-lived objects use deterministic ARC.
-- External C function calls require `FfiCap` tokens and run inside isolated wrapper boundaries.
-- Multi-agent development uses collaborative git and disk synchronization protocols.
-
-## 7. Cross References
-Paths below are from this repo root. Do not prefix openOODA/.
-- Formal Grammar: `ooda/ooda.ebnf` (in the ooda/ monorepo)
+## 6. Cross References
+Paths below are from this repo root:
+- Ecosystem Requirements: `requirements.oot`
+- Constitutional Laws: `rules.oot`
+- Release Roadmap: `roadmap.oot`
 - 3-Layer Architecture: `rfcs/0004-engineering-model.oot`
-- File Format & 256 Cap: `rfcs/0003-file-format.oot`
+- File Format & Line Cap: `rfcs/0003-file-format.oot`
 - Capability Security: `rfcs/0001-capability-security.oot`
 - Design by Contract: `rfcs/0002-design-by-contract.oot`
-- 23 Laws: `RULES.oot`
 - 8D Red Team: `practices/8d-red-team.oot`
 - OODA Workflow: `practices/ooda-workflow.oot`

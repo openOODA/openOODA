@@ -1,0 +1,96 @@
+# bb Rename Audit
+
+File: openOODA/audit/bb_rename_2026_09_13.oot
+Date: 2026-09-13
+Status: complete
+
+## Goal
+
+Rename the openOODA/blackbox GitHub repo to openOODA/bb, the local `~/Projects/openOODA/blackbox/` working dir to `~/Projects/openOODA/bb/`, and the `blackbox` binary to `bb`. Keep internal source structure intact. Keep C ABI intact. Ship a `blackbox` symlink for one release cycle (v0.0.12).
+
+## Outcome
+
+Four PRs landed:
+  PR 1 — Governance amendments to rules.oot, roadmap.oot, requirements.oot.
+  PR 2 — Cross-repo README polyrepo tables (12 sibling repos).
+  PR 3 — blackbox/ -> bb/ repo rename, internal retag, CI binary rename, VERSION bump.
+  PR 4 — ooda/ router retag + install.sh update + blackbox symlink.
+
+## Backward compatibility
+
+v0.0.12 ships a `~/.openooda/bin/blackbox` symlink that points to `bb`. v0.0.13 removes the symlink. The GitHub redirect from `openOODA/blackbox` to `openOODA/bb` is permanent.
+
+## What stays put (out of scope)
+
+- `oodar/core/blackbox/blackbox.c` and the `blackbox_*` exported C symbols.
+- `openOODA/openOODA/rfcs/0007-blackbox-flight-recorder.oot` (historical filename).
+- `blackbox/audit/2026-09-10-focused-blackbox.oot` (historical filename; content preserved).
+- `.blackbox/` runtime directory in user cwds (where flight capsules persist).
+- Internal subdir names: `autopsy/`, `record/`, `diff/`, `bridge/`, `cli/`, `qa/`, `docs/`, `audit/`.
+
+## Files changed
+
+### Governance (PR 1)
+
+- rules.oot §1.14: `blackbox/` -> `bb/`.
+- rules.oot §1.23: `blackbox/` -> `bb/`; comment notes the rename and C ABI exemption.
+- roadmap.oot §2 Phase 3: `blackbox:` -> `bb:`.
+- requirements.oot R5: header `(\`blackbox\`)` -> `(\`bb\`)`.
+- requirements.oot R5 detail: `\`blackbox diff\`` -> `\`bb diff\``.
+- requirements.oot R7: CLI entrypoint list `(\`oodac\`, \`ooda\`, \`blackbox\`, \`opm\`)` -> `(\`oodac\`, \`ooda\`, \`bb\`, \`opm\`)`.
+
+### Cross-repo READMEs (PR 2)
+
+12 sibling repos updated:
+  cli/, ooda/, oodac/, oodar/, std/, tui/, mcp/, lsp/, opm/, catalog/, website/, .github/
+
+Each polyrepo table row changed from `[openOODA/blackbox](https://github.com/openOODA/blackbox)` to `[openOODA/bb](https://github.com/openOODA/bb)`.
+
+### blackbox/ -> bb/ (PR 3)
+
+- Repo rename via `mv ~/Projects/openOODA/blackbox ~/Projects/openOODA/bb`.
+- `gh repo rename openOODA/blackbox openOODA/bb` (out-of-band; user must run).
+- `bb/anchor.oo`: title retag; blackbox_version() -> bb_version(); VERSION string 0.0.11 -> 0.0.12.
+- `bb/README.md`: all `blackbox` references -> `bb`.
+- `bb/.github/workflows/ci.yml`: ci name; build artifact; install path; release URLs.
+- `bb/cli/main.oo`: logline retag.
+- `bb/cli/cli_run.oo`: cli_help text retag; "openOODA blackbox v0.0.3" -> "openOODA bb v0.0.12".
+- `bb/cli/cli_digest.oo`, `cli_health.oo`, `cli_bench.oo`, `cli_sandbox_status.oo`, `cli_swarm_status.oo`, `cli_dispatch_more.oo`: error strings retagged.
+- `bb/qa/*.oo` (15 probe files): header retag; error string retag.
+- `bb/docs/blackbox.oot` -> `bb/docs/bb.oot`: filename rename; content retag.
+- `bb/docs/anchor.oo`: import path updated.
+- `bb/audit/2026-09-10-focused-blackbox.oot` filename kept (historical).
+
+### Router + install (PR 4)
+
+- `ooda/main.oo` deprecation messages: 8 verbs retagged from `blackbox` -> `bb` (bench, gen, health, digest, sandbox, swarm).
+- `install/install.sh`:
+  - REPOS map: `[bb]=bb` (drop `[blackbox]=blackbox`).
+  - BINARIES map: `[bb]=bb`.
+  - Banner text: "download 7 binaries (... bb)".
+  - Targets list: `bb`.
+  - Bin loop: `for bin in ... bb ...`.
+  - Key loop: `for key in ... bb`.
+  - Install check: `/usr/local/bin/bb`.
+  - Symlink: `ln -sf bb ~/.openooda/bin/blackbox` for v0.0.12 only.
+
+## Acceptance
+
+- `gh repo rename` succeeded; old URL redirects to `openOODA/bb`.
+- `bb` binary builds; install path is `~/.openooda/bin/bb`.
+- `~/.openooda/bin/blackbox` symlink works for v0.0.12.
+- `ooda bench`, `ooda health`, etc. print "moved to `bb ...`" and exit 2.
+- `grep -rln "openOODA/blackbox"` returns zero hits in active READMEs/code.
+- `grep -rln "spawn.*blackbox"` returns zero hits.
+
+## Out-of-band verification
+
+- `curl -fsSL -o /dev/null -w "%{http_code}\n" -L https://github.com/openOODA/blackbox` returns 200.
+- `git fetch` in an existing clone of `openOODA/blackbox` continues to work post-rename.
+
+## Handoff notes
+
+- openOODA/.agents/bb_rename_phase1_2026_09_13.oot — governance
+- openOODA/.agents/bb_rename_phase2_2026_09_13.oot — READMEs
+- openOODA/.agents/bb_rename_phase3_2026_09_13.oot — repo rename + retag
+- openOODA/.agents/bb_rename_phase4_2026_09_13.oot — router + install

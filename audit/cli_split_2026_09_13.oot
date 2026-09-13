@@ -1,0 +1,229 @@
+# cli Split Audit
+
+File: openOODA/audit/cli_split_2026_09_13.oot
+Date: 2026-09-13
+Status: complete
+
+## Goal
+
+Split the openOODA driver surface into a thin ooda/ router and a trimmed cli/ repo. Redistribute non-language verbs to their proper homes (tui, mcp, lsp, blackbox, opm).
+
+## Outcome
+
+Eight phases landed. Eight governance edits plus 51 new/changed files. cli/ is a new polyrepo with its own Makefile and CI. ooda/ shrank from 56 .oo files to 4. Five downstream repos gained new handlers.
+
+## Files moved
+
+### Phase 2 — cli/build/ (8 handlers)
+
+| From (ooda/build/) | To (cli/build/) | Lines | Notes |
+|---|---|---|---|
+| find_compiler.oo | find_compiler.oo | 50 | Header retagged to cli; Beats on line 7 |
+| host_run.oo | host_run.oo | 72 | Retagged error strings to cli |
+| host_build.oo | host_build.oo | 177 | Retagged error strings |
+| test.oo | test.oo | 99 | Retagged error strings |
+| install.oo | install.oo | 214 | Unchanged |
+| update.oo | update.oo | 223 | Header compressed |
+| init.oo | init.oo | 92 | Retagged scaffold strings |
+| qa.oo | qa.oo | 107 | Retagged error strings |
+
+### Phase 3 — cli/fix/ + cli/fmt/ + cli/context.oo (8 handlers)
+
+| From (ooda/) | To (cli/) | Lines |
+|---|---|---|
+| fix/text.oo | fix/text.oo | 187 |
+| fix/apply.oo | fix/apply.oo | 232 |
+| fix/diag.oo | fix/diag.oo | 72 |
+| fix/imp.oo | fix/imp.oo | 85 |
+| fix/must.oo | fix/must.oo | 110 |
+| fix/fix.oo | fix/fix.oo | 168 |
+| fix/digest.oo | (preserved) | (Phase 6 -> blackbox) |
+| fmt/fmt.oo | fmt/fmt.oo | 172 |
+| build/context.oo | context.oo | 160 |
+
+### Phase 5 — token/ to tui/ (13 handlers)
+
+| From (ooda/token/) | To (tui/token/) | Lines |
+|---|---|---|
+| cmd_token.oo | cmd_token.oo | 249 |
+| cmd_ask.oo | cmd_ask.oo | ? |
+| cmd_audit.oo | cmd_audit.oo | ? |
+| cmd_diff.oo | cmd_diff.oo | ? |
+| cmd_enforce.oo | cmd_enforce.oo | ? |
+| cmd_ingest.oo | cmd_ingest.oo | ? |
+| cmd_more.oo | cmd_more.oo | ? |
+| cmd_query.oo | cmd_query.oo | ? |
+| cmd_report_md.oo | cmd_report_md.oo | ? |
+| cmd_schema.oo | cmd_schema.oo | ? |
+| cmd_snapshot.oo | cmd_snapshot.oo | ? |
+| cmd_tail.oo | cmd_tail.oo | ? |
+| anchor.oo | anchor.oo | ? |
+
+### Phase 6 — blackbox additions (5 handlers)
+
+| From (ooda/) | To (blackbox/cli/) | Lines | Verb |
+|---|---|---|---|
+| fix/digest.oo | cli_digest.oo | 117 | digest |
+| build/health.oo | cli_health.oo | 41 | health (rewritten as real probe) |
+| build/bench.oo | cli_bench.oo | 88 | bench |
+| build/sandbox.oo | cli_sandbox_status.oo | 41 | sandbox status (status branch only) |
+| build/swarm.oo | cli_swarm_status.oo | 81 | swarm status (status branch only) |
+
+Plus new cli_dispatch_more.oo (54 lines) routes the 5 new verbs into their handlers.
+
+### Phase 7 — opm gen (1 new handler)
+
+| New (opm/cli/) | Lines | Sub-cmds |
+|---|---|---|
+| cmd_gen.oo | 134 | module, service, test |
+
+## Files deleted
+
+### Phase 2 (8 files)
+
+- ooda/build/find_compiler.oo, host_build.oo, host_run.oo, test.oo, install.oo, update.oo, init.oo, qa.oo
+
+### Phase 3 (8 files)
+
+- ooda/fix/text.oo, apply.oo, diag.oo, fix.oo, imp.oo, must.oo
+- ooda/fmt/fmt.oo
+- ooda/build/context.oo
+
+### Phase 5 (13 files)
+
+- All 13 ooda/token/*.oo (moved to tui/token/)
+
+### Phase 6 (5 files)
+
+- ooda/fix/digest.oo (moved to blackbox)
+- ooda/build/bench.oo, health.oo, sandbox.oo, swarm.oo (moved to blackbox)
+
+### Phase 8 (3 files)
+
+- ooda/build/eval.oo, gen.oo, repl.oo (deprecated; blackbox/opm equivalents shipped)
+
+## Files written (new)
+
+### Phase 1 — cli/ scaffold
+
+- cli/anchor.oo, cli/main.oo, cli/Makefile, cli/README.md, cli/LICENSE, cli/.gitignore, cli/.github/workflows/ci.yml
+- cli/build/anchor.oo, cli/fix/anchor.oo, cli/fmt/anchor.oo, cli/token/anchor.oo, cli/qa/anchor.oo, cli/audit/anchor.oo, cli/docs/anchor.oo, cli/examples/anchor.oo
+
+### Phase 5
+
+- cli/token.oo (forwarder to ooda-tui via --token flag)
+
+### Phase 6
+
+- blackbox/cli/cli_digest.oo, cli_health.oo, cli_bench.oo, cli_sandbox_status.oo, cli_swarm_status.oo, cli_dispatch_more.oo
+
+### Phase 7
+
+- opm/cli/cmd_gen.oo
+
+## Files updated
+
+### Phase 0 — governance
+
+- openOODA/openOODA/rules.oot (§1.14 N-Binary; cli/ in polyrepo list; §1.23 Operational Logistics adds cli/)
+- openOODA/openOODA/roadmap.oot (§2 Phase 2 split into cli driver + ooda router)
+- openOODA/openOODA/requirements.oot (R2 -> R2a cli driver + R2b ooda router)
+
+### Phase 2
+
+- ooda/main.oo (121 -> 106 lines; rewritten as thin router)
+- ooda/build/anchor.oo (slimmed: only spawn.oo + 8 deprecated handlers)
+
+### Phase 3
+
+- cli/main.oo (98 -> 127 lines; wires 12 real verbs)
+- ooda/build/anchor.oo (slimmed again: 7 deprecated after context.oo removal)
+
+### Phase 5
+
+- tui/anchor.oo (imports token/anchor.oo; api_surface=2)
+- tui/main.oo (added --token <sub> flag handler)
+- cli/main.oo (wires token forwarder)
+
+### Phase 6
+
+- blackbox/cli/cli_run.oo (cli_help lists 5 new verbs; cli_dispatch calls cli_dispatch_more at end)
+- blackbox/cli/main.oo (signature adds TimeCap + ThreadCap)
+- blackbox/cli/anchor.oo (imports 5 new + cli_dispatch_more)
+
+### Phase 7
+
+- opm/cli/main.oo (imports cmd_gen.oo; dispatch adds gen)
+
+### Phase 8
+
+- ooda/build/anchor.oo (slimmed to only spawn.oo)
+- ooda/build/ no longer has bench, context, eval, gen, health, repl, sandbox, swarm
+
+## Repos touched
+
+1. openOODA/openOODA (governance)
+2. openOODA/ooda (router trim; 56 -> 4 .oo files)
+3. openOODA/cli (NEW polyrepo; 14 skeleton + 12 moved handlers)
+4. openOODA/tui (token/ moves in; --token <sub> flag added)
+5. openOODA/blackbox (5 new diagnostic handlers + cli_dispatch_more)
+6. openOODA/opm (1 new gen handler)
+
+## Repos not touched
+
+- openOODA/oodac, openOODA/oodar, openOODA/std, openOODA/lsp, openOODA/mcp, openOODA/install, openOODA/catalog
+
+## Back-compat matrix
+
+| Old `ooda <sub>` | New home | Back-compat status |
+|---|---|---|
+| `build <file>` | `cli build <file>` | ooda forwards via spawn |
+| `run <file>` | `cli run <file>` | ooda forwards via spawn |
+| `test <file>` | `cli test <file>` | ooda forwards via spawn |
+| `fmt <file>` | `cli fmt <file>` | ooda forwards via spawn |
+| `install` | `cli install` | ooda forwards via spawn |
+| `update`/`upgrade` | `cli update` | ooda forwards via spawn |
+| `init` | `cli init` | ooda forwards via spawn |
+| `qa` | `cli qa` | ooda forwards via spawn |
+| `context` | `cli context` | ooda forwards via spawn |
+| `fix` | `cli fix` | ooda forwards via spawn |
+| `token <sub>` | `cli token <sub>` -> `ooda-tui --token <sub>` | ooda forwards -> cli forwards -> ooda-tui |
+| `eval`/`repl` | (dead; use ooda-tui shell) | ooda prints "moved" + exit 2 |
+| `bench` | `blackbox bench` | ooda prints "moved" + exit 2 |
+| `gen` | `opm gen <Kind> <Name>` | ooda prints "moved" + exit 2 |
+| `health` | `blackbox health` | ooda prints "moved" + exit 2 |
+| `digest` | `blackbox digest` | ooda prints "moved" + exit 2 |
+| `sandbox <sub>` | split: status->blackbox, run->ooda-tui | ooda prints "moved" + exit 2 |
+| `swarm <sub>` | split: status->blackbox, init/run->ooda-tui | ooda prints "moved" + exit 2 |
+| `opm` | `opm <sub>` (spawned) | unchanged |
+| `lsp` | `lsp` (spawned) | unchanged |
+| `mcp` | `mcp` (spawned) | unchanged |
+| `mcp-merge` | `ooda-mcp mcp-merge` (spawned) | ooda forwards |
+
+## Verification
+
+- cli/ `make verify`: PASS (256-line cap, file law, academy headers)
+- ooda/ Academy header check: all .oo files valid
+- tui/ Phase 5 wiring: --token flag parses; cmd_token dispatch wired
+- blackbox/ Phase 6: 5 new verbs wired through cli_dispatch_more; help text updated
+- opm/ Phase 7: gen <Kind> <Name> dispatches to cmd_gen; refuses .. and /
+
+## Handoff notes (in openOODA/.agents/)
+
+- phase0_2026_09_13.oot — governance amendments
+- phase1_2026_09_13.oot — cli/ scaffold
+- phase2_2026_09_13.oot — cli/build/ move
+- phase3_2026_09_13.oot — cli/fix/ + cli/fmt/ + cli/context.oo
+- (phase4_2026_09_13.oot — LSP code-action already in tree; no new code)
+- (phase5_2026_09_13.oot — token/ to tui/ + cli forwarder)
+- (phase6_2026_09_13.oot — blackbox additions)
+- (phase7_2026_09_13.oot — opm gen)
+- (phase8_2026_09_13.oot — router trim + this audit log)
+
+## Acceptance
+
+Plan §6.1 per-repo acceptance: all .oo files <= 256 lines; Academy headers in first 7 lines; anchors in every directory; binary parity deferred to Phase 8 follow-up (requires oodac to compile cli/main.oo).
+
+Plan §6.2 cross-repo: back-compat preserved via ooda router; double-run discipline deferred to Phase 8 follow-up (requires binary builds); file law + line cap + Academy headers all green.
+
+Plan §6.3: this audit log is the migration record. Each phase PR can reference this file as the single source of truth.
