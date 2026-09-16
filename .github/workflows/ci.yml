@@ -42,15 +42,23 @@ jobs:
           set -euo pipefail
           curl -fsSL https://raw.githubusercontent.com/openOODA/install/main/install.sh | bash -s -- --yes --no-modify-shell
           echo "$HOME/.openooda/bin" >> "$GITHUB_PATH"
+          test -x "$HOME/.openooda/bin/ooda" || { echo "missing ~/.openooda/bin/ooda after install"; exit 1; }
+          test -x "$HOME/.openooda/bin/cli" || { echo "missing ~/.openooda/bin/cli after install"; exit 1; }
+          # ooda spawn last-resort is dirname(OODA_COMPILER)/cli with no exists check
+          ln -sfn "$HOME/.openooda/bin/cli" "${{ github.workspace }}/oodac/bin/cli"
+          ls -la "$HOME/.openooda/bin"
       - name: run governance verifiers (RULES §1.8/§1.11/§1.14/§1.19)
         working-directory: ${{ github.workspace }}
         env:
+          OO_LIST_AMBIENT_QUOTA: "8589934592"
           OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac
           OODA_FS_READDIR: ${{ github.workspace }}:/home/runner
           OODA_FS_WRITEDIR: ${{ github.workspace }}
           OODA_NO_JAIL: '1'
           OODA_REPO_ROOT: ${{ github.workspace }}
           OODA_HOME: /home/runner
+          HOME: /home/runner
+          OODACODEX: /home/runner/.openooda
         run: |
           set -euo pipefail
           echo '=== governance_enforce.oo ==='
@@ -64,12 +72,15 @@ jobs:
       - name: run target scorecard proof
         working-directory: ${{ github.workspace }}
         env:
+          OO_LIST_AMBIENT_QUOTA: "8589934592"
           OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac
           OODA_FS_READDIR: ${{ github.workspace }}:/home/runner
           OODA_FS_WRITEDIR: ${{ github.workspace }}
           OODA_NO_JAIL: '1'
           OODA_REPO_ROOT: ${{ github.workspace }}
           OODA_HOME: /home/runner
+          HOME: /home/runner
+          OODACODEX: /home/runner/.openooda
         run: |
           set -euo pipefail
           echo '=== proof_of_today.oo ==='
