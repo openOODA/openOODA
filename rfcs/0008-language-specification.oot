@@ -1,0 +1,154 @@
+# RFC 0008: openOODA Language Specification Suite
+File: openOODA/rfcs/0008-language-specification.oot
+
+* **RFC ID**: 0008
+* **Title**: openOODA Language Specification Suite
+* **Author**: openOODA Core Architecture Team
+* **Status**: Accepted
+* **Type**: Standards Track / Architecture
+* **Decision Driver**: Eliminate AI Agent Syntax Hallucinations & Codify Ground Truth
+* **Supersedes**: None (Formalizes existing implicit compiler semantics)
+* **Related**: RFC 0001, RFC 0002, RFC 0003, RFC 0004, RFC 0006
+* **Target Release**: v2.11.0 / vgovernance-v1.0.17
+* **Created**: 2026-09-17
+
+---
+
+## 1. Context & Problem Statement
+
+The openOODA ecosystem operates under Negative Trust, First Principles, and
+Zero Ambient Authority. Computational correctness requires explicit, unambiguous
+specifications across all tiers.
+
+Prior to this RFC, language syntax rules and operational constraints were
+scattered across `northstar.oot`, `rules.oot`, and compiler source code.
+Section 2 of `northstar.oot` included aspirational language grammar containing
+future research constructs such as traits (`TraitDecl`), refinement type
+predicates (`where`), newtypes (`Newtype`), namespace imports (`::`), and
+optional trailing commas in record fields (`[ "," ]`).
+
+Because `northstar.oot` was presented as early onboarding documentation without
+an explicit non-normative disclaimer banner, autonomous AI coding agents and
+external tools repeatedly hallucinated unsupported syntax. Agents attempted to
+emit Rust-like or Haskell-like trait definitions, wrap types with `newtype`, or
+append trailing commas in struct definitions, resulting in parse failures,
+compiler rejection, and multi-turn repair loops.
+
+Furthermore, autonomous agents lacked a concise, high-density mechanical
+contract that could be ingested within a single context window turn. A formal,
+authoritative specification suite is required to establish immutable ground
+truth, partition normative syntax from research vision, and automate compliance
+verification across the polyrepo.
+
+## 2. Decision Matrix & Alternatives
+
+Three architectural approaches were evaluated:
+
+1. Alternative 1: Monolithic Specification (`openOODA/spec.oot`).
+   Consolidating all lexical, syntactic, semantic, memory, capability, and ABI
+   definitions into a single specification document.
+   - Rejection Reason: Exceeds the immutable 256-line ceiling mandated by
+     `rules.oot` §1.8. A complete grammar and ABI specification requires over
+     1,500 lines, violating repository modularity laws.
+
+2. Alternative 2: Compiler as Specification (Reference Substrate).
+   Treating the compiler source code (`oodac/`) as the authoritative definition.
+   - Rejection Reason: Violates Negative Trust and First Principles. AI agents
+     cannot independently verify correctness without reading thousands of lines
+     of compiler code. Implicit compiler behaviors cause semantic drift across
+     backends (LLVM, C, ELF64, WASM).
+
+3. Alternative 3: Multi-Tier Specification Architecture (Accepted).
+   A partitioned 3-tier hierarchy separating high-density invariant contracts
+   from deep normative specifications and long-term vision:
+   - Tier A: High-density Spec Sheet (`openOODA/spec.oot`, <= 256 LOC).
+   - Tier B: Normative Codex (`openOODA/docs/spec/`, 8 orthogonal modules, <= 256 LOC each).
+   - Tier C: Executable Substrate (`oodac/`, `oodar/`, `std/`).
+   - Architectural Vision: `openOODA/northstar.oot` Section 2 classified as non-normative.
+   - Rationale: Satisfies the 256 LOC ceiling, provides fast-path ingest for AI
+     agents, enables modular governance auditing, and preserves clear boundaries
+     between active law and future research.
+
+## 3. Normative Specification (Tier A & Tier B)
+
+### 3.1 Tier A: Authoritative Language Spec Sheet (`openOODA/spec.oot`)
+`openOODA/spec.oot` serves as the immediate mechanical contract for agents.
+It codifies the 7 irreducible language invariants:
+1. Pure File Laws: Source in `.oo`, governance in `.oot`. No unauthorized extensions.
+2. Line Limit: Every source and governance file strictly <= 256 lines.
+3. Academy Header: Mandatory 4-element header (`# Title`, `Logline:`, `Setup:`, `Beats:`).
+4. Zero Ambient Authority: All side effects require explicit capability handles (`&Cap`).
+5. No Parentheses Around Conditions: `if cond {` and `while cond {` strictly forbid outer parentheses.
+6. Zero Struct Trailing Commas: Struct definitions and literals forbid trailing commas.
+7. Pure Relative Module Imports: Relative string literals (`import "file.oo";`), never `::`.
+
+Keywords are partitioned into:
+- Active Normative (22): `fn`, `let`, `pub`, `mut`, `import`, `requires`, `ensures`,
+  `verify`, `if`, `else`, `match`, `for`, `in`, `while`, `return`, `type`, `true`,
+  `false`, `gpu`, `break`, `continue`, `export`.
+- Residual Non-Normative (5): `trait`, `newtype`, `where`, `spec`, `impl`.
+  Active parsers reject residual keywords; tooling suppresses them from completions.
+
+Type algebra specifies scalar primitives (`Int`, `Float`, `Bool`, `String`, `Char`, `Byte`, `()`),
+compound types (`struct`, `List[T]`, `Map[K, V]`), ADT tagged unions (32-bit tag + payload),
+must-use error handling (`Result[T, E]`, `Option[T]`), and borrow semantics (`&T`, `&mut T`, `&Cap`).
+
+### 3.2 Tier B: Normative Codex Modules (`openOODA/docs/spec/`)
+The normative codex decomposes deep technical semantics into 8 orthogonal modules:
+- `01_lexical.oot`: 53 canonical tokens bit-parity with `oodac/types/token_typed.oo`,
+  UTF-8 encoding, Academy header grammar, integer/float ranges, and string escape physics.
+- `02_grammar.oot`: Production EBNF, statement forms, expression precedence, match syntax,
+  and mandatory no-parentheses conditional rules.
+- `03_types.oot`: Type inference rules, ADT tagged union memory layouts, must-use checking,
+  reference lifetimes, and borrow checker mechanics.
+- `04_capabilities.oot`: 20 language capability tokens, 6 reserved device bits,
+  6-step lifecycle (Mint -> Attenuate -> Delegate -> Require -> Execute -> Drop),
+  Rule 2 HMAC-SHA256 attenuation algebra, and Linux Landlock LSM integration.
+- `05_contracts.oot`: Pre/postconditions (`requires`, `ensures`), `verify` proof blocks,
+  SMT decidability bounds (QF_LIA, QF_BV), and SECRET taint information flow tracking.
+- `06_memory.oot`: Linear bump arena allocators, O(1) bulk resets (`oo_checkpoint`, `oo_rollback`),
+  deterministic ARC scope unwinding on early exits, and isolated actor heap memory.
+- `07_machine_wire.oot`: TSV diagnostic grammar (`OK\t<verb>\t<msg>`, `ERR\t<cat>\t<msg>`),
+  token dump stream wire, standard process exit code matrix (0..3), and autopsy schema.
+- `08_runtime_abi.oot`: Single-TU C substrate ABI (`oo_*`), caller-allocates grid contracts,
+  and binary struct layouts for `TerminalCell` (16 bytes) and `GpuCell` (24 bytes).
+
+## 4. Systems Thinking & Second-Order Effects
+
+### 4.1 Agent Ecosystem Determinism
+Explicit syntactic boundaries prevent prompt drift and eliminate syntax hallucinations.
+Incoming AI coding agents ingest `openOODA/spec.oot` in Beat 2 before accessing
+architectural vision documents, establishing immediate operational grounding.
+
+### 4.2 Cross-Repository Synchronization
+The specification suite drives ecosystem-wide synchronization:
+- MCP (`mcp/`): Board #14 (`SPEC`) exposes `spec.oot` directly to MCP tool clients.
+- LSP (`lsp/`): Residual keywords are tagged as non-normative in autocomplete catalogs.
+- OPM (`opm/`): Deprecated capability references (e.g., `Http`) are excised.
+- CLI (`cli/`): `cli spec` command prints `openOODA/spec.oot` to stdout.
+- Website (`website/`): `website/llms.txt` designates `spec.oot` as priority read order.
+
+### 4.3 Fail-Closed Feedback Loops
+Violations of capability contracts trigger static compile errors or immediate `E_CAP` (exit code 3)
+runtime traps, emitting structured `.blackbox/autopsy.json` crash reports.
+
+## 5. Governance & Verification
+
+### 5.1 Strategic Onboarding Placement
+`openOODA/anchor.oo` is updated to insert `spec.oot` into Beat 2 of the agent onboarding
+sequence:
+1. `rules.oot` (Constitutional laws).
+2. `spec.oot` (Irreducible language specification sheet).
+3. `northstar.oot` (Architectural vision & non-normative target grammar).
+4. Subsequent governance documents (`requirements.oot`, `rfcs/`, `practices/`, `floor.oo`).
+
+### 5.2 Automated QA Verification Suite (`openOODA/scripts/spec_verify.oo`)
+Compliance is enforced programmatically by `spec_verify.oo`:
+1. Line Limit Ceiling: Asserts `wc -l <= 256` across all specification files.
+2. Header Validation: Asserts 4-element Academy headers on `.oo` and Clean headers on `.oot`.
+3. Lexical Bit-Parity: Verifies 1:1 parity between `01_lexical.oot` and `oodac/types/token_typed.oo`.
+4. Capability Bit-Parity: Verifies 1:1 parity between `04_capabilities.oot` and `oodar/sec/cap/caps.h`.
+5. Double-Run Determinism: Asserts Run 1 == Run 2 == 0 without environment drift.
+
+Ratification of RFC 0008 establishes this specification suite as immutable governance law.
+Future modifications require a ratified RFC amending Tier A, Tier B, and `spec_verify.oo`.
