@@ -1,0 +1,160 @@
+# Lexical Structure & Token Physics
+File: openOODA/docs/spec/01_lexical.oot
+
+This module defines the lexical physics, token inventory, character encoding,
+literals, and serialization protocols of the openOODA compiler ecosystem.
+
+## 1. Character Encoding & Source Physics
+
+1. UTF-8 Encoding: All openOODA source files (.oo) and governance files (.oot)
+   must be valid UTF-8 sequences.
+2. Byte Order Mark (BOM): A Unicode Byte Order Mark (U+FEFF) is allowed ONLY at
+   byte offset 0 of a file. A BOM at any other offset is an error (ERR\tlex).
+3. Whitespace: Whitespace includes Space (0x20), Horizontal Tab (0x09), Line
+   Feed (0x0A), and Carriage Return (0x0D). Whitespace separates tokens.
+4. Comments: Line comments start with "//" and continue to the end of the line.
+   Block comments ("/* ... */") are strictly prohibited.
+5. Line Limit: Every source and governance file must contain <= 256 lines.
+
+## 2. Academy 4-Element Header Grammar
+
+Every production source file (.oo) must begin with an Academy header:
+1. Title: Line 1 must match "// # <Title>".
+2. Logline: Must match "// Logline: <Sentence>." (ends with a period).
+3. Setup: Must match "// Setup: <Preconditions>.".
+4. Beats: Must match "// Beats:\n//   1. <Beat 1>\n//   2. <Beat 2>...".
+
+## 3. Identifiers
+
+Identifiers name functions, variables, types, and modules:
+- Syntax: [a-zA-Z_][a-zA-Z0-9_]*
+- Case sensitivity: Identifiers are case-sensitive.
+- Filename law: Canonical file names must be strictly lowercase (RULES §1.19).
+
+## 4. Keyword Partitioning
+
+### 4.1 Active Normative Keywords (22)
+The active compiler and runtime recognize exactly 22 keywords:
+- Control Flow: if, else, match, for, in, while, return, break, continue.
+- Declarations: fn, let, pub, mut, import, type, export.
+- Contracts: requires, ensures, verify.
+- Execution: gpu.
+- Literals: true, false.
+
+### 4.2 Residual Non-Normative Keywords (5)
+The following 5 keywords are reserved for architectural vision:
+trait, newtype, where, spec, impl.
+The compiler parser rejects these keywords. Language servers suppress them.
+
+## 5. Literals & Value Representation
+
+1. Integer Literals:
+   - Decimal: 0 or [1-9][0-9]*
+   - Hexadecimal: 0x[0-9a-fA-F]+
+   - Binary: 0b[01]+
+   - Octal: 0o[0-7]+
+   - Range: Signed 64-bit integer (-9223372036854775808 to 9223372036854775807).
+2. Float Literals:
+   - Decimal float: [0-9]+\.[0-9]+([eE][+-]?[0-9]+)?
+   - Invariant: Floats require a leading integer digit ("0.5", not ".5").
+   - Precision: 64-bit IEEE 754 double precision.
+3. String Literals:
+   - Delimited by double quotes: "...".
+   - Escape sequences: \n (LF), \t (tab), \r (CR), \0 (NUL), \" (quote), \\.
+   - Unknown escape sequences preserve character verbatim without backslash.
+4. Boolean Literals: true and false.
+5. Unit Literal: () represents the empty tuple.
+
+## 6. Complete Token Inventory (oodac/types/token_typed.oo)
+
+The typed token table defines 48 mapped tokens and integer IDs (0..99):
+
+### 6.1 Primitive & Source Tokens
+- IDENT (0): User identifier.
+- INT (1): Integer literal.
+- FLOAT (2): Floating-point literal.
+- STRING (3): String literal.
+- LINEFILE (4): Source location line and file directive.
+- SRC_PATH (5): Source file path directive.
+- EOF (99): End of token stream.
+
+### 6.2 Keyword Tokens (KW_*)
+- KW_FN (10): fn
+- KW_LET (11): let
+- KW_PUB (12): pub
+- KW_MUT (13): mut
+- KW_IMPORT (14): import
+- KW_REQUIRES (15): requires
+- KW_ENSURES (16): ensures
+- KW_VERIFY (17): verify
+- KW_IF (18): if
+- KW_ELSE (19): else
+- KW_MATCH (20): match
+- KW_FOR (21): for
+- KW_IN (22): in
+- KW_WHILE (23): while
+- KW_RETURN (24): return
+- KW_TYPE (25): type
+- KW_WHERE (26): where (residual)
+- KW_TRUE (27): true
+- KW_FALSE (28): false
+- KW_GPU (29): gpu
+- KW_BREAK (30): break
+- KW_CONTINUE (31): continue
+- KW_TRAIT (32): trait (residual)
+- KW_IMPL (33): impl (residual)
+- KW_EXPORT (34): export
+
+### 6.3 Operator Tokens
+- SLASH (40): /
+- PLUS (41): +
+- MINUS (42): -
+- STAR (43): *
+- PERCENT (44): %
+- EQEQ (45): ==
+- FATARROW (46): =>
+- EQ (47): =
+- NEQ (48): !=
+- LSHIFT (49): <<
+- RSHIFT (50): >>
+- LTE (51): <=
+- LT (52): <
+- GTE (53): >=
+- GT (54): >
+- ANDAND (55): &&
+- AMP (56): &
+- OROR (57): ||
+- PIPE (58): |
+- CARET (59): ^
+- BANG (74): !
+
+### 6.4 Delimiter & Punctuation Tokens
+- COLON (60): :
+- SEMI (61): ;
+- COMMA (62): ,
+- DOTDOTEQ (63): ..=
+- DOTDOT (64): ..
+- DOT (65): .
+- LPAREN (66): (
+- RPAREN (67): )
+- LBRACE (68): {
+- RBRACE (69): }
+- LBRACKET (70): [
+- RBRACKET (71): ]
+- QUESTION (72): ?
+- AT (73): @
+
+Note: The raw scanner also recognizes return arrow "->" (ARROW).
+
+## 7. Machine Wire Token Protocol
+
+The compiler emits tab-separated token streams via "oodac tokens <file.oo>":
+<KIND>\t<LINE>\t<COL>\t<TEXT>
+Every stream terminates with:
+EOF\t<line>\t<col>\t
+
+Escaping rules for TSV:
+- Tab is escaped as \t.
+- Newline is escaped as \n.
+- Carriage return is escaped as \r.
+- Backslash is escaped as \\.

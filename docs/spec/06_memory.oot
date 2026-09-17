@@ -1,0 +1,83 @@
+# Memory Physics & Concurrency Architecture
+File: openOODA/docs/spec/06_memory.oot
+
+This module defines the normative memory physics, bump arena management,
+reference counting, and actor isolation guarantees of openOODA.
+
+## 1. Zero Garbage Collection Architecture
+
+openOODA rejects tracing garbage collection:
+- Tracing GC introduces unpredictable latency pauses and memory bloat.
+- openOODA provides deterministic memory physics through two primary models:
+  1. Contiguous Linear Bump Arenas (O(1) allocation and bulk resets).
+  2. Deterministic Automatic Reference Counting (ARC) with scope unwinding.
+- Together, these systems guarantee zero garbage collection pauses and bounded,
+  predictable memory utilization.
+
+## 2. Linear Bump Arenas
+
+Linear bump arenas manage high-frequency scratch memory allocations:
+
+### 2.1 Arena Memory Physics
+- An arena allocates a large contiguous virtual memory slab from the kernel.
+- Allocation increments a linear byte offset pointer:
+  new_ptr = arena.base + arena.offset; arena.offset += aligned_size;
+- Allocation operates in strictly O(1) time with minimal CPU instructions.
+- Individual allocations do not maintain per-object metadata headers.
+- Zero internal fragmentation: allocations pack contiguously.
+
+### 2.2 Checkpoint & Rollback (O(1) Bulk Reset)
+Arenas provide bulk lifetime management via checkpoints:
+```oo
+let mark = oo_checkpoint(arena);
+// Perform intermediate allocations
+oo_rollback(arena, mark); // Instantaneous O(1) reset
+```
+- oo_checkpoint(arena): Captures current byte offset.
+- oo_rollback(arena, mark): Restores offset to mark, reclaiming all allocations
+  made after the mark in O(1) time without traversing individual pointers.
+- Scope-bounded arenas reset automatically upon exiting lexical blocks.
+
+## 3. Automatic Reference Counting (ARC)
+
+Dynamic values that escape arena lifetimes (e.g. heap strings, persistent
+collections) use Automatic Reference Counting:
+
+### 3.1 Deterministic Deallocation
+- Each ARC-managed heap record begins with a 64-bit reference counter.
+- Copying a handle increments the counter (retain).
+- Dropping a handle decrements the counter (release).
+- When the reference counter hits zero, memory is freed immediately.
+
+### 3.2 Cycle Freedom by Construction
+- openOODA types are algebraic values by default.
+- Value semantics prevent creating self-referential pointer loops.
+- Mutable references (&mut) cannot escape their declaring scope to form cycles.
+- Because circular reference graphs cannot be formed, ARC operates without
+  leakage or complex cycle-detecting garbage collectors.
+
+### 3.3 Lexical Scope Unwinding
+- Lexical blocks track all declared local variable handles.
+- Normal block termination, early return, break, and continue statements
+  generate unwind instructions that release all in-scope ARC handles.
+- Prevents resource leaks on early exit control-flow paths.
+
+## 4. Actor Concurrency & Isolated Heaps
+
+Concurrency in openOODA adheres to the Share-Nothing Actor Model:
+
+### 4.1 Heap Isolation
+- Each actor thread (spawned via &ThreadCap) possesses its own isolated memory
+  space: an independent bump arena and an independent ARC heap.
+- Actors cannot directly address or dereference memory belonging to peer actors.
+- Cross-actor raw pointers are impossible to construct in safe code.
+
+### 4.2 Inter-Actor Communication
+- Actors communicate exclusively through typed message channels:
+  pub type Channel[T];
+- Message transfer:
+  - Scalar types and immutable byte buffers copy directly into the recipient's
+    isolated memory arena.
+  - Large payloads transfer exclusive ownership without shared pointers.
+- Zero data races: The absence of shared mutable memory eliminates data races,
+  mutex deadlocks, and cache line contention by design.

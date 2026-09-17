@@ -1,0 +1,143 @@
+# Formal Grammar & Concrete Syntax
+File: openOODA/docs/spec/02_grammar.oot
+
+This module defines the normative Extended Backus-Naur Form (EBNF) grammar,
+syntactic invariants, statement forms, and operator precedence of openOODA.
+
+## 1. Top-Level Module Grammar
+
+A source file consists of top-level items:
+```ebnf
+SourceFile   ::= { TopLevelItem } ;
+TopLevelItem ::= ImportDecl | FunctionDecl | TypeDecl | VerifyBlock ;
+```
+
+### 1.1 Import Declarations
+Imports use flat relative string literals. Double-colon (::) is prohibited:
+```ebnf
+ImportDecl ::= "import" StringLiteral ";" ;
+```
+
+### 1.2 Function Declarations
+Functions declare parameter lists, optional return types, and contracts:
+```ebnf
+FunctionDecl    ::= [ "pub" ] [ "export" ] "fn" Identifier
+                    "(" [ ParamList ] ")" [ "->" Type ]
+                    [ ContractList ] Block ;
+ParamList       ::= Param { "," Param } ;
+Param           ::= [ "mut" ] Identifier ":" Type ;
+ContractList    ::= { RequiresClause | EnsuresClause } ;
+RequiresClause  ::= "requires" Expression ;
+EnsuresClause   ::= "ensures" Expression ;
+```
+
+### 1.3 Type Declarations
+Types define structs or tagged unions (algebraic sum types):
+```ebnf
+TypeDecl        ::= [ "pub" ] "type" Identifier "=" TypeDef ";" ;
+TypeDef         ::= StructDef | SumTypeDef | AliasDef ;
+StructDef       ::= "struct" "{" StructFieldList "}" ;
+StructFieldList ::= [ StructField { "," StructField } ] ;
+StructField     ::= Identifier ":" Type ;
+SumTypeDef      ::= VariantDef { "|" VariantDef } ;
+VariantDef      ::= Identifier [ "(" TypeList ")" ] ;
+TypeList        ::= Type { "," Type } ;
+```
+
+### 1.4 Verify Blocks
+Verify blocks specify co-located unit verification tests:
+```ebnf
+VerifyBlock     ::= "verify" Identifier Block ;
+```
+
+## 2. Syntactic Invariants
+
+### 2.1 Strictly No Parentheses Around Condition Blocks
+Condition expressions in if and while constructs forbid outer parentheses:
+- Valid: `if x > 0 { ... }`
+- Valid: `while running { ... }`
+- Invalid: `if (x > 0) { ... }` (Triggers ERR\tparse)
+- Invalid: `while (running) { ... }` (Triggers ERR\tparse)
+
+### 2.2 Zero Struct Trailing Commas
+Struct type definitions and struct literals forbid a trailing comma:
+- Valid: `type Point = struct { x: Int, y: Int }`
+- Valid: `let p = Point { x: 10, y: 20 };`
+- Invalid: `type Point = struct { x: Int, y: Int, }` (Triggers ERR\tparse)
+- Invalid: `let p = Point { x: 10, y: 20, };` (Triggers ERR\tparse)
+
+## 3. Statements & Blocks
+
+```ebnf
+Block       ::= "{" { Statement } "}" ;
+Statement   ::= LetStmt
+              | AssignStmt
+              | IfStmt
+              | WhileStmt
+              | ForStmt
+              | MatchStmt
+              | ReturnStmt
+              | BreakStmt
+              | ContinueStmt
+              | ExprStmt ;
+
+LetStmt      ::= "let" [ "mut" ] Identifier [ ":" Type ]
+                 [ "=" Expression ] ";" ;
+AssignStmt   ::= TargetExpr "=" Expression ";" ;
+ExprStmt     ::= Expression ";" ;
+ReturnStmt   ::= "return" [ Expression ] ";" ;
+BreakStmt    ::= "break" ";" ;
+ContinueStmt ::= "continue" ";" ;
+```
+
+### 3.1 Control Flow Statements
+```ebnf
+IfStmt    ::= "if" Expression Block [ "else" ( IfStmt | Block ) ] ;
+WhileStmt ::= "while" Expression Block ;
+ForStmt   ::= "for" Identifier "in" Expression Block ;
+```
+
+### 3.2 Match Statement & Pattern Arms
+```ebnf
+MatchStmt ::= "match" Expression "{" { MatchArm } "}" ;
+MatchArm  ::= Pattern "=>" ( Block | Expression [ "," ] ) ;
+Pattern   ::= LiteralPattern
+            | IdentPattern
+            | VariantPattern
+            | WildcardPattern ;
+WildcardPattern ::= "_" ;
+VariantPattern  ::= Identifier [ "(" PatternList ")" ] ;
+PatternList     ::= Pattern { "," Pattern } ;
+```
+
+## 4. Expressions & Operator Precedence
+
+Operators evaluate according to the following precedence hierarchy (1 to 13),
+matching parser semantics in ast/parse_expr.oo:
+
+| Level | Operator Kind     | Operators         | Associativity |
+|-------|-------------------|-------------------|---------------|
+| 1     | Assignment        | =                 | Right         |
+| 2     | Logical OR        | ||                | Left          |
+| 3     | Logical AND       | &&                | Left          |
+| 4     | Bitwise OR        | |                 | Left          |
+| 5     | Bitwise XOR       | ^                 | Left          |
+| 6     | Bitwise AND       | &                 | Left          |
+| 7     | Equality          | ==, !=            | Left          |
+| 8     | Relational        | <, <=, >, >=      | Left          |
+| 9     | Bit Shift         | <<, >>            | Left          |
+| 10    | Additive          | +, -              | Left          |
+| 11    | Multiplicative    | *, /, %           | Left          |
+| 12    | Unary / Prefix    | !, -, &, &mut, *  | Right         |
+| 13    | Primary / Postfix | ., [], (), ?      | Left          |
+
+Precedence example:
+- `1 << 1 + 1 == 4` evaluates as `1 << (1 + 1) == 4` (equals `true`).
+- `true || false && false == true` evaluates as `true || (false && false)`.
+- `3 | 4 ^ 5 == 3` evaluates as `3 | (4 ^ 5)`.
+
+## 5. Grammar Error Traps
+
+Syntax errors immediately terminate compiler execution:
+- Emits TSV error line: `ERR\tparse\t<line>:<col>: <message>`
+- Process exits with standard invocation error code 2.

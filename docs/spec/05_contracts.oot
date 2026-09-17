@@ -1,0 +1,93 @@
+# Design by Contract & Formal Verification
+File: openOODA/docs/spec/05_contracts.oot
+
+This module defines the normative syntax, execution semantics, SMT decidability
+bounds, and information flow security of openOODA contracts.
+
+## 1. Design by Contract Primitives
+
+openOODA embeds formal specification directly into function signatures:
+- Preconditions (requires): Predicates caller arguments must satisfy.
+- Postconditions (ensures): Predicates function return values must satisfy.
+- Co-located Verification (verify): Unit and property tests bound to functions.
+
+### 1.1 Syntax Specification
+```oo
+pub fn divide(a: Float, b: Float) -> Float
+  requires b != 0.0
+  ensures result * b == a
+{
+  return a / b;
+}
+
+verify divide {
+  assert_eq!(divide(10.0, 2.0), 5.0);
+}
+```
+
+### 1.2 Keyword Clauses
+- requires <expr>: Evaluated at function entry. If false, halts execution.
+- ensures <expr>: Evaluated before function return. The keyword "result"
+  binds to the function return value.
+- verify <ident> { ... }: Syntactic test container executed during "ooda test".
+
+## 2. Evaluation Semantics & Fail-Closed Enforcement
+
+### 2.1 Compile-Time Evaluation (oodac check)
+- Constant Expressions: Static expressions evaluated during semantic analysis.
+- If a constant contract evaluates to false, compilation terminates immediately:
+  ERR\tcontract\tprecondition violation in constant evaluation
+
+### 2.2 Dynamic Runtime Evaluation (ooda run / ooda test)
+- Dynamic Expressions: Non-constant contract clauses generate runtime guards.
+- Short-Circuit Evaluation: Multiple clauses evaluate in lexical order.
+- Failure Invariant: A false contract clause triggers a fail-closed abort:
+  - Emits diagnostic line: ERR\tcontract\t<function_name>: <expression>
+  - Calls process_exit(1) with exit code 1.
+  - Writes failure autopsy event to blackbox recorder.
+
+### 2.3 Capability Separation
+Contracts assert functional correctness; they never grant capability tokens:
+- Passing a contract does not grant filesystem, network, or system rights.
+- Privileged operations inside contracted functions still require &Cap tokens.
+
+## 3. SMT Decidability Bounds
+
+Formal verification in the openOODA compiler uses automated SMT solvers
+bounded by decidable first-order theories:
+
+### 3.1 Supported Decidable Theories
+1. QF_LIA (Quantifier-Free Linear Integer Arithmetic):
+   - Linear inequalities and equalities over integers (e.g. 2 * x + y <= 10).
+   - Completely decidable via Presburger arithmetic.
+2. QF_BV (Quantifier-Free Bit-Vectors):
+   - Fixed-width bit operations (shifts, masks, additions, bitwise AND/OR/XOR).
+   - Bit-precise overflow checking.
+
+### 3.2 Undecidable Fragments & Fallback
+- Non-linear arithmetic (e.g. x * y == z where both x and y are variables)
+  is generally undecidable over unbounded integers.
+- Quantified formulas with alternating quantifiers (forall/exists) are rejected.
+- When an expression falls outside decidable fragments, static SMT checking
+  falls back to dynamic runtime assertion guards.
+
+## 4. Information Flow Security & SECRET Taint
+
+openOODA enforces static taint tracking for cryptographic and private data:
+
+### 4.1 SECRET Taint Annotation
+- Types or fields tagged with SECRET represent sensitive cryptographic keys,
+  tokens, or private personal data.
+- Operations on SECRET inputs produce SECRET outputs (taint propagation).
+
+### 4.2 Branching Restrictions (Constant-Time Guarantee)
+- Conditional branching on SECRET values is strictly prohibited:
+  - if secret_val { ... } triggers static compile error ERR\ttype.
+  - while secret_counter > 0 { ... } triggers compile error ERR\ttype.
+  - match secret_data { ... } triggers compile error ERR\ttype.
+- This rule eliminates timing side-channel attacks by design.
+
+### 4.3 Declassification Boundary
+- Taint can only be removed through explicit cryptographic sealing or
+  hashing requiring an unforgeable SignCap token.
+- Contracts cannot declassify SECRET fields or bypass taint boundaries.

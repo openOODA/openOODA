@@ -1,0 +1,119 @@
+# Type System & Algebraic Data Types
+File: openOODA/docs/spec/03_types.oot
+
+This module defines the type algebra, scalar representations, algebraic data
+types, must-use error handling, and borrowing semantics of openOODA.
+
+## 1. Type System Foundations
+
+openOODA enforces a sound, static type system with local type inference:
+- Bindings are strongly typed at compile time.
+- Variables without explicit type annotations infer types from initializers.
+- Casting between numeric types requires explicit conversions (e.g. to_int()).
+- Ambiguous types or type mismatches trigger static errors (ERR\ttype).
+
+## 2. Scalar Primitive Types
+
+### 2.1 Integer (Int)
+- Representation: Signed 64-bit two's complement integer.
+- Value Range: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807.
+- Arithmetic: Wrapping semantics on overflow in release; checked in debug.
+- Division by Zero: Traps safely, returning a runtime exception.
+- INT_MIN / -1: Protected against hardware overflow trap; yields INT_MIN.
+
+### 2.2 Float (Float)
+- Representation: 64-bit IEEE 754 double precision floating point number.
+- Constants: Supports normal, subnormal, infinity, and NaN representations.
+- Literal Syntax: Requires an integer prefix (e.g. 0.5, not .5).
+
+### 2.3 Boolean (Bool)
+- Representation: 1-byte truth value.
+- Literals: true (1) and false (0).
+
+### 2.4 String (String)
+- Representation: Immutable UTF-8 byte sequence view.
+- Internal Layout: Pointer to UTF-8 buffer and 64-bit length.
+- Operations: Concatenation (+), slicing, length query, substring search.
+
+### 2.5 Character (Char)
+- Representation: 32-bit Unicode scalar value (UTF-32 codepoint).
+- Value Range: 0x0000 to 0x10FFFF (excluding surrogate code points).
+
+### 2.6 Byte (Byte)
+- Representation: Unsigned 8-bit integer (0 to 255).
+- Use Cases: Raw binary buffers, network frames, cryptographic hashes.
+
+### 2.7 Unit (())
+- Representation: 0-byte singleton indicating absence of meaningful value.
+- Functions omitting a return type implicitly return ().
+
+## 3. Compound Types & Records
+
+### 3.1 Struct Records
+Structs are fixed product layouts containing named fields:
+```oo
+pub type Point = struct {
+  x: Int,
+  y: Int
+};
+```
+- Invariant: Zero trailing commas permitted before the closing brace "}".
+- Memory Layout: Sequential field packing matching C ABI struct layout.
+- Field Access: Dot syntax (point.x, point.y).
+
+### 3.2 Dynamic Collections
+- List[T]: Contiguous growable dynamic array backed by ARC or arena memory.
+  Operations include list_push, list_len, list_get.
+- Map[K, V]: Associative hash table with unforgeable key lookups.
+
+## 4. Algebraic Data Types & Tagged Unions
+
+Disjoint sum types represent values that can take one of multiple variants:
+```oo
+pub type Shape =
+  | Circle(Float)
+  | Rectangle(Float, Float)
+  | Point;
+```
+
+### 4.1 Memory Representation (Tagged Union)
+- Discriminant Tag: A 32-bit integer identifying the active variant (0, 1, ...).
+- Payload: Contiguous memory slot sized to the largest variant payload.
+- Total Size: Size of tag + alignment padding + largest payload size.
+
+### 4.2 Pattern Matching & Exhaustiveness
+The match construct deconstructs sum types:
+- The compiler verifies exhaustiveness. Missing variants trigger ERR\ttype.
+- Match arms extract bound variables without pointer casting.
+
+## 5. Must-Use Error Handling
+
+openOODA contains no null pointers. Optional values and error states use ADTs:
+- Option[T] = Some(T) | None;
+- Result[T, E] = Ok(T) | Err(E);
+
+### 5.1 Must-Use Enforcement
+- Functions returning Result or Option carry the must-use invariant.
+- Discarding a Result or Option without pattern matching or the "?" operator
+  triggers a compile-time rejection:
+  ERR\ttype\tunused result must be handled via match or ?
+- The "?" operator propagates Err variants early to the caller.
+
+## 6. Reference Semantics & Borrowing
+
+openOODA provides deterministic memory access through borrows:
+
+### 6.1 Shared Borrow (&T)
+- Immutable reference to value of type T.
+- Multiple concurrent shared references are allowed.
+- Read operations are permitted; modification is prohibited.
+
+### 6.2 Mutable Borrow (&mut T)
+- Exclusive reference to value of type T.
+- Only one active mutable reference is permitted per memory location.
+- Write-through assignment uses dereference: *p = value;.
+
+### 6.3 Capability Reference (&Cap)
+- Unforgeable reference to a capability token.
+- Cannot be copied, cast, or created from raw pointers.
+- Safe references strictly forbid pointer arithmetic.

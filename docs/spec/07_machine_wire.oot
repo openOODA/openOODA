@@ -1,0 +1,111 @@
+# Machine Wire Protocol & Diagnostics
+File: openOODA/docs/spec/07_machine_wire.oot
+
+This module defines the normative TSV diagnostic protocol, token dump wire
+stream, process exit code matrix, and blackbox crash autopsy schema.
+
+## 1. TSV Diagnostic Protocol
+
+All openOODA tools emit machine-readable diagnostics in Tab-Separated Values:
+
+### 1.1 Success Format
+```tsv
+OK\t<verb>\t<message>
+```
+- verb: Operation completed (e.g. build, check, test, loc, header, suite).
+- message: Succinct status description.
+- Example: OK\tcheck\toodac/main.oo clean
+- Example: OK\tloc\topenOODA/spec.oot lines=168 (<= 256)
+
+### 1.2 Error Format
+```tsv
+ERR\t<category>\t<message>
+```
+- Exactly two tab characters and three non-empty fields per line.
+- category: Standardized failure category.
+- Standard categories:
+  - lex: Lexer error (unexpected byte, invalid float format, invalid BOM).
+  - parse: Syntax error (missing semicolon, condition parentheses, commas).
+  - type: Type error (type mismatch, missing match arm, unused Result/Option).
+  - cap: Capability security violation (missing &Cap token, bad attenuation).
+  - contract: Precondition or postcondition violation.
+  - import: Cyclic import or unresolved module path.
+  - env: Missing or malformed environment variables.
+  - fs: File I/O access failure or path resolution error.
+  - loc: File exceeds 256-line ceiling.
+  - header: Malformed Academy or Clean header.
+  - bit_parity: Token or capability bitmask mismatch.
+  - determinism: Non-deterministic dual-run discrepancy.
+  - suite: Aggregated test suite failure.
+
+## 2. Token Dump Protocol
+
+The compiler emits serialized token streams via "oodac tokens <file.oo>":
+
+### 2.1 Wire Format
+```tsv
+<KIND>\t<LINE>\t<COL>\t<TEXT>
+```
+- KIND: Token identifier kind (e.g. IDENT, KW_FN, PLUS, INT).
+- LINE: 1-indexed source line number.
+- COL: 1-indexed source column number.
+- TEXT: Verbatim source text for the token.
+
+### 2.2 End-of-Stream Marker
+The token stream terminates with a single EOF record:
+```tsv
+EOF\t<line>\t<col>\t
+```
+
+### 2.3 Escape Character Rules
+In the TEXT column, special characters must be escaped:
+- Tab (0x09) is escaped as \t.
+- Line Feed (0x0A) is escaped as \n.
+- Carriage Return (0x0D) is escaped as \r.
+- Backslash (0x5C) is escaped as \\.
+
+## 3. Process Exit Code Matrix (0..3)
+
+Command-line tools in openOODA return standardized exit status codes:
+
+| Code | Status               | Description                                    |
+|------|----------------------|------------------------------------------------|
+| 0    | Success              | Operation succeeded; all checks and tests pass |
+| 1    | Execution Failure    | Test assertion failed, contract trap, or abort |
+| 2    | Invocation Error     | CLI syntax error, invalid arguments, or parse  |
+| 3    | Capability Violation | E_CAP security trap or Landlock sandbox breach |
+
+Uncaught POSIX signals or fatal crashes preserve standard kernel codes (e.g.
+128 + signal, such as 139 for SIGSEGV).
+
+## 4. Blackbox Crash Autopsy JSON Schema
+
+Under RFC 0007, unrecoverable crashes trigger the flight recorder:
+- Async-signal-safe: Writes directly via Linux write() with zero heap memory.
+- Target destination: .blackbox/autopsy.json.
+
+### 4.1 Autopsy JSON Schema
+```json
+{
+  "schema_version": "1.0.0",
+  "timestamp": "2026-09-17T18:30:00Z",
+  "failure_category": "SEGV_MAPERR",
+  "signal": 11,
+  "coordinate": {
+    "file": "emit/llvm/ll_emit.oo",
+    "line": 142,
+    "col": 8
+  },
+  "stack_trace": [
+    "oo_crash_handler",
+    "ll_emit_function",
+    "main"
+  ],
+  "flight_events": [
+    { "seq": 104, "event": "ast_parse_complete" },
+    { "seq": 105, "event": "llvm_lowering_start" }
+  ],
+  "root_cause": "Null pointer dereference in unmanaged foreign frame",
+  "remediation": "Verify caller null check before invoking foreign function"
+}
+```

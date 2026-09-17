@@ -1,0 +1,101 @@
+# Runtime C-ABI & Platform Substrate
+File: openOODA/docs/spec/08_runtime_abi.oot
+
+This module defines the normative platform substrate C-ABI, caller-allocates
+memory contracts, dynamic plugin interfaces, and cell struct representations.
+
+## 1. Substrate Architecture & Calling Conventions
+
+The openOODA runtime substrate (oodar) implements a single-TU C runtime library:
+- Standard Architecture ABIs: SysV AMD64 (x86_64) and AAPCS64 (AArch64).
+- Symbol Prefix Convention: Substrate runtime symbols use the prefix "oo_*".
+- Export Visibility: Public substrate symbols carry default C visibility;
+  internal helper routines are marked static or hidden.
+
+### 1.1 Core Substrate Runtime Functions
+- oo_alloc(size: usize) -> *mut u8: Allocates heap memory within process quota.
+- oo_free(ptr: *mut u8): Releases dynamic heap memory.
+- oo_checkpoint(arena: *mut Arena) -> usize: Returns current arena byte offset.
+- oo_rollback(arena: *mut Arena, mark: usize): Restores arena offset in O(1).
+- oo_cap_grant_*(cap_state: *mut CapState): Grants capability rights at init.
+- oo_cap_require_*(cap_state: *mut CapState): Asserts capability fail-closed.
+- oo_process_exec(cmd: *const c_char) -> ProcessResult: Executes subprocess.
+- oo_exit(code: i32) -> !: Terminates process with standard exit code.
+
+## 2. Memory Ownership & The Caller-Allocates Pattern
+
+openOODA enforces the "Caller-Allocates, Callee-Fills" contract across ABI
+boundaries (screensavers, visualizers, GPU buffers, and plugin hooks):
+
+### 2.1 Host Application Responsibilities
+- Allocates contiguous memory for cell grids or framebuffers matching screen
+  dimensions (width * height * sizeof(Cell)).
+- Retains exclusive ownership of the grid buffer across rendering frames.
+- Passes raw pointers (e.g. *mut TerminalCell) along with width and height
+  dimensions into plugin rendering functions.
+- Deallocates the buffer upon window resize or shutdown.
+
+### 2.2 Callee / Plugin Responsibilities
+- Writes glyphs, vertex coordinates, and color values into caller memory.
+- Must NEVER call free(), realloc(), or runtime deallocators on host buffers.
+- Must NEVER store dangling pointer references across invocation frames.
+- Must respect width and height bounds to eliminate buffer overruns.
+
+## 3. Dynamic Plugin Shared Object ABI
+
+Plugins (.so) export unmangled C-ABI symbols for lifecycle and rendering:
+
+```c
+/* Returns plugin API version (monotonic integer, starts at 1). */
+uint32_t plugin_api_version(void);
+
+/* Allocates and initializes plugin private state. Returns opaque pointer. */
+void *plugin_create(void);
+
+/* Advances internal simulation state by delta_ms milliseconds. */
+void plugin_tick(void *state, uint32_t delta_ms);
+
+/* Renders visual state into caller-owned TerminalCell grid buffer. */
+void plugin_render(void *state, TerminalCell *grid,
+                   uint32_t width, uint32_t height);
+
+/* Deallocates plugin private state and releases internal allocations. */
+void plugin_destroy(void *state);
+```
+
+### 3.1 State Ownership Symmetrical Invariant
+- Stateful plugins allocate private structs in plugin_create() and release
+  all private heap resources in plugin_destroy().
+- Stateless plugins may return NULL from plugin_create(), and plugin_destroy()
+  must safely ignore NULL pointers.
+
+## 4. Struct Memory Layout Contracts (repr(C))
+
+All structs crossing ABI boundaries follow strict 4-byte scalar alignment:
+
+### 4.1 TerminalCell Layout (16 Bytes)
+Represents a character cell on a 2D text terminal grid:
+- Offset +0  (4 bytes): codepoint: u32 (Unicode UTF-32 LE codepoint)
+- Offset +4  (4 bytes): fg: u32        (Packed 24-bit RGB or ANSI color)
+- Offset +8  (4 bytes): bg: u32        (Packed 24-bit RGB or ANSI color)
+- Offset +12 (4 bytes): attrs: u32     (Bitflags: 1=Bold, 2=Dim, 4=Italic,
+                                        8=Underline, 16=Blink, 32=Inverse)
+- Total Struct Size: Exactly 16 bytes. Alignment: 4 bytes.
+
+### 4.2 GpuCell Layout (24 Bytes)
+Represents a 2D textured mesh vertex for GPU compute shaders:
+- Offset +0  (4 bytes): x: f32         (Normalized vertex position X: -1.0..1.0)
+- Offset +4  (4 bytes): y: f32         (Normalized vertex position Y: -1.0..1.0)
+- Offset +8  (4 bytes): u: f32         (Texture coordinate U: 0.0..1.0)
+- Offset +12 (4 bytes): v: f32         (Texture coordinate V: 0.0..1.0)
+- Offset +16 (4 bytes): fg_rgba: u32   (Packed 32-bit RGBA foreground color)
+- Offset +20 (4 bytes): bg_rgba: u32   (Packed 32-bit RGBA background color)
+- Total Struct Size: Exactly 24 bytes. Alignment: 4 bytes.
+
+## 5. Shared Library Build Specifications
+
+Plugins are compiled to position-independent dynamic shared objects (.so):
+- Flags: gcc -shared -fPIC -O2 -fstack-protector-strong
+- Prohibited: Plugins must NOT define main() or include host startup stubs.
+- Symbol isolation: All non-exported helper routines must be marked static
+  or hidden to prevent symbol collisions between multiple plugins.

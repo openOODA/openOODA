@@ -1,0 +1,124 @@
+# Capability Security & Substrate Lattice
+File: openOODA/docs/spec/04_capabilities.oot
+
+This module defines the normative capability tokens, substrate bitmasks,
+lifecycle stages, attenuation algebra, and sandbox enforcement of openOODA.
+
+## 1. Zero Ambient Authority Principle
+
+openOODA enforces Negative Trust and Zero Ambient Authority:
+- Code possesses zero ambient rights to access the filesystem, network, OS,
+  clocks, hardware devices, or dynamic memory quotas.
+- Privileged operations require an unforgeable capability reference (&Cap).
+- Capability handles are passed explicitly from callers as function arguments.
+- Global singletons or hidden system access methods are strictly prohibited.
+
+## 2. The 20 Normative Language Capability Tokens
+
+The language exposes exactly 20 unforgeable capability tokens:
+
+1.  FsReadCap: Read files and iterate directory structures.
+2.  FsWriteCap: Create, write, modify, and truncate filesystem files.
+3.  FsCap: Full filesystem umbrella subsuming read and write authority.
+4.  ProcessCap: Spawn, observe, signal, and terminate OS subprocesses.
+5.  SysCap: Execute low-level system calls, process exit, and traps.
+6.  NetCap: Full network umbrella subsuming TCP, UDP, and BIND authority.
+7.  TcpCap: Establish and manage TCP client stream connections.
+8.  UdpCap: Send and receive UDP datagram network packets.
+9.  BindCap: Bind network sockets to local ports and accept streams.
+10. EnvCap: Read allowed process environment variables (OODA_* namespace).
+11. TimeCap: Read system wall clock, monotonic timer, and sleep intervals.
+12. RandCap: Generate cryptographically secure pseudorandom numbers.
+13. AllocCap: Allocate dynamic heap memory within process memory quotas.
+14. ArenaCap: Allocate and reset memory in contiguous linear bump arenas.
+15. ThreadCap: Spawn parallel actor threads with isolated heap regions.
+16. GpuCap: Dispatch compute shader kernels to GPU accelerator hardware.
+17. FfiCap: Call external C foreign function interface symbols.
+18. MetricsCap: Read process telemetry counters and execution statistics.
+19. SignCap: Sign and verify capability HMAC tokens and cryptographic seals.
+20. CompilerReadCap: Introspect compiler ASTs and language server symbols.
+
+## 3. Substrate Capability Bit Lattice (caps.h)
+
+The runtime C substrate (oodar/sec/cap/caps.h) defines 26 bit positions:
+
+### 3.1 Active Language Substrate Bits
+- Bit 0  (1u):       OODAR_CAP_NET
+- Bit 1  (2u):       OODAR_CAP_PROCESS
+- Bit 2  (4u):       OODAR_CAP_FSWRITE
+- Bit 3  (8u):       OODAR_CAP_FSREAD
+- Bit 4  (16u):      OODAR_CAP_SYS
+- Bit 5  (32u):      OODAR_CAP_FS
+- Bit 6  (64u):      OODAR_CAP_TIME
+- Bit 7  (128u):     OODAR_CAP_RAND
+- Bit 8  (256u):     OODAR_CAP_ALLOC
+- Bit 9  (512u):     OODAR_CAP_ARENA
+- Bit 10 (1024u):    OODAR_CAP_FFI
+- Bit 11 (2048u):    OODAR_CAP_METRICS
+- Bit 12 (4096u):    OODAR_CAP_SIGN
+- Bit 17 (1u << 17): OODAR_CAP_TCP
+- Bit 18 (1u << 18): OODAR_CAP_UDP
+- Bit 19 (1u << 19): OODAR_CAP_BIND
+- Bit 26 (1u << 26): OODAR_CAP_THREAD
+- Bit 27 (1u << 27): OODAR_CAP_GPU
+- Bit 28 (1u << 28): OODAR_CAP_ENV
+- Bit 29 (1u << 29): OODAR_CAP_COMPILER_READ
+
+### 3.2 Reserved Hardware Substrate Bits (6)
+Hardware device bits reserved for future hardware language tokens:
+- Bit 20 (1u << 20): OODAR_CAP_AUDIO
+- Bit 21 (1u << 21): OODAR_CAP_CAMERA
+- Bit 22 (1u << 22): OODAR_CAP_USB
+- Bit 23 (1u << 23): OODAR_CAP_HID
+- Bit 24 (1u << 24): OODAR_CAP_WINDOW
+- Bit 25 (1u << 25): OODAR_CAP_FRAME
+
+### 3.3 Excised Dead Bits (4)
+The following bit positions were permanently retired in v2.1.0 and must
+never be reallocated or queried:
+- Bit 13 (0x2000):  OODAR_CAP_HITL (excised)
+- Bit 14 (0x4000):  OODAR_CAP_SYNC (excised)
+- Bit 15 (0x8000):  OODAR_CAP_MEM  (excised)
+- Bit 16 (0x10000): OODAR_CAP_HTTP (excised)
+
+## 4. Capability Lifecycle (6 Stages)
+
+1. Mint: Bootstrapped at process startup by the kernel loader or init authority.
+2. Attenuate: Derived child token created with reduced permission scope.
+3. Delegate: Passed explicitly across call boundaries via &Cap reference.
+4. Require: Callee asserts capability presence via oo_cap_require_*().
+5. Execute: Substrate executes the requested kernel operation.
+6. Drop: Capability goes out of scope and authority terminates.
+
+## 5. Attenuation Algebra
+
+openOODA enforces monotonic attenuation: a capability can only be narrowed.
+
+### 5.1 Permission Rights Mask (5 Bits)
+Each capability token carries a 5-bit authority mask:
+- Bit 0 (1):  Read
+- Bit 1 (2):  Write
+- Bit 2 (4):  Execute
+- Bit 3 (8):  Delegate
+- Bit 4 (16): Revoke
+
+### 5.2 Subsumption & Subset Rules
+- Subsumption: FsCap (mask 31) satisfies FsReadCap and FsWriteCap.
+  NetCap satisfies TcpCap, UdpCap, and BindCap.
+- Subset Check: A child capability must be a strict subset of the parent:
+  (parent_rights & child_rights) == child_rights.
+  Attempting to widen rights triggers an immediate fail-closed panic.
+
+### 5.3 Cryptographic Sealing & Path Scoping
+- HMAC Sealing: oo_cap_attenuate_v2 computes an HMAC-SHA256 tag over parent
+  token identity and attenuated rights using a per-process kernel key.
+- Path Scoping (OoPathCap): Attenuates FsReadCap to a specific path prefix
+  (e.g. /home/user/data). Path traversing outside prefix triggers E_CAP.
+- TLS Attenuation: TlsCap is attenuated from TcpCap with peer certificates.
+
+## 6. Landlock Linux LSM Sandboxing
+
+The runtime configures the Linux Landlock LSM kernel subsystem:
+- Enforces hardware-level filesystem path confinement.
+- Blocks unauthorized read, write, execution, and network binding attempts.
+- Traps sandbox breaches fail-closed with exit code 3 (E_CAP).
