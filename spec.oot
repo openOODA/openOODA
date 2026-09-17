@@ -1,0 +1,168 @@
+# openOODA Language Specification (Tier A)
+File: openOODA/spec.oot
+
+This document is the authoritative Tier A language specification sheet for
+openOODA. It specifies irreducible mechanical invariants, syntax grammar,
+type algebra, capability security, memory physics, and wire protocols.
+Normative modules reside in openOODA/docs/spec/. Target vision is in
+openOODA/northstar.oot.
+
+## 1. Specification Architecture Hierarchy
+
+1. Tier A (This Sheet): High-density invariant specification sheet for AI
+   coding agents, tools, and human engineers.
+2. Tier B (Normative Codex): Formal 8-module specification suite in
+   openOODA/docs/spec/ (01_lexical.oot through 08_runtime_abi.oot).
+3. Tier C (Executable Substrate): Compiler (oodac), runtime (oodar), and
+   standard library (std).
+4. Non-Normative Vision: Conceptual architecture in openOODA/northstar.oot.
+
+## 2. Irreducible Mechanical Invariants
+
+1. Pure File Laws: Source code uses .oo. Governance and specifications use
+   .oot. Strictly prohibited: .py, .js, .ts, .rb, .pl, and .sh outside
+   authorized slots.
+2. File Line Ceiling: Every .oo and .oot file contains a maximum of 256
+   lines.
+3. Academy 4-Element Header: Every product .oo file begins with:
+   // # <Title>, // Logline:, // Setup:, // Beats:.
+4. Zero Ambient Authority: Code receives authority only through caller
+   arguments. Privileged operations require an unforgeable capability token
+   reference (&Cap).
+5. No Parentheses on Conditions: Condition expressions in if and while
+   blocks forbid outer enclosing parentheses. Use "if cond {" and
+   "while cond {".
+6. Zero Struct Trailing Commas: Struct declarations and struct literals
+   forbid a trailing comma before the closing brace "}".
+7. Flat Relative Imports: Module imports use flat relative string paths
+   (import "module.oo";). Double-colon namespace qualifiers (::) are
+   strictly prohibited.
+
+## 3. Keyword Partitioning
+
+### 3.1 Active Normative Keywords (22)
+The active compiler and runtime recognize exactly 22 keywords:
+fn, let, pub, mut, import, requires, ensures, verify, if, else, match, for,
+in, while, return, type, true, false, gpu, break, continue, export.
+
+### 3.2 Residual Non-Normative Keywords (5)
+The following 5 keywords are reserved for future architectural vision:
+trait, newtype, where, spec, impl.
+Residual keywords are non-normative. The active parser and type checker reject
+them. Language servers suppress them from code completion.
+
+## 4. Type System & Algebraic Data Types
+
+### 4.1 Scalar Primitives
+- Int: Signed 64-bit two's complement integer (-2^63 to 2^63 - 1).
+- Float: 64-bit IEEE 754 double precision floating point number.
+- Bool: Boolean truth value (true or false).
+- String: Immutable UTF-8 encoded byte sequence view.
+- Char: 32-bit Unicode scalar value.
+- Byte: Unsigned 8-bit integer (0 to 255).
+- Unit: The empty tuple () representing absence of value.
+
+### 4.2 Compound Types
+- Structs: Fixed-layout records without trailing commas:
+  type Point = struct { x: Int, y: Int }
+- Tagged Unions (Sum Types): Disjoint algebraic variants:
+  type Shape = Circle(Float) | Rect(Float, Float);
+  Represented in memory as a 32-bit integer tag followed by payload data.
+- Collections: List[T] (dynamic growable array), Map[K, V] (hash map).
+
+### 4.3 Must-Use Error Handling
+- Result[T, E] = Ok(T) | Err(E);
+- Option[T] = Some(T) | None;
+- The compiler enforces must-use semantics. Discarding a Result or Option
+  without unwrapping through match or ? raises a compile-time error.
+
+### 4.4 Reference Semantics
+- Shared immutable reference: &T.
+- Mutable reference: &mut T.
+- Capability reference: &Cap.
+
+## 5. Capability Tokens & Security Lattice
+
+### 5.1 The 20 Normative Language Capability Tokens
+All side-effect operations require one of 20 unforgeable capability tokens:
+1.  FsReadCap: Read files and list filesystem directories.
+2.  FsWriteCap: Write and modify filesystem files.
+3.  FsCap: Umbrella filesystem token subsuming read and write.
+4.  ProcessCap: Spawn and control operating system subprocesses.
+5.  SysCap: Execute low-level operating system controls and termination.
+6.  NetCap: Umbrella network token subsuming TCP, UDP, and BIND.
+7.  TcpCap: Open, read, and write TCP network stream sockets.
+8.  UdpCap: Send and receive UDP network datagram packets.
+9.  BindCap: Bind network sockets to local ports and listen.
+10. EnvCap: Read allowed process environment variables (OODA_*).
+11. TimeCap: Read system clock, wall time, and timer intervals.
+12. RandCap: Generate cryptographically secure random bytes.
+13. AllocCap: Allocate dynamic heap memory within process quotas.
+14. ArenaCap: Allocate memory from contiguous linear bump arenas.
+15. ThreadCap: Spawn parallel actor threads with isolated heaps.
+16. GpuCap: Dispatch compute kernels to GPU hardware accelerators.
+17. FfiCap: Call external C foreign function interface symbols.
+18. MetricsCap: Read process telemetry counters and metrics.
+19. SignCap: Sign and verify capability HMAC tokens.
+20. CompilerReadCap: Query compiler and language server symbol tables.
+
+### 5.2 Substrate Capabilities (26 Bits)
+The runtime C substrate defines 26 capability bit positions in caps.h:
+- Active language tokens: 20 capability bits.
+- Reserved device bits (6): Audio (20), Camera (21), Usb (22), Hid (23),
+  Window (24), Frame (25).
+- Dead excised bits: 13 (HITL), 14 (SYNC), 15 (MEM), 16 (HTTP).
+  Excised bits are permanently retired and must not be reallocated.
+
+### 5.3 Attenuation Algebra
+- Subsumption: FsCap satisfies FsReadCap and FsWriteCap. NetCap satisfies
+  TcpCap, UdpCap, and BindCap.
+- Subset Rule: A child capability must be a subset of the parent capability:
+  (parent & child) == child.
+- Cryptographic Sealing: Attenuated tokens use HMAC-SHA256 parent signatures.
+- Path Scoping: OoPathCap restricts FsReadCap to designated path prefixes.
+- TLS Attenuation: TlsCap attenuates from TcpCap with verified credentials.
+
+## 6. Memory Physics & Concurrency
+
+### 6.1 Linear Bump Arenas
+- Contiguous virtual memory regions for scratch allocations.
+- Allocation increments a linear offset pointer.
+- O(1) bulk resets via checkpoints (oo_checkpoint) and rollbacks (oo_rollback).
+- Zero garbage collection pauses and zero memory fragmentation.
+
+### 6.2 Automatic Reference Counting (ARC)
+- Deterministic deallocation for strings, lists, and heap records at zero
+  reference count.
+- Cycles are forbidden in purely algebraic immutable values.
+- Scope exit unwinds lexical blocks to release allocations on early return,
+  break, or continue.
+
+### 6.3 Actor Concurrency
+- Share-nothing actor concurrency model.
+- Each actor thread possesses an isolated memory arena and heap.
+- Actors communicate exclusively through typed, synchronized message channels.
+
+## 7. Machine Wire Protocol & Diagnostics
+
+### 7.1 TSV Diagnostic Protocol
+- Diagnostic success message: OK\t<verb>\t<message>
+- Diagnostic error message: ERR\t<category>\t<message>
+- Standard error categories: lex, parse, type, cap, contract, import.
+
+### 7.2 Token Dump Protocol
+oodac tokens <file> emits tab-separated token streams:
+<KIND>\t<LINE>\t<COL>\t<TEXT>
+The stream terminates with:
+EOF\t<line>\t<col>\t
+
+### 7.3 Process Exit Code Matrix
+- 0: Success (clean build, type check, test execution, or command pass).
+- 1: Execution failure (test failure, runtime abort, contract violation).
+- 2: Invocation error (invalid CLI flags, bad arguments, syntax error).
+- 3: Capability violation (E_CAP trap, unauthorized resource access).
+
+### 7.4 Blackbox Crash Autopsy
+Fatal signals (SIGSEGV, SIGABRT) write an autopsy file to
+.blackbox/autopsy.json containing failure category, coordinate, stack
+trace, and root cause without dynamic heap allocation.
