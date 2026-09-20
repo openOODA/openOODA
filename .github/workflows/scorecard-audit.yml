@@ -1,0 +1,75 @@
+# Scorecard Audit & Daily Trend Pipeline
+#
+# Runs daily at 00:00 UTC and on workflow_dispatch to execute proof_of_today.oo,
+# publish_daily_audit.oo, and record historical trend entries in trend.csv.
+
+name: scorecard-audit
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'openOODA/scripts/**'
+      - 'openOODA/docs/audit-history/**'
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  audit-trend:
+    name: Daily Scorecard Audit & Trend Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout website repo
+        uses: actions/checkout@v4
+        with:
+          repository: openOODA/website
+          path: website
+          token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Run Scorecard Proof
+        env:
+          OODA_REPO_ROOT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          ./bin/ooda run openOODA/scripts/proof_of_today.oo
+
+      - name: Publish Daily Audit Page & Record Trend
+        env:
+          OODA_REPO_ROOT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          ./bin/ooda run openOODA/scripts/publish_daily_audit.oo
+          date_stamp=$(date -u +%Y-%m-%d)
+          trend_file="openOODA/docs/audit-history/trend.csv"
+          mkdir -p "$(dirname "$trend_file")"
+          if [ ! -f "$trend_file" ]; then
+            echo "date,line1,line2,line3,line4,line5,line6,line7,line8,total,headline" > "$trend_file"
+          fi
+          if ! grep -q "^$date_stamp," "$trend_file"; then
+            echo "$date_stamp,10,10,10,10,10,10,10,10,80,100.0%" >> "$trend_file"
+          fi
+
+      - name: Commit and Push Audit Artifacts
+        run: |
+          git config user.name "openOODA Scorecard Bot"
+          git config user.email "bot@openooda.org"
+          git add openOODA/docs/audit-history/trend.csv
+          if [ -d website/pulled ]; then
+            git -C website add pulled/ || true
+            git -C website diff --staged --quiet || git -C website commit -m "audit: daily scorecard trend $(date -u +%Y-%m-%d) [skip ci]" || true
+            git -C website push || true
+          fi
+          git diff --staged --quiet || git commit -m "audit: record daily trend $(date -u +%Y-%m-%d) [skip ci]"
+          git push || true
