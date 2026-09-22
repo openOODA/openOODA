@@ -8,13 +8,11 @@
 //   1. Resolve primary compiler binary.
 //   2. Sequentially build and execute each package suite in fresh processes.
 //   3. Assert zero-defect fail-closed exit status on each package suite.
-//   4. Calculate performance metrics and target 10/10 scorecard.
+//   4. Report consolidated pass/fail verification results.
 //   5. Output consolidated ecosystem verification report.
 
 import "std/fs/process/env.oo";
 import "std/fs/file/path.oo";
-import "std/meta/test/em_gauge.oo";
-import "std/meta/test/target_score.oo";
 
 fn run_sub_suite(p: &ProcessCap, oodac: String, path: String) -> Result[Int, String] {
     println("--- Executing Suite: " + path + " ---");
@@ -84,20 +82,10 @@ pub fn main(p: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, args: List[String]) 
         i = i + 1;
     }
 
-    // Performance metrics calculation
-    let em: EmMetrics = em_gauge_metrics_new(passed_suites * 1000, 0, 10, 100);
-    let em_res: EmScoreResult = em_gauge_calculate(em);
-
-    // Target criteria evaluation across ecosystem
-    let crit: FunctionAuditCriteria = target_criteria_new(true, true, true, true, true, true, true, true, true, true);
-    let moon_score: Int = target_score_function(crit);
-
     println("=================================================");
     println("=== openOODA UNIVERSAL QA: ALL SUITES PASSED  ===");
     println("=================================================");
     println("  Total Packages Verified: " + passed_suites.to_string() + "/" + list_len(suites).to_string());
-    println("  Specific Excess Power  : " + em_res.specific_excess_power.to_string() + " (" + em_res.rating + ")");
-    println("  Target Quality Score   : " + moon_score.to_string() + "/10 (PERFECT)");
     println("=================================================");
 
     return Ok(0);
