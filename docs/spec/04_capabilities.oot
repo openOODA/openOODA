@@ -84,6 +84,11 @@ never be reallocated or queried:
 ## 4. Capability Lifecycle (6 Stages)
 
 1. Mint: Bootstrapped at process startup by the kernel loader or init authority.
+- Handoff is lazy first-touch, not a loader call: the first oo_cap_grant_*
+  (oodar/sec/cap/cap_grant.c:6) runs oo_caps_init (oodar/sec/cap/caps.c:149)
+  through pthread_once (oodar/sec/cap/caps.c:150) into caps_once_init
+  (oodar/sec/cap/caps.c:91); exit-time teardown registers once via
+  atexit(caps_zeroize) (oodar/sec/cap/caps.c:143).
 2. Attenuate: Derived child token created with reduced permission scope.
 3. Delegate: Passed explicitly across call boundaries via &Cap reference.
 4. Require: Callee asserts capability presence via oo_cap_require_*().
@@ -115,6 +120,11 @@ Each capability token carries a 5-bit authority mask:
 - Path Scoping (OoPathCap): Attenuates FsReadCap to a specific path prefix
   (e.g. /home/user/data). Path traversing outside prefix triggers E_CAP.
 - TLS Attenuation: TlsCap is attenuated from TcpCap with peer certificates.
+- Runtime-only (no static counterpart): the rights-subset gate
+  (oodar/sec/cap/cap_attenuate_hmac.c:77), the OCap subset return
+  (oodar/sec/cap/cap_ocap_bridge.c:137), and prefix containment
+  (oodar/sec/cap/cap_attenuate_path.c:141). Section 7.3 checks token
+  presence only; these three execute on every attenuated call.
 
 ## 6. Landlock Linux LSM Sandboxing
 
@@ -122,6 +132,13 @@ The runtime configures the Linux Landlock LSM kernel subsystem:
 - Enforces hardware-level filesystem path confinement.
 - Blocks unauthorized read, write, execution, and network binding attempts.
 - Traps sandbox breaches fail-closed with exit code 3 (E_CAP).
+- Verified exit-3 call site: dispatcher denial prints capability_denied
+  JSON then process_exit(3) (tui/token/cmd_token.oo:231); the binding is
+  oo_process_exit (oodar/fs/os/sys.c:141) ending in exit((int)c)
+  (oodar/fs/os/sys.c:146), so code 3 reaches the kernel unchanged.
+- No oodar production path exits 3. Landlock breaches are kernel denials
+  via oo_landlock_restrict
+  (oodar/sec/landlock/landlock/landlock_restrict.c:123), not userspace exits.
 
 ## 7. Capability Journey (Declaration to Denial)
 
