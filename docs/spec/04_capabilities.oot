@@ -122,3 +122,109 @@ The runtime configures the Linux Landlock LSM kernel subsystem:
 - Enforces hardware-level filesystem path confinement.
 - Blocks unauthorized read, write, execution, and network binding attempts.
 - Traps sandbox breaches fail-closed with exit code 3 (E_CAP).
+
+## 7. Capability Journey (Declaration to Denial)
+
+This section follows one capability through six steps.
+Each step names the code that does the work.
+
+### 7.1 Declaration (package manifest)
+
+- A package declares its need in the `caps=` key of its manifest
+  (opm/cli/cmd_init.oo:27).
+- A shipped example declares `caps=FsRead` (catalog/caps/manifest:3).
+- The reader reads the key with pkg_caps (opm/cli/pkg/parse.oo:89).
+- The writer writes the key with pkg_emit (opm/cli/pkg/parse.oo:101).
+- One name maps to one bit with pm_cap_bit (opm/policy/caps.oo:12).
+- Full text maps to a mask with pm_cap_parse (opm/policy/caps.oo:24).
+- Empty text means FsRead by default (opm/policy/caps.oo:24).
+
+### 7.2 Granting (who grants, where the grant lives)
+
+- Only the runtime grants capabilities. No user code mints a token.
+- Each oo_cap_grant_* call starts init and returns one stored token,
+  for example oo_cap_grant_fs (oodar/sec/cap/cap_grant.c:6).
+- Each token lives in a g_tok_* global (oodar/sec/cap/caps.c:33).
+- Init makes each token once with make_cap_tok (oodar/sec/cap/caps.c:104).
+- Init runs once through oo_caps_init (oodar/sec/cap/caps.c:149).
+- Bit values are fixed in the header (oodar/sec/cap/caps.h:6).
+- Package install also checks grant against need with pm_launch_gate
+  (opm/launch/launch.oo:18).
+- A launch with more need than grant returns `err caps`
+  (opm/launch/launch.oo:25).
+
+### 7.3 Checking (compiler)
+
+- The compiler checks sealed calls before the program runs.
+- check_function walks each function item (oodac/check/check_caps.oo:21).
+- Grant bags hold the declared &Cap parameters
+  (oodac/check/check_cap_grant.oo:41).
+- A sealed call without the exact preferred kind is denied by cap_deny
+  (oodac/check/check_cap_grant.oo:41).
+- cap_deny prints a violation and exits with code 1
+  (oodac/check/check_cap_grant.oo:57).
+- The diagnostic kind `capability` maps to code E_CAP
+  (oodac/check/diag_json.oo:22).
+- The E_CAP hint tells the user to add the matching &Cap parameter
+  (oodac/check/diag_json.oo:57).
+- A failed check exits with code 1 (oodac/check/diag_json.oo:147).
+
+### 7.4 Enforcement (runtime dual bitmask plus OCap)
+
+- The generic gate compares the given token with the wanted token
+  (oodar/sec/cap/cap_require.c:23).
+- A zero or forged token exits with code 1 (oodar/sec/cap/cap_require.c:28).
+- All 22 per-token gates use one dual_check helper
+  (oodar/sec/cap/cap_require.c:45).
+- The helper first checks the bitmask token (oodar/sec/cap/cap_require.c:45).
+- A bitmask failure exits with code 1 (oodar/sec/cap/cap_require.c:53).
+- The helper then checks OCap rights (oodar/sec/cap/cap_require.c:55).
+- Bitmask pass plus OCap fail exits with code 2
+  (oodar/sec/cap/cap_require.c:60).
+- Each gate passes one primary token, for example fs
+  (oodar/sec/cap/cap_require.c:64).
+- Granular gates also accept one umbrella token, for example fsread
+  accepts fs (oodar/sec/cap/cap_require.c:86).
+- The OCap check rejects a zero cap (oodar/sec/cap/cap_ocap_bridge.c:121).
+- The OCap check rejects a forged token with no index
+  (oodar/sec/cap/cap_ocap_bridge.c:121).
+- The OCap check applies the subset rule on rights bits
+  (oodar/sec/cap/cap_ocap_bridge.c:121).
+- The OCap check never exits. It returns 0 or 1 only
+  (oodar/sec/cap/cap_ocap_bridge.c:119).
+
+### 7.5 Attenuation (narrow only, never widen)
+
+- Attenuation narrows rights. It never widens rights.
+- oo_cap_attenuate_v2 enforces the subset rule
+  (oodar/sec/cap/cap_attenuate_hmac.c:72).
+- A child with bits outside the parent returns an empty seal
+  (oodar/sec/cap/cap_attenuate_hmac.c:77).
+- The v1 entry points are stubs. They return empty or 0 only
+  (oodar/sec/cap/cap_attenuate_hmac.c:96).
+- Path attenuation derives OoPathCap from FsReadCap plus one prefix
+  (oodar/sec/cap/cap_attenuate_path.c:55).
+- Path attenuation first requires a valid FsReadCap
+  (oodar/sec/cap/cap_attenuate_path.c:74).
+- A bad prefix fails closed with code 1
+  (oodar/sec/cap/cap_attenuate_path.c:83).
+- The language diminisher keeps only bits present in both parent
+  and request (std/sec/capability/object_capability.oo:60).
+- The language permission test is a subset test
+  (std/sec/capability/object_capability.oo:83).
+- The package subset test is pm_caps_ok (opm/policy/caps.oo:67).
+
+### 7.6 Failure behavior (denial codes)
+
+- Compiler denial exits with code 1 (oodac/check/check_cap_grant.oo:57).
+- Runtime bitmask denial exits with code 1
+  (oodar/sec/cap/cap_require.c:28).
+- Runtime OCap disagreement exits with code 2
+  (oodar/sec/cap/cap_require.c:60).
+- Dispatcher denial prints JSON with `capability_denied` and exits
+  with code 3 (tui/token/cmd_token.oo:231).
+- The denial reason names the missing required cap
+  (std/app/agent/token/caller_caps.oo:95).
+- Each subcommand declares its required cap with sub_required_caps
+  (std/app/agent/token/caller_caps.oo:67).
+- The admit test is caller_caps_admits (std/app/agent/token/caller_caps.oo:87).
