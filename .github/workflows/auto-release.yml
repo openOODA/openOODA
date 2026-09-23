@@ -146,14 +146,29 @@ jobs:
           echo "Validated $count asset(s) with matching .sha256 sidecars:"
           ls -lh dist/
 
+      # Recheck for a releaser-pushed tag: releasers push an annotated tag
+      # seconds after the branch push that triggered this run, so a tag
+      # missing at checkout may exist now. Defer to it when present.
+      - name: Recheck for releaser-pushed tag
+        id: recheck
+        run: |
+          set -e
+          git fetch origin '+refs/tags/*:refs/tags/*' || true
+          if git rev-parse -q --verify "refs/tags/${{ steps.prep.outputs.new_tag }}^{commit}" >/dev/null; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.prep.outputs.new_tag }} was pushed by the releaser; deferring to it."
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Create and push tag only after assets are verified and if tag is new
       - name: Create and push tag
-        if: ${{ steps.prep.outputs.tag_exists != 'true' }}
+        if: ${{ steps.prep.outputs.tag_exists != 'true' && steps.recheck.outputs.tag_exists != 'true' }}
         run: |
           set -e
           git config user.name "openOODA Auto-Release"
           git config user.email "ops@openooda.org"
-          git tag "${{ steps.prep.outputs.new_tag }}"
+          git tag -a -m "auto-release ${{ steps.prep.outputs.new_tag }}" "${{ steps.prep.outputs.new_tag }}"
           git push origin "${{ steps.prep.outputs.new_tag }}"
 
       # Publish release with binary assets attached
