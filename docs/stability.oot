@@ -1,0 +1,112 @@
+# Polyrepo Stability Freeze — Six Workstreams
+File: openOODA/docs/stability.oot
+
+Date: 2026-09-24. Scope: freeze the six prior workstream results below
+into one record. Method: each claim re-verified this session against
+its home repo (git log, tags, file reads, working-tree checks).
+Scores rate release-readiness, not effort.
+
+## 1. Repo scores
+
+oodac: 7/10. run_all green and overhaul E2E green with logs on disk.
+Dead ll_rt_decl.oo removed and verified absent with zero refs.
+Deductions: refusals scope is incomplete (8 open items, §3.3);
+adversarial M3 keeps 2 pre-existing fails; VERSION file (0.11.1)
+drifts behind HEAD (v0.11.3, test-only commit d21c20a).
+
+oodar: 9/10. Full suite green on host plus Alpine/musl second
+platform. Bounds contract probe added (175 lines). Fuzz doubled
+with recorded seeds and double-run discipline. Deduction: commit
+3742cbb ships untagged; latest tag is v4.0.43, so the v4.0.44
+number exists only in the VERSION file pending a tag decision.
+
+std: 8/10. Coverage published (61 lines) with honest 1.3% total
+and named per-domain gaps. 9-file dead-code purge verified (all
+targets absent, each with zero inbound imports). Stability
+promises filed (60 lines). Deduction: probe depth is thin in
+7 of 8 domains; gaps are inventoried, not closed.
+
+## 2. Per-item status (DONE / NOT-DONE with SHAs and tags)
+
+2.1 Shape probe — DONE. openOODA 2f618b2, tag governance-v1.0.34.
+Probe openOODA/qa/lint_oo_size.sh is 134 lines and executable.
+It ends sys.exit(1 if n_viol else 0), so it fails closed.
+Audit openOODA/audit/oo_size_2026-09-23.oot is 687 lines with
+the full flagged inventory, worst first.
+
+2.2 Shape law — DONE. openOODA a23c440, tag governance-v1.0.35.
+openOODA/rules.oot is 252 lines; §1.8 (lines 90-92) caps one
+file at one functional unit, 8 functions, 40 lines per function,
+with probe fail-closed and audit burn-down. VERSION file reads
+governance-v1.0.35.
+
+2.3 Refusals conversion — PARTIAL (complete: false).
+DONE: inclusive for-range and shadowed loop vars on wasm
+(cdcf7df, v0.10.0) and rocm (b8fec7f, v0.11.0); rocm bool
+println 1/0 matching llvm/wasm. Both tags verified present.
+NOT-DONE: the 8 items carried in §3.3.
+
+2.4 Green special — DONE with caveats. oodac c142618 carries
+tags v0.11.1 and v0.11.2 on the same SHA; VERSION reads 0.11.1.
+emit/llvm/ll_rt_decl.oo (202 lines) is removed; repo-wide grep
+for ll_rt_decl returns zero hits. Green logs exist:
+run_all x2 plus overhaul plus double_run under /tmp/green_*.log.
+
+2.5 oodar hardening — DONE. oodar 3742cbb, 10 files, +220/-4.
+Bounds probe qa/tests_challenger_list_str_bounds.c (175 lines)
+is present. Fuzz seeds file qa/fuzz_seeds.txt is present.
+musl fallbacks (blackbox.c execinfo stub, pq_aead_seal.c
+unistd.h) verified in the diff stat. No v4.0.44 tag exists;
+latest tag is v4.0.43.
+
+2.6 std coverage and purge — DONE. std 2134892, tag v1.0.49,
+VERSION v1.0.49. std/qa/coverage.oot (61 lines) and
+std/docs/stability.oot (60 lines) verified on disk. All 6
+sampled purge targets verified absent (json_stream_legacy,
+motors_ops_encoder, x86_float_encoder, semaphore_counting,
+rational_big, sha3_io).
+
+## 3. Carried unresolved (unchanged, nothing dropped)
+
+3.1 Probe retune pending (§1.8 follow-up). Probe defaults
+OO_MAX_FNS=15 and OO_MAX_FN=80 stay lenient against the
+codified law (8 functions, 40 lines). The probe has no
+baseline-diff mode, so new violations are not separated
+from grandfathered inventory yet.
+
+3.2 Green-log byte identity. The two run_all logs differ in
+3 timestamp lines and 4 memory-peak digits only; both end
+STATUS: ALL SUITES GREEN with 0 pending. Prior Runs-identical
+claims mean pass/fail identical, not byte identical.
+
+3.3 Refusals scope, still open (8): wasm FLOAT expressions;
+wasm Option constructors plus Option match arms; wasm
+non-Result match scrutinees; non-Int for-range bounds on
+wasm and rocm; width-int types (u32 and kin) on wasm and
+rocm; rocm narrow result shapes (only rss/rli proven);
+rocm user structs; full 17-suite run_all green (6 relevant
+suites run green so far).
+
+3.4 Adversarial M3, pre-existing fails. CH1-P06-03 and
+CH1-P07-02 fail identically before and after the green
+change, so they are not a regression. Left unfixed as
+unrelated edits outside the named gates.
+
+3.5 oodac tag v0.11.2. Local tag v0.11.2 is a commit-type
+tag on c142618, shared with v0.11.1. Whether the duplicate
+number should stay needs an owner decision. Do not delete
+without that decision.
+
+3.6 oodar tag v4.0.44. Commit 3742cbb is pushed untagged.
+No force-push performed. Needs an owner or bot tag decision.
+
+3.7 oodac VERSION drift (new this session). HEAD is d21c20a
+(tag v0.11.3, test-only vs-rustc stretch corpus) while the
+VERSION file still reads 0.11.1. Either bump VERSION with
+a patch release or record v0.11.3 as test-only. Left for
+the oodac owner; not changed here.
+
+## 4. Files touched by this freeze
+
+This file only. No source, probe, or version file changed.
+Line cap: this file must stay at or below 256 lines.
