@@ -49,9 +49,17 @@ jobs:
         id: prep
         run: |
           set -e
+          git fetch origin '+refs/tags/*:refs/tags/*' || true
           TARGET_TAG="${{ inputs.target_tag }}"
           TAG_EXISTS="false"
-          LAST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
+          HEAD_SHA=$(git rev-parse HEAD)
+          LAST_TAG=""
+          for t in $(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname); do
+            if [ "$(git rev-parse -q --verify "refs/tags/${t}^{commit}" 2>/dev/null)" != "$HEAD_SHA" ]; then
+              LAST_TAG="$t"
+              break
+            fi
+          done
           [ -z "$LAST_TAG" ] && LAST_TAG="v0.0.0"
 
           if [ -n "$TARGET_TAG" ]; then
@@ -71,6 +79,11 @@ jobs:
             NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
 
             while git rev-parse -q --verify "refs/tags/${NEW_TAG}" >/dev/null; do
+              if [ "$(git rev-parse -q --verify "refs/tags/${NEW_TAG}^{commit}" 2>/dev/null)" = "$HEAD_SHA" ]; then
+                echo "Tag $NEW_TAG was pushed by the releaser on HEAD; deferring to it."
+                TAG_EXISTS="true"
+                break
+              fi
               echo "Tag $NEW_TAG already exists, incrementing patch..."
               PATCH=$((PATCH + 1))
               NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
