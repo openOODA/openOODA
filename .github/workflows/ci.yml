@@ -3,6 +3,10 @@ name: openOODA CI
 on:
   push:
     branches: [master]
+  schedule:
+    # Nightly cross-repo drift detection (integration job below). Component
+    # pushes cannot be gated cross-repo, so drift is caught here within 24h.
+    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       target_tag:
@@ -80,3 +84,90 @@ jobs:
           ooda run openOODA/scripts/spec_verify.oo
           echo '=== redteam_orchestrate.oo ==='
           ooda run openOODA/scripts/redteam_orchestrate.oo
+
+  integration:
+    # Cross-repo contracts. Each step asserts one thing that broke silently
+    # before: spawn roots, installed names, import closure, release sidecars.
+    # Component CIs cannot gate cross-repo, so this runs nightly + on demand
+    # and catches drift within 24h.
+    runs-on: ubuntu-latest
+    env:
+      OO_LIST_AMBIENT_QUOTA: "8589934592"
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: clone polyrepo masters (shallow)
+        run: |
+          set -euo pipefail
+          for r in oodac oodar std ooda cli tui opm lsp mcp; do
+            gh repo clone "openOODA/$r" "$r" -- --quiet --depth 1
+          done
+          test -x oodac/bin/oodac || chmod +x oodac/bin/oodac
+      - name: install release toolchain (user-truth)
+        run: |
+          set -euo pipefail
+          if ! command -v clang >/dev/null; then sudo apt-get update && sudo apt-get install -y clang; fi
+          curl -fsSL https://raw.githubusercontent.com/openOODA/install/master/install.sh | bash -s -- --yes --no-modify-shell
+          echo "$HOME/.openooda/bin" >> "$GITHUB_PATH"
+      - name: contract — installed names agree
+        run: |
+          set -euo pipefail
+          bin="${GATE_BIN:-$HOME/.openooda/bin}"
+          for b in ooda cli tui oodac opm lsp mcp; do
+            test -x "$bin/$b" || { echo "FAIL: missing installed binary: $b"; exit 1; }
+          done
+          test -f "$bin/liboodar.a" || { echo "FAIL: missing liboodar.a"; exit 1; }
+          test ! -e "$bin/ooda-tui" || { echo "FAIL: ghost alias ooda-tui installed"; exit 1; }
+          echo "PASS: installed names agree (8 binaries, no ghosts)"
+      - name: contract — release binaries spawn each other
+        run: |
+          set -euo pipefail
+          export OODACODEX="$HOME/.openooda/northstar.oot"
+          export OODA_NO_JAIL=1
+          test -f "$OODACODEX" || { echo "FAIL: installer left no northstar.oot (spawn root)"; exit 1; }
+          printf '/exit\n' | "$HOME/.openooda/bin/ooda" 2>&1 | grep -q "PROMPT" || { echo "FAIL: bare ooda did not open tui"; exit 1; }
+          "$HOME/.openooda/bin/cli" token 2>/dev/null | grep -q subcommands || { echo "FAIL: cli token did not forward to tui"; exit 1; }
+          echo "PASS: release spawn matrix holds"
+      - name: contract — master trees build (import closure)
+        working-directory: ${{ github.workspace }}
+        env:
+          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac
+          OODA_FS_READDIR: ${{ github.workspace }}
+          OODA_FS_WRITEDIR: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p master-bin
+          declare -A MAIN=([ooda]=ooda/main.oo [cli]=cli/main.oo [tui]=tui/main.oo [opm]=opm/cli/main.oo [lsp]=lsp/cli/main.oo [mcp]=mcp/cli/main.oo)
+          for k in ooda cli tui opm lsp mcp; do
+            echo "  BUILD $k"
+            "${OODA_COMPILER}" build "${MAIN[$k]}" -o "master-bin/$k" || { echo "FAIL: master build $k (import closure)"; exit 1; }
+          done
+          echo "PASS: all master mains build"
+      - name: contract — master binaries spawn each other
+        working-directory: ${{ github.workspace }}
+        env:
+          OODA_FS_READDIR: ${{ github.workspace }}
+          OODA_FS_WRITEDIR: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p master-codex/bin
+          cp master-bin/* master-codex/bin/
+          curl -fsSL -o master-codex/northstar.oot https://raw.githubusercontent.com/openOODA/openOODA/master/northstar.oot
+          export OODACODEX="${{ github.workspace }}/master-codex/northstar.oot"
+          export OODA_NO_JAIL=1
+          printf '/exit\n' | ./master-codex/bin/ooda 2>&1 | grep -q "PROMPT" || { echo "FAIL: master ooda did not open master tui"; exit 1; }
+          ./master-codex/bin/cli token 2>/dev/null | grep -q subcommands || { echo "FAIL: master cli token did not forward"; exit 1; }
+          echo "PASS: master spawn matrix holds"
+      - name: contract — releases carry sidecars and track master
+        run: |
+          set -euo pipefail
+          fails=0
+          for r in ooda cli tui oodac oodar opm lsp mcp; do
+            tag=$(gh release view --repo "openOODA/$r" --json tagName -q .tagName) || { echo "FAIL: $r has no release"; fails=1; continue; }
+            names=$(gh release view --repo "openOODA/$r" --json assets -q '.assets[].name' | tr '\n' ' ')
+            echo "$names" | grep -q "sha256" || { echo "FAIL: $r $tag ships no .sha256 sidecar ($names)"; fails=1; }
+            msgs=$(gh api "repos/openOODA/$r/compare/$tag...master" --jq '.commits[].commit.message' 2>/dev/null | head -5 || true)
+            odd=$(printf '%s' "$msgs" | grep -v -e '^necrometer' -e 'bump VERSION' -e '^$' || true)
+            if [ -n "$odd" ]; then echo "FAIL: $r $tag trails master by functional commits: $odd"; fails=1; fi
+          done
+          [ "$fails" -eq 0 ] || exit 1
+          echo "PASS: releases carry sidecars and track master"
