@@ -7,6 +7,7 @@
 //   3. Assert bit-parity between 01_lexical.oot and oodac/types/token_typed.oo.
 //   4. Assert bit-parity between 04_capabilities.oot and oodar/sec/cap/caps.h.
 //   5. Execute double-run determinism verification (Run 1 == Run 2 == 0).
+//   6. Assert bit-parity between rules.oot anchor claims and the std tree.
 
 import "std/fs/process/process.oo";
 
@@ -86,6 +87,18 @@ pub fn main(fs: &FsReadCap, sys: &SysCap, p: &ProcessCap) -> Result[Int, String]
         + "  else "
         + "    printf 'ERR\\tbit_parity\\t%s not found\\n' \"$tok_src\"; "
         + "    fails=$((fails + 1)); "
+        + "  fi; "
+        + "  anchor_claimed=$(grep -oE '[0-9]+ anchor\\.oo' 'openOODA/rules.oot' | grep -oE '[0-9]+' | sort -u); "
+        + "  anchor_distinct=$(printf '%s' \"$anchor_claimed\" | grep -cE '[0-9]+'); "
+        + "  anchor_live=$(find std -name 'anchor.oo' | wc -l); "
+        + "  if [ \"$anchor_distinct\" -ne 1 ]; then "
+        + "    printf 'ERR\\tbit_parity\\trules.oot anchor claims disagree: %s\\n' \"$anchor_claimed\"; "
+        + "    fails=$((fails + 1)); "
+        + "  elif [ \"$anchor_claimed\" -ne \"$anchor_live\" ]; then "
+        + "    printf 'ERR\\tbit_parity\\tanchor drift: rules claims %s, std has %s\\n' \"$anchor_claimed\" \"$anchor_live\"; "
+        + "    fails=$((fails + 1)); "
+        + "  else "
+        + "    printf 'OK\\tbit_parity\\trules.oot/std anchor parity %s\\n' \"$anchor_live\"; "
         + "  fi; "
         + "  cap_src='oodar/sec/cap/caps.h'; "
         + "  if [ -f \"$cap_src\" ]; then "

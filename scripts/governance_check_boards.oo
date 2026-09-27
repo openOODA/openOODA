@@ -8,7 +8,7 @@
 // Setup: Pure structural file. Run from the polyrepo root with
 //        ProcessCap. Walks openOODA/openOODA/ for the 4 onboarding
 //        files (rules.oot, northstar.oot, requirements.oot, roadmap.oot),
-//        the 8 RFCs (under rfcs/), and the 3 practice files (under practices/).
+//        the RFC series (under rfcs/, indexed by anchor.oo), and the 3 practice files (under practices/).
 //        Exits 0 on clean, 1 on first violation.
 //
 // Beats:
@@ -16,7 +16,7 @@
 //   2. northstar.oot exists, has Target section, and is <= 256 lines.
 //   3. requirements.oot and roadmap.oot exist, <= 256 lines.
 //   4. Uppercase deprecated boards absent.
-//   5. All 8 RFCs (0001-0008) under rfcs/ exist; anchor.oo references them.
+//   5. RFC index/file parity: anchor.oo numbers (0001..max contiguous) each resolve to a file; every rfcs/00NN file is indexed.
 //   6. All 3 practices (8d-red-team, ooda-workflow, release) under practices/ exist.
 //   7. Print per-board verdict; exit non-zero on first FAIL.
 
@@ -50,10 +50,25 @@ pub fn main(p: &ProcessCap) -> Result[Int, String] {
         + "if ! grep -qE '^## 1\\. The 10 Requirements' requirements.oot; then fails=$((fails + 1)); echo \"  FAIL: requirements.oot missing Requirements section\"; fi; "
         + "total=$((total + 1)); "
         + "if ! grep -qE '^## 1\\. Active Release Milestones' roadmap.oot; then fails=$((fails + 1)); echo \"  FAIL: roadmap.oot missing Milestones section\"; fi; "
-        + "for n in 0001 0002 0003 0004 0005 0006 0007 0008; do "
+        + "rfc_idx=$(grep -oE \"00[0-9][0-9]\" rfcs/anchor.oo | sort -u); "
+        + "rfc_max=0; rfc_count=0; "
+        + "for n in $rfc_idx; do "
+        + "  if [ \"$n\" = \"0000\" ]; then continue; fi; "
         + "  total=$((total + 1)); "
-        + "  if [ ! -f \"rfcs/${n}-\"*.oot ]; then fails=$((fails + 1)); echo \"  FAIL: rfcs/${n}-*.oot missing\"; fi; "
-        + "  if ! grep -q \"$n\" rfcs/anchor.oo; then fails=$((fails + 1)); echo \"  FAIL: rfcs/anchor.oo missing $n\"; fi; "
+        + "  rfc_count=$((rfc_count + 1)); "
+        + "  if [ ! -f \"rfcs/${n}-\"*.oot ]; then fails=$((fails + 1)); echo \"  FAIL: rfcs/${n}-*.oot missing (anchor indexes it)\"; fi; "
+        + "  num=$(printf \"%s\" \"$n\" | sed 's/^0*//'); "
+        + "  if [ -z \"$num\" ]; then num=0; fi; "
+        + "  if [ \"$num\" -gt \"$rfc_max\" ]; then rfc_max=$num; fi; "
+        + "done; "
+        + "if [ \"$rfc_count\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL: no RFCs indexed in rfcs/anchor.oo\"; fi; "
+        + "if [ \"$rfc_count\" -ne \"$rfc_max\" ]; then fails=$((fails + 1)); echo \"  FAIL: rfc index not 0001..max contiguous (count=$rfc_count max=$rfc_max)\"; fi; "
+        + "for f in rfcs/00[0-9][0-9]-*.oot; do "
+        + "  if [ ! -e \"$f\" ]; then continue; fi; "
+        + "  n=$(basename \"$f\" | cut -c1-4); "
+        + "  if [ \"$n\" = \"0000\" ]; then continue; fi; "
+        + "  total=$((total + 1)); "
+        + "  if ! grep -q \"$n\" rfcs/anchor.oo; then fails=$((fails + 1)); echo \"  FAIL: rfcs/$n unindexed in anchor.oo\"; fi; "
         + "done; "
         + "for pr in 8d-red-team.oot ooda-workflow.oot release.oot; do "
         + "  total=$((total + 1)); "
