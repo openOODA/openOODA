@@ -50,6 +50,19 @@ jobs:
           command -v clang >/dev/null || { echo "clang required for oodac build (LLVM IR + oodar)"; exit 1; }
       - name: build oodar libs
         run: make -C oodar/scripts -f Makefile modular
+      - name: spec sheet harness (Milestone 1 Tier A)
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          bash openOODA/qa/test_spec_sheet.sh
+      - name: C ABI layout + FFI round-trip
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          make -C oodar/scripts -f Makefile all
+          test -f oodar/scripts/lib/liboodar.a
+          gcc openOODA/qa/tests_c_abi_layout.c oodar/scripts/lib/liboodar.a -o /tmp/abitest -ldl -lm -lpthread
+          /tmp/abitest
       - name: install openOODA toolchain (for ooda run)
         run: |
           set -euo pipefail
