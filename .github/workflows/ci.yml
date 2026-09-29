@@ -89,7 +89,11 @@ jobs:
       - name: install openOODA toolchain (for ooda run)
         run: |
           set -euo pipefail
-          curl -fsSL https://raw.githubusercontent.com/openOODA/install/master/install.sh | bash -s -- --yes --no-modify-shell
+          INSTALL_SHA="b87d748ad421ffbfed967c1faab6cdd5ecaffe33"
+          INSTALL_SHA256="33afd387bc5a772d1a761aa470ef411bfcd73cb606a6ca9feb7cb31e9d64c102"
+          curl -fsSL -o /tmp/pinned-install.sh "https://raw.githubusercontent.com/openOODA/install/${INSTALL_SHA}/install.sh"
+          echo "$INSTALL_SHA256  /tmp/pinned-install.sh" | sha256sum -c -
+          bash /tmp/pinned-install.sh --yes --no-modify-shell
           echo "$HOME/.openooda/bin" >> "$GITHUB_PATH"
           test -x "$HOME/.openooda/bin/ooda" || { echo "missing ~/.openooda/bin/ooda after install"; exit 1; }
           test -x "$HOME/.openooda/bin/cli" || { echo "missing ~/.openooda/bin/cli after install"; exit 1; }
@@ -142,7 +146,11 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v clang >/dev/null; then sudo apt-get update && sudo apt-get install -y clang; fi
-          curl -fsSL https://raw.githubusercontent.com/openOODA/install/master/install.sh | bash -s -- --yes --no-modify-shell
+          INSTALL_SHA="b87d748ad421ffbfed967c1faab6cdd5ecaffe33"
+          INSTALL_SHA256="33afd387bc5a772d1a761aa470ef411bfcd73cb606a6ca9feb7cb31e9d64c102"
+          curl -fsSL -o /tmp/pinned-install.sh "https://raw.githubusercontent.com/openOODA/install/${INSTALL_SHA}/install.sh"
+          echo "$INSTALL_SHA256  /tmp/pinned-install.sh" | sha256sum -c -
+          bash /tmp/pinned-install.sh --yes --no-modify-shell
           echo "$HOME/.openooda/bin" >> "$GITHUB_PATH"
       - name: build oodar libs (master link inputs)
         working-directory: ${{ github.workspace }}
@@ -194,7 +202,10 @@ jobs:
           set -euo pipefail
           mkdir -p master-codex/bin
           cp master-bin/* master-codex/bin/
-          curl -fsSL -o master-codex/northstar.oot https://raw.githubusercontent.com/openOODA/openOODA/master/northstar.oot
+          NORTHSTAR_SHA="adfd86a19e4e471c4e82578c6696fe4a08b4100e"
+          NORTHSTAR_SHA256="eb3e36e9154220418f9d37dce2414ebaf3d39f7755967e6114ad1670be704ea3"
+          curl -fsSL -o master-codex/northstar.oot "https://raw.githubusercontent.com/openOODA/openOODA/${NORTHSTAR_SHA}/northstar.oot"
+          echo "$NORTHSTAR_SHA256  master-codex/northstar.oot" | sha256sum -c -
           export OODACODEX="${{ github.workspace }}/master-codex/northstar.oot"
           export OODA_NO_JAIL=1
           printf '/exit\n' | ./master-codex/bin/ooda 2>&1 | grep -q "PROMPT" || { echo "FAIL: master ooda did not open master tui"; exit 1; }
