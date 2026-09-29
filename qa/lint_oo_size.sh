@@ -11,6 +11,7 @@ set -euo pipefail
 # Default output is the burn-down inventory: flagged rows only,
 # worst offenders first. Pass --all for every scanned file.
 # Thresholds (env-overridable): OO_MAX_LINES=256 OO_MAX_FNS=15 OO_MAX_FN=80.
+# Roots (env-overridable): OO_LINT_ROOTS=oodac,oodar,std,openOODA (comma list).
 # Exit 0 when no size violation; exit 1 when any BIGFILE/MANYFN/LONGFN
 # fires. MIX is an informational signal and never fails the probe.
 # Longest-function uses brace-depth matching; braces inside strings or
@@ -38,7 +39,7 @@ max_fns = int(os.environ["MAX_FNS"])
 max_fn = int(os.environ["MAX_FN"])
 flagged_only = os.environ.get("MODE", "--flagged") != "--all"
 
-roots = ["oodac", "oodar", "std", "openOODA"]
+roots = [r for r in os.environ.get("OO_LINT_ROOTS", "oodac,oodar,std,openOODA").split(",") if r]
 fnre = re.compile(r"^[ \t]*(?:pub[ \t]+)?fn[ \t]+([A-Za-z_][A-Za-z0-9_]*)")
 GROUPS = [
     ("fs", ["fsreadcap", "fswritecap", "fscap"]),

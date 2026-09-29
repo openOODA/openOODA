@@ -63,6 +63,29 @@ jobs:
           test -f oodar/scripts/lib/liboodar.a
           gcc openOODA/qa/tests_c_abi_layout.c oodar/scripts/lib/liboodar.a -o /tmp/abitest -ldl -lm -lpthread
           /tmp/abitest
+      - name: size lint gate (governance repo)
+        working-directory: ${{ github.workspace }}
+        env:
+          OODA_POLYROOT: ${{ github.workspace }}
+          OO_LINT_ROOTS: openOODA
+        run: |
+          set -euo pipefail
+          bash openOODA/qa/lint_oo_size.sh
+      - name: size lint inventory (polyrepo advisory)
+        working-directory: ${{ github.workspace }}
+        continue-on-error: true
+        env:
+          OODA_POLYROOT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          bash openOODA/qa/lint_oo_size.sh | tee /tmp/size_inventory.txt
+          tail -3 /tmp/size_inventory.txt
+      - name: upload size inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: size-inventory
+          path: /tmp/size_inventory.txt
       - name: install openOODA toolchain (for ooda run)
         run: |
           set -euo pipefail

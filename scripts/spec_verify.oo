@@ -11,17 +11,32 @@
 
 import "std/fs/process/process.oo";
 
-pub fn main(fs: &FsReadCap, sys: &SysCap, p: &ProcessCap) -> Result[Int, String] {
-    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
+fn spec_prelude_sh() -> String {
+    return "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
         + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "printf 'ERR\\tenv\\tOODA_REPO_ROOT must be an absolute path free of ..\\n'; exit 2; fi; "
-        + "cd \"$src_root\" || { printf 'ERR\\tfs\\tcannot cd to %s\\n' \"$src_root\"; exit 2; }; "
-        + "run_pass() { "
+        + "cd \"$src_root\" || { printf 'ERR\\tfs\\tcannot cd to %s\\n' \"$src_root\"; exit 2; }; ";
+}
+
+// NOTE: each builder's braces balance within itself so the qa size
+// lint (brace-depth fn matcher) measures true function extents.
+fn spec_wrap_sh(body: String) -> String {
+    return "run_pass() { "
         + "  local fails=0; "
-        // POSIX word list, not a bash array: process_exec runs under sh,
-        // which is dash on Ubuntu CI (arrays are a syntax error there).
-        // NOTE: no `#` comments inside cmd: it joins into one shell line.
-        + "  targets='openOODA/spec.oot' "
+        + body
+        + "  return $fails; "
+        + "}; ";
+}
+
+fn spec_body_sh() -> String {
+    return spec_targets_sh() + spec_tokparity_sh() + spec_anchorparity_sh() + spec_capparity_sh();
+}
+
+fn spec_targets_sh() -> String {
+    // POSIX word list, not a bash array: process_exec runs under sh,
+    // which is dash on Ubuntu CI (arrays are a syntax error there).
+    // NOTE: no `#` comments inside cmd: it joins into one shell line.
+    return "  targets='openOODA/spec.oot' "
         + "  targets=\"$targets openOODA/docs/spec/anchor.oo\" "
         + "  targets=\"$targets openOODA/docs/spec/01_lexical.oot\" "
         + "  targets=\"$targets openOODA/docs/spec/02_grammar.oot\" "
@@ -62,8 +77,11 @@ pub fn main(fs: &FsReadCap, sys: &SysCap, p: &ProcessCap) -> Result[Int, String]
         + "    else "
         + "      printf 'OK\\twait\\t%s pending milestone authoring\\n' \"$f\"; "
         + "    fi; "
-        + "  done; "
-        + "  tok_src='oodac/types/token_typed.oo'; "
+        + "  done; ";
+}
+
+fn spec_tokparity_sh() -> String {
+    return "  tok_src='oodac/types/token_typed.oo'; "
         + "  if [ -f \"$tok_src\" ]; then "
         + "    tok_err=0; "
         + "    for tok in IDENT INT FLOAT STRING LINEFILE SRC_PATH KW_FN KW_LET KW_PUB KW_MUT KW_IMPORT KW_REQUIRES KW_ENSURES KW_VERIFY KW_IF KW_ELSE KW_MATCH KW_FOR KW_IN KW_WHILE KW_RETURN KW_TYPE KW_WHERE KW_TRUE KW_FALSE KW_GPU KW_BREAK KW_CONTINUE KW_TRAIT KW_IMPL KW_EXPORT PLUS MINUS STAR PERCENT SLASH EQEQ FATARROW EQ NEQ LSHIFT RSHIFT LTE LT GTE GT ANDAND AMP OROR PIPE CARET COLON SEMI COMMA DOTDOTEQ DOTDOT DOT LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET QUESTION AT BANG EOF; do "
@@ -88,8 +106,11 @@ pub fn main(fs: &FsReadCap, sys: &SysCap, p: &ProcessCap) -> Result[Int, String]
         + "  else "
         + "    printf 'ERR\\tbit_parity\\t%s not found\\n' \"$tok_src\"; "
         + "    fails=$((fails + 1)); "
-        + "  fi; "
-        + "  anchor_claimed=$(grep -oE '[0-9]+ anchor\\.oo' 'openOODA/rules.oot' | grep -oE '[0-9]+' | sort -u); "
+        + "  fi; ";
+}
+
+fn spec_anchorparity_sh() -> String {
+    return "  anchor_claimed=$(grep -oE '[0-9]+ anchor\\.oo' 'openOODA/rules.oot' | grep -oE '[0-9]+' | sort -u); "
         + "  anchor_distinct=$(printf '%s' \"$anchor_claimed\" | grep -cE '[0-9]+'); "
         + "  anchor_live=$(find std -name 'anchor.oo' | wc -l); "
         + "  if [ \"$anchor_distinct\" -ne 1 ]; then "
@@ -100,8 +121,11 @@ pub fn main(fs: &FsReadCap, sys: &SysCap, p: &ProcessCap) -> Result[Int, String]
         + "    fails=$((fails + 1)); "
         + "  else "
         + "    printf 'OK\\tbit_parity\\trules.oot/std anchor parity %s\\n' \"$anchor_live\"; "
-        + "  fi; "
-        + "  cap_src='oodar/sec/cap/caps.h'; "
+        + "  fi; ";
+}
+
+fn spec_capparity_sh() -> String {
+    return "  cap_src='oodar/sec/cap/caps.h'; "
         + "  if [ -f \"$cap_src\" ]; then "
         + "    cap_err=0; "
         + "    for cap in NET PROCESS FSWRITE FSREAD SYS FS TIME RAND ALLOC ARENA FFI METRICS SIGN TCP UDP BIND THREAD GPU ENV COMPILER_READ; do "
@@ -132,10 +156,11 @@ pub fn main(fs: &FsReadCap, sys: &SysCap, p: &ProcessCap) -> Result[Int, String]
         + "  else "
         + "    printf 'ERR\\tbit_parity\\t%s not found\\n' \"$cap_src\"; "
         + "    fails=$((fails + 1)); "
-        + "  fi; "
-        + "  return $fails; "
-        + "}; "
-        + "printf '=== spec_verify pass 1 ===\\n'; "
+        + "  fi; ";
+}
+
+fn spec_driver_sh() -> String {
+    return "printf '=== spec_verify pass 1 ===\\n'; "
         + "run_pass; "
         + "r1_code=$?; "
         + "printf '=== spec_verify pass 2 ===\\n'; "
@@ -152,6 +177,10 @@ pub fn main(fs: &FsReadCap, sys: &SysCap, p: &ProcessCap) -> Result[Int, String]
         + "printf 'OK\\tdeterminism\\tRun 1 == Run 2 == 0 bit-identical clean pass\\n'; "
         + "printf 'OK\\tsuite\\tall specification suite invariants certified\\n'; "
         + "exit 0;";
+}
+
+pub fn main(fs: &FsReadCap, sys: &SysCap, p: &ProcessCap) -> Result[Int, String] {
+    let cmd: String = spec_prelude_sh() + spec_wrap_sh(spec_body_sh()) + spec_driver_sh();
     let r: Result[String, String] = process_exec(p, cmd);
     let out: String = match r { Ok(s) => s, Err(e) => e };
     print(out);
