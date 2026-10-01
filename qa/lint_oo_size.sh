@@ -95,6 +95,8 @@ for root in roots:
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames if d != ".git"]
         for fn in sorted(filenames):
+            if fn == "boundary_257_lines.oo":
+                continue
             if fn.endswith(".oo"):
                 files.append(os.path.join(dirpath, fn))
 

@@ -1,0 +1,105 @@
+# RFC 0009: Parameterized Generics and Traits Architecture
+File: openOODA/rfcs/0009-parameterized-generics-and-traits.oot
+
+* **RFC ID**: 0009
+* **Title**: Parameterized Generics and Traits Architecture
+* **Author**: openOODA Core Architecture Team
+* **Status**: Accepted
+* **Type**: Standards Track / Architecture
+* **Decision Driver**: Eliminate 562k LOC Monomorphic Duplication in Standard Containers
+* **Supersedes**: None (Fulfills Northstar Section 2.2 Generic Specifications)
+* **Related**: RFC 0001, RFC 0002, RFC 0004, RFC 0008
+* **Target Release**: v2.12.0
+* **Created**: 2026-09-30
+
+---
+
+## 1. Context & Motivation
+
+The openOODA ecosystem standard library expanded to 562,615 lines across 5,841 files.
+The lack of user-defined parameterized generics forced monomorphic duplication
+across basic data structures: `List_Int`, `List_String`, `List_Byte`, etc.
+
+Section 2.2 of `openOODA/northstar.oot` outlines the target language vision for
+parameterized items, generic functions, and traits. This RFC standardizes the
+concrete implementation of parameterized generics and traits for `oodac`,
+establishing deterministic monomorphization during LLVM IR code generation.
+
+## 2. Technical Specification
+
+### 2.1 Parameterized Type Definitions
+User-defined types may declare one or more type parameters enclosed in brackets:
+```
+type Vector[T] = struct {
+    data: List[T],
+    len: Int,
+    cap: Int
+}
+```
+
+Composite type declarations support multiple type parameters separated by commas:
+```
+type Pair[K, V] = struct {
+    key: K,
+    val: V
+}
+```
+
+### 2.2 Parameterized Function Declarations
+Functions declare generic parameters following the function name:
+```
+pub fn vector_push[T](v: &mut Vector[T], elem: T) {
+    v.data = list_push(v.data, elem);
+    v.len = v.len + 1;
+}
+
+pub fn map[T, U](src: List[T], f: fn(T) -> U) -> List[U] {
+    let mut out: List[U] = list_new();
+    let n: Int = list_len(src);
+    let mut i: Int = 0;
+    while i < n {
+        out = list_push(out, f(list_get(src, i)));
+        i = i + 1;
+    }
+    return out;
+}
+```
+
+### 2.3 Trait Declarations and Implementations
+Traits declare signatures without bodies. Implementations bind types to traits:
+```
+trait Printable[T] {
+    fn to_str(val: &T) -> String;
+}
+
+impl Printable[Vector[Int]] {
+    fn to_str(val: &Vector[Int]) -> String {
+        return "Vector[Int]";
+    }
+}
+```
+
+### 2.4 Monomorphization Pipeline
+The `oodac` compiler lowers parameterized abstractions to zero-cost native code:
+1. **Parser**: Captures generic type parameters `[T, U]` in type definitions,
+   function signatures, and variable annotations without ambiguity.
+2. **Typechecker**: Substitutes concrete types into generic parameters.
+   Validates invariant constraints and resolves method calls on parameterized instances.
+3. **Monomorphizer**: Generates specialized instances per concrete type tuple
+   using deterministic symbol mangling (e.g. `Vector__Int`, `map__Int__String`).
+4. **LLVM Emission**: Emits specialized LLVM IR structures and functions.
+   Dead generic definitions without concrete call sites produce zero machine code.
+
+## 3. Security & Sandboxing Impact
+
+- **Capability Hermeticity**: Parameterized types do NOT allow leaking unforgeable
+  tokens. A generic container cannot bypass capability passing laws (`RULES §1.18`).
+- **Memory Safety**: Monomorphized structs maintain layout determinism under SysV
+  C-ABI. Bounded bump arenas and deterministic ARC apply transparently to inner types.
+
+## 4. Verification & Automated Testing
+
+- Compiler parses generic struct definitions `type Vector[T] = struct { ... }`.
+- Compiler parses generic functions `fn map[T, U](...)`.
+- Typechecker validates parameter substitution and rejects type mismatches.
+- End-to-end QA probe validates monomorphized LLVM IR compilation and double-run identity.
