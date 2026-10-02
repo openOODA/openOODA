@@ -12,6 +12,7 @@ A **page** is one committed `.oo` or `.oot` file. Every page holds one idea, fit
 - **16–256 Lines**: Every committed `.oo` source file must be between **16 and 256 lines**, counted as exact line breaks (blank lines and comments count).
 - **Shim Exemption (Floor Only)**: A file is a shim when every non-comment line is an import or re-export (`import "..."`). Shims skip the 16-line floor. The **256-line ceiling still strictly applies**.
 - **Directory Density ($\le 8$ pages)**: At most **8 `.oo` pages per directory**, tests included. Crowded directories must split into functional subdirectories grouped by domain, linked via an `anchor.oo` shim.
+- **Function Count & Size ($\le 8$ fns/page, $\le 40$ lines/fn)**: At most **8 functions per page**, and at most **40 lines per function**. Decompose monolithic functions along domain boundaries.
 - **Banned File Names (Name the function, not the drawer)**:
   `util.oo`, `utils.oo`, `helper.oo`, `helpers.oo`, `common.oo`, `misc.oo`, `shared.oo`, `base.oo`, `core.oo`.
 
@@ -62,9 +63,9 @@ openOODA operates strictly on the Object-Capability (OCap) security model:
 Performance is verified continuously across the ecosystem:
 - **`lines`**: Source line count (16–256).
 - **`ir_lines`**: Number of LLVM IR lines emitted by `oodac emit-ir`.
-- **`check_time_ms`**: Duration to typecheck with `oodac check`.
-- **`rss_kb`**: Compiler peak memory during module check.
-- **The Performance Invariant**: **A change may not grow a page's binary weight, emitted IR line count, or compiler memory overhead without written justification in the commit message.**
+- **`check_time_ms`**: Duration to typecheck with `oodac check` ($\le 3.0\text{s}$ CPU time).
+- **`rss_kb`**: Compiler peak memory during module check ($\le 64\text{ MB}$ RSS).
+- **The Performance Invariant**: **A change may not grow a page's binary weight, emitted IR line count, or compiler memory overhead without written justification in the commit message. Every page must strictly satisfy $\le 64\text{ MB}$ RSS, $\le 3.0\text{s}$ CPU, $\le 8$ pages/directory, $\le 8$ functions/page, and $\le 40$ lines/function.**
 
 ---
 

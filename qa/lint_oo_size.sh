@@ -24,9 +24,10 @@ POLY="${OODA_POLYROOT:-$(cd "$GOV/.." && pwd)}"
 MAX_LINES="${OO_MAX_LINES:-256}"
 MAX_FNS="${OO_MAX_FNS:-15}"
 MAX_FN="${OO_MAX_FN:-80}"
+MAX_DIR="${OO_MAX_DIR:-8}"
 MODE="${1:---flagged}"
 
-export POLY MAX_LINES MAX_FNS MAX_FN MODE
+export POLY MAX_LINES MAX_FNS MAX_FN MAX_DIR MODE
 
 python3 - <<'PY'
 import os
@@ -37,6 +38,7 @@ poly = os.environ["POLY"]
 max_lines = int(os.environ["MAX_LINES"])
 max_fns = int(os.environ["MAX_FNS"])
 max_fn = int(os.environ["MAX_FN"])
+max_dir = int(os.environ.get("MAX_DIR", "8"))
 flagged_only = os.environ.get("MODE", "--flagged") != "--all"
 
 roots = [r for r in os.environ.get("OO_LINT_ROOTS", "oodac,oodar,std,openOODA").split(",") if r]
@@ -90,23 +92,25 @@ def scan(path):
 
 
 files = []
+dir_counts = {}
 for root in roots:
     base = os.path.join(poly, root)
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames if d != ".git"]
-        for fn in sorted(filenames):
-            if fn == "boundary_257_lines.oo":
-                continue
-            if fn.endswith(".oo"):
-                files.append(os.path.join(dirpath, fn))
+        oo_fns = [fn for fn in sorted(filenames) if fn.endswith(".oo") and fn != "boundary_257_lines.oo"]
+        dir_counts[dirpath] = len(oo_fns)
+        for fn in oo_fns:
+            files.append(os.path.join(dirpath, fn))
 
 rows = []
-counts = {"BIGFILE": 0, "MANYFN": 0, "LONGFN": 0, "MIX": 0}
+counts = {"BIGFILE": 0, "MANYFN": 0, "LONGFN": 0, "DENSE": 0, "MIX": 0}
 for path in sorted(files):
     try:
         nlines, nfns, longest, lname, domains, flags = scan(path)
     except OSError:
         continue
+    if dir_counts.get(os.path.dirname(path), 0) > max_dir:
+        flags.append("DENSE")
     for f in flags:
         counts[f] += 1
     if flagged_only and not flags:
@@ -120,14 +124,15 @@ for path in sorted(files):
 rows.sort(key=lambda r: (-r[0], -r[1], -r[2]))
 
 n_viol = sum(1 for r in rows if "BIGFILE" in r[9] or "MANYFN" in r[9]
-               or "LONGFN" in r[9])
+               or "LONGFN" in r[9] or "DENSE" in r[9])
 print("# .oo size lint inventory")
 print(f"# polyroot: {poly}")
-print(f"# thresholds: lines>{max_lines} fns>{max_fns} longest>{max_fn}")
+print(f"# thresholds: lines>{max_lines} fns>{max_fns} longest>{max_fn} dir_files>{max_dir}")
 print(f"# files_scanned: {len(files)}")
 print(f"# rows_listed: {len(rows)}")
 print(f"# violations: BIGFILE={counts['BIGFILE']} "
       f"MANYFN={counts['MANYFN']} LONGFN={counts['LONGFN']} "
+      f"DENSE={counts['DENSE']} "
       f"files_with_size_violation={n_viol}")
 print(f"# mix_signals: MIX={counts['MIX']}")
 print("file\tlines\tfns\tlongest\tlongest_fn\tdomains\tflags")
