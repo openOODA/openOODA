@@ -88,32 +88,18 @@ jobs:
           path: /tmp/size_inventory.txt
       - name: PR resource scorecard (diff-aware check)
         working-directory: ${{ github.workspace }}
-        env:
-          OODAC: ${{ github.workspace }}/oodac/bin/oodac
         run: |
           set -euo pipefail
+          OODAC="${{ github.workspace }}/oodac/bin/oodac"
           test -x "$OODAC" || chmod +x "$OODAC"
-          commit_msg=$(git -C openOODA log -1 --pretty=%B || true)
-          has_justification=0
-          if echo "$commit_msg" | grep -iqE 'resource|overhead|budget|rss|memory|cpu|justif'; then
-            has_justification=1
-          fi
-          changed_files=$(git -C openOODA diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '\.oo$' || true)
-          for f in $changed_files; do
-            full_path="openOODA/$f"
-            if [ -f "$full_path" ]; then
-              out=$(/usr/bin/time -v "$OODAC" check "$full_path" 2>&1 || true)
-              max_rss=$(echo "$out" | awk -F': ' '/Maximum resident set size/ {print $2}')
-              user_sec=$(echo "$out" | awk -F': ' '/User time \(seconds\)/ {print $2}')
-              if [ -n "$max_rss" ] && [ "$max_rss" -gt 65536 ] && [ "$has_justification" -eq 0 ]; then
-                echo "FAIL: $full_path exceeded 64 MB RSS ($max_rss KB) without commit justification"
-                exit 1
-              fi
-              cpu_int=$(echo "$user_sec" | cut -d. -f1)
-              if [ -n "$cpu_int" ] && [ "$cpu_int" -ge 3 ] && [ "$has_justification" -eq 0 ]; then
-                echo "FAIL: $full_path exceeded 3.0s CPU ($user_sec s) without commit justification"
-                exit 1
-              fi
+          has_just=0; echo "$(git -C openOODA log -1 --pretty=%B || true)" | grep -iqE 'resource|overhead|budget|rss|memory|cpu|justif' && has_just=1
+          for f in $(git -C openOODA diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '\.oo$' || true); do
+            [ -f "openOODA/$f" ] || continue
+            out=$(/usr/bin/time -v "$OODAC" check "openOODA/$f" 2>&1 || true)
+            rss=$(echo "$out" | awk -F': ' '/Maximum resident set size/ {print $2}')
+            cpu=$(echo "$out" | awk -F': ' '/User time \(seconds\)/ {print int($2)}')
+            if [ "$has_just" -eq 0 ] && { [ "${rss:-0}" -gt 65536 ] || [ "${cpu:-0}" -ge 3 ]; }; then
+              echo "FAIL: openOODA/$f exceeded limits without commit justification"; exit 1
             fi
           done
           echo "PASS: PR resource scorecard holds"
