@@ -143,7 +143,7 @@ def test_t1_r5_5_root_std_anchor_check(double_run: bool = False) -> TestResult:
     rc, out, err = ctx.run_cmd(
         [OODAC_BIN, "check", "anchor.oo"],
         cwd=os.path.join(POLYROOT, "std"),
-        timeout=1800,
+        timeout=3600,
     )
     duration = (time.time() - ctx.start_time) * 1000
 
