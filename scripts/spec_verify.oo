@@ -20,32 +20,23 @@ fn spec_prelude_sh() -> String {
 
 // NOTE: each builder's braces balance within itself so the qa size
 // lint (brace-depth fn matcher) measures true function extents.
-fn spec_wrap_sh(body: String) -> String {
+fn spec_wrap_sh() -> String {
     return "run_pass() { "
         + "  local fails=0; "
-        + body
+        + spec_targets_sh()
+        + spec_tokparity_sh()
+        + spec_anchorparity_sh()
+        + spec_capparity_sh()
         + "  return $fails; "
         + "}; ";
 }
 
-fn spec_body_sh() -> String {
-    return spec_targets_sh() + spec_tokparity_sh() + spec_anchorparity_sh() + spec_capparity_sh();
-}
-
 fn spec_targets_sh() -> String {
-    // POSIX word list, not a bash array: process_exec runs under sh,
-    // which is dash on Ubuntu CI (arrays are a syntax error there).
-    // NOTE: no `#` comments inside cmd: it joins into one shell line.
-    return "  targets='openOODA/spec.oot' "
-        + "  targets=\"$targets openOODA/docs/spec/anchor.oo\" "
-        + "  targets=\"$targets openOODA/docs/spec/01_lexical.oot\" "
-        + "  targets=\"$targets openOODA/docs/spec/02_grammar.oot\" "
-        + "  targets=\"$targets openOODA/docs/spec/03_types.oot\" "
-        + "  targets=\"$targets openOODA/docs/spec/04_capabilities.oot\" "
-        + "  targets=\"$targets openOODA/docs/spec/05_contracts.oot\" "
-        + "  targets=\"$targets openOODA/docs/spec/06_memory.oot\" "
-        + "  targets=\"$targets openOODA/docs/spec/07_machine_wire.oot\" "
-        + "  targets=\"$targets openOODA/docs/spec/08_runtime_abi.oot\"; "
+    return "  targets='openOODA/spec.oot openOODA/docs/spec/anchor.oo "
+        + "openOODA/docs/spec/01_lexical.oot openOODA/docs/spec/02_grammar.oot "
+        + "openOODA/docs/spec/03_types.oot openOODA/docs/spec/04_capabilities.oot "
+        + "openOODA/docs/spec/05_contracts.oot openOODA/docs/spec/06_memory.oot "
+        + "openOODA/docs/spec/07_machine_wire.oot openOODA/docs/spec/08_runtime_abi.oot'; "
         + "  for f in $targets; do "
         + "    if [ -f \"$f\" ]; then "
         + "      lines=$(wc -l < \"$f\"); "
@@ -180,7 +171,7 @@ fn spec_driver_sh() -> String {
 }
 
 pub fn main(fs: &FsReadCap, sys: &SysCap, p: &ProcessCap) -> Result[Int, String] {
-    let cmd: String = spec_prelude_sh() + spec_wrap_sh(spec_body_sh()) + spec_driver_sh();
+    let cmd: String = spec_prelude_sh() + spec_wrap_sh() + spec_driver_sh();
     let r: Result[String, String] = process_exec(p, cmd);
     let out: String = match r { Ok(s) => s, Err(e) => e };
     print(out);

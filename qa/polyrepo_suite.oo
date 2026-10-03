@@ -1,5 +1,5 @@
-// # Universal Polyrepo QA Master Suite — RETIRED
-// Logline: RETIRED. Replaced by integration CI job asserting cross-repo contracts.
+// # Universal Polyrepo QA Master Suite
+// Logline: Executes test suites across standard library, toolchain, and developer CLI packages.
 // Setup: Pure coordinator. Takes ProcessCap, FsReadCap, EnvCap. Resolves compiler.
 // Beats: Resolve compiler, build and run package suites, output report.
 
@@ -30,7 +30,7 @@ fn run_sub_suite(p: &ProcessCap, oodac: String, path: String) -> Result[Int, Str
     return Ok(0);
 }
 
-pub fn main(p: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, args: List[String]) -> Result[Int, String] {
+fn resolve_compiler(fs_r: &FsReadCap, env: &EnvCap) -> Result[String, String] {
     let cr: Result[String, String] = env_get(env, "OODA_COMPILER");
     let mut oodac: String = match cr { Ok(s) => s, Err(_) => "" };
     if oodac == "" {
@@ -46,9 +46,12 @@ pub fn main(p: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, args: List[String]) 
     if oodac == "" || !path_exists(fs_r, oodac) {
         return Err("no compiler (OODA_COMPILER, OODA_TOOLCHAIN, or HOME layout)");
     }
+    return Ok(oodac);
+}
 
+fn init_suites() -> List[String] {
     let mut suites: List[String] = list_new();
-    // 1. Foundational Standard Library Domain QA (Majority of test suites)
+    // 1. Foundational Standard Library Domain QA
     suites = list_push(suites, "std/qa/suite.oo");
     // 2. Core Toolchain CLI Driver QA
     suites = list_push(suites, "ooda/qa/suite.oo");
@@ -59,7 +62,12 @@ pub fn main(p: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, args: List[String]) 
     suites = list_push(suites, "opm/qa/suite.oo");
     // 5. Self-Hosting Compiler Matrix QA
     suites = list_push(suites, "oodac/qa/suite.oo");
+    // 6. Developer CLI Interface QA
+    suites = list_push(suites, "cli/qa/suite.oo");
+    return suites;
+}
 
+fn run_suite_dispatcher(p: &ProcessCap, oodac: String, suites: List[String]) -> Result[Int, String] {
     let mut passed_suites: Int = 0;
     let mut i: Int = 0;
     while i < list_len(suites) {
@@ -78,6 +86,15 @@ pub fn main(p: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, args: List[String]) 
     println("=================================================");
     println("  Total Packages Verified: " + passed_suites.to_string() + "/" + list_len(suites).to_string());
     println("=================================================");
-
     return Ok(0);
+}
+
+pub fn main(p: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, args: List[String]) -> Result[Int, String] {
+    let comp_res: Result[String, String] = resolve_compiler(fs_r, env);
+    let oodac: String = match comp_res {
+        Ok(s) => s,
+        Err(e) => { return Err(e); }
+    };
+    let suites: List[String] = init_suites();
+    return run_suite_dispatcher(p, oodac, suites);
 }

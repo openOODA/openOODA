@@ -12,14 +12,17 @@
 
 import "std/fs/process/process.oo";
 
-pub fn main(p: &ProcessCap) -> Result[Int, String] {
-    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
+fn board_prelude_sh() -> String {
+    return "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
         + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "echo '[BOARDS FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
         + "cd \"$src_root/openOODA\" || { echo '[BOARDS FAIL] cannot cd to openOODA'; exit 1; }; "
         + "fails=0; total=0; "
-        + "echo '=== governance_check_boards ==='; "
-        + "for f in rules.oot northstar.oot requirements.oot roadmap.oot; do "
+        + "echo '=== governance_check_boards ==='; ";
+}
+
+fn board_canonical_sh() -> String {
+    return "for f in rules.oot northstar.oot requirements.oot roadmap.oot; do "
         + "  total=$((total + 1)); "
         + "  if [ ! -f \"$f\" ]; then fails=$((fails + 1)); echo \"  FAIL: $f missing\"; continue; fi; "
         + "  lines=$(wc -l < \"$f\"); "
@@ -39,8 +42,11 @@ pub fn main(p: &ProcessCap) -> Result[Int, String] {
         + "total=$((total + 1)); "
         + "if ! grep -qE '^## 1\\. The 10 Requirements' requirements.oot; then fails=$((fails + 1)); echo \"  FAIL: requirements.oot missing Requirements section\"; fi; "
         + "total=$((total + 1)); "
-        + "if ! grep -qE '^## 1\\. Active Release Milestones' roadmap.oot; then fails=$((fails + 1)); echo \"  FAIL: roadmap.oot missing Milestones section\"; fi; "
-        + "rfc_idx=$(grep -oE \"00[0-9][0-9]\" rfcs/anchor.oo | sort -u); "
+        + "if ! grep -qE '^## 1\\. Active Release Milestones' roadmap.oot; then fails=$((fails + 1)); echo \"  FAIL: roadmap.oot missing Milestones section\"; fi; ";
+}
+
+fn board_rfcs_sh() -> String {
+    return "rfc_idx=$(grep -oE \"00[0-9][0-9]\" rfcs/anchor.oo | sort -u); "
         + "rfc_max=0; rfc_count=0; "
         + "for n in $rfc_idx; do "
         + "  if [ \"$n\" = \"0000\" ]; then continue; fi; "
@@ -69,6 +75,10 @@ pub fn main(p: &ProcessCap) -> Result[Int, String] {
         + "if [ \"$fails\" -gt 0 ]; then echo '[BOARDS FAIL]'; exit 1; fi; "
         + "echo 'check_board: OK'; "
         + "echo '[BOARDS OK]'; exit 0;";
+}
+
+pub fn main(p: &ProcessCap) -> Result[Int, String] {
+    let cmd: String = board_prelude_sh() + board_canonical_sh() + board_rfcs_sh();
     let r: Result[String, String] = process_exec(p, cmd);
     let out: String = match r { Ok(s) => s, Err(e) => "ERR: " + e };
     print(out);

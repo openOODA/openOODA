@@ -13,8 +13,8 @@
 
 import "std/fs/process/process.oo";
 
-pub fn main(p: &ProcessCap) -> Result[Int, String] {
-    let cmd: String = "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
+fn redteam_gates_1_to_3_sh() -> String {
+    return "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
         + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "echo '[REDTEAM FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
         + "cd \"$src_root\" || { echo '[REDTEAM FAIL] cannot cd to '$src_root; exit 1; }; "
@@ -31,8 +31,11 @@ pub fn main(p: &ProcessCap) -> Result[Int, String] {
         + "for r in oodar ooda opm install mcp lsp catalog website cli tui std oodac; do "
         + "  if grep -qE 'uses: openOODA/openOODA/\\.github/workflows/auto-release\.yml@[^m]' $r/.github/workflows/ci.yml; then pinned=$((pinned + 1)); fi; "
         + "done; "
-        + "if [ \"$pinned\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D3: zero consumer ci.yml pin a tag (need >= 1, RFC 0006 s4)\"; else echo \"  PASS D3: pinned consumers=$pinned/12\"; fi; "
-        + "total=$((total + 1)); "
+        + "if [ \"$pinned\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D3: zero consumer ci.yml pin a tag (need >= 1, RFC 0006 s4)\"; else echo \"  PASS D3: pinned consumers=$pinned/12\"; fi; ";
+}
+
+fn redteam_gates_4_to_7_sh() -> String {
+    return "total=$((total + 1)); "
         + "gated=0; "
         + "for r in oodar ooda opm install mcp lsp catalog website cli tui std oodac; do "
         + "  if grep -qE '(determinism|blackbox|bb)-gate:' $r/.github/workflows/ci.yml; then gated=$((gated + 1)); fi; "
@@ -50,6 +53,10 @@ pub fn main(p: &ProcessCap) -> Result[Int, String] {
         + "echo \"Total gates: $total  Fails: $fails\"; "
         + "if [ \"$fails\" -gt 0 ]; then echo '[REDTEAM FAIL]'; exit 1; fi; "
         + "echo '[REDTEAM OK]'; exit 0;";
+}
+
+pub fn main(p: &ProcessCap) -> Result[Int, String] {
+    let cmd: String = redteam_gates_1_to_3_sh() + redteam_gates_4_to_7_sh();
     let r: Result[String, String] = process_exec(p, cmd);
     let out: String = match r { Ok(s) => s, Err(e) => "ERR: " + e };
     print(out);

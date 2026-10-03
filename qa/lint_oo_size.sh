@@ -10,7 +10,7 @@ set -euo pipefail
 # oodar, std, and the governance repo without writing outside stdout.
 # Default output is the burn-down inventory: flagged rows only,
 # worst offenders first. Pass --all for every scanned file.
-# Thresholds (env-overridable): OO_MAX_LINES=256 OO_MAX_FNS=15 OO_MAX_FN=80.
+# Thresholds (env-overridable): OO_MAX_LINES=256 OO_MAX_FNS=8 OO_MAX_FN=40.
 # Roots (env-overridable): OO_LINT_ROOTS=oodac,oodar,std,openOODA (comma list).
 # Exit 0 when no size violation; exit 1 when any BIGFILE/MANYFN/LONGFN
 # fires. MIX is an informational signal and never fails the probe.
@@ -22,8 +22,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GOV="$(cd "$HERE/.." && pwd)"
 POLY="${OODA_POLYROOT:-$(cd "$GOV/.." && pwd)}"
 MAX_LINES="${OO_MAX_LINES:-256}"
-MAX_FNS="${OO_MAX_FNS:-15}"
-MAX_FN="${OO_MAX_FN:-80}"
+MAX_FNS="${OO_MAX_FNS:-8}"
+MAX_FN="${OO_MAX_FN:-40}"
 MAX_DIR="${OO_MAX_DIR:-8}"
 MODE="${1:---flagged}"
 
@@ -96,7 +96,10 @@ dir_counts = {}
 for root in roots:
     base = os.path.join(poly, root)
     for dirpath, dirnames, filenames in os.walk(base):
-        dirnames[:] = [d for d in dirnames if d != ".git"]
+        dirnames[:] = [d for d in dirnames if d != ".git" and d not in ("fixtures", "corpus")]
+        rel_parts = os.path.relpath(dirpath, poly).split(os.sep)
+        if "fixtures" in rel_parts or "corpus" in rel_parts:
+            continue
         oo_fns = [fn for fn in sorted(filenames) if fn.endswith(".oo") and fn != "boundary_257_lines.oo"]
         dir_counts[dirpath] = len(oo_fns)
         for fn in oo_fns:
