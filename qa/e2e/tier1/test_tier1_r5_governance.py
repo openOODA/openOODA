@@ -106,17 +106,44 @@ def test_t1_r5_4_resource_scorecard_bounds(double_run: bool = False) -> TestResu
 def test_t1_r5_5_root_std_anchor_check(double_run: bool = False) -> TestResult:
     """T1.R5.5: Verify root std/anchor.oo check passes clean with exit code 0."""
     ctx = TestContext("T1.R5.5", 1, "R5", "Root std/anchor.oo clean check", double_run)
+    # Pre-stage key modular subdomains to isolate memory and populate typed artifacts
+    submodules = [
+        "sec/hash/anchor.oo",
+        "sec/symmetric/anchor.oo",
+        "sec/asymmetric/anchor.oo",
+        "sec/enclave/anchor.oo",
+        "sec/zk/anchor.oo",
+    ]
+    for sm in submodules:
+        rc_sm, out_sm, err_sm = ctx.run_cmd(
+            [OODAC_BIN, "check", sm],
+            cwd=os.path.join(POLYROOT, "std"),
+            timeout=300,
+        )
+        if rc_sm != 0:
+            return TestResult(
+                ctx.test_id, 1, "R5", ctx.name, "FAIL", 0,
+                error_msg=f"Submodule pre-check {sm} failed",
+                diagnostic=err_sm,
+            )
+
     # Pre-stage 8 domain anchors to isolate memory and populate typed artifacts
+    # Massive graphs (sec: 526 files, science: 782 files) require extended cold timeout
     domains = ["core", "fs", "net", "sec", "science", "app", "hw", "meta"]
     for d in domains:
-        rc_d, out_d, err_d = ctx.run_cmd([OODAC_BIN, "check", f"{d}/anchor.oo"], cwd=os.path.join(POLYROOT, "std"), timeout=300)
+        timeout_d = 1800 if d in ("sec", "science") else 600
+        rc_d, out_d, err_d = ctx.run_cmd(
+            [OODAC_BIN, "check", f"{d}/anchor.oo"],
+            cwd=os.path.join(POLYROOT, "std"),
+            timeout=timeout_d,
+        )
         if rc_d != 0:
             return TestResult(ctx.test_id, 1, "R5", ctx.name, "FAIL", 0, error_msg=f"Domain pre-check {d}/anchor.oo failed", diagnostic=err_d)
 
     rc, out, err = ctx.run_cmd(
         [OODAC_BIN, "check", "anchor.oo"],
         cwd=os.path.join(POLYROOT, "std"),
-        timeout=600
+        timeout=1800,
     )
     duration = (time.time() - ctx.start_time) * 1000
 
