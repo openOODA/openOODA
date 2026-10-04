@@ -30,6 +30,18 @@ curl -fsSL https://openooda.org/install.sh | bash
 
 All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://github.com/openOODA/openOODA) or at [openooda.org](https://openooda.org).
 
+## Testing & Quality Assurance
+
+The ecosystem enforces a tiered, sovereign testing model driven by `cli qa`:
+- **Repository Probes**: Hermetic, self-contained probes in each repository's `qa/` suite run via `cli qa` (or `cli qa --all` for the full polyrepo).
+- **Test Lifecycle Governance**: Automated test auditing and dead-code prevention via `qa/audit_tests.py`. Tests support standardized lifecycle annotations:
+  - `// @status: deprecated`
+  - `// @deprecated_at: YYYY-MM-DD`
+  - `// @reason: <rationale>`
+  - `// @superseded_by: <path>`
+- **Pruning & Maintenance**: Automated discovery and retirement of orphaned, tautological, or expired tests using `python3 qa/audit_tests.py --prune`.
+- **Architectural Guardrails**: Strict compliance with `AGENTS.md` House Laws (16–256 lines/page, $\le 8$ pages/directory, $\le 40$ lines/function, peak RSS $\le 64\text{ MB}$, check CPU time $\le 3.0\text{s}$, and bit-identical double-run determinism).
+
 ## The Polyrepo
 
 | Repo | Purpose |
