@@ -42,6 +42,15 @@ The ecosystem enforces a tiered, sovereign testing model driven by `cli qa`:
 - **Pruning & Maintenance**: Automated discovery and retirement of orphaned, tautological, or expired tests using `python3 qa/audit_tests.py --prune`.
 - **Architectural Guardrails**: Strict compliance with `AGENTS.md` House Laws (16–256 lines/page, $\le 8$ pages/directory, $\le 40$ lines/function, peak RSS $\le 64\text{ MB}$, check CPU time $\le 3.0\text{s}$, and bit-identical double-run determinism).
 
+## Strategic Architecture Pillars
+
+- **Pillar 1: Asymmetric Performance ($T$) — Compile-Time Bounds Elision (RFC 0002)**: SMT QF_LIA verification conditions mathematically prove index bounds at compile time; unchecked LLVM IR emission bypasses runtime boundary branches while maintaining fail-closed safety.
+- **Pillar 2: Weight Subtraction ($W$) — Parameterized Generics Rollout (RFC 0009)**: Monomorphization pipeline in `oodac` eliminates redundant monomorphic duplicates across `std/core/collection/` (`List[T]`, `Map[K, V]`, `Set[T]`).
+- **Pillar 3: Frictionless Physics ($F$) — Zero-Copy GPU Dispatch & AVX-512 Lowering (RFC 0014)**: Direct capability-gated unified memory dispatch with 64-byte aligned bump arenas and hardware-accelerated vector SIMD intrinsics.
+- **Pillar 4: Autonomous Coordination ($C$) — Actor Channels without GC (RFC 0019)**: Lock-free bounded actor channels with zero-copy ownership transfer and private thread arenas, forbidding shared mutable state (`&mut T`) across actor boundaries.
+- **Pillar 5: Agent-Native Self-Healing Ecosystem (RFC 0022)**: Rich LSP verification status hovers and single-turn automated repair via `cli fix` reading `.blackbox/autopsy.json`.
+- **Pillar 6: Universal Governance & Verification Discipline (RFC 0006)**: Bit-identical double-run determinism gate across all polyrepos, rigid House Laws sizing (16–256 lines/page), and full binary parity verification (`sha256sum ~/.openooda/bin/<tool> == sha256sum dist/<tool>`).
+
 ## The Polyrepo
 
 | Repo | Purpose |
