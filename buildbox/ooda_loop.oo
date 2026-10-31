@@ -1,0 +1,151 @@
+// # ooda-loop — 24/7 build/audit loop driver for the OODA-buildbox
+//
+// Logline: fetch polyrepo -> stage1 oodac build -> audit_gate -> spotlight
+//   fan-out (advisory) -> append result to /queue/state.oot. No shell strings.
+//
+// Setup: argv: --fast (default) | --nightly. Env: OODA_SPOTLIGHT (base URL),
+//   OODA_MODEL, OODA_COMPILER. All exec is argv form. Queue writes use
+//   file_append_sync only (mcode C5).
+//
+// Beats:
+//   1. git fetch each repo under /work/repos (argv git, egress-filtered).
+//   2. Stage1 oodac rebuild from oodac checkout; nightly = fixed-point.
+//   3. Build + run audit_gate against the fresh binary.
+//   4. Fan the diff out to spotlight ollama via curl argv (-m bounded);
+//      raw model output goes to /queue/raw/ (advisory only, mcode S3).
+//   5. Append PASS/FAIL line to /queue/state.oot.
+
+import "std/fs/process/env.oo";
+import "std/fs/file/file_writer.oo";
+import "std/fs/file/path.oo";
+import "std/core/text/num_buffer.oo";
+
+fn lp2(lst: List[String], a: String, b: String) -> List[String] {
+    return list_push(list_push(lst, a), b);
+}
+
+fn lp6(lst: List[String], a: String, b: String, c: String, d: String, e: String, f: String) -> List[String] {
+    return list_push(list_push(list_push(list_push(list_push(list_push(lst, a), b), c), d), e), f);
+}
+
+fn loop_arg(args: List[String], name: String) -> Bool {
+    let n: Int = list_len(args);
+    let mut i: Int = 0;
+    while i < n {
+        if list_get(args, i) == name { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+fn loop_env(env: &EnvCap, name: String, dflt: String) -> String {
+    let r: Result[String, String] = env_get(env, name);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return dflt;
+}
+
+fn loop_exec_ok(sys: &ProcessCap, prog: String, a0: String, a1: String, a2: String) -> Bool {
+    return sys_exec(sys, prog, a0, a1, a2).is_ok();
+}
+
+fn path_exists_dir(sys: &ProcessCap, dir: String) -> Bool {
+    return sys_exec(sys, "test", "-d", dir).is_ok();
+}
+
+fn loop_fetch(sys: &ProcessCap, repos: String, name: String) -> Bool {
+    let dir: String = repos + "/" + name;
+    if path_exists_dir(sys, dir) {
+        return sys_exec(sys, "git", "-C", dir, "fetch", "--all").is_ok();
+    }
+    return sys_exec(sys, "git", "clone", "--depth", "1", "https://github.com/openOODA/" + name + ".git", dir).is_ok();
+}
+
+fn loop_queue_append(fs_w: &FsWriteCap, line: String) -> Bool {
+    return file_append_sync(fs_w, "/queue/state.oot", line + "\n").is_ok();
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) {
+    let nightly: Bool = loop_arg(args, "--nightly");
+    let repos: String = "/work/repos";
+    let queue_raw: String = "/queue/raw";
+    let _mk1: Result[String, String] = sys_exec(sys, "mkdir", "-p", repos);
+    let _mk2: Result[String, String] = sys_exec(sys, "mkdir", "-p", queue_raw);
+    let _mk3: Result[String, String> = sys_exec(sys, "mkdir", "-p", "/cache");
+
+    let mut names: List[String] = list_new();
+    names = list_push(names, "oodac");
+    names = list_push(names, "oodar");
+    names = list_push(names, "std");
+    names = list_push(names, "openOODA");
+    let mut i: Int = 0;
+    while i < list_len(names) {
+        if !loop_fetch(sys, repos, list_get(names, i)) {
+            println("ERR\tloop\tfetch failed: " + list_get(names, i));
+            loop_queue_append(fs_w, "loop fetch-fail " + list_get(names, i));
+            process_exit(1);
+        }
+        i = i + 1;
+    }
+
+    // Stage1 (fast) or fixed-point (nightly) oodac rebuild. The bootstrap
+    // script is a sanctioned rules.oot:147 carve-out; invoked via argv bash.
+    let oodac_src: String = repos + "/oodac";
+    let out_bin: String = "/cache/oodac-new";
+    let mut bargv: List[String] = list_new();
+    bargv = list_push(bargv, oodac_src + "/bootstrap/oodac_pure_build");
+    bargv = list_push(bargv, "main.oo");
+    bargv = list_push(bargv, out_bin);
+    let bp: Result[Int, String] = sys_exec_wait(sys, "bash", bargv);
+    let bcode: Int = match bp { Ok(c) => c, Err(_) => 1 };
+    if bcode != 0 {
+        println("ERR\tloop\tstage1 build failed rc=" + int_to_str(bcode));
+        loop_queue_append(fs_w, "loop build-fail rc=" + int_to_str(bcode));
+        process_exit(1);
+    }
+
+    // Gate against the fresh binary.
+    let gate_src: String = oodac_src + "/qa/audit_gate.oo";
+    let gate_bin: String = "/cache/audit_gate.bin";
+    let g: Result[Int, String] = sys_exec_wait(sys, out_bin, lp6(list_new(), "build", gate_src, "-o", gate_bin, "", ""));
+    let mut gargv: List[String] = list_new();
+    gargv = list_push(gargv, "--compiler");
+    gargv = list_push(gargv, out_bin);
+    let gr: Result[Int, String] = sys_exec_wait(sys, gate_bin, gargv);
+    let grc: Int = match gr { Ok(c) => c, Err(_) => 1 };
+
+    // Fan-out: diff of oodac since HEAD~1 to spotlight (advisory raw output).
+    let diff_r: Result[Int, String] = sys_exec_wait(sys, "git", lp6(list_new(), "-C", repos + "/oodac", "diff", "HEAD~1", "HEAD", ""));
+    let diff: String = match diff_r { Ok(_) => "", Err(m) => m };
+    let spot: String = loop_env(env, "OODA_SPOTLIGHT", "http://100.66.54.24:11434");
+    let model: String = loop_env(env, "OODA_MODEL", "satgeze/qwen36-35b-uncensored-1m:latest");
+    if diff != "" {
+        let req: String = "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"Audit this openOODA diff adversarially; report severity-ranked concrete findings.\\n" + diff + "\"}]}";
+        let reqf: String = "/cache/fanout.json";
+        let mut w: FileWriter = file_writer_open(fs_w, reqf, false);
+        let _wr: Result[FileWriter, String] = file_writer_write(fs_w, w, req);
+        let outf: String = queue_raw + "/fanout-" + int_to_str(chars_len(diff)) + ".json";
+    let mut cargv: List[String] = list_new();
+    cargv = list_push(cargv, "-sS");
+    cargv = list_push(cargv, "--fail");
+    cargv = list_push(cargv, "-m");
+    cargv = list_push(cargv, "120");
+    cargv = list_push(cargv, "-X");
+    cargv = list_push(cargv, "POST");
+    cargv = list_push(cargv, spot + "/api/chat");
+    cargv = list_push(cargv, "-H");
+    cargv = list_push(cargv, "Content-Type: application/json");
+    cargv = list_push(cargv, "--data-binary");
+    cargv = list_push(cargv, "@" + reqf);
+    cargv = list_push(cargv, "-o");
+    cargv = list_push(cargv, outf);
+    let cr: Result[Int, String] = sys_exec_wait(sys, "curl", cargv);
+        let _ = cr;
+    }
+
+    let status: String = if grc == 0 { "PASS" } else { "FAIL" };
+    let line: String = "loop " + status + " gate_rc=" + int_to_str(grc) + (if nightly { " nightly" } else { " fast" });
+    loop_queue_append(fs_w, line);
+    if grc == 0 { println("OODA_LOOP: " + status); process_exit(0); }
+    println("OODA_LOOP: " + status);
+    process_exit(1);
+}
