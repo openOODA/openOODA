@@ -26,10 +26,18 @@ No NEW .sh/.py beyond the rules.oot:146-151 carve-outs (P3).
   The fixed point stays oodac/bootstrap/oodac_pure_build (bash) under the
   rules.oot:147 carve-out (C2).
 
-## 3. Image: ooda-buildbox
+## 3. Image: ooda-buildbox (two-stage)
 
-- Base Fedora. Packages: clang, llvm-18, git, make, curl. No rustc, no
-  nested podman (C11).
+- v1 builder stage: FROM registry.fedoraproject.org/fedora-toolbox:44
+  (same base as rust-buildbox on zebes). Packages: clang, llvm18, git,
+  make, curl. No rustc, no nested podman (C11). Fixed-point oodac build
+  happens here.
+- v2 runtime stage: minimal rootfs assembled from OODA-built static
+  binaries (emit/elf backend + oodar_nostd.c freestanding runtime), with
+  git and curl as the only external tools, hardened per the rust-buildbox
+  profile. Gate: elf backend must pass the full corpus before v2 ships.
+  Prereq: std net egress (oo_tcp_connect is loopback-only today) or
+  static curl.
 - Baked in: oodac bootstrap seed + oodar + std. At container start, verify
   bootstrap/seed/oodac.sha256 against oodac.pub with ed25519_verify_hex and
   fail closed (S6).
