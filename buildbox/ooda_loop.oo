@@ -67,7 +67,9 @@ fn fetch_repo(sys: &ProcessCap, repos: String, name: String, branch: String) -> 
     a = list_push(a, branch);
     a = list_push(a, url);
     a = list_push(a, dir);
-    return sys_exec_wait(sys, "git", a).is_ok();
+    let r: Result[Int, String] = sys_exec_wait(sys, "git", a);
+    if r.is_err() { return false; }
+    return r.val == 0;
 }
 
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) {
@@ -84,7 +86,9 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     names = list_push(names, "openOODA");
     let mut i: Int = 0;
     while i < list_len(names) {
-        if !fetch_repo(sys, repos, list_get(names, i), env_or(env, "OODA_BRANCH", "master")) {
+                let mut br: String = "master";
+        if list_get(names, i) == "oodac" { br = env_or(env, "OODA_BRANCH", "master"); }
+        if !fetch_repo(sys, repos, list_get(names, i), br) {
             println("ERR\tloop\tfetch failed");
             process_exit(1);
         }
