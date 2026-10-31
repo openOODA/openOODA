@@ -1,0 +1,70 @@
+# RFC 0010: openOODA-tools Fleet Governance, Audit Scope, and Redaction
+File: openOODA/rfcs/0010-tools-fleet-governance.oot
+
+* **RFC ID**: 0010
+* **Title**: openOODA-tools Fleet Governance, Audit Scope, and Redaction
+* **Author**: openOODA Core Architecture Team
+* **Status**: Draft
+* **Type**: Standards Track / Governance
+* **Decision Driver**: The 257-repo openOODA-tools fleet (211 .py, 724 .sh, 0 .rs)
+  sits outside every current rule set; the 2026-10-30 sweep found a
+  live-looking key-shaped string in oohistory test fixtures and the fleet must
+  be auditable before the buildbox fans repo content to LLMs.
+* **Supersedes**: None
+* **Related**: RFC 0001 (capability security), RFC 0003 (file format), rules.oot, AGENTS.md §7
+* **Target Release**: v2.13.0
+* **Created**: 2026-10-31
+
+---
+
+## 1. Context
+
+The openOODA org governs 14 polyrepo repos under rules.oot/AGENTS.md page laws.
+The sibling org openOODA-tools holds 257 small utility repos (oo*) in .py/.sh;
+none of the .oo house laws (page rule, Academy header, banned extensions) apply
+to them, and governance_enforce.oo does not scan them. The 2026-10-30 audit
+pattern-swept the fleet (no system()/popen()/strcpy() in C, no live keys) but
+did not line-audit it. The OODA-buildbox will soon send fleet diffs to local
+models on spotlight, so fleet content needs a redaction pass and the fleet
+needs its own minimal rule set.
+
+## 2. Specification
+
+### 2.1 Fleet rule set (lightweight, distinct from the .oo page laws)
+- Every repo keeps README, LICENSE, VERSION, and a qa/ self-test.
+- Shell scripts: `set -euo pipefail`, no `eval`, no unquoted `$VAR` in command
+  position, mktemp for temp files, no curl|bash (fetch to temp + verify).
+- Python: no `eval`/`exec`, no shell=True, secrets only from env/keyring.
+- New files default to .oo where the tool is expressible; .py/.sh only for
+  host glue, with the reason in the README.
+
+### 2.2 Redaction pass before any model prompt
+- Before any fleet content leaves the box (buildbox fan-out), run the
+  redaction engine over it: API keys (sk-, AKIA, ghp_/gho_, xox), private key
+  blocks, passwords/tokens in env dumps. Redacted form: `[REDACTED:KIND]`.
+- Test fixtures that intentionally contain key-shaped strings must live under
+  `tests/fixtures/` with `FAKE`/`example` markers and never be sent raw.
+
+### 2.3 Audit scope
+- The buildbox audit gate covers the fleet at pattern level (the 2026-10-30
+  sweep) plus per-repo `qa` self-tests; line-level audit is scheduled
+  network/filesystem-first: oowget, ootunnel, oovault, oobackup, oofetch,
+  ooenv, ooguard, oohistory, then the rest alphabetically.
+
+## 3. Security
+
+Fleet repos run on developer hosts with ambient authority; the cap model does
+not apply to .py/.sh. Mitigations are the 2.1 rule set + 2.2 redaction + the
+buildbox rule that model output is advisory and source-verified (AGENTS.md §7).
+
+## 4. Testing
+
+Each fleet repo runs its qa/ self-test in the buildbox loop; the redaction
+engine has positive/negative fixtures (must redact real-shaped keys, must not
+mangle code). Gate: redaction test suite + pattern sweep clean.
+
+## 5. Rollout
+
+1. Land this RFC (Draft -> Accepted after mcode/vibe review).
+2. Redaction engine wired into fanout.oo before any fleet diff is sent.
+3. Pattern-level gate in the hourly loop; line-audit queue per 2.3.
