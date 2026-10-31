@@ -39,21 +39,33 @@ fn is_dir(sys: &ProcessCap, dir: String) -> Bool {
     return sys_exec(sys, "test", "-d", dir).is_ok();
 }
 
-fn fetch_repo(sys: &ProcessCap, repos: String, name: String) -> Bool {
+fn fetch_repo(sys: &ProcessCap, repos: String, name: String, branch: String) -> Bool {
     let dir: String = repos + "/" + name;
+    let url: String = "https://github.com/openOODA/" + name + ".git";
     if is_dir(sys, dir) {
         let mut a: List[String] = list_new();
         a = list_push(a, "-C");
         a = list_push(a, dir);
         a = list_push(a, "fetch");
-        a = list_push(a, "--all");
-        return sys_exec_wait(sys, "git", a).is_ok();
+        a = list_push(a, "--depth");
+        a = list_push(a, "1");
+        a = list_push(a, "origin");
+        a = list_push(a, branch);
+        if sys_exec_wait(sys, "git", a).is_err() { return false; }
+        let mut c: List[String] = list_new();
+        c = list_push(c, "-C");
+        c = list_push(c, dir);
+        c = list_push(c, "checkout");
+        c = list_push(c, "FETCH_HEAD");
+        return sys_exec_wait(sys, "git", c).is_ok();
     }
     let mut a: List[String] = list_new();
     a = list_push(a, "clone");
     a = list_push(a, "--depth");
     a = list_push(a, "1");
-    a = list_push(a, "https://github.com/openOODA/" + name + ".git");
+    a = list_push(a, "--branch");
+    a = list_push(a, branch);
+    a = list_push(a, url);
     a = list_push(a, dir);
     return sys_exec_wait(sys, "git", a).is_ok();
 }
@@ -72,7 +84,7 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     names = list_push(names, "openOODA");
     let mut i: Int = 0;
     while i < list_len(names) {
-        if !fetch_repo(sys, repos, list_get(names, i)) {
+        if !fetch_repo(sys, repos, list_get(names, i), env_or(env, "OODA_BRANCH", "master")) {
             println("ERR\tloop\tfetch failed");
             process_exit(1);
         }
@@ -105,10 +117,11 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
         println("ERR\tloop\tgate build failed");
         process_exit(1);
     }
+    // gate expects CWD = oodac repo (fixtures at qa/audit_fixtures/)
     let mut rargv: List[String] = list_new();
-    rargv = list_push(rargv, "--compiler");
-    rargv = list_push(rargv, out_bin);
-    let gr: Result[Int, String] = sys_exec_wait(sys, gate_bin, rargv);
+    rargv = list_push(rargv, "-c");
+    rargv = list_push(rargv, "cd /work/repos/oodac && exec " + gate_bin + " --compiler " + out_bin);
+    let gr: Result[Int, String] = sys_exec_wait(sys, "bash", rargv);
     let mut grc: Int = 1;
     if gr.is_ok() { grc = gr.val; }
 
