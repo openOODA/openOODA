@@ -34,7 +34,14 @@ needs its own minimal rule set.
 - Every repo keeps README, LICENSE, VERSION, and a qa/ self-test.
 - Shell scripts: `set -euo pipefail`, no `eval`, no unquoted `$VAR` in command
   position, mktemp for temp files, no curl|bash (fetch to temp + verify).
-- Python: no `eval`/`exec`, no shell=True, secrets only from env/keyring.
+- Python: no `eval`/`exec`; `subprocess`/`os.popen` must never interpolate
+  secrets or untrusted strings into a shell line (linter-flagged); secrets
+  only from env/keyring. Python repos ship a hash-pinned lock file
+  (`requirements.lock` / `poetry.lock` with hashes); shell repos pin tool
+  versions or verify hashes (oosync).
+- `VERSION` is SemVer MAJOR.MINOR.PATCH and must equal the git tag /
+  `git describe` output (same invariant as RFC 0006).
+- Commits are signed (commit signing required for all fleet repos).
 - New files default to .oo where the tool is expressible; .py/.sh only for
   host glue, with the reason in the README.
 
@@ -43,7 +50,10 @@ needs its own minimal rule set.
   redaction engine over it: API keys (sk-, AKIA, ghp_/gho_, xox), private key
   blocks, passwords/tokens in env dumps. Redacted form: `[REDACTED:KIND]`.
 - Test fixtures that intentionally contain key-shaped strings must live under
-  `tests/fixtures/` with `FAKE`/`example` markers and never be sent raw.
+  `tests/fixtures/` with a `# FAKE` (or `# OO-FAKE`) prefix marker; the
+  redaction engine matches on marker + shape (length > 16, key prefixes
+  sk-/AKIA/ghp_/gho_/xox, entropy threshold) so ordinary short strings are
+  never mangled.
 
 ### 2.3 Audit scope
 - The buildbox audit gate covers the fleet at pattern level (the 2026-10-30
