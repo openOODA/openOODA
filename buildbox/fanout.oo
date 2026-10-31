@@ -14,6 +14,49 @@
 import "std/fs/process/env.oo";
 import "std/core/text/num_buffer.oo";
 
+// RFC 0010 §2.2: redact key-shaped secrets before any content leaves the box.
+fn redact(s: String) -> String {
+    let mut prefixes: List[String] = list_new();
+    let mut p: List[String] = list_new();
+    p = list_push(p, "sk-");
+    p = list_push(p, "AKIA");
+    p = list_push(p, "ghp_");
+    p = list_push(p, "gho_");
+    p = list_push(p, "xox");
+    prefixes = p;
+    let mut out: String = s;
+    let mut i: Int = 0;
+    while i < list_len(prefixes) {
+        let pre: String = list_get(prefixes, i);
+        out = redact_prefix(out, pre);
+        i = i + 1;
+    }
+    return out;
+}
+
+fn redact_prefix(s: String, pre: String) -> String {
+    let pl: Int = chars_len(pre);
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        if i + pl <= n && str_slice(s, i, i + pl) == pre {
+            // consume the whole token (alnum/_/-) and replace
+            let mut j: Int = i + pl;
+            while j < n {
+                let c: String = char_at(s, j);
+                let okc: Bool = char_is_alpha(c) || char_is_digit(c) || c == "_" || c == "-";
+                if !okc { break; }
+                j = j + 1;
+            }
+            if j - i > 16 { out = out + "[REDACTED:" + pre + "]"; i = j; continue; }
+        }
+        out = out + char_at(s, i);
+        i = i + 1;
+    }
+    return out;
+}
+
 fn json_esc(s: String) -> String {
     let mut out: String = "";
     let n: Int = chars_len(s);
@@ -54,7 +97,7 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap)
     }
     let spot: String = env_or(env, "OODA_SPOTLIGHT", "http://100.66.54.24:11434");
     let model: String = env_or(env, "OODA_MODEL", "satgeze/qwen36-35b-uncensored-1m:latest");
-    let req: String = "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"Adversarially audit this openOODA compiler diff. Severity-ranked concrete findings with file:line. Plain text.\\n" + json_esc(diff) + "\"}]}";
+    let req: String = "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"Adversarially audit this openOODA compiler diff. Severity-ranked concrete findings with file:line. Plain text.\\n" + json_esc(redact(diff)) + "\"}]}";
     let reqf: String = env_or(env, "OODA_CACHE", "/cache") + "/fanout.json";
     let w: Result[Void, String] = write_file(fs_w, reqf, req);
     if w.is_err() {

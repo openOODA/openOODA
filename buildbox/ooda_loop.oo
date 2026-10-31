@@ -41,7 +41,9 @@ fn is_dir(sys: &ProcessCap, dir: String) -> Bool {
 
 fn fetch_repo(sys: &ProcessCap, repos: String, name: String, branch: String) -> Bool {
     let dir: String = repos + "/" + name;
-    let url: String = "https://github.com/openOODA/" + name + ".git";
+    let mut org: String = "openOODA";
+    if str_index_of(name, "/") >= 0 { org = str_slice(name, 0, str_index_of(name, "/")); }
+    let url: String = "https://github.com/" + org + "/" + name + ".git";
     if is_dir(sys, dir) {
         let mut a: List[String] = list_new();
         a = list_push(a, "-C");
@@ -84,10 +86,25 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     names = list_push(names, "oodar");
     names = list_push(names, "std");
     names = list_push(names, "openOODA");
+    // fleet mode (RFC 0010): OODA_FLEET=1 adds the network/fs-first priority
+    // repos from the openOODA-tools org; OODA_FLEET_ALL=1 adds all 257.
+    let fv: String = env_or(env, "OODA_FLEET", "");
+    let fa: String = env_or(env, "OODA_FLEET_ALL", "");
+    let fleet: Bool = fv == "1" || fa == "1";
+    if fleet {
+        names = list_push(names, "openOODA-tools/oowget");
+        names = list_push(names, "openOODA-tools/ootunnel");
+        names = list_push(names, "openOODA-tools/oovault");
+        names = list_push(names, "openOODA-tools/oobackup");
+        names = list_push(names, "openOODA-tools/oofetch");
+        names = list_push(names, "openOODA-tools/ooenv");
+        names = list_push(names, "openOODA-tools/ooguard");
+        names = list_push(names, "openOODA-tools/oohistory");
+    }
     let mut i: Int = 0;
     while i < list_len(names) {
                 let mut br: String = "master";
-        if list_get(names, i) == "oodac" { br = env_or(env, "OODA_BRANCH", "master"); }
+        if str_index_of(list_get(names, i), "/") < 0 && list_get(names, i) == "oodac" { br = env_or(env, "OODA_BRANCH", "master"); }
         if !fetch_repo(sys, repos, list_get(names, i), br) {
             println("ERR\tloop\tfetch failed");
             process_exit(1);
