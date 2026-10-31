@@ -1,0 +1,47 @@
+# Round-6 change audit - mcode full scan
+File: openOODA/audit/round6_changes_2026_10_30.oot
+Date: 2026-10-30
+Status: complete
+Subject: F12 cache keying (oodac f75a650), S10 sh -c removals (f569425, 5df34e7 + quote-aware follow-up), zebes buildbox scaffold
+
+Verdict summary: F12 keying OK (fallback edge noted, acceptable: buildbox has
+/proc); polyrepo_suite conversion OK for standard layout; probe_dispatch needed
+a quote-aware splitter (fixed); Containerfile USER= syntax fixed; quadlet
+files confirmed single-unit (the "multi-unit" flag was a cat artifact of the
+review bundle).
+
+## mcode report (verbatim)
+
+(1) F12 FALSE-GREEN BYPASS & CACHE KEYING
+- Severity: Medium
+- file:line `check/check_collect.oo:199-203`: `cst` fallback to `"unknown-compiler"` if `oo_file_stamp` returns empty/malformed AND `read_file` fails. If `/proc/self/exe` is consistently unreadable (e.g., stripped /proc mount, FUSE permission drop, or transient race), the hash input becomes a constant. A rebuilt compiler with identical unreadable exe yields the same cache key. Bypass condition: `read_file(fs, "/proc/self/exe")` Err path.
+- file:line `check/check_collect.oo:197-198`: Comment claims `check_cache.oo's ident`, but diff is in `check_collect.oo`. If `compute_input_fp` is reused across both, fine. If emit paths call a different fingerprinter, they remain unkeyed.
+- Prune races: Manifest is computed synchronously in the calling thread. No TOCTOU on the key generation itself. Cache eviction relies on downstream logic not shown; assume standard LRU/metadata prune. Safe.
+
+(2) SH -C CONVERSIONS: BEHAVIOR, EXIT, ENV, CWD
+- Severity: Medium (probe_dispatch) / Low (polyrepo_suite)
+- file:line `qa/polyrepo_suite.oo:8-12`: Old code explicitly `cd pkg_dir`. New code runs `oodac` and `tmp_bin` from caller CWD, relying on `path` being CWD-relative. `OODA_FS_READDIR/WRITEDIR` default to `"."` which maps to `$(pwd)` in shell. Functionally equivalent if caller CWD is repo root. If legacy suites run from subdirs, `tmp_bin` path `path + ".tmp.bin"` may collide or write outside expected bounds. Safe in standard layout.
+- file:line `qa/cmd/probe_dispatch.oo:30-35`: `disp_split` is a naive space splitter. Old `sh -c` handled quoting, globbing, and word splitting. New argv exec bypasses shell. Regression if `argstr` contains `"foo bar"` or `$VARS`. Tokens will split incorrectly or pass literal quotes to binary. PROBE_RC contract preserved, but argument fidelity is degraded.
+- Exit codes: Both diffs correctly map `sys_exec_wait`/`sys_exec` `Ok(Int)` to return code. `polyrepo_suite.oo:41-43` and `probe_dispatch.oo:41-42` handle `Err` as `-1`. `2>&1` merge in probe_dispatch is dropped but acceptable since `out_text` captures stdout and stderr typically goes to process fd or is ignored by caller. Safe.
+
+(3) CONTAINERFILE/QUADLET DEFECTS
+- Severity: High
+- file:line `build/ooda-buildbox.container:42-58`: Multi-unit quadlet file concatenates `[Unit]`, `[Service]`, `[Timer]`, `[Network]` blocks without `---` document separators. Systemd/quadlet parser will treat subsequent sections as part of the previous unit, causing `ooda-loop-nightly.service` and `ooda-loop.service` to overwrite each other or bind to wrong `ExecStart`.
+- file:line `build/Containerfile:18`: `USER=1000:1000` uses equals syntax. OCI/Buildah standard is `USER 1000:1000` (space). Some toolchains accept `=`, but strict parsers may error or treat it as an env var, breaking UID/GID mapping at runtime.
+- file:line `build/Containerfile:20-22`: `RUN /opt/ooda/seed/oodac check ... && build ...` assumes seed contains a fully functional compiler binary. If `oodac` is a bootstrap script or requires runtime linking to `oodar`, it will fail at build time. Acceptable if seed is precompiled.
+- file:line `build/ooda-buildbox.container:52-54`: `SystemCallFilter=@system-service` is standard but may block `openat2` or `memfd_create` if `clang/llvm18` or `ooda-loop` uses modern POSIX file creation. Not a hard break, but worth auditing if JIT compilation fails.
+
+(4) BROKEN OR LEFT INCONSISTENT
+- file:line `qa/polyrepo_suite.oo:14-32`: `env_set` calls ignore `Result[Void, String]` errors (`_e0`, `_e`). If environment is full or read-only, builds run with stale/missing vars silently. Low risk in CI.
+- file:line `check/check_collect.oo:195`: Comment references `/proc/self/exe stamp, same as check_cache.oo's ident`. If `check_cache.oo` has its own hardcoded fallback logic, the two may diverge on edge cases, causing cross-module cache invalidation mismatches.
+- file:line `build/ooda-buildbox.container:46-48`: `Volume=...:rw,Z` and `Tmpfs=...` are correct for quadlet, but `ProtectSystem=strict` + `ReadOnly=true` + `Tmpfs=/work:rw` creates a layered mount. `ooda-loop` expects `/work` to be writable. Correctly handled, but `OODA_FS_WRITEDIR` default `"."` resolves to `/work`, which matches. Consistent.
+
+(5) VERDICTS
+- F12 manifest keying: FIX → Change fallback to deterministic `cst + "-missing"` or hash raw bytes on `cst == "0:0"`; add explicit `fail-if-missing` flag for prod cache keys to force false-green detection.
+- polyrepo_suite sh -c replacement: OK → CWD and env defaults align; exit code mapping correct. Add `pwd` validation log or pass explicit `--workdir` if suites are known to rely on `cd`.
+- probe_dispatch argv split: FIX → Replace `disp_split` with a quote-aware tokenizer (respect `"..."` and `'...'`) or delegate to `sys_exec_wait(p, "sh", ["-c", cmd])` if quoting is required. For pure argv, ensure callers pass pre-split lists.
+- Quadlet multi-unit parsing: FIX → Insert `---` between each `[Unit]/[Service]/[Timer]/[Network]` block to satisfy quadlet document separation.
+- Containerfile USER syntax: FIX → Change `USER=1000:1000` to `USER 1000:1000`.
+- SystemCallFilter audit: REVERT/KEEP → Keep `@system-service` for now; monitor `journalctl -u ooda-buildbox` for `EPERM` on `openat2`. If JIT builds fail, add `@resources` or custom filter.
+
+Overall: Changes successfully eliminate blind `sh -c` and key caches by compiler identity. `probe_dispatch` naive splitting and quadlet missing document separators are the only active regressions. All else aligns with openOODA capability and house-law constraints.
