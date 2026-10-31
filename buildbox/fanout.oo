@@ -1,0 +1,86 @@
+// # ooda-fanout — send the oodac diff to spotlight (ollama) for advisory review
+//
+// Logline: git diff HEAD~1..HEAD of the oodac checkout -> curl argv POST to
+//   ollama /api/chat -> raw model output to /queue/raw/. Advisory only.
+//
+// Setup: Env: OODA_SPOTLIGHT (default tailscale spotlight), OODA_MODEL.
+//   argv: none. Needs ProcessCap, FsRead/Write, EnvCap. No shell strings.
+//
+// Beats:
+//   1. git diff via argv sys_exec_wait.
+//   2. Build JSON request into /cache/fanout.json via write_file.
+//   3. curl argv POST with -m 120 to spotlight /api/chat, output to queue raw.
+
+import "std/fs/process/env.oo";
+import "std/core/text/num_buffer.oo";
+
+fn json_esc(s: String) -> String {
+    let mut out: String = "";
+    let n: Int = chars_len(s);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        if c == "\\" { out = out + "\\\\"; }
+        else if c == "\"" { out = out + "\\\""; }
+        else if c == "\n" { out = out + "\\n"; }
+        else if c == "\t" { out = out + "\\t"; }
+        else { out = out + c; }
+        i = i + 1;
+    }
+    return out;
+}
+
+fn env_or(env: &EnvCap, name: String, dflt: String) -> String {
+    let r: Result[String, String] = env_get(env, name);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return dflt;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap) {
+    let repo: String = env_or(env, "OODA_REPO", "/work/repos/oodac");
+    let mut dargv: List[String] = list_new();
+    dargv = list_push(dargv, "-C");
+    dargv = list_push(dargv, repo);
+    dargv = list_push(dargv, "diff");
+    dargv = list_push(dargv, "HEAD~1");
+    dargv = list_push(dargv, "HEAD");
+    // sys_exec captures stdout (sys_exec_wait inherits stdio, mcode C6)
+    let dr: Result[String, String] = sys_exec(sys, "git", "-C", repo, "diff", "HEAD~1", "HEAD");
+    let mut diff: String = "";
+    if dr.is_ok() { diff = dr.val; }
+    if diff == "" {
+        println("FANOUT: no diff");
+        process_exit(0);
+    }
+    let spot: String = env_or(env, "OODA_SPOTLIGHT", "http://100.66.54.24:11434");
+    let model: String = env_or(env, "OODA_MODEL", "satgeze/qwen36-35b-uncensored-1m:latest");
+    let req: String = "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"Adversarially audit this openOODA compiler diff. Severity-ranked concrete findings with file:line. Plain text.\\n" + json_esc(diff) + "\"}]}";
+    let reqf: String = env_or(env, "OODA_CACHE", "/cache") + "/fanout.json";
+    let w: Result[Void, String] = write_file(fs_w, reqf, req);
+    if w.is_err() {
+        println("ERR\tfanout\tcannot write request");
+        process_exit(1);
+    }
+    let outf: String = env_or(env, "OODA_QUEUE", "/queue") + "/raw/fanout-" + int_to_str(chars_len(diff)) + ".json";
+    let mut cargv: List[String] = list_new();
+    cargv = list_push(cargv, "-sS");
+    cargv = list_push(cargv, "--fail");
+    cargv = list_push(cargv, "-m");
+    cargv = list_push(cargv, "120");
+    cargv = list_push(cargv, "-X");
+    cargv = list_push(cargv, "POST");
+    cargv = list_push(cargv, spot + "/api/chat");
+    cargv = list_push(cargv, "-H");
+    cargv = list_push(cargv, "Content-Type: application/json");
+    cargv = list_push(cargv, "--data-binary");
+    cargv = list_push(cargv, "@" + reqf);
+    cargv = list_push(cargv, "-o");
+    cargv = list_push(cargv, outf);
+    let cr: Result[Int, String] = sys_exec_wait(sys, "curl", cargv);
+    if cr.is_err() || cr.val != 0 {
+        println("ERR\tfanout\tcurl failed");
+        process_exit(1);
+    }
+    println("FANOUT: ok -> " + outf);
+    process_exit(0);
+}
