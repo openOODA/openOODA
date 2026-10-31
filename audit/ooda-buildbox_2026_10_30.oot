@@ -1,0 +1,186 @@
+# OODA-buildbox Plan Audit - Adversarial Full Scan
+File: openOODA/audit/ooda-buildbox_2026_10_30.oot
+Date: 2026-10-30
+Status: complete
+Subject: docs/ooda-buildbox.oot (v0.1.0, untracked at audit time)
+
+## 0. Scope and method
+Full-scan adversarial audit of the OODA-buildbox plan on host zebes. Every claim was checked against source, not against the plan's own prose.
+Evidence: /Projects/openOODA/{openOODA,oodac,oodar,std,cli,tui,ooda,opm,lsp,mcp}, /Projects/openOODA-tools (257 repos), /etc/containers/systemd, the 2026-10-30 audit boards, live compiler probes.
+Live probes (read-only): `oodac emit-llvm std/net/http_client.oo` -> exit 1, ERR llvm unknown call fetch. Same for std/net/http.oo. std/net/tls.oo -> exit 1, ERR llvm unknown call tls_connect. std/net/tcp.oo -> OK. std/net/http_cap.oo -> OK. `oodac check tui/main.oo` -> OK.
+
+## 1. Correctness risks
+
+### C1 (HIGH) The audit gate file does not exist
+Plan section 5 step 3 cites `oodac/scripts/audit_gate.oo`. It does not exist. oodac/scripts/ holds only anchor.oo, anti_cheat_linter.oo, governance_lint_rfc.oo.
+Real gate entry points: oodac/qa/suite.oo (double-run runner; 106 files in oodac/qa/), openOODA/qa/polyrepo_suite.oo, openOODA/qa/lint_oo_size.sh, oodac/tests/fuzz/test_*.sh (3 harnesses), oodac/bootstrap/corpus/ (13 corpus domains).
+Fix: cite the real list and name the file that owns the gate.
+
+### C2 (HIGH) The nightly fixed point cannot run in a shell-free box
+The only S1==S2 implementation is `oodac/bootstrap/oodac_pure_build` (bash, 829 lines). It reads the plan's env var at oodac/bootstrap/oodac_pure_build:25 and runs the S1->S2 loop at oodac/bootstrap/oodac_pure_build:785-802. No .oo page implements a fixed point: a grep for fixed-point, stage1 and stage2 across oodac/**/*.oo returns nothing.
+So D3 and section 4 promise a nightly fixed-point timer, and section 5 step 2 names `BOOTSTRAP_FIXED_POINT=0`, which is by definition a bash invocation, while section 6 forbids every .sh in the box.
+Fix: ship oodac_pure_build under the rules.oot:147 carve-out and amend section 6, or budget a .oo reimplementation of the S1/S2 driver plus the seed-capability gate.
+
+### C3 (CRITICAL) Build and emit caches are not keyed by compiler identity
+The check cache IS keyed by compiler identity: oodac/check/check_cache.oo:87-92 (ident = oo_file_stamp(/proc/self/exe)) and oodac/check/check_cache.oo:94-112 (keys m_, t_ts5_, g_ = hash(ident + key)). The build and emit caches are NOT: oodac/check/check_collect.oo:194-212 (compute_input_fp hashes target paths and content only), oodac/cli/cli_build_multi.oo:69-73 (bin_cache = .ooda-cache/obj/<fp>.bin), oodac/check/check_collect.oo:215-217 (emit_cache_path = merkle_root + src_hash).
+build_multi short-circuits on a hit: oodac/cli/cli_build_multi.oo:71-77 copies the cached binary and prints OK_PURE_NATIVE without rebuilding.
+Consequence: after a compiler rebuild, a target whose sources did not change returns the artifact produced by the OLD compiler. The gate then certifies a compiler never exercised. This alone produces a false green.
+Fix: purge .ooda-cache/obj and .ooda-cache/oodac_emit on every compiler change, or key both caches by the compiler stamp the way the check cache already is.
+
+### C4 (HIGH) Diff-scoped gating cannot catch the F10 class
+Plan section 5 step 1 says "diff since last run". F10 was a compiler change that broke std-style imports in other repos, caught only by re-checking every repo with the new binary (oodac/audit/2026-10-30-oodac-check-emit.oot:267-272). A gate scoped to changed files would have passed it.
+Fix: always re-run the whole polyrepo import-closure check after a compiler change.
+
+### C5 (HIGH) Timers can overlap and the queue has no atomic replace
+No file locking exists in oodar: no flock, no fcntl lock. The only move is copy-then-delete (std/fs/file/fs_ops.oo:42-53). file_append_sync IS atomic and durable and fails closed (oodar/fs/os/fs.c:109-130: O_APPEND|O_NOFOLLOW, fsync, fail closed on short write). file_writer_append is NOT atomic; it is a read-modify-write of the whole file (std/fs/file/file_writer.oo:49-76).
+Fix: single-flight the loop with a pidfile, use file_append_sync, never file_writer_append.
+
+### C6 (MEDIUM-HIGH) sys_exec cannot return an exit code
+oodar/fs/os/sys.c:113-115 sets r.ok = 1 only when WEXITSTATUS(st) == 0 and drops the code. oodar/fs/os/sys.c:85-86 merges stderr into stdout. oodar/fs/os/sys.c:29 caps stdout at 64 MiB. oodar/fs/os/sys_exec_wait.c:1 returns the code but inherits stdio.
+Consequence: captured output and a numeric exit code cannot be obtained from one call, so a gate cannot distinguish finding, usage error and signal death.
+Fix: parse the structured `ERR\t<area>\t<detail>` lines oodac already prints, and treat a missing structured line as a hard fail.
+
+### C7 (HIGH) No socket read timeout in the runtime
+oodar/fs/os/netfloor_tcp.c:144 makes oo_tcp_read an untimed blocking read; std/fs/process/process.oo:42-44 makes epoll a residual Err. A stalled model response hangs a 24/7 unattended loop forever.
+Fix: bound every model call with an outer timeout. The curl precedent at tui/llm_exec.oo:197 uses `-m 60`.
+
+### C8 (HIGH) "Internal only" network is incompatible with the pipeline
+Plan section 4 says internal only, no tunnel. The pipeline needs `git fetch` from github.com (section 5 step 1) and Ollama on spotlight, a remote host at tailscale address 100.66.54.24 (confirmed by `tailscale status` on zebes). A podman bridge with Internal=true has no default route.
+Fix: specify the egress path explicitly. Preferred: two interfaces, internal for the build plane and a filtered egress for git and curl only. Do not run remote-fetched code with egress.
+
+### C9 (MEDIUM) The quadlet set is incomplete against host convention
+The plan names ooda-buildbox.container and ooda-buildbox.network. The local convention for a locally built image is three units: /etc/containers/systemd/rust-buildbox.container, /etc/containers/systemd/rust-buildbox.build (the [Build] unit, File=<dir>/Containerfile), and /etc/containers/systemd/rust-buildbox.network. The plan also cites `container_deployment_plan.md`, which does not exist in any repo.
+Fix: add the .build unit, name the Containerfile path, cite the rust-buildbox units.
+
+### C10 (MEDIUM) Section 3 contradicts itself; section 4 under-specifies the layout
+Section 3 says the image bakes "a read-only polyrepo checkout refreshed by git at loop time (not baked)". Section 4 gives one repo/ directory for a 14-repo polyrepo plus 257 tools repos.
+Fix: define the per-repo checkout layout and the refresh order.
+
+### C11 (MEDIUM) The image package list is incomplete
+Plan section 3 lists clang, llvm-18, git, make, rustc+cargo and an optional podman client. Missing: curl, which the .oo HTTP path needs (P2), and python3, which openOODA/qa/lint_oo_size.sh embeds as a Python heredoc. llvm-18 IS available on Fedora 44 (llvm18.x86_64-18.1.8-8.fc44); clang on zebes is 22.1.8. "podman client (optional)" inside a podman container means nested podman, which needs privileges the hardening in S1 removes.
+Fix: drop podman, add curl, add python3 only if the size lint runs in-box.
+
+### C12 (MEDIUM) The claimed audit record does not exist
+Plan section 8 says the mcode full-scan verdict is "recorded in audit-history/". docs/audit-history/ contains only 2026-09-10 and 2026-09-11 files; there is no 2026-10-30 buildbox record. The path is also wrong: the directory is docs/audit-history/ and there is no top-level audit-history/. The plan file was untracked (git status: ?? docs/ooda-buildbox.oot) with mode 0600.
+Fix: record the real verdict, commit the plan, drop the unverifiable claim.
+
+## 2. Security risks
+
+### S1 (CRITICAL) No container hardening is specified at all
+Plan sections 3 and 4 specify no User, NoNewPrivileges, DropCapability, ReadOnly, tmpfs, SystemdCallFilter, ProtectSystem or volume labelling. The box fetches remote git content, compiles it, and EXECUTES the result: arbitrary code execution from untrusted input. The local convention already sets these controls: /etc/containers/systemd/giggle-app.container (User=977:977, NoNewPrivileges=true, DropCapability=ALL, ReadOnly=true, Tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m) and /etc/containers/systemd/rust-buildbox.container (DropCapability=ALL, narrow AddCapability set, Tmpfs, HealthCmd, HealthOnFailure).
+Fix: copy the hardened profile, add SystemdCallFilter=@system-service, ProtectSystem=strict, ProtectHome=true, PrivateTmp=true, Mask=/proc/*, no host PID, volumes :Z.
+
+### S2 (HIGH) Egress plus untrusted execution is the exfiltration path
+Any egress from a container that executes remote-built code lets a malicious commit exfiltrate the queue, the findings and every mounted secret. This is the main reason C8 must be fixed by separation, not by opening a route.
+
+### S3 (HIGH) Prompt injection from repo content into the fan-out is unaddressed
+Plan section 5 step 4 pipes diffs into three models; step 5 writes their output into queue/findings.oot and updates audit/report. Repo comments, commit messages and file names are attacker-controlled prompt text. AGENTS.md section 7 says external audits are strictly advisory and all findings must be verified against source code. The plan has no verification step, no provenance field on a finding, and no separation between raw model output and a confirmed finding.
+Fix: keep model output in a separate file from confirmed findings. A finding may only turn a commit red after an independent check against source. Tag every finding with model, prompt hash and verifier.
+
+### S4 (HIGH) Queue file trust is undefined
+queue/findings.oot and queue/state.oot live on a host bind mount. No integrity control, no owner, no permission mode, no rule that a consumer re-verifies. The standard tool is also missing: minisign is not installed on zebes. The seed ships oodac.pub, oodac.sha256 and oodac.sha256.minisig (oodac/bootstrap/seed/), and a pure .oo Ed25519 verify exists at std/sec/asymmetric/ecc/ed25519.oo:100, but no .oo minisign page exists.
+Fix: pin ownership and mode, add a per-file sha256 manifest, verify with ed25519_verify_hex.
+
+### S5 (HIGH) Writing into the canonical repo breaches the 256-line cap
+Plan section 5 step 5 says "audit/report updated". openOODA/audit/ is inside the governed tree, and openOODA/scripts/governance_enforce.oo:24-31 enforces a 256-line cap on every .oot file. A growing audit/report breaches the cap and fails openOODA CI on every push. The generated-file marker is also missing: rfcs/0003-file-format.oot requires "THIS FILE IS GENERATED - DO NOT EDIT" on generated files.
+Fix: rotate dated .oot boards outside the governed tree, or keep the report under /srv/containers/ooda-buildbox/ only.
+
+### S6 (HIGH) Seed provenance is not verified in the box
+Plan section 3 says only "Baked in: oodac bootstrap seed". A compromised image build yields an arbitrary compiler that the gate then certifies.
+Fix: verify oodac.sha256 against oodac.pub at container start and fail closed.
+
+### S7 (MEDIUM) Secret handling is unspecified
+Ten host quadlets use Secret=name,type=env,target=... . The plan names no secret and no credential path. If the rig pushes commits or needs a model key, the credential would land in a bind-mounted queue directory or in an environment inherited by every child (oodar/fs/os/sys_env.c strips only LD_* and GLIBC_TUNABLES).
+Fix: state every secret, its source and its consumer, using the host Secret= convention.
+
+### S8 (MEDIUM) Landlock inside podman is untested
+AGENTS.md section 3 requires runtime execution and untrusted evaluation to run inside Landlock sandboxes via oodar. oodar implements it with an ABI query and seccomp (oodar/sec/landlock/sandbox_syscalls.c:80-127). But rootless podman, a user namespace, Landlock and the container seccomp profile have never been exercised together on this host.
+Fix: add a boot-time probe asserting the Landlock ABI version and that a sandboxed write outside the granted tree is refused.
+
+### S9 (HIGH) The 257-repo fleet is outside every policy
+The fleet holds 0 .rs, 211 .py and 724 .sh files, and no rule governs any of it. The 2026-10-30 sweep also noted a live-looking sk- string in the fleet (oodac/audit/2026-10-30-oodac-check-emit.oot:216-219). Pointing the rig at it would ship those secrets into model prompts and produce findings about files no policy covers.
+Fix: scope the fleet step as its own RFC with its own rule set, and add a secret redaction pass before any prompt leaves the box.
+
+### S10 (MEDIUM-HIGH) The existing polyrepo suite uses a blind shell
+The gate must reach cross-repo suites through openOODA/qa/polyrepo_suite.oo, which uses sys_exec(p, "sh", "-c", cmd) at openOODA/qa/polyrepo_suite.oo:15 and :21. The same pattern is at cli/qa/cmd/probe_dispatch.oo:15. AGENTS.md section 3 forbids a blind /bin/sh -c.
+Fix: convert those two call sites to explicit argv before the box depends on them.
+
+## 3. .oo and .rs policy violations and gaps
+
+### P1 (HIGH) The .rs shim has no legal basis and no enforcement
+rules.oot:143 bans .py, .ts, .rb and .pl. .rs is absent from that list. rules.oot:140 requires .oo for all source code, tools, proofs, fixers and harnesses. openOODA/scripts/governance_enforce.oo:41 scans only py sh js ts rb pl, so a .rs file passes CI silently while violating the written law. rules.oot:171 promises that any commit introducing an unauthorized file type fails closed; that promise is not kept for .rs. The only .rs precedent, 11 files under oodac/bootstrap/corpus/vs-rustc/ and vs-rustc-stretch/, is a measurement corpus, not a product shim.
+Fix: remove the shim, or file an RFC that adds .rs to the corpus and to the Rule C list.
+
+### P2 (HIGH) The .rs shim is not needed, and D1 gives the wrong reason
+D1 says the shim exists because the loop needs "streaming chat + model list today". The real state of the .oo HTTP path: std/net/http_client.oo and std/net/http.oo FAIL TO EMIT (exit 1, ERR llvm unknown call fetch); std/net/tls.oo FAILS TO EMIT (exit 1, ERR llvm unknown call tls_connect); std/net/http_cap.oo is a pure serializer whose header line 5 reads "No live I/O is performed"; std/net/http_client.oo:55-60 makes http_client_post ignore content_type AND body and perform a GET; oodar/fs/os/netfloor_tcp.c:80-87 makes oo_tcp_connect loopback-only. A .oo client therefore cannot reach spotlight at all, for reasons the plan never states. The org already ships a working .oo precedent at tui/llm_exec.oo:197: sys_exec(sys, "curl", "-sS", "--fail", "-m", "60", "-X", "POST", url, "-H", "@" + hdr, "--data-binary", "@" + tmp). argv form, no shell, TLS via curl, 60 s timeout, headers in a 0600 temp file so the key never appears on argv. tui/llm_exec.oo is the LIVE path; tui/llm_ollama.oo and tui/llm.oo are dead code outside the tui import closure and cannot be emitted.
+Fix: implement ooda-ollama in .oo on the llm_exec pattern, drop the .rs, add curl to the image. This removes the only written-law violation in the plan.
+
+### P3 (HIGH) "No .sh, no .py anywhere in the box" has an unenumerated blast radius
+The gate as it exists depends on these sanctioned shell scripts: oodac/bootstrap/oodac_pure_build (rules.oot:147, the fixed point, see C2); oodac/tests/fuzz/test_grammar_mutation_fuzzer.sh, test_differential_expr_fuzzer.sh and test_smt_boundary_fuzzer.sh (rules.oot:148, tests/test_*.sh); oodac/bootstrap/corpus/differential/diffrun.sh (rules.oot:150); oodar/scripts/double_run.sh (rules.oot:150, the determinism filter); openOODA/qa/lint_oo_size.sh (linter-authorized, contains Python); openOODA/qa/test_spec_sheet.sh and openOODA/qa/e2e/run_e2e.sh. The written law permits all of these. Section 6 is therefore either false, or it implies reimplementing the whole gate in .oo, which is far larger than stated.
+Fix: restate section 6 as "no NEW .sh or .py beyond the rules.oot:146-151 carve-outs", or scope the reimplementation work explicitly.
+
+### P4 (MEDIUM) The Academy header is only partially enforced
+openOODA/scripts/governance_enforce.oo:32-37 checks only the `// # ` title line. openOODA/scripts/spec_verify.oo:35-39 checks all four elements but only over a hardcoded ten-file list. The 16-line floor from AGENTS.md section 1 is enforced nowhere.
+Fix: the new repo must gate its own pages on the full four elements and the 16-line floor.
+
+### P5 (MEDIUM) No onboarding path exists for a new sibling repo
+rfcs/0005-tactical-subsystem-template.oot covers `ooda/<x>/` inside the ooda repo only. These inventories hardcode the repo set and all need editing: openOODA/rules.oot:230 (13 repos); openOODA/requirements.oot:5 (11 components, already inconsistent with rules.oot); openOODA/scripts/redteam_orchestrate.oo:31,40 (12 repos); install/install.sh:102 (8 installable components); openOODA/qa/polyrepo_suite.oo:52-68 (7 suites); openOODA/.github/workflows/ci.yml:158 (9 cloned repos) and :207 (6 built mains); openOODA/qa/lint_oo_size.sh:44 (roots oodac,oodar,std,openOODA). RFC 0005 also requires anchor.oo, qa/, VERSION, .github/workflows/ci.yml, and an auto-release.yml pinned to a tag.
+
+### P6 (MEDIUM) The plan is not RFC-shaped
+If promoted to rfcs/00NN-ooda-buildbox.oot it fails oodac/scripts/governance_lint_rfc.oo, which requires RFC ID, Author, a Status in {Draft, Active, Accepted, Implemented}, and Security and Testing sections. The plan has only `Status: v0.1.0 (2026-10-30)`, not a valid Status value. It must also be indexed in rfcs/anchor.oo with a contiguous index.
+Fix: file it as an RFC with the missing sections before any code lands.
+
+### P7 (MEDIUM) Pre-existing governance gaps this plan would ride on
+a. openOODA/scripts/governance_enforce.oo:41 omits .rs from the banned-extension loop, so rules.oot:171 is not kept for Rust.
+b. openOODA/scripts/governance_enforce.oo:47 authorizes `*qa/*`, broader than rules.oot:149 (qa/*.sh for std and oodar only). It currently hides 14 git-tracked .py files in openOODA/qa/e2e/ that contradict the certified ".py | 0" verdict at docs/audit-history/2026-09-11-full-sweep-filelaw.oot:115, added 2026-10-02.
+c. oodac/scripts/anti_cheat_linter.oo and oodac/scripts/governance_lint_rfc.oo are orphaned. No workflow or Makefile references either. oodac has no Makefile at all.
+Fix: file these as separate defects, independent of the buildbox.
+
+## 4. Missing verification steps
+V1 (HIGH) No binary parity check. rules.oot:105 and AGENTS.md section 5 require the sha256sum of the installed binary to equal the sha256sum of dist/.
+V2 (HIGH) No sequential double-run determinism filter on the rig itself (rules.oot:102-103). Note oodar/scripts/double_run.sh is itself a .sh, see P3.
+V3 (HIGH) No per-page resource scorecard. AGENTS.md section 4 requires at most 64 MB RSS and at most 3.0 s CPU. The CI does this at openOODA/.github/workflows/ci.yml:89-105 with a commit-message justification escape. The plan does not.
+V4 (HIGH) No seed provenance verification at box boot, see S6.
+V5 (HIGH) No negative-trust edge falsification list. AGENTS.md section 5.2 and rules.oot:100 require boundary inputs: 0-byte files, oversized inputs, malformed envelopes, invalid tokens. The 2026-10-30 board already lists the proven ones: empty module, oversized module, missing import, import cycle, path escape, BOM, 64 KiB per-file limit.
+V6 (HIGH) No cross-repo import-closure recheck after a compiler change, see C4.
+V7 (HIGH) No requirement that a model finding be verified against source before it is recorded, see S3. AGENTS.md section 7 requires it.
+V8 (MEDIUM) No check that a release tag was produced by a fixed-point build. D3 ties the fixed point to release tags but the plan never states the tag depends on it.
+V9 (MEDIUM) No determinism check on the queue writer. Two runs over the same input must produce byte-identical queue files (rules.oot:102).
+V10 (MEDIUM) No boot-time assertion that Landlock and seccomp engage in the container.
+V11 (MEDIUM) No determinism check on the LLM fan-out. Local model output is not deterministic by default, so a non-deterministic gate cannot be a release gate.
+V12 (MEDIUM) No check that the container image is reproducible or pinned. The CI installs its toolchain from a pinned SHA with a sha256 sidecar (ci.yml:109-112); the buildbox image has no equivalent.
+
+## 5. Severity-ranked fixes
+P0 - block the rollout. Each produces a false green or breaks a written law.
+ 1. C3  Purge .ooda-cache on every compiler change, or key build and emit caches by compiler stamp. Highest value, lowest cost: one line in the loop.
+ 2. C4  Gate the whole polyrepo after any compiler change, not the diff.
+ 3. C2  Decide the fixed point: ship the sanctioned oodac_pure_build and amend section 6, or budget a .oo S1/S2 driver with the seed-capability gate.
+ 4. P2  Drop the .rs shim. Implement ooda-ollama in .oo on the tui/llm_exec.oo curl pattern and add curl to the image. Removes the only rules.oot violation.
+ 5. S1  Write the hardened quadlet profile into section 4: User, NoNewPrivileges, DropCapability=ALL, ReadOnly, tmpfs, SystemdCallFilter, ProtectSystem=strict, no host PID, volumes :Z.
+P1 - fix before rollout step 2, when the fast loop goes live.
+ 6. C8  Specify the egress path; separate the build plane from the egress plane.
+ 7. S3  Define the findings trust boundary. Model output and confirmed findings must be separate files; a commit may only turn red after an independent source check.
+ 8. S4  Pin queue ownership, mode and a sha256 manifest; verify in .oo with std/sec/asymmetric/ecc/ed25519.oo:100.
+ 9. S5  Stop growing a file inside openOODA/audit/. Rotate dated boards outside the tree and add the generated-file marker from rfcs/0003-file-format.oot.
+10. S6  Verify the seed minisign at box boot and fail closed.
+11. C1  Replace the three phantom artifact references with real paths.
+12. C7  Bound every model call with an outer timeout.
+13. C6  Parse structured ERR lines; treat a missing structured line as a hard fail.
+14. C5  Single-flight the loop; use file_append_sync only.
+15. C11 Drop podman from the image; add curl; add python3 only if the size lint runs in-box.
+16. C9  Add the .build unit and the real convention reference.
+17. C12 Record the real audit verdict and commit the plan.
+P2 - fix before the fleet step and before any release claim.
+18. P6  File the RFC with Security and Testing sections; index it in rfcs/anchor.oo.
+19. P5  Write the new-repo onboarding checklist; edit the eight hardcoded inventories.
+20. V1..V5 Add binary parity, double-run, the resource scorecard, seed verification and the negative-trust edge list to the plan's gate definition.
+21. S9  Scope the 257-repo fleet as a separate RFC with a redaction pass.
+22. S10 Convert the two blind `sh -c` call sites in the polyrepo suite path.
+23. P7  File the two governance defects and wire the two orphaned linters.
+24. P3  Restate section 6 against the rules.oot:146-151 carve-out list.
+25. C10 Define the multi-repo checkout layout and refresh order.
+26. V11 Make the fan-out deterministic or move it out of the release gate.
+
+## 6. Verdict
+The plan has the right shape and is not ready to build from. Three of its five load-bearing components do not exist as described (the gate file, the fixed-point runner, the .oo HTTP client). One promise is unreachable under its own language policy (a shell-free nightly fixed point). One guarantee is silently broken by an existing cache design (C3). Its most consequential security decisions, container hardening and the model trust boundary, are absent rather than wrong.
+The cheapest path to a sound v1: fix C3 and C4 in the loop, drop the .rs shim in favour of the .oo plus curl pattern the tree already ships, amend sections 4 and 6 to the real host conventions and the real rules.oot carve-outs, and file the rest as an RFC.

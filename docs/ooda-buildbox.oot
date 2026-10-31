@@ -1,0 +1,104 @@
+# PLAN — OODA-buildbox on zebes: 24/7 .oo-native build/audit rig
+
+File: openOODA/docs/ooda-buildbox.oot
+
+Status: v0.2.0 (2026-10-30), revised after mcode full-scan audit.
+Audit board: openOODA/audit/ooda-buildbox_2026_10_30.oot (186 lines).
+
+## 1. Goal
+
+Hermetic container on zebes that builds oodac from source, runs the
+audit gate on every change, and fans diffs out to spotlight (ollama) for
+multi-engine review — 24/7, unattended. In-box tooling is .oo compiled to
+native binaries; HTTP to spotlight uses the proven curl-argv pattern.
+No NEW .sh/.py beyond the rules.oot:146-151 carve-outs (P3).
+
+## 2. Decisions (v0.2, revised per mcode)
+
+- D1 (REVISED): no .rs shim. std/net http_client/tls do not emit today and
+  oo_tcp_connect is loopback-only (P2), but tui/llm_exec.oo:197 already
+  execs curl with explicit argv, TLS, -m 60 timeout, and a 0600 header
+  file. ooda-ollama is .oo on that pattern; curl added to the image.
+- D2: plan lives in-repo as this .oot (RFC-shaped when promoted); runtime
+  queue/results live under /srv/containers/ooda-buildbox, NOT in the
+  governed tree (S5 — 256-line cap).
+- D3: fast loop = stage1 build + gate per push; fixed-point S1==S2 nightly.
+  The fixed point stays oodac/bootstrap/oodac_pure_build (bash) under the
+  rules.oot:147 carve-out (C2).
+
+## 3. Image: ooda-buildbox
+
+- Base Fedora. Packages: clang, llvm-18, git, make, curl. No rustc, no
+  nested podman (C11).
+- Baked in: oodac bootstrap seed + oodar + std. At container start, verify
+  bootstrap/seed/oodac.sha256 against oodac.pub with ed25519_verify_hex and
+  fail closed (S6).
+- Hardening copied from rust-buildbox/giggle-app units (S1):
+  NoNewPrivileges=true, DropCapability=ALL, ReadOnly=true,
+  Tmpfs=/tmp:rw,noexec,nosuid,nodev, ProtectSystem=strict,
+  ProtectHome=true, PrivateTmp=true, no host PID, volumes :Z.
+- Containerfile is the only non-.oo artifact (container DSL).
+- Entrypoint: ooda-loop (native .oo binary). No shell entrypoint.
+
+## 4. Layout on zebes (mirrors rust-buildbox: 3 units)
+
+- /etc/containers/systemd/ooda-buildbox.{container,build,network};
+  [Build] File= points at the Containerfile dir (C9).
+- Network: 10.89.110.0/24. Two planes (C8/S2): internal build plane; a
+  filtered egress used ONLY by git fetch and curl to spotlight — never by
+  code built from remote content.
+- Data: /srv/containers/ooda-buildbox/{queue,cache,repos/<name> per repo}
+  (C10 defines per-repo layout and refresh order).
+- Logs: /srv/containers/logs/ooda-buildbox.
+- Timers: ooda-loop.timer (hourly fast loop), ooda-loop-nightly.timer
+  (fixed-point + 20k fuzz + whole-polyrepo recheck).
+- Secrets: host Secret= convention; named per consumer, never in the
+  queue mount (S7).
+
+## 5. In-box pipeline (all .oo binaries)
+
+1. ooda-loop: git fetch each repo in repos/; record last-seen commit.
+2. Stage1 oodac rebuild (BOOTSTRAP_FIXED_POINT=0 via the carve-out script).
+3. Gate (real entry points, C1): oodac/qa/suite.oo + openOODA/qa/
+   polyrepo_suite.oo + bootstrap/corpus domains + the 2026-10-30 probe
+   set (F1-F11) as committed qa probes; double-run determinism filter.
+   After ANY compiler change, re-check the whole polyrepo import closure,
+   not just the diff (C4 — the F10 class).
+4. Fan-out to spotlight via ooda-ollama (.oo + curl argv, -m bounded, C7):
+   biggest local model full-scan, mid model adversarial diff, small model
+   triage. Model output is ADVISORY (AGENTS.md §7): raw output goes to
+   queue/raw/, confirmed findings (verified against source by a second
+   engine) to queue/findings.oot with model+prompt-hash+verifier tags
+   (S3). A commit turns red only on a source-verified finding.
+5. Single-flight via pidfile; all queue writes via file_append_sync only,
+   never file_writer_append (C5). Queue integrity: per-file sha256
+   manifest verified with ed25519_verify_hex (S4).
+6. Gate parses structured `ERR\t<area>\t<detail>` lines; missing
+   structured line on expected failure = hard fail (C6).
+
+## 6. Language policy (restated per P3)
+
+- All NEW in-box tooling is .oo. No new .sh/.py; the sanctioned carve-outs
+  (rules.oot:146-151: oodac_pure_build, tests/fuzz/test_*.sh, diffrun.sh,
+  double_run.sh, lint_oo_size.sh, qa e2e) may be invoked, not extended.
+- Prerequisite fixes before the box depends on them: convert the two
+  blind sh -c call sites (openOODA/qa/polyrepo_suite.oo:15,21 and
+  cli/qa/cmd/probe_dispatch.oo:15) to argv (S10); key the build/emit
+  caches by compiler identity like check_cache.oo already does (C3 —
+  logged as audit F12 in the oodac board).
+
+## 7. Rollout order
+
+1. F12 (cache keying) + S10 (two sh -c sites) fixed in oodac/openOODA/cli.
+2. Containerfile + 3 quadlet units on zebes; boot; seed verify; rebuild.
+3. Port the F1-F11 probe set into oodac/qa as committed probes; wire the
+   fast loop.
+4. ooda-ollama fan-out + timers + queue integrity.
+5. Fleet step (257 repos) as its own RFC with rule set + secret-redaction
+   pass before any prompt leaves the box (S9).
+
+## 8. Review record
+
+- 2026-10-30: mcode full-scan (spotlight ollama qwen36-35b-uncensored-1m,
+  16k ctx) audited v0.1.0 -> board at audit/ooda-buildbox_2026_10_30.oot;
+  findings C1-C12, S1-S10, P1-P7, V1-V11 folded into this v0.2.
