@@ -1,0 +1,177 @@
+// # CI Release - The Fleet Release Workflow
+//
+// Logline: Builds the workflow file that turns a pushed tag into a published release for a fleet tool.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Build the workflow head.
+//   2. Build the checkout steps.
+//   3. Build the build steps.
+//   4. Build the publish step.
+//   5. Join the parts into one workflow.
+//
+// The fleet repository holds the tool, the compiler, the runtime, and the
+// standard library. It builds the tool, proves the tool with its own tests
+// and with the parity gate, and stages the binary with its hash sidecar. It
+// then calls the shared auto release workflow of the openOODA repository, so
+// the fleet and the core repositories publish a release the same way.
+//
+// A pushed tag is the release. The tag names the version of the tool and must
+// match the VERSION file of the repository.
+
+import "std/core/text/num_buffer.oo";
+import "text/lines.oo";
+import "ci/template.oo";
+
+// The head of the release workflow file.
+pub fn ci_rel_head(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "name: release");
+    l = list_push(l, "");
+    l = list_push(l, "on:");
+    l = list_push(l, "  push:");
+    l = list_push(l, "    tags: ['v*']");
+    l = list_push(l, "  workflow_dispatch:");
+    l = list_push(l, "");
+    l = list_push(l, "permissions:");
+    l = list_push(l, "  contents: write");
+    l = list_push(l, "");
+    l = list_push(l, "jobs:");
+    l = list_push(l, "  build:");
+    l = list_push(l, "    name: Build the release asset");
+    l = list_push(l, "    runs-on: ubuntu-latest");
+    l = list_push(l, "    steps:");
+    return l;
+}
+
+// The checkout steps of the release workflow file.
+pub fn ci_rel_checkout(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        with:");
+    l = list_push(l, "          path: " + repo);
+    l = list_push(l, "");
+    l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        with:");
+    l = list_push(l, "          repository: openOODA/oodac");
+    l = list_push(l, "          path: oodac");
+    l = list_push(l, "");
+    l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        with:");
+    l = list_push(l, "          repository: openOODA/oodar");
+    l = list_push(l, "          path: oodar");
+    l = list_push(l, "");
+    l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        with:");
+    l = list_push(l, "          repository: openOODA/std");
+    l = list_push(l, "          path: std");
+    l = list_push(l, "");
+    let extras: List[String] = ci_sibling_tools(repo);
+    let mut i: Int = 0;
+    while i < list_len(extras) {
+        let name: String = list_get(extras, i);
+        l = list_push(l, "      - uses: actions/checkout@v4");
+        l = list_push(l, "        with:");
+        l = list_push(l, "          repository: openOODA-tools/" + name);
+        l = list_push(l, "          path: " + name);
+        l = list_push(l, "");
+        i = i + 1;
+    }
+    return l;
+}
+
+// The build steps of the release workflow file. The tool is built, verified,
+// and tested, and the parity gate proves the drop-in property, so a release
+// is never published for a tool that fails its own contract.
+pub fn ci_rel_build(repo: String, upstream: String, package: String, binary: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "      - name: Require compiler and clang");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}");
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          test -x oodac/bin/oodac || chmod +x oodac/bin/oodac");
+    l = list_push(l, "          if ! command -v clang >/dev/null; then sudo apt-get update && sudo apt-get install -y clang; fi");
+    l = list_push(l, "          command -v clang >/dev/null || { echo \"clang is required for the build\"; exit 1; }");
+    l = list_push(l, "");
+    l = list_push(l, "      - name: Build the oodar runtime");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}");
+    l = list_push(l, "        run: make -C oodar/scripts -f Makefile modular");
+    l = list_push(l, "");
+    if upstream != "" {
+        let mut part: List[String] = ci_install_upstream(upstream, package, binary);
+        let mut k: Int = 0;
+        while k < list_len(part) { l = list_push(l, list_get(part, k)); k = k + 1; }
+    }
+    l = list_push(l, "      - name: Build, verify, and test");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        env:");
+    l = list_push(l, "          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac");
+    l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_NO_JAIL: \"1\"");
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          make build");
+    l = list_push(l, "          make verify");
+    l = list_push(l, "          make test");
+    l = list_push(l, "");
+    let mut stage: List[String] = ci_rel_stage(repo);
+    let mut k: Int = 0;
+    while k < list_len(stage) { l = list_push(l, list_get(stage, k)); k = k + 1; }
+    return l;
+}
+
+// The steps that stage the release asset and upload it. The binary is staged
+// with its SHA-256 sidecar, so the release always carries the hash of the
+// exact bytes that were published.
+pub fn ci_rel_stage(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "      - name: Stage the release asset");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}");
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          test -x " + repo + "/dist/" + repo + " || { echo \"::error::dist/" + repo + " was not produced\"; exit 1; }");
+    l = list_push(l, "          cp " + repo + "/dist/" + repo + " " + repo + "-linux-x86_64");
+    l = list_push(l, "          sha256sum " + repo + "-linux-x86_64 > " + repo + "-linux-x86_64.sha256");
+    l = list_push(l, "");
+    l = list_push(l, "      - name: Upload the release asset");
+    l = list_push(l, "        uses: actions/upload-artifact@v4");
+    l = list_push(l, "        with:");
+    l = list_push(l, "          name: " + repo + "-linux-x86_64");
+    l = list_push(l, "          path: |");
+    l = list_push(l, "            " + repo + "-linux-x86_64");
+    l = list_push(l, "            " + repo + "-linux-x86_64.sha256");
+    l = list_push(l, "");
+    return l;
+}
+
+// The publish step. It calls the shared auto release workflow of the
+// openOODA repository with the tag that was pushed and the asset that was
+// built, so the fleet publishes a release the same way the core repositories
+// do.
+pub fn ci_rel_publish(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "  publish:");
+    l = list_push(l, "    needs: build");
+    l = list_push(l, "    uses: openOODA/openOODA/.github/workflows/auto-release.yml");
+    l = list_push(l, "    with:");
+    l = list_push(l, "      target_tag: ${{ github.ref_name }}");
+    l = list_push(l, "      artifact_pattern: " + repo + "-linux-x86_64");
+    l = list_push(l, "    permissions:");
+    l = list_push(l, "      contents: write");
+    l = list_push(l, "");
+    return l;
+}
+
+// Join the parts into one release workflow file.
+pub fn ci_release_workflow(repo: String, upstream: String, package: String, binary: String) -> String {
+    let mut all: List[String] = ci_rel_head(repo);
+    let mut part: List[String] = ci_rel_checkout(repo);
+    let mut i: Int = 0;
+    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    part = ci_rel_build(repo, upstream, package, binary);
+    i = 0;
+    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    part = ci_rel_publish(repo);
+    i = 0;
+    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    return text_join_lines(all) + "\n";
+}

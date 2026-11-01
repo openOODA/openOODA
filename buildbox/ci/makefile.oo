@@ -1,28 +1,29 @@
-// # Makefile Patch - Wires The Parity Gate Into A Tool Makefile
+// # Makefile Patch - Wires The Drop-In Parity Gate Into A Tool Makefile
 //
-// Logline: Adds the parity target to a tool Makefile and makes the test target depend on it.
+// Logline: Makes sure the tool compares itself against the tool it replaces, as part of its own test run.
 //
 // Setup: Needs FsReadCap to read the Makefile and FsWriteCap to write it back.
 //
 // Beats:
-//   1. Build the parity target block.
-//   2. Add the parity target to the phony list.
-//   3. Make the test target depend on the parity target.
-//   4. Insert the parity target before the test target.
-//   5. Write the patched Makefile back.
+//   1. Build the drop-in parity target block.
+//   2. Find the target that already runs the drop-in harness.
+//   3. Name the target that the workflow must call.
+//   4. Patch the Makefile so the test target depends on it.
 //
-// A tool that already has a parity target keeps it. The patch then only makes
-// the test target depend on it, so the existing comparison is never lost.
+// A tool whose parity target is the harness keeps the name parity. A tool
+// whose parity target is something else keeps that target and gets a second
+// one, parity-dropin. The workflow calls the target that runs the harness, so
+// every tool is compared against the tool it replaces.
 
 import "std/core/primitives/str.oo";
 import "std/fs/os/fs.oo";
 import "text/lines.oo";
 
-// The parity target block. It builds the parity runner and runs it. The
-// runner reads the case table of the repository.
-pub fn ci_mk_target() -> List[String] {
+// The drop-in parity target block. It builds the parity runner and runs it.
+// The runner reads the case table of the repository.
+pub fn ci_mk_block() -> List[String] {
     let mut l: List[String] = list_new();
-    l = list_push(l, "parity: $(BIN)");
+    l = list_push(l, "parity-dropin: $(BIN)");
     l = list_push(l, "\t@mkdir -p .ooda-cache .ooda-cache/parity");
     l = list_push(l, "\t$(OODA_COMPILER) build qa/parity/run.oo -o .ooda-cache/parity-run");
     l = list_push(l, "\t@chmod +x .ooda-cache/parity-run");
@@ -31,51 +32,91 @@ pub fn ci_mk_target() -> List[String] {
     return l;
 }
 
-// Report whether a line names the parity target.
-pub fn ci_mk_is_parity(line: String) -> Bool {
-    return str_starts_with(line, "parity:");
+// Report whether the target that starts at line i is the drop-in harness. The
+// harness builds qa/parity/run.oo, so the body of the target names that file.
+pub fn ci_mk_is_harness(lines: List[String], i: Int) -> Bool {
+    let stop: Int = i + 5;
+    let mut j: Int = i + 1;
+    while j < list_len(lines) && j < stop {
+        if str_contains(list_get(lines, j), "qa/parity/run.oo") { return true; }
+        j = j + 1;
+    }
+    return false;
 }
 
-// Report whether a line already names the parity target in a dependency list.
-pub fn ci_mk_has_parity(line: String) -> Bool {
-    return str_contains(line, " parity") || str_contains(line, "parity:");
-}
-
-// Patch the Makefile of one tool. The result is written back to the same
-// path.
-pub fn ci_mk_patch(fs_r: &FsReadCap, fs_w: &FsWriteCap, mk_path: String) -> Bool {
-    let r: Result[String, String] = fs_read_file(fs_r, mk_path);
-    if r.is_err() { return false; }
-    let lines: List[String] = text_split_lines(r.val);
-    let mut has_target: Bool = false;
+// Name the target that runs the drop-in harness in the given lines. The name
+// is empty when the Makefile has no harness at all.
+pub fn ci_mk_dropin_of(lines: List[String]) -> String {
     let mut i: Int = 0;
     while i < list_len(lines) {
-        if ci_mk_is_parity(list_get(lines, i)) { has_target = true; }
+        let l: String = list_get(lines, i);
+        if str_starts_with(l, "parity:") && ci_mk_is_harness(lines, i) { return "parity"; }
+        if str_starts_with(l, "parity-dropin:") && ci_mk_is_harness(lines, i) { return "parity-dropin"; }
         i = i + 1;
     }
+    return "";
+}
+
+// Report whether a line already carries a target name in a dependency list.
+pub fn ci_mk_has_target(line: String, name: String) -> Bool {
+    return str_contains(line, " " + name) || str_contains(line, name + ":");
+}
+
+// The name of the target that the workflow must call for one tool.
+pub fn ci_mk_workflow_target(fs_r: &FsReadCap, mk_path: String) -> String {
+    let r: Result[String, String] = fs_read_file(fs_r, mk_path);
+    if r.is_err() { return "parity-dropin"; }
+    let name: String = ci_mk_dropin_of(text_split_lines(r.val));
+    if name == "" { return "parity-dropin"; }
+    return name;
+}
+
+// Build the patched lines of one Makefile. The drop-in target is inserted
+// before the test target, and the test target and the phony list carry it.
+pub fn ci_mk_patch_lines(lines: List[String], dropin: String, insert: Bool) -> List[String] {
     let mut out: List[String] = list_new();
-    let mut inserted: Bool = false;
-    i = 0;
+    let mut done: Bool = false;
+    let mut i: Int = 0;
     while i < list_len(lines) {
         let line: String = list_get(lines, i);
-        if !inserted && !has_target && str_starts_with(line, "test:") {
+        if insert && !done && str_starts_with(line, "test:") {
+            let blk: List[String] = ci_mk_block();
             let mut j: Int = 0;
-            while j < list_len(ci_mk_target()) { out = list_push(out, list_get(ci_mk_target(), j)); j = j + 1; }
-            inserted = true;
+            while j < list_len(blk) { out = list_push(out, list_get(blk, j)); j = j + 1; }
+            done = true;
         }
-        if str_starts_with(line, ".PHONY") && !ci_mk_has_parity(line) {
-            out = list_push(out, line + " parity");
+        if str_starts_with(line, ".PHONY") && !ci_mk_has_target(line, dropin) {
+            out = list_push(out, line + " " + dropin);
             i = i + 1;
             continue;
         }
-        if str_starts_with(line, "test:") && !ci_mk_has_parity(line) {
-            out = list_push(out, line + " parity");
+        if str_starts_with(line, "test:") && !ci_mk_has_target(line, dropin) {
+            out = list_push(out, line + " " + dropin);
             i = i + 1;
             continue;
         }
         out = list_push(out, line);
         i = i + 1;
     }
+    if insert && !done {
+        let blk: List[String] = ci_mk_block();
+        let mut j: Int = 0;
+        while j < list_len(blk) { out = list_push(out, list_get(blk, j)); j = j + 1; }
+    }
+    return out;
+}
+
+// Patch the Makefile of one tool. The test target depends on the drop-in
+// target, so the comparison against the tool it replaces is part of the test
+// run and never a step that can be skipped.
+pub fn ci_mk_patch(fs_r: &FsReadCap, fs_w: &FsWriteCap, mk_path: String) -> Bool {
+    let r: Result[String, String] = fs_read_file(fs_r, mk_path);
+    if r.is_err() { return false; }
+    let lines: List[String] = text_split_lines(r.val);
+    let mut dropin: String = ci_mk_dropin_of(lines);
+    let mut insert: Bool = dropin == "";
+    if insert { dropin = "parity-dropin"; }
+    let out: List[String] = ci_mk_patch_lines(lines, dropin, insert);
     let body: String = text_join_lines(out);
     let last: String = if list_len(out) == 0 { "" } else { list_get(out, list_len(out) - 1) };
     let text: String = if last == "" { body } else { body + "\n" };
