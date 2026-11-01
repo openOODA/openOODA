@@ -1,0 +1,114 @@
+# RFC 0010: openOODA-tools Fleet Governance, Audit Scope, and Redaction
+File: openOODA/rfcs/0010-tools-fleet-governance.oot
+
+* **RFC ID**: 0010
+* **Title**: openOODA-tools Fleet Governance, Audit Scope, and Redaction
+* **Author**: openOODA Core Architecture Team
+* **Status**: Draft
+* **Type**: Standards Track / Governance
+* **Decision Driver**: The 256-repo openOODA-tools fleet sits outside every
+  current rule set; the 2026-10-30 sweep found a live-looking key-shaped string
+  in oohistory test fixtures and the fleet must be auditable before the buildbox
+  fans repo content to LLMs. The fleet is now written in openOODA, so the .oo
+  page laws apply to it and this RFC covers the layer that they do not.
+* **Supersedes**: None
+* **Related**: RFC 0001 (capability security), RFC 0003 (file format),
+  RFC 0011 (fleet validation standard), rules.oot, AGENTS.md §7
+* **Target Release**: v2.13.0
+* **Created**: 2026-10-31
+
+---
+
+## 1. Context
+
+The openOODA org governs 15 polyrepo repos under rules.oot/AGENTS.md page laws.
+The sibling org openOODA-tools holds 256 small utility repos (oo*). The first
+version of this RFC said the fleet was written in .py/.sh and that no .oo house
+law applied to it. That was wrong by 2026-11-01. The measurement at that date
+found 1,855 .oo files, 211 .py files, and 724 .sh files across the fleet, and
+256 of 257 repositories hold at least one .oo file. The .py and .sh files are
+the QA and the install layer. The .oo page law, the Academy header, and the
+banned extension list therefore apply to the fleet, and this RFC covers the
+layer they do not: the QA and the install layer, the redaction of the content
+that leaves the box, and the drop-in parity with the program each tool
+replaces.
+
+Of the 256 repositories, 104 ship a real tool and 152 hold a stub. The stub
+repositories are tracked in the fleet backlog and the workflow of every
+repository fails closed, so a stub is red rather than green. The validation
+standard, the verdict vocabulary, the workflow contract, and the parity
+contract live in RFC 0011.
+
+## 2. Specification
+
+### 2.1 Fleet rule set (the layer the .oo page laws do not reach)
+The .oo page law, the Academy header, and the banned extension list apply to
+the .oo pages of the fleet. These rules cover the QA and the install layer.
+- Every repo keeps README, LICENSE, VERSION, and a qa/ self-test.
+- Shell scripts: `set -euo pipefail`, no `eval`, no unquoted `$VAR` in command
+  position, mktemp for temp files, no curl|bash (fetch to temp + verify).
+- Python: no `eval`/`exec`; `subprocess`/`os.popen` must never interpolate
+  secrets or untrusted strings into a shell line (linter-flagged); secrets
+  only from env/keyring. Python repos ship a hash-pinned lock file
+  (`requirements.lock` / `poetry.lock` with hashes); shell repos pin tool
+  versions or verify hashes (oosync).
+- `VERSION` is SemVer MAJOR.MINOR.PATCH and must equal the git tag /
+  `git describe` output (same invariant as RFC 0006).
+- Commits are signed (commit signing required for all fleet repos).
+- New files default to .oo where the tool is expressible; .py/.sh only for
+  host glue, with the reason in the README.
+- A tool declares the program it replaces, and its test path proves the
+  drop-in property by running the same arguments against both programs and
+  comparing the stdout, the stderr, and the exit code. The contract is in RFC
+  0011 section 2.3.
+
+### 2.2 Redaction pass before any model prompt
+- Before any fleet content leaves the box (buildbox fan-out), run the
+  redaction engine over it: API keys (sk-, AKIA, ghp_/gho_, xox), private key
+  blocks, passwords/tokens in env dumps. Redacted form: `[REDACTED:KIND]`.
+- The engine covers a PEM private key block as a whole block, not as a token,
+  and covers the name and the value of an environment dump credential. A diff
+  that still holds a key shape after the redaction is dropped, not sent.
+- Test fixtures that intentionally contain key-shaped strings must live under
+  `tests/fixtures/` with a `# FAKE` (or `# OO-FAKE`) prefix marker; the
+  redaction engine matches on marker + shape (length > 16, key prefixes
+  sk-/AKIA/ghp_/gho_/xox, entropy threshold) so ordinary short strings are
+  never mangled.
+
+### 2.3 Audit scope
+- The buildbox audit gate covers the fleet at pattern level (the 2026-10-30
+  sweep) plus per-repo `qa` self-tests; line-level audit is scheduled
+  network/filesystem-first: oowget, ootunnel, oovault, oobackup, oofetch,
+  ooenv, ooguard, oohistory, then the rest alphabetically.
+
+## 3. Security
+
+Fleet repos run on developer hosts with ambient authority; the cap model does
+not apply to .py/.sh. Mitigations are the 2.1 rule set + 2.2 redaction + the
+buildbox rule that model output is advisory and source-verified (AGENTS.md §7).
+
+## 4. Testing
+
+Each fleet repo runs its qa/ self-test in the buildbox loop; the redaction
+engine has positive/negative fixtures (must redact real-shaped keys, must not
+mangle code). Every tool also runs the parity gate of RFC 0011 section 2.3
+against the program it replaces. Gate: redaction test suite + parity gate +
+pattern sweep clean.
+
+## 5. Rollout
+
+1. Land this RFC (Draft -> Accepted after mcode/vibe review).
+2. Redaction engine wired into fanout.oo before any fleet diff is sent.
+3. Pattern-level gate in the hourly loop; line-audit queue per 2.3.
+4. The workflow contract and the parity gate land in every repository, and the
+   fleet backlog names every repository that holds no implementation.
+
+## 6. Open defect
+
+The .py ban of rules.oot 1.14 and the fleet layer do not agree yet. 57 of the
+104 shipped tools ship a qa/verify_pages.py harness, the governance repository
+ships 13 .py files under qa/e2e/, and oodac ships 6 under tests/fuzz/. The
+resolution is either an explicit qa/ carve-out in the style of the existing
+.sh carve-outs, or a port of those harnesses to .oo. This RFC records the
+defect and does not resolve it. The fleet workflow must not be built on an
+unresolved reading of the law.

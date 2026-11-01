@@ -2,118 +2,125 @@
 
 File: openOODA/docs/ooda-buildbox.oot
 
-Status: v0.4.0 (2026-10-31) — full --fast loop VERIFIED in-container.
-As-built: image localhost/ooda-buildbox:latest (6376980); quadlet units installed
-in /etc/containers/systemd (daemon-reloaded, NOT enabled). One manual loop run:
-4 repos shallow-cloned (OODA_BRANCH for oodac), stage1 oodac build 297/297,
-audit_gate 8/8 PASS, /queue/state.oot += "loop PASS mode=fast gate_rc=0".
-Not done: systemctl enable --now of the timers (live change, owner action).
+Status: v0.5.0 (2026-11-01) — fleet phase implemented. The loop gates every
+repository, the workflow contract and the parity gate are written into all 256
+fleet repositories, and the fleet backlog names the 152 repositories that hold
+no implementation.
+As-built: image localhost/ooda-buildbox:latest; quadlet units installed in
+/etc/containers/systemd. The unit ooda-buildbox.service is generated and the
+hardening drop-in is applied. The timers are NOT enabled yet.
 Audit board: openOODA/audit/ooda-buildbox_2026_10_30.oot (186 lines).
+Standard: RFC 0010 (fleet rule set and redaction), RFC 0011 (verdict, workflow,
+parity, repair). Backlog: openOODA/docs/tools-backlog.oot.
 
 ## 1. Goal
 
-Hermetic container on zebes that builds oodac from source, runs the
-audit gate on every change, and fans diffs out to spotlight (ollama) for
-multi-engine review — 24/7, unattended. In-box tooling is .oo compiled to
-native binaries; HTTP to spotlight uses the proven curl-argv pattern.
-No NEW .sh/.py beyond the rules.oot:146-151 carve-outs (P3).
+Hermetic container on zebes that builds oodac from source, runs the audit gate
+on every change, gates every repository of the fleet, and fans diffs out to
+spotlight (ollama) for multi-engine review — 24/7, unattended. In-box tooling
+is .oo compiled to native binaries; HTTP to spotlight uses the proven
+curl-argv pattern. No NEW .sh/.py beyond the rules.oot:146-151 carve-outs.
 
-## 2. Decisions (v0.2, revised per mcode)
+## 2. Decisions
 
-- D1 (REVISED): no .rs shim. std/net http_client/tls do not emit today and
-  oo_tcp_connect is loopback-only (P2), but tui/llm_exec.oo:197 already
-  execs curl with explicit argv, TLS, -m 60 timeout, and a 0600 header
-  file. ooda-ollama is .oo on that pattern; curl added to the image.
-- D2: plan lives in-repo as this .oot (RFC-shaped when promoted); runtime
-  queue/results live under /srv/containers/ooda-buildbox, NOT in the
-  governed tree (S5 — 256-line cap).
-- D3: fast loop = stage1 build + gate per push; fixed-point S1==S2 nightly.
-  The fixed point stays oodac/bootstrap/oodac_pure_build (bash) under the
-  rules.oot:147 carve-out (C2).
+- D1 — One generated manifest, not a hand written inventory. The manifest is
+  derived at loop time from the GitHub API and the local checkout. The rule for
+  generating it lives in .oo, so a new repository is picked up without an edit.
+- D2 — Fail closed verdict vocabulary. Exactly one of PASS, BUILD_FAIL,
+  VERIFY_FAIL, TEST_FAIL, NO_BUILD_TARGET, CI_MISSING, UNVERIFIABLE per
+  repository per run. NO_BUILD_TARGET and CI_MISSING are backlog states and
+  never successes.
+- D3 — The box proposes, the owner merges. Auto-repair ends at an opened pull
+  request. The box never merges and never pushes to a default branch. The
+  guarantee is enforced by a server side ruleset, not by box discipline.
+- D4 — Redaction is a hard precondition. No byte reaches a model until the
+  redaction engine has processed it, and a diff that still holds a key shape
+  after the redaction is dropped rather than sent.
+- D5 — The gate re-checks the whole import closure after any compiler change,
+  and the build and emit caches are keyed by the compiler identity. Without
+  this the gate certifies a compiler it never exercised.
+- D6 — Landing order is: direct push the reviewed audit branches, then the
+  workflow branches, then install the review rulesets, then enable auto-repair.
+  A direct push and a review ruleset are mutually exclusive.
+- D7 — The default branch of every repository comes from the remote. No branch
+  name is hardcoded anywhere in the box. The fleet serves main and the core
+  repositories serve master, and the box handles both without a code change.
 
-## 3. Image: ooda-buildbox (two-stage)
+## 3. The blockers that the loop cleared
 
-- v1 builder stage: FROM registry.fedoraproject.org/fedora-toolbox:44
-  (same base as rust-buildbox on zebes). Packages: clang, llvm18, git,
-  make, curl. No rustc, no nested podman (C11). Fixed-point oodac build
-  happens here.
-- v2 runtime stage: minimal rootfs assembled from OODA-built static
-  binaries (emit/elf backend + oodar_nostd.c freestanding runtime), with
-  git and curl as the only external tools, hardened per the rust-buildbox
-  profile. Gate: elf backend must pass the full corpus before v2 ships.
-  Baseline 2026-10-31: elf runs 7/93 corpus fixtures OK, 86 fail closed
-  (zero miscompiles). Net egress: tiered floor landed in oodar
-  (OODA_NET_EGRESS=loopback|cgnat|all, default loopback; cc38a92) — a pure
-  .oo ollama client can now reach spotlight over tailscale with cgnat.
-- Baked in: oodac bootstrap seed + oodar + std. At container start, verify
-  bootstrap/seed/oodac.sha256 against oodac.pub with ed25519_verify_hex and
-  fail closed (S6).
-- Hardening copied from rust-buildbox/giggle-app units (S1):
-  NoNewPrivileges=true, DropCapability=ALL, ReadOnly=true,
-  Tmpfs=/tmp:rw,noexec,nosuid,nodev, ProtectSystem=strict,
-  ProtectHome=true, PrivateTmp=true, no host PID, volumes :Z.
-- Containerfile is the only non-.oo artifact (container DSL).
-- Entrypoint: ooda-loop (native .oo binary). No shell entrypoint.
+| ID | Blocker | Fix |
+|:---|:---|:---|
+| B1 | The branch was hardcoded to master, so every fleet clone failed. | The branch comes from `git ls-remote --symref`. |
+| B2 | `OODA_FLEET_ALL=1` was a no-op. | The flag walks the whole organization. `OODA_FLEET=1` uses the published catalog. |
+| B3 | The loop never built or tested a tool. | The gate builds, verifies, tests, and writes one verdict per repository. |
+| B4 | There was no single flight lock. | An atomic hard link with a stale check. |
+| B5 | The structured ERR line was never parsed. | The area and the detail are parsed out of the tool output. |
+| B6 | The redaction missed private key blocks and environment dump credentials. | The engine covers both and honours the fake marker. |
+| B7 | A push to main produced no release. | The shared auto release workflow is wired into every fleet repository. |
+| B8 | 96 repositories had no workflow at all. | Every repository now has the generated contract. |
+| B9 | The old workflow could not fail a tool that does not build. | The contract fails on a missing build target and on a missing binary. |
+| B10 | RFC 0010 said the fleet is .py/.sh. | The fleet is .oo. RFC 0010 is corrected. |
+| B11 | The quadlet used 13 systemd only keys, so the service was never generated. | The keys moved to a service drop-in. The service is generated. |
 
-## 4. Layout on zebes (mirrors rust-buildbox: 3 units)
+## 4. The layout
 
-- /etc/containers/systemd/ooda-buildbox.{container,build,network};
-  [Build] File= points at the Containerfile dir (C9).
-- Network: 10.89.110.0/24. Two planes (C8/S2): internal build plane; a
-  filtered egress used ONLY by git fetch and curl to spotlight — never by
-  code built from remote content.
-- Data: /srv/containers/ooda-buildbox/{queue,cache,repos/<name> per repo}
-  (C10 defines per-repo layout and refresh order).
-- Logs: /srv/containers/logs/ooda-buildbox.
-- Timers: ooda-loop.timer (hourly fast loop), ooda-loop-nightly.timer
-  (fixed-point + 20k fuzz + whole-polyrepo recheck).
-- Secrets: host Secret= convention; named per consumer, never in the
-  queue mount (S7).
+```
+buildbox/
+  ooda_loop.oo        the entry point
+  fanout.oo           the advisory fan out
+  selftest.oo         the module self tests
+  fleet_apply.oo      writes the contract into every fleet repository
+  anchor.oo           the index
+  text/               line, word, hash, and JSON helpers
+  redact/             the redaction engine and its self test
+  fleet/              the verdict vocabulary, the manifest, the gate, the catalog
+  loop/               the lock, the compiler identity, the fetch, the manifest,
+                      the driver, the GitHub API client
+  ci/                 the generated workflow, the upstream package table, the
+                      Makefile patch
+  parity/             the parity runner, the upstream mapping reader, the case
+                      extractor, the self test
+```
 
-## 5. In-box pipeline (all .oo binaries)
+Every page holds at most 256 lines, at most 8 functions, and at most 40 lines
+per function. Every directory holds at most 8 pages. Every file opens with the
+four element Academy header, and the header of the parity runner keeps all four
+elements inside the first seven lines because the fleet Makefile reads the
+header with `head -7`.
 
-1. ooda-loop: git fetch each repo in repos/; record last-seen commit.
-2. Stage1 oodac rebuild (BOOTSTRAP_FIXED_POINT=0 via the carve-out script).
-3. Gate (real entry points, C1): oodac/qa/suite.oo + openOODA/qa/
-   polyrepo_suite.oo + bootstrap/corpus domains + the 2026-10-30 probe
-   set (F1-F11) as committed qa probes; double-run determinism filter.
-   After ANY compiler change, re-check the whole polyrepo import closure,
-   not just the diff (C4 — the F10 class).
-4. Fan-out to spotlight via ooda-ollama (.oo + curl argv, -m bounded, C7):
-   biggest local model full-scan, mid model adversarial diff, small model
-   triage. Model output is ADVISORY (AGENTS.md §7): raw output goes to
-   queue/raw/, confirmed findings (verified against source by a second
-   engine) to queue/findings.oot with model+prompt-hash+verifier tags
-   (S3). A commit turns red only on a source-verified finding.
-5. Single-flight via pidfile; all queue writes via file_append_sync only,
-   never file_writer_append (C5). Queue integrity: per-file sha256
-   manifest verified with ed25519_verify_hex (S4).
-6. Gate parses structured `ERR\t<area>\t<detail>` lines; missing
-   structured line on expected failure = hard fail (C6).
+## 5. The parity gate
 
-## 6. Language policy (restated per P3)
+The organization claims strict POSIX and GNU parity for every tool. The parity
+gate proves it.
 
-- All NEW in-box tooling is .oo. No new .sh/.py; the sanctioned carve-outs
-  (rules.oot:146-151: oodac_pure_build, tests/fuzz/test_*.sh, diffrun.sh,
-  double_run.sh, lint_oo_size.sh, qa e2e) may be invoked, not extended.
-- Prerequisite fixes before the box depends on them: convert the two
-  blind sh -c call sites (openOODA/qa/polyrepo_suite.oo:15,21 and
-  cli/qa/cmd/probe_dispatch.oo:15) to argv (S10); key the build/emit
-  caches by compiler identity like check_cache.oo already does (C3 —
-  logged as audit F12 in the oodac board).
+- The upstream program is named in the organization profile for a shipped tool
+  and in the fleet backlog for a tool that is not implemented.
+- Every repository holds `qa/parity/run.oo` and `qa/parity/cases.oot`. The
+  runner is the same file in every repository, so the comparison never drifts.
+- The cases come from the test recipe of the repository, so they are the
+  arguments the tool already claims to accept.
+- A `match` case must produce the same stdout, the same stderr, and the same
+  exit code. A `differ` case is a declared deviation and only the exit code
+  must match. A case the upstream refuses is skipped.
+- The gate fails when the upstream is missing and when the table holds no
+  `match` case.
 
-## 7. Rollout order
+## 6. As-built state
 
-1. F12 (cache keying) + S10 (two sh -c sites) fixed in oodac/openOODA/cli.
-2. Containerfile + 3 quadlet units on zebes; boot; seed verify; rebuild.
-3. Port the F1-F11 probe set into oodac/qa as committed probes; wire the
-   fast loop.
-4. ooda-ollama fan-out + timers + queue integrity.
-5. Fleet step (257 repos) as its own RFC with rule set + secret-redaction
-   pass before any prompt leaves the box (S9).
+- The loop binary, the fan out binary, the parity runner, the self test, and
+  the fleet applier are built and installed in the image build directory.
+- The hardening drop-in is applied and `ooda-buildbox.service` is generated.
+- The workflow contract and the parity gate are written into all 256 fleet
+  repositories on the branch `buildbox/fleet-contract`. Nothing is merged.
+- The fleet backlog names the 152 repositories that hold no implementation,
+  with the program each one must replace and its tier.
+- The timers are not enabled. The enabling is the live change and it comes
+  after the rulesets are installed.
 
-## 8. Review record
+## 7. Not done
 
-- 2026-10-30: mcode full-scan (spotlight ollama qwen36-35b-uncensored-1m,
-  16k ctx) audited v0.1.0 -> board at audit/ooda-buildbox_2026_10_30.oot;
-  findings C1-C12, S1-S10, P1-P7, V1-V11 folded into this v0.2.
+- The 104 shipped tools are not yet all green. The gate reports the state and
+  the repair policy opens pull requests, but the owner merges.
+- The 152 stub repositories are not implemented. They are tracked, they fail
+  closed, and the published catalog still lists only the shipped tools.
+- The rulesets are not installed and the timers are not enabled.
