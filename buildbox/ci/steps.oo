@@ -1,0 +1,42 @@
+// # CI Steps - The Steps A Fleet Repository Runs
+//
+// Logline: Holds the step shapes that the fleet workflow is made of, so the workflow and the release workflow build the same steps.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Build one step that runs a make target with the build environment.
+//   2. Name the tools another tool needs beside it.
+//
+// The build environment is the same in every step: the compiler of the
+// workspace, the workspace as the read and write root, no jail, and the per
+// module build path.
+//
+// The sibling list names the tools that another tool reads beside it. The
+// compiler resolves the standard library by walking the parent directories,
+// so a tool that reads a sibling tool needs that sibling checked out beside
+// it.
+
+
+// One step that runs a make target of the tool with the build environment.
+pub fn ci_step_make(repo: String, name: String, command: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "      - name: " + name);
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        env:");
+    l = list_push(l, "          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac");
+    l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_NO_JAIL: \"1\"");
+    l = list_push(l, "          OODA_BUILD_MULTI: \"1\"");
+    l = list_push(l, "        run: " + command);
+    l = list_push(l, "");
+    return l;
+}
+
+// The tools that another tool needs beside it.
+pub fn ci_sibling_tools(repo: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    if repo == "oogrep" { out = list_push(out, "oojq"); }
+    return out;
+}
