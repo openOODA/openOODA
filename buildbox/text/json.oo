@@ -1,0 +1,112 @@
+// # Text Json - String Member Extraction From A Json Document
+//
+// Logline: Reads the string values of one named member out of a JSON document without a general parser.
+//
+// Setup: Pure functions. No caps. No IO. The document must come from a trusted source.
+//
+// Beats:
+//   1. Walk a JSON document while tracking string state and escape state.
+//   2. Collect every string value of the named member in document order.
+//   3. Skip a balanced object or array when the member value is not a string.
+
+import "text/lines.oo";
+
+// Collect every string value of the named member, in document order. The
+// scanner tracks nesting depth and string state so a value inside a nested
+// object is still found and a key inside a string literal is not.
+pub fn json_string_values(doc: String, key: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let n: Int = chars_len(doc);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(doc, i);
+        if c != "\"" { i = i + 1; continue; }
+        let k: Result[Int, String] = json_read_string_end(doc, i);
+        if k.is_err() { break; }
+        let mut key_end: Int = 0;
+        if k.is_ok() { key_end = k.val; }
+        let name: String = json_unescape(str_slice(doc, i + 1, key_end - 1));
+        let mut j: Int = key_end + 1;
+        while j < n && char_at(doc, j) == " " { j = j + 1; }
+        if j >= n || char_at(doc, j) != ":" { i = key_end + 1; continue; }
+        j = j + 1;
+        while j < n && char_at(doc, j) == " " { j = j + 1; }
+        if j >= n { break; }
+        let vc: String = char_at(doc, j);
+        if vc == "\"" {
+            let v: Result[Int, String] = json_read_string_end(doc, j);
+            if v.is_err() { break; }
+            let mut vcode: Int = 0;
+            if v.is_ok() { vcode = v.val; }
+            if name == key {
+                out = list_push(out, json_unescape(str_slice(doc, j + 1, vcode - 1)));
+            }
+            i = vcode + 1;
+            continue;
+        }
+        let skipped: Int = json_skip_value(doc, j);
+        i = skipped;
+    }
+    return out;
+}
+
+// Find the index of the closing quote of the string that starts at index start.
+fn json_read_string_end(doc: String, start: Int) -> Result[Int, String] {
+    let n: Int = chars_len(doc);
+    let mut i: Int = start + 1;
+    while i < n {
+        let c: String = char_at(doc, i);
+        if c == "\\" { i = i + 2; continue; }
+        if c == "\"" { return Ok(i); }
+        i = i + 1;
+    }
+    return Err("ERR\tjson\tunterminated string");
+}
+
+// Skip one value that is not a string. Returns the index after the value.
+fn json_skip_value(doc: String, start: Int) -> Int {
+    let n: Int = chars_len(doc);
+    let mut i: Int = start;
+    let mut depth: Int = 0;
+    while i < n {
+        let c: String = char_at(doc, i);
+        if c == "\"" {
+            let v: Result[Int, String] = json_read_string_end(doc, i);
+            if v.is_err() { return n; }
+            let mut vcode: Int = 0;
+            if v.is_ok() { vcode = v.val; }
+            i = vcode + 1;
+            continue;
+        }
+        if c == "{" || c == "[" { depth = depth + 1; i = i + 1; continue; }
+        if c == "}" || c == "]" { depth = depth - 1; i = i + 1; if depth <= 0 { return i; } continue; }
+        if depth == 0 && c == "," { return i; }
+        i = i + 1;
+    }
+    return i;
+}
+
+// Remove the escape sequences that the JSON format defines for a string.
+pub fn json_unescape(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        if c == "\\" && i + 1 < n {
+            let d: String = char_at(s, i + 1);
+            if d == "n" { out = out + "\n"; i = i + 2; continue; }
+            if d == "t" { out = out + "\t"; i = i + 2; continue; }
+            if d == "r" { out = out + "\r"; i = i + 2; continue; }
+            if d == "\"" { out = out + "\""; i = i + 2; continue; }
+            if d == "\\" { out = out + "\\"; i = i + 2; continue; }
+            if d == "/" { out = out + "/"; i = i + 2; continue; }
+            out = out + d;
+            i = i + 2;
+            continue;
+        }
+        out = out + c;
+        i = i + 1;
+    }
+    return out;
+}

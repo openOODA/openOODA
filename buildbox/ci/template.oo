@@ -1,0 +1,197 @@
+// # CI Template - The Fail Closed Contract Every Fleet Repository Runs
+//
+// Logline: Builds the workflow file that every fleet repository runs, so the contract is generated and never hand written.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Build the workflow head.
+//   2. Build the checkout steps.
+//   3. Build the build steps.
+//   4. Build the verify steps.
+//   5. Build the parity steps.
+//   6. Join the parts into one workflow.
+//
+// The contract fails closed. A repository without a build target fails. A
+// repository whose build produces no binary fails. A repository whose tool
+// differs from the tool it replaces fails. A repository whose tool is not
+// deterministic across two runs fails.
+
+import "std/core/text/num_buffer.oo";
+import "text/lines.oo";
+
+// The head of the workflow file.
+pub fn ci_head(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "name: ci");
+    l = list_push(l, "");
+    l = list_push(l, "on:");
+    l = list_push(l, "  push:");
+    l = list_push(l, "    branches: [main]");
+    l = list_push(l, "  pull_request:");
+    l = list_push(l, "  workflow_dispatch:");
+    l = list_push(l, "");
+    l = list_push(l, "jobs:");
+    l = list_push(l, "  gate:");
+    l = list_push(l, "    name: Fleet gate");
+    l = list_push(l, "    runs-on: ubuntu-latest");
+    l = list_push(l, "    steps:");
+    return l;
+}
+
+// The checkout steps. The tool, the compiler, the runtime, and the standard
+// library are checked out side by side, so the compiler resolves the standard
+// library the same way it does in the buildbox.
+pub fn ci_checkout(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        with:");
+    l = list_push(l, "          path: " + repo);
+    l = list_push(l, "");
+    l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        with:");
+    l = list_push(l, "          repository: openOODA/oodac");
+    l = list_push(l, "          path: oodac");
+    l = list_push(l, "");
+    l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        with:");
+    l = list_push(l, "          repository: openOODA/oodar");
+    l = list_push(l, "          path: oodar");
+    l = list_push(l, "");
+    l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        with:");
+    l = list_push(l, "          repository: openOODA/std");
+    l = list_push(l, "          path: std");
+    l = list_push(l, "");
+    l = list_push(l, "      - name: Require clang");
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          if ! command -v clang >/dev/null; then");
+    l = list_push(l, "            sudo apt-get update && sudo apt-get install -y clang");
+    l = list_push(l, "          fi");
+    l = list_push(l, "          command -v clang >/dev/null || { echo \"clang is required to build the tool\"; exit 1; }");
+    l = list_push(l, "");
+    l = list_push(l, "      - name: Build the oodar runtime");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}");
+    l = list_push(l, "        run: make -C oodar/scripts -f Makefile modular");
+    l = list_push(l, "");
+    return l;
+}
+
+// The build steps. A repository without a build target fails here. A build
+// that produces no binary fails on the next step.
+pub fn ci_build(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "      - name: Require a build target");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          if ! grep -qE '^build[[:space:]]*:' Makefile; then");
+    l = list_push(l, "            echo \"::error::This repository has no build target. The tool is a stub and is tracked in the fleet backlog.\"");
+    l = list_push(l, "            exit 1");
+    l = list_push(l, "          fi");
+    l = list_push(l, "");
+    l = list_push(l, "      - name: Build the tool");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        env:");
+    l = list_push(l, "          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac");
+    l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_NO_JAIL: \"1\"");
+    l = list_push(l, "        run: make build");
+    l = list_push(l, "");
+    l = list_push(l, "      - name: Require the tool binary");
+    l = list_push(l, "        if: always()");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          if [ ! -x \"dist/" + repo + "\" ]; then");
+    l = list_push(l, "            echo \"::error::dist/" + repo + " was not produced. The tool is not implemented and is tracked in the fleet backlog.\"");
+    l = list_push(l, "            exit 1");
+    l = list_push(l, "          fi");
+    l = list_push(l, "");
+    return l;
+}
+
+// The verify steps. The tool verifies itself, runs its own tests, and proves
+// that it is deterministic across two runs.
+pub fn ci_verify(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "      - name: Verify");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        env:");
+    l = list_push(l, "          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac");
+    l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_NO_JAIL: \"1\"");
+    l = list_push(l, "        run: make verify");
+    l = list_push(l, "");
+    l = list_push(l, "      - name: Test");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        env:");
+    l = list_push(l, "          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac");
+    l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_NO_JAIL: \"1\"");
+    l = list_push(l, "        run: make test");
+    l = list_push(l, "");
+    l = list_push(l, "      - name: Pure test audit");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          if make -n pure >/dev/null 2>&1; then");
+    l = list_push(l, "            make pure");
+    l = list_push(l, "          else");
+    l = list_push(l, "            echo \"This repository has no pure target.\"");
+    l = list_push(l, "          fi");
+    l = list_push(l, "");
+    l = list_push(l, "      - name: Double-run determinism");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          mkdir -p .ooda-cache");
+    l = list_push(l, "          ./dist/" + repo + " --version > .ooda-cache/run1.txt 2>&1 || true");
+    l = list_push(l, "          ./dist/" + repo + " --version > .ooda-cache/run2.txt 2>&1 || true");
+    l = list_push(l, "          cmp -s .ooda-cache/run1.txt .ooda-cache/run2.txt || { echo \"::error::the tool is not deterministic across two runs\"; exit 1; }");
+    l = list_push(l, "");
+    return l;
+}
+
+// The parity steps. The upstream tool is installed and the tool is compared
+// against it. A tool with no upstream program gets no parity step.
+pub fn ci_parity(repo: String, upstream: String, package: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    if upstream == "" { return l; }
+    l = list_push(l, "      - name: Install the upstream tool");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}");
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          if ! command -v " + upstream + " >/dev/null 2>&1; then");
+    l = list_push(l, "            sudo apt-get update -qq");
+    l = list_push(l, "            sudo apt-get install -y -qq " + package);
+    l = list_push(l, "          fi");
+    l = list_push(l, "          command -v " + upstream + " >/dev/null 2>&1 || { echo \"::error::the upstream tool " + upstream + " is required for the parity gate\"; exit 1; }");
+    l = list_push(l, "");
+    l = list_push(l, "      - name: Parity against the upstream tool");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        env:");
+    l = list_push(l, "          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac");
+    l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
+    l = list_push(l, "          OODA_NO_JAIL: \"1\"");
+    l = list_push(l, "        run: make parity");
+    l = list_push(l, "");
+    return l;
+}
+
+// Join the parts into one workflow file.
+pub fn ci_workflow(repo: String, upstream: String, package: String) -> String {
+    let mut all: List[String] = ci_head(repo);
+    let mut part: List[String] = ci_checkout(repo);
+    let mut i: Int = 0;
+    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    part = ci_build(repo);
+    i = 0;
+    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    part = ci_verify(repo);
+    i = 0;
+    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    part = ci_parity(repo, upstream, package);
+    i = 0;
+    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    return text_join_lines(all) + "\n";
+}

@@ -1,0 +1,153 @@
+// # Parity Cases - The Comparison Cases Taken From A Tool Own Test Suite
+//
+// Logline: Reads the test recipe of a tool Makefile and turns the tool invocations into parity cases.
+//
+// Setup: Needs FsReadCap to read the Makefile.
+//
+// Beats:
+//   1. Cut a recipe line at the first shell metacharacter.
+//   2. Join the continued recipe lines into one command.
+//   3. Find the invocations of the tool under test in the test recipe.
+//   4. Render the case table.
+//
+// The test recipe of a tool already holds the arguments that tool must accept.
+// Those arguments are the natural parity cases, because a drop-in replacement
+// must accept the same arguments as the tool it replaces.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+import "text/words.oo";
+
+// Cut a recipe line at the first shell metacharacter that is not inside a
+// quoted word. The part before the metacharacter is the command.
+pub fn parity_case_clean(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut in_quotes: Bool = false;
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        if c == "\"" {
+            in_quotes = !in_quotes;
+            out = out + c;
+        } else if in_quotes {
+            out = out + c;
+        } else if c == ">" || c == "|" || c == ";" || c == "&" || c == "`" {
+            break;
+        } else {
+            out = out + c;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+// Report whether a word cannot be compared. A make variable has no value
+// outside make. The model context protocol reads from standard input, so it
+// has no comparable file output.
+pub fn parity_case_skip_word(word: String) -> Bool {
+    if str_contains(word, "$(") { return true; }
+    if str_contains(word, "--mcp") { return true; }
+    return false;
+}
+
+// Report whether a word asks for the usage text or the version text. No two
+// tools print the same usage text, so such a case proves nothing about the
+// drop-in behaviour.
+pub fn parity_case_is_usage(word: String) -> Bool {
+    return word == "--help" || word == "-h" || word == "--version" || word == "-V";
+}
+
+// Strip the make silent prefix and the make option prefix from a word. The
+// recipe of a Makefile writes the command as "@./tool args".
+pub fn parity_case_strip(word: String) -> String {
+    let mut out: String = word;
+    while chars_len(out) > 0 {
+        let c: String = char_at(out, 0);
+        if c != "@" && c != "-" && c != "+" { break; }
+        out = str_slice(out, 1, chars_len(out));
+    }
+    return out;
+}
+
+// Collect the parity cases of one tool from its Makefile test recipe. Every
+// case is the argument list of one invocation of the tool under test.
+pub fn parity_case_collect(fs_r: &FsReadCap, tool: String, mk_path: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let r: Result[String, String] = fs_read_file(fs_r, mk_path);
+    if r.is_err() { return out; }
+    let lines: List[String] = text_split_lines(r.val);
+    let mut in_test: Bool = false;
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let l: String = list_get(lines, i);
+        i = i + 1;
+        if !str_starts_with(l, "\t") {
+            let head: String = text_trim(l);
+            in_test = str_starts_with(head, "test:");
+            continue;
+        }
+        if !in_test { continue; }
+        let mut cmd: String = text_trim(l);
+        while str_ends_with(cmd, "\\") && i < list_len(lines) {
+            cmd = str_slice(cmd, 0, chars_len(cmd) - 1);
+            let nxt: String = list_get(lines, i);
+            i = i + 1;
+            cmd = cmd + " " + text_trim(nxt);
+        }
+        let clean: String = parity_case_clean(cmd);
+        let words: List[String] = text_words(clean);
+        let mut w: Int = 0;
+        while w < list_len(words) {
+            let word: String = list_get(words, w);
+            let head: String = parity_case_strip(word);
+            if head == "./$(BIN)" || head == "./" + tool {
+                let args: List[String] = parity_case_args(words, w + 1);
+                let case: String = parity_case_line(args);
+                if case != "" && !parity_case_has(out, case) { out = list_push(out, case); }
+                break;
+            }
+            w = w + 1;
+        }
+    }
+    return out;
+}
+
+// Take the argument words of one invocation and drop the words that cannot be
+// compared.
+pub fn parity_case_args(words: List[String], from: Int) -> List[String] {
+    let mut out: List[String] = list_new();
+    if from < list_len(words) && parity_case_is_usage(list_get(words, from)) { return out; }
+    let mut i: Int = from;
+    while i < list_len(words) {
+        let w: String = list_get(words, i);
+        if parity_case_skip_word(w) { return out; }
+        out = list_push(out, w);
+        i = i + 1;
+    }
+    return out;
+}
+
+// Render one case as the line of the case table.
+pub fn parity_case_line(args: List[String]) -> String {
+    if list_len(args) == 0 { return ""; }
+    let mut out: String = "match";
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        let w: String = list_get(args, i);
+        if str_contains(w, " ") { out = out + " \"" + w + "\""; } else { out = out + " " + w; }
+        i = i + 1;
+    }
+    return out;
+}
+
+// Report whether the case list already holds a case.
+pub fn parity_case_has(cases: List[String], case: String) -> Bool {
+    let mut i: Int = 0;
+    while i < list_len(cases) {
+        if list_get(cases, i) == case { return true; }
+        i = i + 1;
+    }
+    return false;
+}

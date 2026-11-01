@@ -1,0 +1,96 @@
+// # Parity Self Test - Proves The Mapping And The Case Extraction
+//
+// Logline: Checks the profile parser and the case extractor against known values.
+//
+// Setup: Needs FsReadCap to read the profile and a Makefile.
+//
+// Beats:
+//   1. Check that the profile yields the expected number of mappings.
+//   2. Check that a known tool maps to its known upstream.
+//   3. Check that the case extractor finds the expected invocations.
+//   4. Check that a metacharacter cuts the command.
+//
+// The fleet directory comes from OODA_FLEET_DIR. The test reports a skip when
+// the fleet directory is not there, so the test never fails on a host that
+// holds no fleet checkout.
+
+import "std/core/text/num_buffer.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "text/lines.oo";
+import "parity/mapping.oo";
+import "parity/cases.oo";
+
+fn expect_eq(name: String, got: String, want: String, fails: &mut Int) -> Int {
+    if got == want {
+        println("PASS\t" + name);
+        return 0;
+    }
+    println("FAIL\t" + name + "\tgot " + got + " want " + want);
+    *fails = *fails + 1;
+    return 0;
+}
+
+// Check that the profile parser finds every mapping and reads the upstream
+// tool of a known entry.
+fn parity_test_mapping(fs_r: &FsReadCap, fleet: String, fails: &mut Int) -> Int {
+    let profile: String = fleet + "/.github/profile/README.md";
+    if !path_exists(fs_r, profile) {
+        println("SKIP\tparity_mapping\tno profile at " + profile);
+        return 0;
+    }
+    let rows: List[String] = parity_map_rows(fs_r, profile);
+    println("parity mapping rows=" + int_to_str(list_len(rows)));
+    if list_len(rows) < 99 {
+        println("FAIL\tparity_mapping\ttoo few rows");
+        *fails = *fails + 1;
+        return 0;
+    }
+    let _a: Int = expect_eq("parity_map_oogrep", parity_map_lookup(rows, "oogrep"), "grep", fails);
+    let _b: Int = expect_eq("parity_map_oodiff", parity_map_lookup(rows, "oodiff"), "diff", fails);
+    let _c: Int = expect_eq("parity_map_oojq", parity_map_lookup(rows, "oojq"), "jq", fails);
+    let _d: Int = expect_eq("parity_map_unknown", parity_map_lookup(rows, "oo_nope"), "", fails);
+    return 0;
+}
+
+// Check that the case extractor finds the tool invocations of a test recipe
+// and that it cuts a command at a metacharacter.
+fn parity_test_cases(fs_r: &FsReadCap, fleet: String, fails: &mut Int) -> Int {
+    let mk: String = fleet + "/oogrep/Makefile";
+    if !path_exists(fs_r, mk) {
+        println("SKIP\tparity_cases\tno Makefile at " + mk);
+        return 0;
+    }
+    let cases: List[String] = parity_case_collect(fs_r, "oogrep", mk);
+    println("parity cases extracted=" + int_to_str(list_len(cases)));
+    if list_len(cases) < 5 {
+        println("FAIL\tparity_cases\ttoo few cases");
+        *fails = *fails + 1;
+        return 0;
+    }
+    let mut show: Int = 0;
+    while show < 5 && show < list_len(cases) {
+        println("  case: " + list_get(cases, show));
+        show = show + 1;
+    }
+    let _b: Int = expect_eq("parity_case_clean", text_trim(parity_case_clean("./x --a > /dev/null")), "./x --a", fails);
+    let _c: Int = expect_eq("parity_case_pipe", text_trim(parity_case_clean("./x --a | ./y -q -")), "./x --a", fails);
+    let _d: Int = expect_eq("parity_case_quoted", text_trim(parity_case_clean("./x \"a b\" > out")), "./x \"a b\"", fails);
+    return 0;
+}
+
+// Run every parity self test.
+pub fn parity_test_run(fs_r: &FsReadCap, env: &EnvCap) -> Int {
+    let mut fails: Int = 0;
+    let r: Result[String, String] = env_get(env, "OODA_FLEET_DIR");
+    let fleet: String = if r.is_ok() && r.val != "" { r.val } else { "/Projects/openOODA-tools" };
+    let _m: Int = parity_test_mapping(fs_r, fleet, &mut fails);
+    let _c: Int = parity_test_cases(fs_r, fleet, &mut fails);
+    if fails > 0 {
+        println("PARITY TEST FAIL n=" + int_to_str(fails));
+        return 1;
+    }
+    println("PARITY TEST PASS");
+    return 0;
+}

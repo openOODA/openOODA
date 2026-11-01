@@ -1,0 +1,55 @@
+// # Loop Cache - Compiler Identity And Cache Purge
+//
+// Logline: Detects a compiler change and purges the caches that are keyed by source only.
+//
+// Setup: Needs ProcessCap for the hash probe, FsReadCap and FsWriteCap for the stamp file.
+//
+// Beats:
+//   1. Compute the identity of the compiler binary.
+//   2. Compare the identity with the stamp of the last run.
+//   3. Purge the build and emit caches when the identity changed.
+//
+// The build and the emit caches in the toolchain are keyed by source content
+// only. After a compiler rebuild a cached artifact can come from the previous
+// compiler. The gate would then certify a compiler it never exercised.
+
+import "std/fs/os/fs.oo";
+import "text/hash.oo";
+
+pub fn loop_cache_stamp_path(cache_dir: String) -> String {
+    return cache_dir + "/compiler.stamp";
+}
+
+// The identity of the compiler is the hash of its own binary.
+pub fn loop_cache_compiler_stamp(sys: &ProcessCap, compiler: String) -> String {
+    return text_sha256_of(sys, compiler);
+}
+
+// Report whether the compiler changed since the last run.
+pub fn loop_cache_changed(fs_r: &FsReadCap, stamp_path: String, stamp: String) -> Bool {
+    if stamp == "" { return false; }
+    if !path_exists(fs_r, stamp_path) { return true; }
+    let r: Result[String, String] = fs_read_file(fs_r, stamp_path);
+    if r.is_err() { return true; }
+    let old: String = text_trim(r.val);
+    return old != stamp;
+}
+
+// Remove the caches that the toolchain keys by source content only.
+pub fn loop_cache_purge(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String) -> Bool {
+    let mut ok: Bool = true;
+    let obj: String = repo_dir + "/.ooda-cache/obj";
+    let emit: String = repo_dir + "/.ooda-cache/oodac_emit";
+    let r1: Result[Void, String] = fs_remove_tree(fs_w, fs_r, obj);
+    if r1.is_err() { ok = false; }
+    let r2: Result[Void, String] = fs_remove_tree(fs_w, fs_r, emit);
+    if r2.is_err() { ok = false; }
+    return ok;
+}
+
+// Record the compiler identity for the next run.
+pub fn loop_cache_store(fs_w: &FsWriteCap, stamp_path: String, stamp: String) -> Bool {
+    let w: Result[Void, String] = fs_write_file(fs_w, stamp_path, stamp + "\n");
+    if w.is_err() { return false; }
+    return true;
+}

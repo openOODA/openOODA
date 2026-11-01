@@ -1,0 +1,70 @@
+// # Upstream Packages - The Install Name Of Every Upstream Tool
+//
+// Logline: Maps an upstream tool to the package that installs it, because the package name and the program name differ for some tools.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Read the exception table.
+//   2. Find the package of one upstream tool.
+//
+// The package name is the program name unless the table holds an exception.
+// The exception table holds only the tools whose program name is not the name
+// of the package that installs it.
+
+import "std/core/primitives/str.oo";
+
+// The exception table. Every row is "program|package".
+pub fn ci_package_rows() -> List[String] {
+    let mut rows: List[String] = list_new();
+    rows = list_push(rows, "apparmor_parser|apparmor-utils");
+    rows = list_push(rows, "auditd|auditd");
+    rows = list_push(rows, "b3sum|b3sum");
+    rows = list_push(rows, "bsondump|libmongoc-tools");
+    rows = list_push(rows, "cbor-diag|cbor-diag");
+    rows = list_push(rows, "cgcreate|cgroup-tools");
+    rows = list_push(rows, "csvcut|csvkit");
+    rows = list_push(rows, "fc-list|fontconfig");
+    rows = list_push(rows, "figlet|figlet");
+    rows = list_push(rows, "iptables|iptables");
+    rows = list_push(rows, "lolcat|lolcat");
+    rows = list_push(rows, "pastel|pastel");
+    rows = list_push(rows, "prlimit|util-linux");
+    rows = list_push(rows, "pv|pv");
+    rows = list_push(rows, "resolvectl|systemd");
+    rows = list_push(rows, "rsync|rsync");
+    rows = list_push(rows, "systemd-cgls|systemd");
+    rows = list_push(rows, "tpm2_pcrread|libtss2-tools");
+    rows = list_push(rows, "update-ca-trust|update-ca-certificates");
+    rows = list_push(rows, "7z|p7zip-full");
+    rows = list_push(rows, "bat|bat");
+    rows = list_push(rows, "btop|btop");
+    rows = list_push(rows, "bzip2|bzip2");
+    rows = list_push(rows, "cbor-diag|libcbor-tools");
+    rows = list_push(rows, "dialog|dialog");
+    rows = list_push(rows, "diff3|diffutils");
+    rows = list_push(rows, "fastfetch|fastfetch");
+    rows = list_push(rows, "fzf|fzf");
+    rows = list_push(rows, "jq|jq");
+    rows = list_push(rows, "zgrep|gzip");
+    rows = list_push(rows, "zstd|zstd");
+    return rows;
+}
+
+// Find the package that installs one upstream tool. A tool that the table
+// does not hold is installed under its own name.
+pub fn ci_package_of(upstream: String) -> String {
+    if upstream == "" { return ""; }
+    let rows: List[String] = ci_package_rows();
+    let mut i: Int = 0;
+    while i < list_len(rows) {
+        let row: String = list_get(rows, i);
+        let p: Int = str_index_of(row, "|");
+        if p > 0 {
+            let name: String = str_slice(row, 0, p);
+            if name == upstream { return str_slice(row, p + 1, chars_len(row)); }
+        }
+        i = i + 1;
+    }
+    return upstream;
+}

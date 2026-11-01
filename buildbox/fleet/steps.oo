@@ -1,0 +1,79 @@
+// # Fleet Gate Steps - The Individual Checks One Repo Must Pass
+//
+// Logline: Runs the build, verify, test, determinism, parity, and scorecard checks against one repo checkout.
+//
+// Setup: Needs ProcessCap for make and the tool binary, and FsWriteCap for the scratch files.
+//
+// Beats:
+//   1. Run one make target in a repo directory and return the exit code.
+//   2. Run the built binary twice and compare the two outputs.
+//   3. Compare the built artifact hash with the installed copy hash.
+//   4. Measure peak memory and CPU time of the built binary.
+
+import "std/core/text/num_buffer.oo";
+import "std/core/primitives/str.oo";
+import "text/lines.oo";
+
+pub fn fleet_run_make(sys: &ProcessCap, dir: String, target: String) -> Int {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, dir);
+    a = list_push(a, target);
+    let r: Result[Int, String] = sys_exec_wait(sys, "make", a);
+    let mut code: Int = 1;
+    if r.is_ok() { code = r.val; }
+    return code;
+}
+
+// Run the built binary twice in fresh processes. Identical output and equal
+// exit codes mean the tool is deterministic for this probe.
+pub fn fleet_double_run(sys: &ProcessCap, bin_path: String) -> Bool {
+    let r1: Result[String, String] = sys_exec(sys, bin_path, "--version");
+    let r2: Result[String, String] = sys_exec(sys, bin_path, "--version");
+    if r1.is_err() && r2.is_err() { return false; }
+    if r1.is_err() { return false; }
+    if r2.is_err() { return false; }
+    if r1.val != r2.val { return false; }
+    return true;
+}
+
+// Compare the built artifact with the installed copy. The release path
+// installs into the home bin directory, so the gate checks both hashes.
+pub fn fleet_binary_parity(sys: &ProcessCap, dist_path: String, installed_path: String) -> Bool {
+    let r1: Result[String, String] = sys_exec(sys, "sha256sum", dist_path);
+    if r1.is_err() { return false; }
+    let r2: Result[String, String] = sys_exec(sys, "sha256sum", installed_path);
+    if r2.is_err() { return false; }
+    let h1: String = fleet_hash_of(r1.val);
+    let h2: String = fleet_hash_of(r2.val);
+    if h1 == "" { return false; }
+    return h1 == h2;
+}
+
+pub fn fleet_hash_of(sum_output: String) -> String {
+    let lines: List[String] = text_split_lines(sum_output);
+    if list_len(lines) == 0 { return ""; }
+    let first: String = text_trim(list_get(lines, 0));
+    let idx: Int = str_index_of(first, " ");
+    if idx <= 0 { return ""; }
+    return str_slice(first, 0, idx);
+}
+
+// Measure the built binary with the system time command. When the command is
+// absent the scorecard is reported as unavailable rather than as a pass.
+pub fn fleet_scorecard(sys: &ProcessCap, bin_path: String) -> String {
+    let r: Result[String, String] = sys_exec(sys, "/usr/bin/time", "-f", "RSS_KB=%M CPU_S=%U", bin_path, "--version");
+    if r.is_err() { return "unavailable"; }
+    return fleet_scorecard_of(r.val);
+}
+
+pub fn fleet_scorecard_of(output: String) -> String {
+    let lines: List[String] = text_split_lines(output);
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let l: String = text_trim(list_get(lines, i));
+        if str_contains(l, "RSS_KB=") { return l; }
+        i = i + 1;
+    }
+    return "unavailable";
+}

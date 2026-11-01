@@ -1,0 +1,44 @@
+// # Fleet Structured Errors - Parsing The Toolchain ERR Lines
+//
+// Logline: Extracts the area and the detail from the structured ERR lines that the compiler and the tools print.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Return the first structured error line in an output block.
+//   2. Report whether an output block holds a structured error line.
+//   3. Return the area field of a structured error line.
+//   4. Return the detail field of a structured error line.
+
+import "std/core/primitives/str.oo";
+import "text/lines.oo";
+
+pub fn fleet_err_line(output: String) -> String {
+    let lines: List[String] = text_split_lines(output);
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let l: String = text_trim(list_get(lines, i));
+        if str_starts_with(l, "ERR\t") { return l; }
+        i = i + 1;
+    }
+    return "";
+}
+
+pub fn fleet_has_err(output: String) -> Bool {
+    return chars_len(fleet_err_line(output)) > 0;
+}
+
+// Cut a tab separated field out of a line. Field zero is the record kind.
+pub fn fleet_err_field(line: String, idx: Int) -> String {
+    let parts: List[String] = text_split_lines(str_replace(line, "\t", "\n"));
+    if idx >= list_len(parts) { return ""; }
+    return text_trim(list_get(parts, idx));
+}
+
+pub fn fleet_err_area(line: String) -> String {
+    return fleet_err_field(line, 1);
+}
+
+pub fn fleet_err_detail(line: String) -> String {
+    return fleet_err_field(line, 2);
+}

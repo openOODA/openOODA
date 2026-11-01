@@ -1,0 +1,46 @@
+// # Redaction Env Dump - Credential Lines In Environment Dumps
+//
+// Logline: Removes credential values from environment dump lines such as OPENAI_API_KEY=sk-... before they reach a model.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Decide whether a variable name names a credential.
+//   2. Decide whether a value is secret-shaped by entropy.
+//   3. Replace a credential value with a marker.
+
+import "std/core/primitives/str.oo";
+import "redact/entropy.oo";
+import "text/lines.oo";
+
+pub fn redact_env_name_is_secret(name: String) -> Bool {
+    let u: String = to_uppercase(name);
+    if str_contains(u, "TOKEN") { return true; }
+    if str_contains(u, "SECRET") { return true; }
+    if str_contains(u, "PASSWORD") { return true; }
+    if str_contains(u, "PASSWD") { return true; }
+    if str_contains(u, "API_KEY") { return true; }
+    if str_contains(u, "APIKEY") { return true; }
+    if str_contains(u, "PRIVATE_KEY") { return true; }
+    if str_contains(u, "CREDENTIAL") { return true; }
+    if str_contains(u, "ACCESS_KEY") { return true; }
+    if str_contains(u, "SESSION") { return true; }
+    return false;
+}
+
+pub fn redact_env_value_is_secret(value: String) -> Bool {
+    let v: String = text_trim(value);
+    if chars_len(v) <= 8 { return false; }
+    if !redact_is_secret_shaped(v) { return false; }
+    return true;
+}
+
+pub fn redact_env_line(line: String) -> String {
+    let eq: Int = str_index_of(line, "=");
+    if eq <= 0 { return line; }
+    let name: String = str_slice(line, 0, eq);
+    let value: String = str_slice(line, eq + 1, chars_len(line));
+    if !redact_env_name_is_secret(name) { return line; }
+    if !redact_env_value_is_secret(value) { return line; }
+    return name + "=[REDACTED:ENV_SECRET]";
+}

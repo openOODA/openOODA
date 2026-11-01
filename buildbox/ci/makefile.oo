@@ -1,0 +1,85 @@
+// # Makefile Patch - Wires The Parity Gate Into A Tool Makefile
+//
+// Logline: Adds the parity target to a tool Makefile and makes the test target depend on it.
+//
+// Setup: Needs FsReadCap to read the Makefile and FsWriteCap to write it back.
+//
+// Beats:
+//   1. Build the parity target block.
+//   2. Add the parity target to the phony list.
+//   3. Make the test target depend on the parity target.
+//   4. Insert the parity target before the test target.
+//   5. Write the patched Makefile back.
+//
+// A tool that already has a parity target keeps it. The patch then only makes
+// the test target depend on it, so the existing comparison is never lost.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+
+// The parity target block. It builds the parity runner and runs it. The
+// runner reads the case table of the repository.
+pub fn ci_mk_target() -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "parity: $(BIN)");
+    l = list_push(l, "\t@mkdir -p .ooda-cache .ooda-cache/parity");
+    l = list_push(l, "\t$(OODA_COMPILER) build qa/parity/run.oo -o .ooda-cache/parity-run");
+    l = list_push(l, "\t@chmod +x .ooda-cache/parity-run");
+    l = list_push(l, "\t@.ooda-cache/parity-run");
+    l = list_push(l, "");
+    return l;
+}
+
+// Report whether a line names the parity target.
+pub fn ci_mk_is_parity(line: String) -> Bool {
+    return str_starts_with(line, "parity:");
+}
+
+// Report whether a line already names the parity target in a dependency list.
+pub fn ci_mk_has_parity(line: String) -> Bool {
+    return str_contains(line, " parity") || str_contains(line, "parity:");
+}
+
+// Patch the Makefile of one tool. The result is written back to the same
+// path.
+pub fn ci_mk_patch(fs_r: &FsReadCap, fs_w: &FsWriteCap, mk_path: String) -> Bool {
+    let r: Result[String, String] = fs_read_file(fs_r, mk_path);
+    if r.is_err() { return false; }
+    let lines: List[String] = text_split_lines(r.val);
+    let mut has_target: Bool = false;
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        if ci_mk_is_parity(list_get(lines, i)) { has_target = true; }
+        i = i + 1;
+    }
+    let mut out: List[String] = list_new();
+    let mut inserted: Bool = false;
+    i = 0;
+    while i < list_len(lines) {
+        let line: String = list_get(lines, i);
+        if !inserted && !has_target && str_starts_with(line, "test:") {
+            let mut j: Int = 0;
+            while j < list_len(ci_mk_target()) { out = list_push(out, list_get(ci_mk_target(), j)); j = j + 1; }
+            inserted = true;
+        }
+        if str_starts_with(line, ".PHONY") && !ci_mk_has_parity(line) {
+            out = list_push(out, line + " parity");
+            i = i + 1;
+            continue;
+        }
+        if str_starts_with(line, "test:") && !ci_mk_has_parity(line) {
+            out = list_push(out, line + " parity");
+            i = i + 1;
+            continue;
+        }
+        out = list_push(out, line);
+        i = i + 1;
+    }
+    let body: String = text_join_lines(out);
+    let last: String = if list_len(out) == 0 { "" } else { list_get(out, list_len(out) - 1) };
+    let text: String = if last == "" { body } else { body + "\n" };
+    let w: Result[Void, String] = fs_write_file(fs_w, mk_path, text);
+    if w.is_err() { return false; }
+    return true;
+}

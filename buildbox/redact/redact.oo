@@ -1,0 +1,73 @@
+// # Redaction Engine - The Gate Before Any Byte Reaches A Model
+//
+// Logline: Removes secrets from text bound for a model by token prefix, private key block, and environment dump shape.
+//
+// Setup: Pure functions. No caps. No IO. The caller owns the decision to send.
+//
+// Beats:
+//   1. Redact one text with every rule and report whether a secret was removed.
+//   2. Apply the rules line by line so a fake marker on a line protects that line.
+//   3. Report whether the redacted text still holds a key-shaped string.
+
+import "text/lines.oo";
+import "redact/tokens.oo";
+import "redact/env_dump.oo";
+
+pub fn redact_apply_line(line: String) -> String {
+    if text_is_fake_line(line) { return line; }
+    let a: String = redact_env_line(line);
+    let c: String = redact_tokens(a);
+    return c;
+}
+
+// Redact every line. A line that carries a deliberate fake marker is kept.
+// The private key block pass runs over the whole text first because a PEM
+// block spans many lines and a per-line pass cannot see its end marker.
+pub fn redact_text(s: String) -> String {
+    let no_pem: String = redact_pem_blocks(s);
+    let lines: List[String] = text_split_lines(no_pem);
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        out = list_push(out, redact_apply_line(list_get(lines, i)));
+        i = i + 1;
+    }
+    return text_join_lines(out);
+}
+
+// True when the text still holds a key-shaped string after redaction. A true
+// result means the finding is dropped instead of being sent to a model.
+pub fn redact_still_secret(s: String) -> Bool {
+    if str_contains(s, "[REDACTED:") { return false; }
+    if str_contains(s, "-----BEGIN") { return true; }
+    let lines: List[String] = text_split_lines(s);
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let line: String = list_get(lines, i);
+        if text_is_fake_line(line) { i = i + 1; continue; }
+        let eq: Int = str_index_of(line, "=");
+        if eq > 0 {
+            let name: String = str_slice(line, 0, eq);
+            let value: String = str_slice(line, eq + 1, chars_len(line));
+            if redact_env_name_is_secret(name) && redact_env_value_is_secret(value) { return true; }
+        }
+        let prefixes: List[String] = redact_prefixes();
+        let mut p: Int = 0;
+        while p < list_len(prefixes) {
+            if str_contains(line, list_get(prefixes, p)) { return true; }
+            p = p + 1;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+pub fn redact_prefixes() -> List[String] {
+    let mut prefixes: List[String] = list_new();
+    prefixes = list_push(prefixes, "sk-");
+    prefixes = list_push(prefixes, "AKIA");
+    prefixes = list_push(prefixes, "ghp_");
+    prefixes = list_push(prefixes, "gho_");
+    prefixes = list_push(prefixes, "xox");
+    return prefixes;
+}

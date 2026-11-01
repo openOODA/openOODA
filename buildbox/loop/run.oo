@@ -1,0 +1,58 @@
+// # Loop Run - Argument Helpers And The Advisory Fan Out Step
+//
+// Logline: Holds the small helpers the loop needs for its arguments, its run summary, and its advisory fan out.
+//
+// Setup: Needs ProcessCap for the fan out call and FsReadCap for the diff.
+//
+// Beats:
+//   1. Report whether an argument is present.
+//   2. Build the one line summary of a run.
+//   3. Run the fan out binary against a repo checkout.
+//   4. Report the diff of a checkout against its previous commit.
+
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "loop/setup.oo";
+
+pub fn loop_has_arg(args: List[String], name: String) -> Bool {
+    let n: Int = list_len(args);
+    let mut i: Int = 0;
+    while i < n {
+        if list_get(args, i) == name { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+// Build the one line summary of a run. The line holds no timestamp, so two
+// runs over the same inputs produce the same line.
+pub fn loop_run_summary(repos: Int, failed: Int, gate_rc: Int, nightly: Bool) -> String {
+    let mode: String = if nightly { "nightly" } else { "fast" };
+    let status: String = if failed == 0 { "PASS" } else { "FAIL" };
+    let passed: Int = repos - failed;
+    return "loop " + status + " mode=" + mode
+        + " gate_rc=" + int_to_str(gate_rc)
+        + " repos=" + int_to_str(repos)
+        + " passed=" + int_to_str(passed)
+        + " failed=" + int_to_str(failed);
+}
+
+// Read the diff of the last commit of a checkout. An empty result means the
+// checkout has no previous commit or no change.
+pub fn loop_read_diff(sys: &ProcessCap, repo_dir: String) -> String {
+    let r: Result[String, String] = sys_exec(sys, "git", "-C", repo_dir, "diff", "HEAD~1", "HEAD");
+    if r.is_err() { return ""; }
+    return r.val;
+}
+
+// Run the fan out binary. The fan out is advisory and never gates the run, so
+// a failure is reported and the loop continues.
+pub fn loop_run_fanout(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, repo_dir: String) -> Int {
+    let fanout_bin: String = loop_setup_env_or(env, "OODA_FANOUT_BIN", "/usr/local/bin/ooda-fanout");
+    if !path_exists(fs_r, fanout_bin) { return 0; }
+    let mut a: List[String] = list_new();
+    let r: Result[Int, String] = sys_exec_wait(sys, fanout_bin, a);
+    if r.is_err() { return 1; }
+    return r.val;
+}

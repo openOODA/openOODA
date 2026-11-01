@@ -1,0 +1,51 @@
+// # Fleet Catalog - The Published List Of Tools That Exist
+//
+// Logline: Reads the published tool catalog, which lists every tool that is shipped, and returns the tool names.
+//
+// Setup: Needs ProcessCap for curl and FsReadCap to read the downloaded catalog.
+//
+// Beats:
+//   1. Download the published catalog into the cache.
+//   2. Read the tool names out of the catalog.
+//
+// The catalog is the source of truth for the tools that must build. It holds
+// one entry per shipped tool. A read failure yields an empty list and the run
+// continues with the core repos only, so a network fault never hides a repo.
+
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+import "text/json.oo";
+
+pub fn fleet_catalog_path(cache: String) -> String {
+    return cache + "/catalog.json";
+}
+
+pub fn fleet_catalog_download(sys: &ProcessCap, cache: String) -> Bool {
+    let path: String = fleet_catalog_path(cache);
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-sSL");
+    a = list_push(a, "--fail");
+    a = list_push(a, "-m");
+    a = list_push(a, "60");
+    a = list_push(a, "-o");
+    a = list_push(a, path);
+    a = list_push(a, "https://tools.openooda.org/data/tools.json");
+    let r: Result[Int, String] = sys_exec_wait(sys, "curl", a);
+    if r.is_err() { return false; }
+    return true;
+}
+
+pub fn fleet_catalog_tools(sys: &ProcessCap, fs_r: &FsReadCap, cache: String) -> List[String] {
+    let mut names: List[String] = list_new();
+    if !fleet_catalog_download(sys, cache) { return names; }
+    let doc: Result[String, String] = fs_read_file(fs_r, fleet_catalog_path(cache));
+    if doc.is_err() { return names; }
+    let found: List[String] = json_string_values(doc.val, "name");
+    let mut i: Int = 0;
+    while i < list_len(found) {
+        let n: String = list_get(found, i);
+        if n != "" { names = list_push(names, n); }
+        i = i + 1;
+    }
+    return names;
+}
