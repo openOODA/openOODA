@@ -1,0 +1,46 @@
+// # ooda-loop - 24/7 build, validate, and repair loop driver for the OODA-buildbox
+//
+// Logline: fetch repos -> rebuild the compiler -> gate every repo -> fan out -> queue one verdict per repo.
+//
+// Setup: Runs inside ooda-buildbox as the native entrypoint. /work/repos,
+//   /queue, /cache are volumes. Env: OODA_COMPILER, OODA_FLEET, OODA_FLEET_ALL,
+//   OODA_GITHUB_TOKEN, OODA_SPOTLIGHT, OODA_FLEET_ORG.
+//
+// Beats:
+//   1. Take the single flight lock so two timers never overlap.
+//   2. Rebuild the compiler, purge the stale caches, and run the compiler gate.
+//   3. Fetch every repo and write one verdict line per repo.
+//   4. Fan out the diffs for advisory review and append the run state.
+
+import "std/core/text/num_buffer.oo";
+import "loop/setup.oo";
+import "loop/lock.oo";
+import "loop/run.oo";
+import "loop/driver.oo";
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let nightly: Bool = loop_has_arg(args, "--nightly");
+    let cfg: LoopCfg = loop_setup_config(env);
+    let _d: Bool = loop_setup_make_dirs(fs_w, cfg.repos, cfg.queue, cfg.cache);
+
+    // Step 1: single flight. A second run exits without touching the queue.
+    let lock_path: String = cfg.cache + "/loop.pid";
+    if loop_lock_take(sys, fs_r, fs_w, lock_path, 7200) != 1 {
+        println("loop SKIP reason=locked");
+        return 0;
+    }
+
+    // Step 2: resolve the inventory, fetch every repo, rebuild the compiler,
+    // purge the stale caches, run the compiler gate, and gate every repo.
+    let out_bin: String = cfg.cache + "/oodac-new";
+    let res: LoopResult = loop_driver_execute(sys, fs_r, fs_w, env, cfg, out_bin);
+    let summary: String = loop_run_summary(res.repos, res.failed, res.gate_rc, nightly);
+
+    // Step 3: fan out the diffs for advisory review. The fan out never gates.
+    let _f: Int = loop_run_fanout(sys, fs_r, fs_w, env, cfg.repos + "/oodac");
+    let _q: Result[Void, String] = file_append_sync(fs_w, cfg.queue + "/state.oot", summary + "\n");
+    println(summary);
+    loop_lock_release(fs_w, lock_path);
+    if res.failed == 0 { return 0; }
+    return 1;
+}

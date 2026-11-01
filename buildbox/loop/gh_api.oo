@@ -1,0 +1,92 @@
+// # GitHub API - Credential Safe REST Client
+//
+// Logline: Calls the GitHub REST API with curl in argv form and keeps the token in a 0600 header file.
+//
+// Setup: Needs ProcessCap for curl and FsWriteCap for the header file.
+//
+// Beats:
+//   1. Create the credential header file with mode 0600 and check the mode.
+//   2. Read one API resource and remove the header file afterwards.
+//   3. Send one API write call and report the exit code.
+//
+// The credential never appears on a command line and never enters the queue
+// mount. The header file is created empty, tightened to mode 0600, and only
+// then filled, so no wider mode ever holds the token.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+
+pub fn gh_api_header_path(cache_dir: String) -> String {
+    return cache_dir + "/gh_header.txt";
+}
+
+// Create the credential header file. The file is created empty, tightened to
+// mode 0600, and the mode is read back. The token is written only after the
+// read back confirms the mode is 0600.
+pub fn gh_api_write_header(sys: &ProcessCap, fs_w: &FsWriteCap, path: String, token: String) -> Bool {
+    let mut t: List[String] = list_new();
+    t = list_push(t, path);
+    let tr: Result[Int, String] = sys_exec_wait(sys, "touch", t);
+    if tr.is_err() { return false; }
+    let mut c: List[String] = list_new();
+    c = list_push(c, "600");
+    c = list_push(c, path);
+    let cr: Result[Int, String] = sys_exec_wait(sys, "chmod", c);
+    if cr.is_err() { return false; }
+    let sr: Result[String, String] = sys_exec(sys, "stat", "-c", "%a", path);
+    if sr.is_err() { return false; }
+    if text_trim(sr.val) != "600" { return false; }
+    let hdr: String = "Authorization: Bearer " + token
+        + "\nAccept: application/vnd.github+json\n"
+        + "X-GitHub-Api-Version: 2022-11-28\n";
+    let w: Result[Void, String] = fs_write_file(fs_w, path, hdr);
+    if w.is_err() { return false; }
+    let mut c2: List[String] = list_new();
+    c2 = list_push(c2, "600");
+    c2 = list_push(c2, path);
+    let cr2: Result[Int, String] = sys_exec_wait(sys, "chmod", c2);
+    return cr2.is_ok();
+}
+
+// Read one API resource. A non zero status from the server yields an empty
+// string, so a rate limit or a bad token can never be read as a valid list.
+pub fn gh_api_get(sys: &ProcessCap, fs_w: &FsWriteCap, cache_dir: String, token: String, url: String) -> String {
+    let hdr: String = gh_api_header_path(cache_dir);
+    if !gh_api_write_header(sys, fs_w, hdr, token) { return ""; }
+    let r: Result[String, String] = sys_exec(sys, "curl", "-sS", "--fail", "-m", "60", "-H", "@" + hdr, url);
+    let _rm: Result[Void, String] = fs_remove_file(fs_w, hdr);
+    if r.is_err() { return ""; }
+    return r.val;
+}
+
+// Send one API write call. The body travels in a file, never on the command
+// line. An empty body path means the call carries no body.
+pub fn gh_api_call(sys: &ProcessCap, fs_w: &FsWriteCap, cache_dir: String, token: String, method: String, url: String, body_path: String, out_path: String) -> Int {
+    let hdr: String = gh_api_header_path(cache_dir);
+    if !gh_api_write_header(sys, fs_w, hdr, token) { return 1; }
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-sS");
+    a = list_push(a, "-m");
+    a = list_push(a, "60");
+    a = list_push(a, "-X");
+    a = list_push(a, method);
+    a = list_push(a, "-H");
+    a = list_push(a, "@" + hdr);
+    a = list_push(a, "-H");
+    a = list_push(a, "Content-Type: application/json");
+    if body_path != "" {
+        a = list_push(a, "--data-binary");
+        a = list_push(a, "@" + body_path);
+    }
+    if out_path != "" {
+        a = list_push(a, "-o");
+        a = list_push(a, out_path);
+    }
+    a = list_push(a, url);
+    let r: Result[Int, String] = sys_exec_wait(sys, "curl", a);
+    let _rm: Result[Void, String] = fs_remove_file(fs_w, hdr);
+    let mut code: Int = 1;
+    if r.is_ok() { code = r.val; }
+    return code;
+}

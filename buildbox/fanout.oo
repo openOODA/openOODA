@@ -1,0 +1,107 @@
+// # ooda-fanout - Advisory Diff Review Through The Local Model
+//
+// Logline: Sends a redacted diff to the local model for advisory review and writes the raw answer to the queue.
+//
+// Setup: Env: OODA_SPOTLIGHT (default tailscale spotlight), OODA_MODEL,
+//   OODA_REPO (default /work/repos/oodac), OODA_CACHE, OODA_QUEUE.
+//
+// Beats:
+//   1. Read the diff of the last commit of the checkout.
+//   2. Redact the diff before it leaves the box. A redacted diff that still
+//      holds a key shaped string is dropped and never sent.
+//   3. Send the request with curl in argv form and a bounded timeout.
+//   4. Write the raw answer to the queue. The raw answer is never a finding.
+//
+// The fan out is advisory. It never gates a release and it never decides.
+// A finding becomes real only after an independent check against the source.
+
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "redact/anchor.oo";
+
+fn json_esc(s: String) -> String {
+    let mut out: String = "";
+    let n: Int = chars_len(s);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        if c == "\\" { out = out + "\\\\"; }
+        else if c == "\"" { out = out + "\\\""; }
+        else if c == "\n" { out = out + "\\n"; }
+        else if c == "\t" { out = out + "\\t"; }
+        else { out = out + c; }
+        i = i + 1;
+    }
+    return out;
+}
+
+fn env_or(env: &EnvCap, name: String, dflt: String) -> String {
+    let r: Result[String, String] = env_get(env, name);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return dflt;
+}
+
+// Build the request body. The diff arrives already redacted.
+fn fanout_request(model: String, safe: String) -> String {
+    let prompt: String = "Adversarially audit this openOODA compiler diff. Severity-ranked concrete findings with file:line. Plain text.\n";
+    return "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"" + json_esc(prompt + safe) + "\"}]}";
+}
+
+// Send the request. The body travels in a file, never on the command line.
+// The output goes to the queue. The model answer is advisory and is never
+// read by the gate.
+fn fanout_send(sys: &ProcessCap, spot: String, reqf: String, outf: String) -> Int {
+    let mut cargv: List[String] = list_new();
+    cargv = list_push(cargv, "-sS");
+    cargv = list_push(cargv, "--fail");
+    cargv = list_push(cargv, "-m");
+    cargv = list_push(cargv, "120");
+    cargv = list_push(cargv, "-X");
+    cargv = list_push(cargv, "POST");
+    cargv = list_push(cargv, spot + "/api/chat");
+    cargv = list_push(cargv, "-H");
+    cargv = list_push(cargv, "Content-Type: application/json");
+    cargv = list_push(cargv, "--data-binary");
+    cargv = list_push(cargv, "@" + reqf);
+    cargv = list_push(cargv, "-o");
+    cargv = list_push(cargv, outf);
+    let cr: Result[Int, String] = sys_exec_wait(sys, "curl", cargv);
+    let mut ccode: Int = 1;
+    if cr.is_ok() { ccode = cr.val; }
+    return ccode;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap) {
+    let repo: String = env_or(env, "OODA_REPO", "/work/repos/oodac");
+    let dr: Result[String, String] = sys_exec(sys, "git", "-C", repo, "diff", "HEAD~1", "HEAD");
+    let mut diff: String = "";
+    if dr.is_ok() { diff = dr.val; }
+    if diff == "" {
+        println("FANOUT: no diff");
+        process_exit(0);
+    }
+    // Redaction is a precondition. A diff that still holds a key shaped
+    // string after redaction is dropped rather than sent to the model.
+    let safe: String = redact_text(diff);
+    if redact_still_secret(safe) {
+        println("ERR\tfanout\tdropped: unredacted secret shape remains");
+        process_exit(0);
+    }
+    let spot: String = env_or(env, "OODA_SPOTLIGHT", "http://100.66.54.24:11434");
+    let model: String = env_or(env, "OODA_MODEL", "satgeze/qwen36-35b-uncensored-1m:latest");
+    let reqf: String = env_or(env, "OODA_CACHE", "/cache") + "/fanout.json";
+    let w: Result[Void, String] = fs_write_file(fs_w, reqf, fanout_request(model, safe));
+    if w.is_err() {
+        println("ERR\tfanout\tcannot write request");
+        process_exit(1);
+    }
+    let outf: String = env_or(env, "OODA_QUEUE", "/queue") + "/raw/fanout-" + int_to_str(chars_len(diff)) + ".json";
+    let ccode: Int = fanout_send(sys, spot, reqf, outf);
+    if ccode != 0 {
+        println("ERR\tfanout\tcurl failed");
+        process_exit(1);
+    }
+    println("FANOUT: ok -> " + outf);
+    process_exit(0);
+}

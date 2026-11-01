@@ -1,0 +1,141 @@
+// # Fleet Apply - Writes The CI Contract And The Parity Gate Into Every Repository
+//
+// Logline: Applies the workflow file, the parity runner, the case table, and the Makefile patch to one fleet repository.
+//
+// Setup: Needs FsReadCap to read the repository and FsWriteCap to write the new files.
+//
+// Beats:
+//   1. Build the case table of one tool.
+//   2. Write the workflow file.
+//   3. Write the parity runner.
+//   4. Write the case table.
+//   5. Patch the Makefile.
+//   6. Apply the whole contract to one repository.
+//
+// The harness source is read once and copied into every repository, so every
+// repository holds the same parity runner and the runner never drifts.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+import "ci/template.oo";
+import "ci/packages.oo";
+import "ci/makefile.oo";
+import "ci/release.oo";
+import "parity/cases.oo";
+
+// Build the case table of one tool. The table names the upstream tool, the
+// tool under test, and one case per line.
+pub fn ci_apply_cases_table(repo: String, upstream: String, cases: List[String]) -> String {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "# Parity cases for " + repo + ".");
+    if upstream == "" {
+        l = list_push(l, "# This tool has no upstream program. It is an openOODA tool and not a");
+        l = list_push(l, "# drop-in replacement, so the parity gate does not run against it.");
+    } else {
+        l = list_push(l, "# The tool replaces " + upstream + " and must behave the same way.");
+    }
+    l = list_push(l, "# upstream: " + upstream);
+    l = list_push(l, "# tool: dist/" + repo);
+    l = list_push(l, "#");
+    l = list_push(l, "# A match case must produce the same stdout, the same stderr, and the same");
+    l = list_push(l, "# exit code as the upstream tool. A differ case is a declared deviation: the");
+    l = list_push(l, "# exit code must still be the same, but the output may differ.");
+    l = list_push(l, "#");
+    l = list_push(l, "# The upstream tool is the reference. A tool that is not a drop-in");
+    l = list_push(l, "# replacement must fix the difference or declare the deviation here.");
+    l = list_push(l, "#");
+    l = list_push(l, "# The workflow installs the upstream tool. The parity runner reads this table");
+    l = list_push(l, "# from the repository root and runs every case with the same arguments");
+    l = list_push(l, "# against both tools. A case that the upstream tool does not understand is");
+    l = list_push(l, "# skipped, because the upstream cannot be the reference there.");
+    l = list_push(l, "#");
+    l = list_push(l, "# The cases come from the test recipe of this repository, so they are the");
+    l = list_push(l, "# arguments this tool already claims to accept.");
+    l = list_push(l, "");
+    let mut i: Int = 0;
+    while i < list_len(cases) {
+        l = list_push(l, list_get(cases, i));
+        i = i + 1;
+    }
+    return text_join_lines(l) + "\n";
+}
+
+// Write the release workflow file of one repository. A pushed tag becomes a
+// published release through the shared auto release workflow of the openOODA
+// repository.
+pub fn ci_apply_release(fs_w: &FsWriteCap, repo_dir: String, repo: String, upstream: String) -> Bool {
+    let dir: String = repo_dir + "/.github/workflows";
+    let _m: Result[Void, String] = fs_mkdir_p(fs_w, dir);
+    let body: String = ci_release_workflow(repo, upstream, ci_package_of(upstream), ci_package_binary(upstream));
+    let w: Result[Void, String] = fs_write_file(fs_w, dir + "/release.yml", body);
+    if w.is_err() { return false; }
+    return true;
+}
+
+// Write the workflow file of one repository.
+pub fn ci_apply_workflow(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String, repo: String, upstream: String) -> Bool {
+    let dir: String = repo_dir + "/.github/workflows";
+    let _m: Result[Void, String] = fs_mkdir_p(fs_w, dir);
+    let mk_path: String = repo_dir + "/Makefile";
+    let package: String = ci_package_of(upstream);
+    let binary: String = ci_package_binary(upstream);
+    let target: String = ci_mk_workflow_target(fs_r, mk_path);
+    let has_build: Bool = ci_apply_has_build(fs_r, mk_path);
+    let body: String = ci_workflow(repo, upstream, package, target, binary, has_build);
+    let w: Result[Void, String] = fs_write_file(fs_w, dir + "/ci.yml", body);
+    if w.is_err() { return false; }
+    return true;
+}
+
+// Write the parity runner of one repository.
+pub fn ci_apply_harness(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String, harness_src: String) -> Bool {
+    let r: Result[String, String] = fs_read_file(fs_r, harness_src);
+    if r.is_err() { return false; }
+    let dir: String = repo_dir + "/qa/parity";
+    let _m: Result[Void, String] = fs_mkdir_p(fs_w, dir);
+    let w: Result[Void, String] = fs_write_file(fs_w, dir + "/run.oo", r.val);
+    if w.is_err() { return false; }
+    return true;
+}
+
+// Write the case table of one repository.
+pub fn ci_apply_cases(fs_w: &FsWriteCap, repo_dir: String, repo: String, upstream: String, cases: List[String]) -> Bool {
+    let dir: String = repo_dir + "/qa/parity";
+    let _m: Result[Void, String] = fs_mkdir_p(fs_w, dir);
+    let body: String = ci_apply_cases_table(repo, upstream, cases);
+    let w: Result[Void, String] = fs_write_file(fs_w, dir + "/cases.oot", body);
+    if w.is_err() { return false; }
+    return true;
+}
+
+// Report whether a Makefile declares a build target. A repository without a
+// build target is a stub. The workflow fails it closed, so its Makefile keeps
+// its own shape and no parity target is wired into it.
+pub fn ci_apply_has_build(fs_r: &FsReadCap, mk_path: String) -> Bool {
+    let r: Result[String, String] = fs_read_file(fs_r, mk_path);
+    if r.is_err() { return false; }
+    let lines: List[String] = text_split_lines(r.val);
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let l: String = text_trim(list_get(lines, i));
+        if str_starts_with(l, "build:") || str_starts_with(l, "build :") { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+// Apply the whole contract to one repository.
+pub fn ci_apply_repo(fs_r: &FsReadCap, fs_w: &FsWriteCap, fleet: String, repo: String, upstream: String, harness_src: String) -> Bool {
+    let repo_dir: String = fleet + "/" + repo;
+    let mk_path: String = repo_dir + "/Makefile";
+    let cases: List[String] = parity_case_collect(fs_r, repo, mk_path);
+    let _c: Bool = ci_apply_cases(fs_w, repo_dir, repo, upstream, cases);
+    let _h: Bool = ci_apply_harness(fs_r, fs_w, repo_dir, harness_src);
+    if ci_apply_has_build(fs_r, mk_path) {
+        let _m: Bool = ci_mk_patch(fs_r, fs_w, mk_path);
+    }
+    let _w: Bool = ci_apply_workflow(fs_r, fs_w, repo_dir, repo, upstream);
+    let _r: Bool = ci_apply_release(fs_w, repo_dir, repo, upstream);
+    return true;
+}

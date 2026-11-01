@@ -1,0 +1,43 @@
+// # Text Hash - Hash Helpers For Artifact Identity
+//
+// Logline: Extracts a digest from a checksum command output and hashes a file by path.
+//
+// Setup: Needs ProcessCap for the checksum command. No filesystem caps of its own.
+//
+// Beats:
+//   1. Cut the digest out of a checksum command output line.
+//   2. Hash one file by path.
+
+import "std/core/primitives/str.oo";
+import "std/core/text/num_buffer.oo";
+import "text/lines.oo";
+
+pub fn text_hash_of(sum_output: String) -> String {
+    let lines: List[String] = text_split_lines(sum_output);
+    if list_len(lines) == 0 { return ""; }
+    let first: String = text_trim(list_get(lines, 0));
+    let idx: Int = str_index_of(first, " ");
+    if idx <= 0 { return ""; }
+    return str_slice(first, 0, idx);
+}
+
+pub fn text_sha256_of(sys: &ProcessCap, path: String) -> String {
+    let r: Result[String, String] = sys_exec(sys, "sha256sum", path);
+    if r.is_err() { return ""; }
+    return text_hash_of(r.val);
+}
+
+// A deterministic rolling hash. The same input always yields the same value,
+// so two runs over the same fleet produce the same run identity.
+pub fn text_hash_string(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut h: Int = 5381;
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        let code: Int = chars_len(c) + 1;
+        h = h * 33 + code;
+        i = i + 1;
+    }
+    return int_to_str(h);
+}

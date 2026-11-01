@@ -1,0 +1,87 @@
+// # Upstream Packages - The Install Name Of Every Upstream Tool
+//
+// Logline: Maps an upstream tool to the package that installs it, because the package name and the program name differ for most tools.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Read the program, package, and binary table.
+//   2. Find the package that installs one upstream tool.
+//   3. Find the name the package installs the program under.
+//
+// The table was checked against the package index of ubuntu-latest. Every
+// program is listed, even the ones whose package carries their name, so the
+// table is the whole truth and never a guess. A program that is a shell
+// builtin maps to the shell, because that is what runs it.
+//
+// The third field is the name the package installs the program under. It is
+// empty when the package keeps the name. The workflow links the two when they
+// differ, so the gate always runs the program it names.
+//
+// The upstream is the reference of the parity gate. If the gate cannot install
+// the upstream, the gate cannot prove the drop-in property, so the table has to
+// name a package that really installs the program.
+
+import "std/core/primitives/str.oo";
+import "text/lines.oo";
+
+// The table. Every row is "program|package|binary". The rows are held in
+// chunks so one literal stays short enough for the compiler.
+pub fn ci_package_rows() -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "7z|p7zip-full|\nacpi|acpi|\nalias|bash|\napparmor_parser|apparmor-utils|\narp|net-tools|\nat|at|\nauditd|auditd|\nawk|gawk|\nb3sum|b3sum|\nbase32|coreutils|\nbase58|base58|\nbase64|coreutils|\nbasename|coreutils|\nbash|bash|\nbat|bat|batcat\nbatch|at|\nbiew|biew|\nboxes|boxes|\nbsondump|libmongoc-tools|\nbtop|btop|\nbzip2|bzip2|\ncapsh|libcap2-bin|\ncbor-diag|libcbor-tools|\ncgcreate|cgroup-tools|\nchgrp|coreutils|\nchmod|coreutils|\nchown|coreutils|\nchroot|coreutils|\nclear|ncurses-bin|\ncmp|diffutils|\ncol|bsdextrautils|");
+    l = list_push(l, "colrm|bsdmainutils|\ncomm|coreutils|\ncp|coreutils|\ncpio|cpio|\ncrc32|crc32|\ncron|cron|\ncsplit|coreutils|\ncsvcut|csvkit|\ncurl|curl|\ncut|coreutils|\ndd|coreutils|\ndf|coreutils|\ndialog|dialog|\ndiff|diffutils|\ndiff3|diffutils|\ndig|dnsutils|\ndirname|coreutils|\ndmesg|util-linux|\ndu|coreutils|\nenv|coreutils|\nexpand|coreutils|\nfalse|coreutils|\nfastfetch|fastfetch|\nfc-list|fontconfig|\nfiglet|figlet|\nfile|file|\nfind|findutils|\nfirewalld|firewalld|\nfmt|coreutils|\nfold|coreutils|\nfontconfig|fontconfig|");
+    l = list_push(l, "free|procps|\nfsck|e2fsprogs|\nfzf|fzf|\ngit|git|\ngrep|grep|\ngzip|gzip|\nhead|coreutils|\nhexdump|bsdextrautils|\nhistory|bash|\nhost|bind9-host|\nhpack|hpack|\nhsl|hsl|\nhwinfo|hwinfo|\nifconfig|net-tools|\niostat|sysstat|\nip|iproute2|\niptables|iptables|\njoin|coreutils|\njournalctl|systemd|\njq|jq|\nkeygen|krb5-user|\nkill|procps|\nless|less|\nlink|coreutils|\nln|coreutils|\nloginctl|systemd|\nlolcat|lolcat|\nls|coreutils|\nlscpu|util-linux|\nlshw|lshw|\nlspci|pciutils|\nlsusb|usbutils|\nmd5sum|coreutils|");
+    l = list_push(l, "mkdir|coreutils|\nmktemp|coreutils|\nmore|ncurses-bin|\nmount|util-linux|\nmpstat|sysstat|\nmtr|mtr-tiny|\nmv|coreutils|\nnc|netcat-openbsd|\nnetstat|net-tools|\nnft|nftables|\nnice|coreutils|\nnl|coreutils|\nnotify-send|libnotify-bin|\nnslookup|dnsutils|\nod|coreutils|\nopenssl|openssl|\npaste|coreutils|\npastel|pastel|\npatch|patch|\nping|iputils-ping|\npkill|procps|\npoweroff|systemd|\npr|coreutils|\nprlimit|util-linux|\nps|procps|\npv|pv|\nreadlink|coreutils|\nrealpath|coreutils|\nreboot|systemd|\nrenice|util-linux|");
+    l = list_push(l, "resolvectl|systemd-resolved|\nrev|util-linux|\nrm|coreutils|\nrmdir|coreutils|\nroute|net-tools|\nrsync|rsync|\nscp|openssh-client|\nscreen|screen|\nsdiff|diffutils|\nsed|sed|\nsensors|lm-sensors|\nsftp|openssh-client|\nsha256sum|coreutils|\nsha512sum|coreutils|\nshopt|bash|\nshred|coreutils|\nshutdown|systemd|\nsleep|coreutils|\nsort|coreutils|\nsplit|coreutils|\nsqlite3|sqlite3|\nss|iproute2|\nssh|openssh-client|\nstat|coreutils|\nstrings|binutils|\nstty|coreutils|\nsync|coreutils|\nsysctl|procps|\nsystemctl|systemd|");
+    l = list_push(l, "systemd-cgls|systemd|\ntac|coreutils|\ntail|coreutils|\ntar|tar|\ntime|time|\ntimeout|coreutils|\ntmux|tmux|\ntouch|coreutils|\ntpm2_pcrread|tpm2-tools|\ntput|ncurses-bin|\ntr|coreutils|\ntraceroute|traceroute|\ntree|tree|\ntrue|coreutils|\ntruncate|coreutils|\ntty|coreutils|\ntty-clock|tty-clock|\nudevadm|udev|\numask|coreutils|\numount|util-linux|\nunexpand|coreutils|\nuniq|coreutils|\nunzip|unzip|\nupdate-ca-trust|ca-certificates|\nuptime|procps|\nvmstat|procps|\nwait|bash|\nwatch|procps|\nwc|coreutils|\nwdiff|wdiff|");
+    l = list_push(l, "wget|wget|\nwget2|wget2|\nwhois|whois|\nxargs|findutils|\nxmllint|libxml2-utils|\nxxd|xxd|\nxz|xz-utils|\nyes|coreutils|\nyq|yq|\nzgrep|gzip|\nzstd|zstd|");
+    return l;
+}
+
+// Find the row of one upstream tool. An empty string means the table does not
+// hold the program.
+pub fn ci_package_row(upstream: String) -> String {
+    if upstream == "" { return ""; }
+    let chunks: List[String] = ci_package_rows();
+    let mut i: Int = 0;
+    while i < list_len(chunks) {
+        let rows: List[String] = text_split_lines(list_get(chunks, i));
+        let mut j: Int = 0;
+        while j < list_len(rows) {
+            let row: String = list_get(rows, j);
+            let p: Int = str_index_of(row, "|");
+            if p > 0 {
+                let name: String = str_slice(row, 0, p);
+                if name == upstream { return row; }
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+// Find the package that installs one upstream tool. A program that the table
+// does not hold is installed under its own name.
+pub fn ci_package_of(upstream: String) -> String {
+    let row: String = ci_package_row(upstream);
+    if row == "" { return upstream; }
+    let p: Int = str_index_of(row, "|");
+    let rest: String = str_slice(row, p + 1, chars_len(row));
+    let q: Int = str_index_of(rest, "|");
+    if q <= 0 { return rest; }
+    return str_slice(rest, 0, q);
+}
+
+// Find the name the package installs the program under. The name is empty
+// when the package keeps it.
+pub fn ci_package_binary(upstream: String) -> String {
+    let row: String = ci_package_row(upstream);
+    if row == "" { return ""; }
+    let p: Int = str_index_of(row, "|");
+    let rest: String = str_slice(row, p + 1, chars_len(row));
+    let q: Int = str_index_of(rest, "|");
+    if q <= 0 { return ""; }
+    return str_slice(rest, q + 1, chars_len(rest));
+}

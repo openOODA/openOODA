@@ -1,0 +1,64 @@
+// # Text Lines - Shared Line Split, Join, And Trim Helpers
+//
+// Logline: Splits text into lines, joins lines back, and trims whitespace so other buildbox modules can work line by line.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Split text on newline characters.
+//   2. Join a list of lines with newline characters.
+//   3. Trim spaces and tabs from both ends of a string.
+
+pub fn text_split_lines(s: String) -> List[String] {
+    let n: Int = chars_len(s);
+    let mut out: List[String] = list_new();
+    let mut cur: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        if c == "\n" {
+            out = list_push(out, cur);
+            cur = "";
+        } else {
+            cur = cur + c;
+        }
+        i = i + 1;
+    }
+    out = list_push(out, cur);
+    return out;
+}
+
+pub fn text_join_lines(xs: List[String]) -> String {
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < list_len(xs) {
+        if i > 0 { out = out + "\n"; }
+        out = out + list_get(xs, i);
+        i = i + 1;
+    }
+    return out;
+}
+
+// The standard library has no trim. Trim spaces, tabs, and line ends.
+pub fn text_trim(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut start: Int = 0;
+    while start < n {
+        let c: String = char_at(s, start);
+        if c != " " && c != "\t" && c != "\r" && c != "\n" { break; }
+        start = start + 1;
+    }
+    let mut end: Int = n;
+    while end > start {
+        let c: String = char_at(s, end - 1);
+        if c != " " && c != "\t" && c != "\r" && c != "\n" { break; }
+        end = end - 1;
+    }
+    return str_slice(s, start, end);
+}
+
+// Report whether a line carries a deliberate fake-secret marker. RFC 0010
+// section 2.2 lets a fixture keep a key-shaped string when it is marked.
+pub fn text_is_fake_line(line: String) -> Bool {
+    return str_contains(line, "# OO-FAKE") || str_contains(line, "# FAKE") || str_contains(line, "OO-FAKE:");
+}

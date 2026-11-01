@@ -1,0 +1,62 @@
+// # Loop Fetch - Clone And Refresh Repos At Their Real Default Branch
+//
+// Logline: Clones and refreshes each repo at the default branch the remote reports.
+//
+// Setup: Needs ProcessCap for git and FsReadCap to test an existing checkout.
+//
+// Beats:
+//   1. Clone a repo at a branch when no checkout exists.
+//   2. Fetch and reset a checkout to the branch head when one exists.
+//   3. Fetch and reset in argv form with no shell string.
+
+import "std/fs/os/fs.oo";
+import "fleet/manifest.oo";
+
+pub fn loop_fetch_clone(sys: &ProcessCap, url: String, branch: String, dir: String) -> Bool {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "clone");
+    a = list_push(a, "--depth");
+    a = list_push(a, "1");
+    a = list_push(a, "--branch");
+    a = list_push(a, branch);
+    a = list_push(a, url);
+    a = list_push(a, dir);
+    let r: Result[Int, String] = sys_exec_wait(sys, "git", a);
+    let mut code: Int = 1;
+    if r.is_ok() { code = r.val; }
+    return code == 0;
+}
+
+pub fn loop_fetch_update(sys: &ProcessCap, dir: String, branch: String) -> Bool {
+    let fargv: List[String] = list_new();
+    let mut f: List[String] = list_push(fargv, "-C");
+    f = list_push(f, dir);
+    f = list_push(f, "fetch");
+    f = list_push(f, "--depth");
+    f = list_push(f, "1");
+    f = list_push(f, "origin");
+    f = list_push(f, branch);
+    let fr: Result[Int, String] = sys_exec_wait(sys, "git", f);
+    let mut fcode: Int = 1;
+    if fr.is_ok() { fcode = fr.val; }
+    if fcode != 0 { return false; }
+    let rargv: List[String] = list_new();
+    let mut r: List[String] = list_push(rargv, "-C");
+    r = list_push(r, dir);
+    r = list_push(r, "reset");
+    r = list_push(r, "--hard");
+    r = list_push(r, "FETCH_HEAD");
+    let rr: Result[Int, String] = sys_exec_wait(sys, "git", r);
+    let mut rcode: Int = 1;
+    if rr.is_ok() { rcode = rr.val; }
+    return rcode == 0;
+}
+
+// Fetch or clone one repo at the branch the remote reports. The branch is
+// never hardcoded, so one fleet can serve main branches and another master.
+pub fn loop_fetch_repo(sys: &ProcessCap, fs_r: &FsReadCap, base: String, org: String, name: String, branch: String, dir: String) -> Bool {
+    if !path_exists(fs_r, dir) {
+        return loop_fetch_clone(sys, fleet_remote_url(base, org, name), branch, dir);
+    }
+    return loop_fetch_update(sys, dir, branch);
+}

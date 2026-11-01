@@ -1,0 +1,103 @@
+// # fleet-apply - Applies The CI Contract And The Parity Gate To The Whole Fleet
+//
+// Logline: Walks the fleet and writes the fail closed workflow, the parity runner, the case table, and the Makefile patch into every repository.
+//
+// Setup: Env: OODA_FLEET_DIR (default /Projects/openOODA-tools), OODA_BUILD_SRC
+//   (default the buildbox source directory that holds parity/run.oo).
+//
+// Beats:
+//   1. Read the organization profile and build the upstream mapping.
+//   2. List the tool repositories of the fleet.
+//   3. Apply the contract to every tool repository.
+//   4. Report the number of applied repositories and the number of skipped ones.
+//
+// The tool never merges and never pushes. It writes files in the working tree
+// so a reviewer can read the diff before it is committed.
+
+import "std/core/text/num_buffer.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "parity/mapping.oo";
+import "ci/apply.oo";
+
+// Put one repository on its own branch. The contract is a new change, so it
+// lands on a branch that the owner can read and merge. The branch is created
+// from the checked out commit and is reset when it already exists, so the
+// apply is repeatable.
+fn fleet_apply_branch(sys: &ProcessCap, repo_dir: String, branch: String) -> Bool {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo_dir);
+    a = list_push(a, "checkout");
+    a = list_push(a, "-B");
+    a = list_push(a, branch);
+    let r: Result[Int, String] = sys_exec_wait(sys, "git", a);
+    if r.is_err() { return false; }
+    return true;
+}
+
+// Report whether a directory name is a tool repository. The organization
+// profile directory and the landing site are not tools.
+fn fleet_apply_is_tool(name: String) -> Bool {
+    if name == ".git" { return false; }
+    if name == ".github" { return false; }
+    if str_contains(name, ".github.io") { return false; }
+    if !str_starts_with(name, "oo") { return false; }
+    return true;
+}
+
+// Read one environment value with a fallback.
+fn fleet_apply_env(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return fallback;
+}
+
+// Apply the contract to one repository. The answer tells the caller whether
+// the repository has an upstream program, because a tool without one has no
+// parity gate.
+fn fleet_apply_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, fleet: String, name: String, harness: String, rows: List[String], branch: String) -> Bool {
+    let upstream: String = parity_map_lookup(rows, name);
+    let _b: Bool = fleet_apply_branch(sys, fleet + "/" + name, branch);
+    let _ok: Bool = ci_apply_repo(fs_r, fs_w, fleet, name, upstream, harness);
+    return upstream != "";
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let fleet: String = fleet_apply_env(env, "OODA_FLEET_DIR", "/Projects/openOODA-tools");
+    let src: String = fleet_apply_env(env, "OODA_BUILD_SRC", "/var/lib/ooda-buildbox/build/src");
+    let poly: String = fleet_apply_env(env, "OODA_POLY_DIR", "/Projects/openOODA/openOODA");
+    let harness: String = src + "/parity/run.oo";
+    let branch: String = fleet_apply_env(env, "OODA_CONTRACT_BRANCH", "buildbox/fleet-contract");
+    if !path_exists(fs_r, fleet) {
+        println("ERR\tfleet\tno fleet at " + fleet);
+        return 1;
+    }
+    if !path_exists(fs_r, harness) {
+        println("ERR\tfleet\tno parity runner at " + harness);
+        return 1;
+    }
+    let profile: String = fleet + "/.github/profile/README.md";
+    let backlog: String = poly + "/docs/tools-backlog.oot";
+    let mut rows: List[String] = parity_map_rows(fs_r, profile);
+    let extra: List[String] = parity_map_rows(fs_r, backlog);
+    let mut i: Int = 0;
+    while i < list_len(extra) { rows = list_push(rows, list_get(extra, i)); i = i + 1; }
+    println("fleet mapping rows=" + int_to_str(list_len(rows)));
+    let entries: List[String] = fs_read_dir(fs_r, fleet);
+    let mut applied: Int = 0;
+    let mut no_upstream: Int = 0;
+    i = 0;
+    while i < list_len(entries) {
+        let name: String = list_get(entries, i);
+        i = i + 1;
+        if !fleet_apply_is_tool(name) { continue; }
+        if !path_exists(fs_r, fleet + "/" + name + "/Makefile") { continue; }
+        let had: Bool = fleet_apply_one(sys, fs_r, fs_w, fleet, name, harness, rows, branch);
+        applied = applied + 1;
+        if !had { no_upstream = no_upstream + 1; }
+    }
+    println("fleet applied=" + int_to_str(applied) + " no_upstream=" + int_to_str(no_upstream));
+    return 0;
+}

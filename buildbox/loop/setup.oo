@@ -1,0 +1,51 @@
+// # Loop Setup - The Run Environment And The Working Directories
+//
+// Logline: Reads the run environment and creates the working directories the loop needs.
+//
+// Setup: Needs EnvCap for the environment and FsWriteCap for the directories.
+//
+// Beats:
+//   1. Read one environment value with a fallback.
+//   2. Read the whole run configuration.
+//   3. Create the working directories of a run.
+//
+// Only OODA_ prefixed variables are visible to the process, so the buildbox
+// credential is OODA_GITHUB_TOKEN and never GITHUB_TOKEN.
+
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+
+pub fn loop_setup_env_or(env: &EnvCap, name: String, dflt: String) -> String {
+    let r: Result[String, String] = env_get(env, name);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return dflt;
+}
+
+// The paths and the organization of one run.
+type LoopCfg = struct {
+    repos: String,
+    git_base: String,
+    queue: String,
+    cache: String,
+    org: String,
+    core_org: String
+};
+
+pub fn loop_setup_config(env: &EnvCap) -> LoopCfg {
+    return LoopCfg {
+        repos: loop_setup_env_or(env, "OODA_REPOS", "/work/repos"),
+        git_base: loop_setup_env_or(env, "OODA_GIT_BASE", "https://github.com"),
+        queue: loop_setup_env_or(env, "OODA_QUEUE", "/queue"),
+        cache: loop_setup_env_or(env, "OODA_CACHE", "/cache"),
+        org: loop_setup_env_or(env, "OODA_FLEET_ORG", "openOODA-tools"),
+        core_org: loop_setup_env_or(env, "OODA_CORE_ORG", "openOODA")
+    };
+}
+
+pub fn loop_setup_make_dirs(fs_w: &FsWriteCap, repos: String, queue: String, cache: String) -> Bool {
+    let _m0: Result[Void, String] = fs_mkdir_p(fs_w, repos);
+    let _m1: Result[Void, String] = fs_mkdir_p(fs_w, queue + "/raw");
+    let _m2: Result[Void, String] = fs_mkdir_p(fs_w, queue + "/manifest");
+    let _m3: Result[Void, String] = fs_mkdir_p(fs_w, cache);
+    return true;
+}
