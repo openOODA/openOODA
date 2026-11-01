@@ -16,9 +16,16 @@
 // repository whose build produces no binary fails. A repository whose tool
 // differs from the tool it replaces fails. A repository whose tool is not
 // deterministic across two runs fails.
+//
+// The build runs the per module path. The single unit path compiles every
+// module of a tool into one translation unit, and the largest tools of the
+// fleet need more memory than a runner has. The per module path builds the
+// same binary from the same sources and needs a fraction of the memory, so
+// every tool of the fleet builds on the runner.
 
 import "std/core/text/num_buffer.oo";
 import "text/lines.oo";
+import "ci/steps.oo";
 
 // The head of the workflow file.
 pub fn ci_head(repo: String) -> List[String] {
@@ -99,6 +106,7 @@ pub fn ci_build(repo: String) -> List[String] {
     l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
     l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
     l = list_push(l, "          OODA_NO_JAIL: \"1\"");
+    l = list_push(l, "          OODA_BUILD_MULTI: \"1\"");
     l = list_push(l, "        run: make build");
     l = list_push(l, "");
     l = list_push(l, "      - name: Require the tool binary");
@@ -117,24 +125,12 @@ pub fn ci_build(repo: String) -> List[String] {
 // that it is deterministic across two runs.
 pub fn ci_verify(repo: String) -> List[String] {
     let mut l: List[String] = list_new();
-    l = list_push(l, "      - name: Verify");
-    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
-    l = list_push(l, "        env:");
-    l = list_push(l, "          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac");
-    l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
-    l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
-    l = list_push(l, "          OODA_NO_JAIL: \"1\"");
-    l = list_push(l, "        run: make verify");
-    l = list_push(l, "");
-    l = list_push(l, "      - name: Test");
-    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
-    l = list_push(l, "        env:");
-    l = list_push(l, "          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac");
-    l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
-    l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
-    l = list_push(l, "          OODA_NO_JAIL: \"1\"");
-    l = list_push(l, "        run: make test");
-    l = list_push(l, "");
+    let mut part: List[String] = ci_step_make(repo, "Verify", "make verify");
+    let mut i: Int = 0;
+    while i < list_len(part) { l = list_push(l, list_get(part, i)); i = i + 1; }
+    part = ci_step_make(repo, "Test", "make test");
+    i = 0;
+    while i < list_len(part) { l = list_push(l, list_get(part, i)); i = i + 1; }
     l = list_push(l, "      - name: Pure test audit");
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
     l = list_push(l, "        run: |");
@@ -155,14 +151,7 @@ pub fn ci_verify(repo: String) -> List[String] {
     return l;
 }
 
-// The tools that another tool needs beside it. The compiler resolves the
-// standard library by walking the parent directories, so a tool that reads a
-// sibling tool needs that sibling checked out beside it.
-pub fn ci_sibling_tools(repo: String) -> List[String] {
-    let mut out: List[String] = list_new();
-    if repo == "oogrep" { out = list_push(out, "oojq"); }
-    return out;
-}
+
 
 // The steps that install the upstream tool. The package is installed, then the
 // program is looked for in the standard places, because a package may install
@@ -216,6 +205,7 @@ pub fn ci_parity(repo: String, upstream: String, package: String, target: String
     l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
     l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
     l = list_push(l, "          OODA_NO_JAIL: \"1\"");
+    l = list_push(l, "          OODA_BUILD_MULTI: \"1\"");
     l = list_push(l, "        run: make " + target);
     l = list_push(l, "");
     return l;
