@@ -115,16 +115,30 @@ pub fn parity_case_collect(fs_r: &FsReadCap, tool: String, mk_path: String) -> L
 }
 
 // Take the argument words of one invocation and drop the words that cannot be
-// compared.
+// compared. A word that cannot be reproduced is dropped, and the rest of the
+// invocation stays a case, because the same reduced arguments are given to
+// the upstream.
+//
+// The test recipe bounds a run that follows a file with the timeout helper.
+// The bound belongs to the case, so the gate gives the upstream the same
+// time as the tool under test.
 pub fn parity_case_args(words: List[String], from: Int) -> List[String] {
     let mut out: List[String] = list_new();
     if from < list_len(words) && parity_case_is_usage(list_get(words, from)) { return out; }
     let mut i: Int = from;
     while i < list_len(words) {
         let w: String = list_get(words, i);
-        if parity_case_skip_word(w) { return out; }
+        if parity_case_skip_word(w) { break; }
         out = list_push(out, w);
         i = i + 1;
+    }
+    if from >= 3 && list_get(words, from - 3) == "timeout" {
+        let mut pre: List[String] = list_new();
+        pre = list_push(pre, "timeout");
+        pre = list_push(pre, list_get(words, from - 2));
+        let mut j: Int = 0;
+        while j < list_len(out) { pre = list_push(pre, list_get(out, j)); j = j + 1; }
+        return pre;
     }
     return out;
 }
