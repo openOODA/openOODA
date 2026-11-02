@@ -25,7 +25,12 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     let repo: String = if list_len(args) > 1 { list_get(args, 1) } else { "repo" };
     let has_build: Bool = fleet_manifest_has_build_target(fs_r, dir);
     let has_ci: Bool = fleet_manifest_ci_present(fs_r, dir);
-    let line: String = fleet_gate_repo(sys, fs_r, fs_w, repo, "main", "local", dir, has_build, has_ci, "acceptance");
+    // The compiler the gate builds with is named in the environment, because
+    // a tool Makefile finds it through OODA_COMPILER.
+    let mut compiler: String = "";
+    let e: Result[String, String] = env_get(env, "OODA_COMPILER");
+    if e.is_ok() { compiler = e.val; }
+    let line: String = fleet_gate_repo(sys, fs_r, fs_w, repo, "main", "local", dir, has_build, has_ci, "acceptance", compiler);
     println(line);
     return 0;
 }

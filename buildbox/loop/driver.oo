@@ -43,13 +43,20 @@ pub fn loop_driver_build_compiler(sys: &ProcessCap, repos: String, out_bin: Stri
 
 // Build the compiler gate with the compiler that was just built. The gate
 // must exercise the new compiler, never the seed compiler.
+//
+// The compiler builds a module the per module way, and that path asks the
+// environment for the compiler that runs it. The child process therefore
+// needs OODA_COMPILER, or the build fails closed with "OODA_COMPILER or
+// OODAC_BIN required" and the gate never runs.
 pub fn loop_driver_build_gate(sys: &ProcessCap, oodac_dir: String, compiler: String, gate_bin: String) -> Int {
     let mut a: List[String] = list_new();
+    a = list_push(a, "OODA_COMPILER=" + compiler);
+    a = list_push(a, compiler);
     a = list_push(a, "build");
     a = list_push(a, oodac_dir + "/qa/audit_gate.oo");
     a = list_push(a, "-o");
     a = list_push(a, gate_bin);
-    let r: Result[Int, String] = sys_exec_wait(sys, compiler, a);
+    let r: Result[Int, String] = sys_exec_wait(sys, "env", a);
     let mut code: Int = 1;
     if r.is_ok() { code = r.val; }
     return code;
@@ -57,8 +64,12 @@ pub fn loop_driver_build_gate(sys: &ProcessCap, oodac_dir: String, compiler: Str
 
 // Run the compiler gate. The gate reads its fixtures relative to the compiler
 // checkout, so the working directory is set with env and argv.
+//
+// The gate builds fixtures with the compiler that was just built, so that
+// compiler is named in the environment of the child process as well.
 pub fn loop_driver_run_gate(sys: &ProcessCap, compiler: String, oodac_dir: String, gate_bin: String) -> Int {
     let mut a: List[String] = list_new();
+    a = list_push(a, "OODA_COMPILER=" + compiler);
     a = list_push(a, "-C");
     a = list_push(a, oodac_dir);
     a = list_push(a, gate_bin);
@@ -125,7 +136,7 @@ pub fn loop_driver_fetch_all(sys: &ProcessCap, fs_r: &FsReadCap, names: List[Str
 
 // Run the fleet gate over every repo and write one verdict line per repo.
 // The returned number is the count of repos that did not earn a pass.
-pub fn loop_driver_gate_all(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, states: List[LoopRepo], run_id: String, queue: String) -> Int {
+pub fn loop_driver_gate_all(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, states: List[LoopRepo], run_id: String, queue: String, compiler: String) -> Int {
     let verdict_path: String = queue + "/fleet_verdicts.oot";
     let manifest_path: String = queue + "/manifest/fleet.json";
     let mut manifest: String = "{\"run_id\":\"" + run_id + "\",\"repos\":[";
@@ -138,7 +149,7 @@ pub fn loop_driver_gate_all(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCa
             j = j + 1;
             continue;
         }
-        let line: String = fleet_gate_repo(sys, fs_r, fs_w, st.name, st.branch, st.sha, st.dir, st.has_build, st.has_ci, run_id);
+        let line: String = fleet_gate_repo(sys, fs_r, fs_w, st.name, st.branch, st.sha, st.dir, st.has_build, st.has_ci, run_id, compiler);
         let _w: Bool = fleet_gate_write(fs_w, verdict_path, line);
         let verdict: String = fleet_verdict_line_verdict(line);
         if !fleet_verdict_is_pass(verdict) { failed = failed + 1; }
@@ -202,6 +213,6 @@ pub fn loop_driver_execute(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap
     }
     let stamp: String = loop_cache_compiler_stamp(sys, out_bin);
     let run_id: String = loop_manifest_run_id(stamp, states);
-    let failed: Int = loop_driver_gate_all(sys, fs_r, fs_w, states, run_id, cfg.queue);
+    let failed: Int = loop_driver_gate_all(sys, fs_r, fs_w, states, run_id, cfg.queue, out_bin);
     return LoopResult { repos: list_len(states), failed: failed, gate_rc: 0 };
 }

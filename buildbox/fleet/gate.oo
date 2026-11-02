@@ -36,7 +36,7 @@ pub fn fleet_gate_detail(verdict: String, build_rc: Int, verify_rc: Int, test_rc
 }
 
 // Run every check against one repo checkout and return the verdict line.
-pub fn fleet_gate_repo(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, repo: String, branch: String, sha: String, dir: String, has_build: Bool, has_ci: Bool, run_id: String) -> String {
+pub fn fleet_gate_repo(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, repo: String, branch: String, sha: String, dir: String, has_build: Bool, has_ci: Bool, run_id: String, compiler: String) -> String {
     if !has_ci { return fleet_verdict_line(fleet_verdict(5), repo, branch, sha, "no_ci_workflow", run_id); }
     let mut build_rc: Int = 0;
     let mut verify_rc: Int = 0;
@@ -45,10 +45,10 @@ pub fn fleet_gate_repo(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, re
     let mut parity_ok: Bool = true;
     let mut scorecard: String = "unavailable";
     if has_build {
-        build_rc = fleet_run_make(sys, dir, "build");
+        build_rc = fleet_run_make(sys, dir, "build", compiler);
         if build_rc == 0 {
-            verify_rc = fleet_run_make(sys, dir, "verify");
-            if verify_rc == 0 { test_rc = fleet_run_make(sys, dir, "test"); }
+            verify_rc = fleet_run_make(sys, dir, "verify", compiler);
+            if verify_rc == 0 { test_rc = fleet_run_make(sys, dir, "test", compiler); }
         }
     }
     let bin_path: String = dir + "/dist/" + repo;

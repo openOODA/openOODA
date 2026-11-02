@@ -14,12 +14,18 @@ import "std/core/text/num_buffer.oo";
 import "std/core/primitives/str.oo";
 import "text/lines.oo";
 
-pub fn fleet_run_make(sys: &ProcessCap, dir: String, target: String) -> Int {
+// The compiler is named in the environment of the child process, because a
+// tool Makefile finds the compiler through OODA_COMPILER and the checkout of
+// the loop holds no compiler of its own. The gate therefore exercises the
+// compiler that was just built.
+pub fn fleet_run_make(sys: &ProcessCap, dir: String, target: String, compiler: String) -> Int {
     let mut a: List[String] = list_new();
+    a = list_push(a, "OODA_COMPILER=" + compiler);
+    a = list_push(a, "make");
     a = list_push(a, "-C");
     a = list_push(a, dir);
     a = list_push(a, target);
-    let r: Result[Int, String] = sys_exec_wait(sys, "make", a);
+    let r: Result[Int, String] = sys_exec_wait(sys, "env", a);
     let mut code: Int = 1;
     if r.is_ok() { code = r.val; }
     return code;
