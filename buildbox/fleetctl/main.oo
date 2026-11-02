@@ -1,0 +1,79 @@
+// # Fleet Control - Lands And Releases The Repaired Tools Of The Fleet
+//
+// Logline: Merges the contract and the repair of a tool once the gate is green, and publishes the release of a tool.
+//
+// Setup: Needs ProcessCap, FsReadCap, FsWriteCap and EnvCap.
+//
+// Beats:
+//   1. Land the pull requests of a tool once every fleet gate check has passed.
+//   2. Release a tool: version, pull request, tag and catalog entry.
+//   3. Report the gate verdict of the open pull requests of a tool.
+//
+// Usage: fleetctl land <tool>... | release <tool>... | status <tool>...
+
+import "std/fs/process/env.oo";
+import "fleetctl/land.oo";
+import "fleetctl/release.oo";
+
+// Read one environment value with a fallback. The runtime only hands out the
+// names that begin with OODA_ or OO_, so every setting of the orchestrator is
+// named that way.
+fn fc_env(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return fallback;
+}
+
+// The gate verdict of the open pull requests of a tool.
+fn fc_status(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, org: String, tool: String) -> String {
+    let slug: String = org + "/" + tool;
+    let mut branches: List[String] = list_new();
+    branches = list_push(branches, "buildbox/fleet-contract");
+    branches = list_push(branches, "fix/" + tool + "-dropin");
+    let mut report: String = "";
+    let mut i: Int = 0;
+    while i < list_len(branches) {
+        let br: String = list_get(branches, i);
+        i = i + 1;
+        let pr: String = fc_pr_of(sys, fs_r, cache, slug, br);
+        if pr == "" { continue; }
+        let v: String = fc_gate(sys, fs_r, cache, slug, pr);
+        report = report + br + " PR#" + pr + " gate=" + v + " ";
+    }
+    return report;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    if list_len(args) < 2 {
+        println("usage: fleetctl land|release|status <tool>...");
+        return 2;
+    }
+    let cmd: String = list_get(args, 0);
+    let fleet: String = fc_env(env, "OODA_FLEET_DIR", "/Projects/openOODA-tools");
+    let org: String = fc_env(env, "OODA_ORG", "openOODA-tools");
+    let cache: String = fc_env(env, "OODA_FLEET_CACHE", "/var/lib/ooda-buildbox/cache");
+    let tries: Int = 60;
+    let mut rc: Int = 0;
+    let mut i: Int = 1;
+    while i < list_len(args) {
+        let tool: String = list_get(args, i);
+        i = i + 1;
+        if cmd == "land" {
+            let r: Int = fc_land(sys, fs_r, cache, fleet, org, tool, tries);
+            if r != 0 { rc = r; }
+            continue;
+        }
+        if cmd == "release" {
+            let r: Int = fc_release(sys, fs_r, fs_w, cache, fleet, org, tool, "", tries);
+            if r != 0 { rc = r; }
+            continue;
+        }
+        if cmd == "status" {
+            println(tool + " " + fc_status(sys, fs_r, cache, org, tool));
+            continue;
+        }
+        println("unknown command: " + cmd);
+        return 2;
+    }
+    return rc;
+}
