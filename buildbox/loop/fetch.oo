@@ -9,7 +9,9 @@
 //   2. Fetch and reset a checkout to the branch head when one exists.
 //   3. Fetch and reset in argv form with no shell string.
 
+import "std/core/primitives/str.oo";
 import "std/fs/os/fs.oo";
+import "text/lines.oo";
 import "fleet/manifest.oo";
 
 pub fn loop_fetch_clone(sys: &ProcessCap, url: String, branch: String, dir: String) -> Bool {
@@ -59,4 +61,22 @@ pub fn loop_fetch_repo(sys: &ProcessCap, fs_r: &FsReadCap, base: String, org: St
         return loop_fetch_clone(sys, fleet_remote_url(base, org, name), branch, dir);
     }
     return loop_fetch_update(sys, dir, branch);
+}
+
+// Resolve the default branch of one repo from the remote.
+pub fn loop_manifest_branch(sys: &ProcessCap, base: String, org: String, name: String) -> String {
+    let probe: String = fleet_remote_probe(sys, base, org, name);
+    if probe == "" { return ""; }
+    let parts: List[String] = text_split_lines(str_replace(probe, "|", "\n"));
+    if list_len(parts) == 0 { return ""; }
+    return list_get(parts, 0);
+}
+
+// Resolve the head commit of one repo from the remote.
+pub fn loop_manifest_head_sha(sys: &ProcessCap, base: String, org: String, name: String) -> String {
+    let probe: String = fleet_remote_probe(sys, base, org, name);
+    if probe == "" { return ""; }
+    let parts: List[String] = text_split_lines(str_replace(probe, "|", "\n"));
+    if list_len(parts) < 2 { return ""; }
+    return list_get(parts, 1);
 }
