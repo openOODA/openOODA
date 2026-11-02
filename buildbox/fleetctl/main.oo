@@ -44,12 +44,47 @@ fn fc_status(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, org: String, too
     return report;
 }
 
+// Run one command of the orchestrator for one tool. The extra word carries
+// the version of the catalog command and is empty for the other commands.
+fn fc_run_one(
+    sys: &ProcessCap,
+    fs_r: &FsReadCap,
+    fs_w: &FsWriteCap,
+    cache: String,
+    fleet: String,
+    org: String,
+    tool: String,
+    extra: String,
+    cmd: String,
+    tries: Int
+) -> Int {
+    if cmd == "land" {
+        return fc_land(sys, fs_r, cache, fleet, org, tool, tries);
+    }
+    if cmd == "release" {
+        return fc_release(sys, fs_r, fs_w, cache, fleet, org, tool, "", tries);
+    }
+    if cmd == "status" {
+        println(tool + " " + fc_status(sys, fs_r, cache, org, tool));
+        return 0;
+    }
+    if cmd == "catalog" {
+        return fc_catalog_release(sys, fs_r, fs_w, cache, fleet, tool, extra, "", tries);
+    }
+    println("unknown command: " + cmd);
+    return 2;
+}
+
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
     if list_len(args) < 2 {
         println("usage: fleetctl land|release|status <tool>...");
         return 2;
     }
     let cmd: String = list_get(args, 0);
+    if cmd != "land" && cmd != "release" && cmd != "status" && cmd != "catalog" {
+        println("unknown command: " + cmd);
+        return 2;
+    }
     let fleet: String = fc_env(env, "OODA_FLEET_DIR", "/Projects/openOODA-tools");
     let org: String = fc_env(env, "OODA_ORG", "openOODA-tools");
     let cache: String = fc_env(env, "OODA_FLEET_CACHE", "/var/lib/ooda-buildbox/cache");
@@ -59,29 +94,13 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     while i < list_len(args) {
         let tool: String = list_get(args, i);
         i = i + 1;
-        if cmd == "land" {
-            let r: Int = fc_land(sys, fs_r, cache, fleet, org, tool, tries);
-            if r != 0 { rc = r; }
-            continue;
-        }
-        if cmd == "release" {
-            let r: Int = fc_release(sys, fs_r, fs_w, cache, fleet, org, tool, "", tries);
-            if r != 0 { rc = r; }
-            continue;
-        }
-        if cmd == "status" {
-            println(tool + " " + fc_status(sys, fs_r, cache, org, tool));
-            continue;
-        }
+        let mut extra: String = "";
         if cmd == "catalog" {
-            let ver: String = if i < list_len(args) { list_get(args, i) } else { "" };
+            if i < list_len(args) { extra = list_get(args, i); }
             i = i + 1;
-            let r: Int = fc_catalog_release(sys, fs_r, fs_w, cache, fleet, tool, ver, "", tries);
-            if r != 0 { rc = r; }
-            continue;
         }
-        println("unknown command: " + cmd);
-        return 2;
+        let r: Int = fc_run_one(sys, fs_r, fs_w, cache, fleet, org, tool, extra, cmd, tries);
+        if r != 0 { rc = r; }
     }
     return rc;
 }
