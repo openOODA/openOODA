@@ -1,0 +1,62 @@
+// # Parity Deviations - The Cases A Tool Declares As A Difference
+//
+// Logline: Holds the cases the owner of a tool declares as a deviation, so the case table can mark them as differ cases.
+//
+// Setup: Needs FsReadCap to read the file of declared deviations.
+//
+// Beats:
+//   1. Report whether a case line is a declared deviation of the tool.
+//   2. Turn a case line into a differ line when the tool declares it.
+//   3. Read the declared deviations of a tool.
+//
+// A declared deviation is a case where the tool ends in the same exit code as
+// the upstream tool but prints a different text. That is a real difference and
+// it is written down, so the gate can tell a declared difference from a
+// failure that nobody has looked at.
+//
+// The file of deviations holds one case line per line, written as it stands in
+// the case table. A line that is not a case of the tool is ignored, so a file
+// that is one step behind the recipe does not change the gate.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+
+// Report whether a case line is a declared deviation of the tool. A declared
+// deviation is one the tool owner wrote down: the exit code still has to be
+// the same as the upstream tool, but the text of the answer may differ.
+pub fn parity_case_is_deviation(devs: List[String], line: String) -> Bool {
+    let mut i: Int = 0;
+    while i < list_len(devs) {
+        if list_get(devs, i) == line { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+// Turn a case line into a differ line when the tool declares it a deviation.
+pub fn parity_case_apply_deviation(devs: List[String], line: String) -> String {
+    if !parity_case_is_deviation(devs, line) { return line; }
+    if !str_starts_with(line, "match ") { return line; }
+    return "differ " + str_slice(line, 6, chars_len(line));
+}
+
+// Read the declared deviations of a tool. The file holds one case line per
+// line, written as it stands in the case table. A line that is not a case of
+// the tool is ignored, so a file that is one step behind the recipe does not
+// change the gate.
+pub fn parity_case_deviations(fs_r: &FsReadCap, path: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let r: Result[String, String] = fs_read_file(fs_r, path);
+    if r.is_err() { return out; }
+    let lines: List[String] = text_split_lines(r.val);
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let l: String = text_trim(list_get(lines, i));
+        i = i + 1;
+        if l == "" { continue; }
+        if str_starts_with(l, "#") { continue; }
+        out = list_push(out, l);
+    }
+    return out;
+}

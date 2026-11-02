@@ -89,7 +89,7 @@ pub fn ci_checkout(repo: String) -> List[String] {
 
 // The build steps. A repository without a build target fails here. A build
 // that produces no binary fails on the next step.
-pub fn ci_build(repo: String) -> List[String] {
+pub fn ci_build(repo: String, big: Bool) -> List[String] {
     let mut l: List[String] = list_new();
     l = list_push(l, "      - name: Require a build target");
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
@@ -106,7 +106,7 @@ pub fn ci_build(repo: String) -> List[String] {
     l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
     l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
     l = list_push(l, "          OODA_NO_JAIL: \"1\"");
-    l = list_push(l, "          OODA_BUILD_MULTI: \"1\"");
+    if big { l = list_push(l, "          OODA_BUILD_MULTI: \"1\""); }
     l = list_push(l, "        run: make build");
     l = list_push(l, "");
     l = list_push(l, "      - name: Require the tool binary");
@@ -123,12 +123,12 @@ pub fn ci_build(repo: String) -> List[String] {
 
 // The verify steps. The tool verifies itself, runs its own tests, and proves
 // that it is deterministic across two runs.
-pub fn ci_verify(repo: String) -> List[String] {
+pub fn ci_verify(repo: String, big: Bool) -> List[String] {
     let mut l: List[String] = list_new();
-    let mut part: List[String] = ci_step_make(repo, "Verify", "make verify");
+    let mut part: List[String] = ci_step_make(repo, "Verify", "make verify", big);
     let mut i: Int = 0;
     while i < list_len(part) { l = list_push(l, list_get(part, i)); i = i + 1; }
-    part = ci_step_make(repo, "Test", "make test");
+    part = ci_step_make(repo, "Test", "make test", big);
     i = 0;
     while i < list_len(part) { l = list_push(l, list_get(part, i)); i = i + 1; }
     l = list_push(l, "      - name: Pure test audit");
@@ -192,7 +192,7 @@ pub fn ci_install_upstream(upstream: String, package: String, binary: String) ->
 // when the package keeps the name. The workflow searches for the program in
 // the standard places and links it when it is not on the path, because a
 // program that the package installs under another name is still the upstream.
-pub fn ci_parity(repo: String, upstream: String, package: String, target: String, binary: String) -> List[String] {
+pub fn ci_parity(repo: String, upstream: String, package: String, target: String, binary: String, big: Bool) -> List[String] {
     let mut l: List[String] = list_new();
     if upstream == "" { return l; }
     let mut part: List[String] = ci_install_upstream(upstream, package, binary);
@@ -205,7 +205,7 @@ pub fn ci_parity(repo: String, upstream: String, package: String, target: String
     l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
     l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
     l = list_push(l, "          OODA_NO_JAIL: \"1\"");
-    l = list_push(l, "          OODA_BUILD_MULTI: \"1\"");
+    if big { l = list_push(l, "          OODA_BUILD_MULTI: \"1\""); }
     l = list_push(l, "        run: make " + target);
     l = list_push(l, "");
     return l;
@@ -214,19 +214,19 @@ pub fn ci_parity(repo: String, upstream: String, package: String, target: String
 // Join the parts into one workflow file. A repository without a build target
 // is a stub: it fails closed on the build step and carries no parity step,
 // because the parity gate is the contract of a tool that exists.
-pub fn ci_workflow(repo: String, upstream: String, package: String, target: String, binary: String, has_build: Bool) -> String {
+pub fn ci_workflow(repo: String, upstream: String, package: String, target: String, binary: String, has_build: Bool, big: Bool) -> String {
     let mut all: List[String] = ci_head(repo);
     let mut part: List[String] = ci_checkout(repo);
     let mut i: Int = 0;
     while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
-    part = ci_build(repo);
+    part = ci_build(repo, big);
     i = 0;
     while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
-    part = ci_verify(repo);
+    part = ci_verify(repo, big);
     i = 0;
     while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
     if has_build {
-        part = ci_parity(repo, upstream, package, target, binary);
+        part = ci_parity(repo, upstream, package, target, binary, big);
         i = 0;
         while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
     }

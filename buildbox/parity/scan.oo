@@ -1,0 +1,213 @@
+// # Parity Scan - Finds The Tool Under Test In A Recipe Line
+//
+// Logline: Finds every invocation of the tool under test in a recipe line, wherever the line puts it.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Report the length of the tool path at one place of a line.
+//   2. Report the place of every invocation of the tool in a line.
+//   3. Take the argument words of one invocation.
+//   4. Split a fragment into words and drop the quotes.
+//
+// A recipe line often puts the tool in the middle of a pipeline or of a
+// command substitution. The tool is found wherever it stands and the
+// arguments are the words that follow it until the command ends. A word
+// inside quotes never ends the command, so an argument may hold a pipe.
+//
+// One command may hold many invocations of the tool. A recipe that writes
+// many assertions in one continued line writes them as one command, so the
+// line reports every place and not only the first.
+//
+// The bound is the timeout the recipe puts in front of the tool. The bound
+// belongs to the case, so the gate gives the upstream the same time as the
+// tool under test.
+
+import "std/core/primitives/str.oo";
+
+// Report the length of the tool path at one place of a line. The length is
+// zero when the tool does not start there.
+pub fn parity_scan_tool_at(line: String, i: Int, tool: String) -> Int {
+    let mut forms: List[String] = list_new();
+    forms = list_push(forms, "./$(BIN)");
+    forms = list_push(forms, "./" + tool);
+    forms = list_push(forms, "dist/" + tool);
+    let mut k: Int = 0;
+    while k < list_len(forms) {
+        let form: String = list_get(forms, k);
+        let n: Int = chars_len(form);
+        if i + n <= chars_len(line) {
+            let mut same: Bool = true;
+            let mut j: Int = 0;
+            while j < n {
+                if char_at(line, i + j) != char_at(form, j) { same = false; break; }
+                j = j + 1;
+            }
+            if same { return n; }
+        }
+        k = k + 1;
+    }
+    return 0;
+}
+
+// Report the place where the tool stands in the line. The answer is -1 when
+// the line does not run the tool at all.
+pub fn parity_scan_tool_pos(line: String, tool: String) -> Int {
+    let places: List[Int] = parity_scan_places(line, tool);
+    if list_len(places) == 0 { return 0 - 1; }
+    return list_get(places, 0);
+}
+
+// Report the place of the last time the needle stands in the text. The answer
+// is -1 when the text does not hold the needle at all.
+pub fn parity_scan_last_at(text: String, needle: String) -> Int {
+    let n: Int = chars_len(text);
+    let ln: Int = chars_len(needle);
+    if ln == 0 || n < ln { return 0 - 1; }
+    let mut last: Int = 0 - 1;
+    let mut i: Int = 0;
+    while i + ln <= n {
+        let mut same: Bool = true;
+        let mut j: Int = 0;
+        while j < ln {
+            if char_at(text, i + j) != char_at(needle, j) { same = false; break; }
+            j = j + 1;
+        }
+        if same { last = i; }
+        i = i + 1;
+    }
+    return last;
+}
+
+// Report the bound that stands in front of the tool. The bound is the
+// timeout helper with its number, or the empty string.
+pub fn parity_scan_bound(line: String, i: Int) -> String {
+    let mut j: Int = i - 1;
+    while j >= 0 {
+        let c: String = char_at(line, j);
+        if c == " " || c == "\t" { j = j - 1; continue; }
+        break;
+    }
+    let mut num: String = "";
+    while j >= 0 {
+        let c: String = char_at(line, j);
+        if c == " " || c == "\t" { break; }
+        num = c + num;
+        j = j - 1;
+    }
+    if num == "" { return ""; }
+    while j >= 0 {
+        let c: String = char_at(line, j);
+        if c == " " || c == "\t" { j = j - 1; continue; }
+        break;
+    }
+    let mut word: String = "";
+    while j >= 0 {
+        let c: String = char_at(line, j);
+        if c == " " || c == "\t" { break; }
+        word = c + word;
+        j = j - 1;
+    }
+    if word != "timeout" { return ""; }
+    return "timeout " + num;
+}
+
+// Cut the file descriptor of a redirection off the end of the words. The
+// recipe writes "2>&1" to send the error output to the standard output, and
+// that 2 is the descriptor of the redirection and not an argument of the
+// tool. A number inside a word, such as the 2 of "--count=2", stays.
+pub fn parity_scan_fd_cut(text: String) -> String {
+    let n: Int = chars_len(text);
+    if n == 0 { return text; }
+    let last: String = char_at(text, n - 1);
+    if str_index_of("0123456789", last) < 0 { return text; }
+    let cut: Int = n - 1;
+    if cut > 0 {
+        let before: String = char_at(text, cut - 1);
+        if before != " " && before != "\t" { return text; }
+    }
+    return str_slice(text, 0, cut);
+}
+
+// Take the argument words of the tool that starts at the given place. The
+// words end at the metacharacter that ends the command. A word inside quotes
+// never ends the command, so an argument may hold a pipe.
+pub fn parity_scan_take(line: String, from: Int) -> String {
+    let n: Int = chars_len(line);
+    let mut j: Int = from;
+    while j < n {
+        let c: String = char_at(line, j);
+        if c == " " || c == "\t" { j = j + 1; continue; }
+        break;
+    }
+    let mut out: String = "";
+    let mut sq: Bool = false;
+    let mut dq: Bool = false;
+    while j < n {
+        let c: String = char_at(line, j);
+        if c == "'" && !dq { sq = !sq; out = out + c; j = j + 1; continue; }
+        if c == "\"" && !sq { dq = !dq; out = out + c; j = j + 1; continue; }
+        if !sq && !dq {
+            if c == ">" || c == "<" {
+                out = parity_scan_fd_cut(out);
+                break;
+            }
+            if c == "|" || c == ";" || c == "&" || c == "`" { break; }
+            if c == ")" && j + 1 == n { break; }
+        }
+        out = out + c;
+        j = j + 1;
+    }
+    while chars_len(out) > 0 {
+        let c: String = char_at(out, chars_len(out) - 1);
+        if c != " " && c != "\t" { break; }
+        out = str_slice(out, 0, chars_len(out) - 1);
+    }
+    return out;
+}
+
+// Report the place of every invocation of the tool in the line. The line may
+// hold many invocations, because a recipe that continues its lines writes
+// them as one command.
+pub fn parity_scan_places(line: String, tool: String) -> List[Int] {
+    let mut places: List[Int] = list_new();
+    let n: Int = chars_len(line);
+    let mut i: Int = 0;
+    while i < n {
+        let tl: Int = parity_scan_tool_at(line, i, tool);
+        if tl > 0 {
+            places = list_push(places, i);
+            i = i + tl;
+            continue;
+        }
+        i = i + 1;
+    }
+    return places;
+}
+
+// Split a fragment into words and drop the quotes. A word inside quotes
+// stays one word, so an argument may hold a space.
+pub fn parity_scan_words(s: String) -> List[String] {
+    let mut parts: List[String] = list_new();
+    let mut cur: String = "";
+    let mut has: Bool = false;
+    let mut sq: Bool = false;
+    let mut dq: Bool = false;
+    let n: Int = chars_len(s);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        if c == "'" && !dq { sq = !sq; has = true; i = i + 1; continue; }
+        if c == "\"" && !sq { dq = !dq; has = true; i = i + 1; continue; }
+        if c == " " && !sq && !dq {
+            if has { parts = list_push(parts, cur); cur = ""; has = false; }
+            i = i + 1;
+            continue;
+        }
+        cur = cur + c;
+        has = true;
+        i = i + 1;
+    }
+    if has { parts = list_push(parts, cur); }
+    return parts;
+}

@@ -5,42 +5,34 @@
 // Setup: Needs FsReadCap to read the Makefile.
 //
 // Beats:
-//   1. Cut a recipe line at the first shell metacharacter.
-//   2. Join the continued recipe lines into one command.
-//   3. Find the invocations of the tool under test in the test recipe.
-//   4. Render the case table.
+//   1. Join the continued recipe lines into one command.
+//   2. Find every invocation of the tool under test in that command.
+//   3. Render the case table.
 //
 // The test recipe of a tool already holds the arguments that tool must accept.
 // Those arguments are the natural parity cases, because a drop-in replacement
 // must accept the same arguments as the tool it replaces.
+//
+// A recipe that continues its lines writes them as one command, so one command
+// may hold many invocations of the tool. Every invocation is a case, and the
+// input that the recipe pipes into that invocation is the input of the case.
+//
+// The table holds at most PARITY_CASE_LIMIT cases, because the case table is
+// a page and a page holds at most 256 lines.
 
 import "std/core/primitives/str.oo";
 import "std/fs/os/fs.oo";
 import "text/lines.oo";
 import "text/words.oo";
+import "parity/scan.oo";
+import "parity/input.oo";
+import "parity/words.oo";
+import "parity/deviation.oo";
 
-// Cut a recipe line at the first shell metacharacter that is not inside a
-// quoted word. The part before the metacharacter is the command.
-pub fn parity_case_clean(s: String) -> String {
-    let n: Int = chars_len(s);
-    let mut out: String = "";
-    let mut in_quotes: Bool = false;
-    let mut i: Int = 0;
-    while i < n {
-        let c: String = char_at(s, i);
-        if c == "\"" {
-            in_quotes = !in_quotes;
-            out = out + c;
-        } else if in_quotes {
-            out = out + c;
-        } else if c == ">" || c == "|" || c == ";" || c == "&" || c == "`" {
-            break;
-        } else {
-            out = out + c;
-        }
-        i = i + 1;
-    }
-    return out;
+// The most cases one tool holds. A case with an input takes two lines, and
+// the table is a page of at most 256 lines.
+pub fn parity_case_limit() -> Int {
+    return 80;
 }
 
 // Report whether a word cannot be compared. A make variable has no value
@@ -59,28 +51,56 @@ pub fn parity_case_is_usage(word: String) -> Bool {
     return word == "--help" || word == "-h" || word == "--version" || word == "-V";
 }
 
-// Strip the make silent prefix and the make option prefix from a word. The
-// recipe of a Makefile writes the command as "@./tool args".
-pub fn parity_case_strip(word: String) -> String {
-    let mut out: String = word;
-    while chars_len(out) > 0 {
-        let c: String = char_at(out, 0);
-        if c != "@" && c != "-" && c != "+" { break; }
-        out = str_slice(out, 1, chars_len(out));
+// Take the case of one invocation of the tool. The empty string means the
+// invocation cannot be compared.
+pub fn parity_case_one(cmd: String, tool: String, at: Int, devs: List[String]) -> String {
+    let tl: Int = parity_scan_tool_at(cmd, at, tool);
+    if tl <= 0 { return ""; }
+    let raw: String = parity_scan_take(cmd, at + tl);
+    if raw == "" { return ""; }
+    let words: List[String] = parity_scan_words(raw);
+    if list_len(words) == 0 { return ""; }
+    if parity_case_is_usage(list_get(words, 0)) { return ""; }
+    let mut keep: List[String] = list_new();
+    let mut w: Int = 0;
+    while w < list_len(words) {
+        let word: String = list_get(words, w);
+        if parity_case_skip_word(word) { break; }
+        keep = list_push(keep, word);
+        w = w + 1;
     }
-    return out;
+    if list_len(keep) == 0 { return ""; }
+    let bound: String = parity_scan_bound(cmd, at);
+    if bound != "" {
+        let mut with_bound: List[String] = list_new();
+        with_bound = list_push(with_bound, bound);
+        let mut z: Int = 0;
+        while z < list_len(keep) {
+            with_bound = list_push(with_bound, list_get(keep, z));
+            z = z + 1;
+        }
+        keep = with_bound;
+    }
+    let raw_case: String = parity_case_line(keep);
+    if raw_case == "" { return ""; }
+    let case: String = parity_case_apply_deviation(devs, raw_case);
+    let inp: String = parity_input_directive(cmd, at);
+    let mut head: String = "";
+    if inp != "" { head = inp + "\n"; }
+    return head + case;
 }
 
 // Collect the parity cases of one tool from its Makefile test recipe. Every
-// case is the argument list of one invocation of the tool under test.
-pub fn parity_case_collect(fs_r: &FsReadCap, tool: String, mk_path: String) -> List[String] {
-    let mut out: List[String] = list_new();
+// case is one invocation of the tool under test.
+pub fn parity_case_collect(fs_r: &FsReadCap, tool: String, mk_path: String, dev_path: String) -> List[String] {
+    let mut found: List[String] = list_new();
+    let devs: List[String] = parity_case_deviations(fs_r, dev_path);
     let r: Result[String, String] = fs_read_file(fs_r, mk_path);
-    if r.is_err() { return out; }
+    if r.is_err() { return found; }
     let lines: List[String] = text_split_lines(r.val);
     let mut in_test: Bool = false;
     let mut i: Int = 0;
-    while i < list_len(lines) {
+    while i < list_len(lines) && list_len(found) < parity_case_limit() {
         let l: String = list_get(lines, i);
         i = i + 1;
         if !str_starts_with(l, "\t") {
@@ -96,61 +116,28 @@ pub fn parity_case_collect(fs_r: &FsReadCap, tool: String, mk_path: String) -> L
             i = i + 1;
             cmd = cmd + " " + text_trim(nxt);
         }
-        let clean: String = parity_case_clean(cmd);
-        let words: List[String] = text_words(clean);
-        let mut w: Int = 0;
-        while w < list_len(words) {
-            let word: String = list_get(words, w);
-            let head: String = parity_case_strip(word);
-            if head == "./$(BIN)" || head == "./" + tool {
-                let args: List[String] = parity_case_args(words, w + 1);
-                let case: String = parity_case_line(args);
-                if case != "" && !parity_case_has(out, case) { out = list_push(out, case); }
-                break;
-            }
-            w = w + 1;
+        let places: List[Int] = parity_scan_places(cmd, tool);
+        let mut p: Int = 0;
+        while p < list_len(places) && list_len(found) < parity_case_limit() {
+            let at: Int = list_get(places, p);
+            p = p + 1;
+            let block: String = parity_case_one(cmd, tool, at, devs);
+            if block == "" { continue; }
+            if !parity_case_has(found, block) { found = list_push(found, block); }
         }
     }
-    return out;
+    return found;
 }
 
-// Take the argument words of one invocation and drop the words that cannot be
-// compared. A word that cannot be reproduced is dropped, and the rest of the
-// invocation stays a case, because the same reduced arguments are given to
-// the upstream.
-//
-// The test recipe bounds a run that follows a file with the timeout helper.
-// The bound belongs to the case, so the gate gives the upstream the same
-// time as the tool under test.
-pub fn parity_case_args(words: List[String], from: Int) -> List[String] {
-    let mut out: List[String] = list_new();
-    if from < list_len(words) && parity_case_is_usage(list_get(words, from)) { return out; }
-    let mut i: Int = from;
-    while i < list_len(words) {
-        let w: String = list_get(words, i);
-        if parity_case_skip_word(w) { break; }
-        out = list_push(out, w);
-        i = i + 1;
-    }
-    if from >= 3 && list_get(words, from - 3) == "timeout" {
-        let mut pre: List[String] = list_new();
-        pre = list_push(pre, "timeout");
-        pre = list_push(pre, list_get(words, from - 2));
-        let mut j: Int = 0;
-        while j < list_len(out) { pre = list_push(pre, list_get(out, j)); j = j + 1; }
-        return pre;
-    }
-    return out;
-}
-
-// Render one case as the line of the case table.
+// Render one case as the line of the case table. Every argument goes through
+// the writer of the word codec, so the runner reads back exactly the argument
+// that the recipe gave to the tool.
 pub fn parity_case_line(args: List[String]) -> String {
     if list_len(args) == 0 { return ""; }
     let mut out: String = "match";
     let mut i: Int = 0;
     while i < list_len(args) {
-        let w: String = list_get(args, i);
-        if str_contains(w, " ") { out = out + " \"" + w + "\""; } else { out = out + " " + w; }
+        out = out + " " + parity_quote_word(list_get(args, i));
         i = i + 1;
     }
     return out;
