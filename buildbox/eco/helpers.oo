@@ -88,3 +88,52 @@ pub fn eco_parse_uint(s: String) -> Int {
     if !seen { return -1; }
     return acc;
 }
+
+pub fn eco_parse_pane_quota(pane_id: String, vis: String) -> String {
+    if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wK:p1" {
+        let idx: Int = str_index_of(vis, "tokens (");
+        if idx >= 0 {
+            let used: Int = eco_parse_uint(str_slice(vis, idx + 8, chars_len(vis)));
+            if used >= 0 && used <= 100 {
+                let rem: Int = 100 - used;
+                return int_to_str(rem) + "|" + int_to_str(used) + "% used (" + int_to_str(rem) + "% rem)";
+            }
+        }
+        if pane_id == "wK:p1" { return "100|shell ready"; }
+    } else if pane_id == "wJ:p1" {
+        let mut ctx_str: String = "";
+        let mut ctx_pct: Int = -1;
+        let cidx: Int = str_index_of(vis, "Context ");
+        if cidx >= 0 {
+            ctx_pct = eco_parse_uint(str_slice(vis, cidx + 8, chars_len(vis)));
+            if ctx_pct >= 0 && ctx_pct <= 100 {
+                ctx_str = " / Ctx " + int_to_str(ctx_pct) + "% left";
+            }
+        }
+        let idx: Int = str_index_of(vis, "5h ");
+        if idx >= 0 {
+            let pct: Int = eco_parse_uint(str_slice(vis, idx + 3, chars_len(vis)));
+            if pct >= 0 && pct <= 100 {
+                let active: Bool = str_contains(vis, "Running ") || str_contains(vis, "Loading ") || str_contains(vis, "tok/s");
+                let rem_eff: Int = if pct == 0 && active && ctx_pct > 0 { ctx_pct } else { pct };
+                return int_to_str(rem_eff) + "|5h " + int_to_str(pct) + "% rem" + ctx_str;
+            }
+        }
+    } else if pane_id == "wH:p1" {
+        let idx: Int = str_index_of(vis, "[stop]");
+        if idx >= 0 {
+            let start: Int = if idx > 16 { idx - 16 } else { 0 };
+            let win: String = str_slice(vis, start, idx);
+            let k_idx: Int = str_index_of(win, "s ");
+            if k_idx >= 0 {
+                let k: Int = eco_parse_uint(str_slice(win, k_idx + 2, chars_len(win)));
+                if k >= 0 {
+                    let used: Int = k / 10;
+                    let rem: Int = if used >= 100 { 0 } else { 100 - used };
+                    return int_to_str(rem) + "|streamed ~" + int_to_str(k) + "k (~" + int_to_str(rem) + "% rem)";
+                }
+            }
+        }
+    }
+    return "100|n/a";
+}
