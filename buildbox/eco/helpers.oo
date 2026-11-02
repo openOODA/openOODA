@@ -1,0 +1,90 @@
+// # Eco Helpers - Shared Process, String, And File Helpers For Ecosystem Tools
+//
+// Logline: Provides pure string parsing, padding, and capability-bounded process/file helpers for the 5-organization ecosystem tools.
+//
+// Setup: Uses ProcessCap, FsReadCap, FsWriteCap, and EnvCap.
+//
+// Beats:
+//   1. Pad strings and parse integers for formatted status tables.
+//   2. Read and write key-value fields in ooda.pkg manifests.
+//   3. Run child commands with sys_exec and sys_exec_wait.
+//   4. Map organization names to canonical layer codes.
+
+import "std/core/text/num_buffer.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+
+pub fn eco_pad_right(s: String, width: Int) -> String {
+    let mut out: String = s;
+    while chars_len(out) < width {
+        out = out + " ";
+    }
+    return out;
+}
+
+pub fn eco_pad_left(s: String, width: Int) -> String {
+    let mut out: String = s;
+    while chars_len(out) < width {
+        out = " " + out;
+    }
+    return out;
+}
+
+pub fn eco_org_layer(org: String) -> String {
+    if org == "openOODA-kernel" { return "kernel"; }
+    if org == "openOODA-OS" { return "os"; }
+    if org == "openOODA-DE" { return "de"; }
+    if org == "openOODA-tools" { return "tools"; }
+    if org == "openOODA" { return "core"; }
+    return "";
+}
+
+pub fn eco_valid_category(cat: String) -> Bool {
+    let valid: String = "|SH|FS|TX|DA|AR|SE|PR|HW|NT|SC|UI|AI|DF|DT|OBS|ai|sys|ui|obs|pr|hw|sc|fs|nt|ar|sh|tx|dt|df|";
+    return str_contains(valid, "|" + cat + "|");
+}
+
+pub fn eco_pkg_get(fs_r: &FsReadCap, pkg_path: String, key: String) -> String {
+    if !path_exists(fs_r, pkg_path) { return ""; }
+    let r: Result[String, String] = fs_read_file(fs_r, pkg_path);
+    if r.is_err() { return ""; }
+    let prefix: String = key + "=";
+    let lines: List[String] = text_split_lines(r.val);
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let ln: String = text_trim(list_get(lines, i));
+        if str_starts_with(ln, prefix) {
+            return text_trim(str_slice(ln, chars_len(prefix), chars_len(ln)));
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+pub fn eco_read_trimmed(fs_r: &FsReadCap, path: String) -> String {
+    if !path_exists(fs_r, path) { return ""; }
+    let r: Result[String, String] = fs_read_file(fs_r, path);
+    if r.is_err() { return ""; }
+    return text_trim(r.val);
+}
+
+pub fn eco_parse_uint(s: String) -> Int {
+    let n: Int = chars_len(s);
+    let mut acc: Int = 0;
+    let mut seen: Bool = false;
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        let idx: Int = str_index_of("0123456789", c);
+        if idx >= 0 {
+            acc = (acc * 10) + idx;
+            seen = true;
+        } else if seen {
+            break;
+        }
+        i = i + 1;
+    }
+    if !seen { return -1; }
+    return acc;
+}

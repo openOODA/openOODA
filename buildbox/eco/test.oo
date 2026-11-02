@@ -1,0 +1,66 @@
+// # Eco Self Test - Verifies The Pure .oo Ecosystem Helpers And Manifest Readers
+//
+// Logline: Runs positive and negative assertions over the ecosystem layer, category, integer, padding, and manifest helpers.
+//
+// Setup: Needs FsReadCap to read a known ooda.pkg manifest when present.
+//
+// Beats:
+//   1. Check that eco_org_layer maps all 5 organizations and rejects unknown orgs.
+//   2. Check that eco_valid_category accepts the 12+2 canonical category codes and rejects invalid codes.
+//   3. Check that eco_parse_uint, eco_pad_left, and eco_pad_right handle normal and boundary inputs.
+//   4. Check that eco_pkg_get reads real ooda.pkg fields and fails closed on missing files.
+
+import "std/core/text/num_buffer.oo";
+import "eco/anchor.oo";
+
+fn eco_expect_eq(name: String, got: String, want: String, fails: &mut Int) -> Int {
+    if got == want {
+        println("PASS\t" + name);
+        return 0;
+    }
+    println("FAIL\t" + name + "\tgot " + got + " want " + want);
+    *fails = *fails + 1;
+    return 0;
+}
+
+fn eco_test_taxonomy(fails: &mut Int) -> Int {
+    let _a: Int = eco_expect_eq("eco_anchor_ready", if eco_anchor_ready() { "true" } else { "false" }, "true", fails);
+    let _b: Int = eco_expect_eq("eco_layer_kernel", eco_org_layer("openOODA-kernel"), "kernel", fails);
+    let _c: Int = eco_expect_eq("eco_layer_os", eco_org_layer("openOODA-OS"), "os", fails);
+    let _d: Int = eco_expect_eq("eco_layer_de", eco_org_layer("openOODA-DE"), "de", fails);
+    let _e: Int = eco_expect_eq("eco_layer_tools", eco_org_layer("openOODA-tools"), "tools", fails);
+    let _f: Int = eco_expect_eq("eco_layer_core", eco_org_layer("openOODA"), "core", fails);
+    let _g: Int = eco_expect_eq("eco_layer_unknown", eco_org_layer("openOODA-nope"), "", fails);
+    let _h: Int = eco_expect_eq("eco_cat_valid_hw", if eco_valid_category("HW") { "ok" } else { "bad" }, "ok", fails);
+    let _i: Int = eco_expect_eq("eco_cat_valid_ui", if eco_valid_category("UI") { "ok" } else { "bad" }, "ok", fails);
+    let _j: Int = eco_expect_eq("eco_cat_invalid_empty", if eco_valid_category("") { "ok" } else { "bad" }, "bad", fails);
+    let _k: Int = eco_expect_eq("eco_cat_invalid_sub", if eco_valid_category("H") { "ok" } else { "bad" }, "bad", fails);
+    return 0;
+}
+
+fn eco_test_primitives(fs_r: &FsReadCap, fails: &mut Int) -> Int {
+    let _a: Int = eco_expect_eq("eco_parse_uint_pct", int_to_str(eco_parse_uint("19%)")), "19", fails);
+    let _b: Int = eco_expect_eq("eco_parse_uint_zero", int_to_str(eco_parse_uint("0% rem")), "0", fails);
+    let _c: Int = eco_expect_eq("eco_parse_uint_none", int_to_str(eco_parse_uint("no digits")), "-1", fails);
+    let _d: Int = eco_expect_eq("eco_pad_right", eco_pad_right("ab", 4), "ab  ", fails);
+    let _e: Int = eco_expect_eq("eco_pad_left", eco_pad_left("16", 4), "  16", fails);
+    let _f: Int = eco_expect_eq("eco_pkg_missing", eco_pkg_get(fs_r, "/nonexistent/ooda.pkg", "version"), "", fails);
+    let pkg: String = "/Projects/openOODA-kernel/ookernel-boot/ooda.pkg";
+    if path_exists(fs_r, pkg) {
+        let _g: Int = eco_expect_eq("eco_pkg_boot_layer", eco_pkg_get(fs_r, pkg, "layer"), "kernel", fails);
+        let _h: Int = eco_expect_eq("eco_pkg_boot_ver", eco_pkg_get(fs_r, pkg, "version"), "0.2.1", fails);
+    }
+    return 0;
+}
+
+pub fn eco_test_run(fs_r: &FsReadCap) -> Int {
+    let mut fails: Int = 0;
+    let _t: Int = eco_test_taxonomy(&mut fails);
+    let _p: Int = eco_test_primitives(fs_r, &mut fails);
+    if fails > 0 {
+        println("ECO TEST FAIL n=" + int_to_str(fails));
+        return 1;
+    }
+    println("ECO TEST PASS");
+    return 0;
+}

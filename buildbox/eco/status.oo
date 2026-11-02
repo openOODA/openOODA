@@ -1,0 +1,192 @@
+// # Eco Status - Live Herdr Agent Quota & 5-Organization Completion Matrix
+//
+// Logline: Queries Herdr panes for live agent quota telemetry and scans all 5 organizations for page count, version, release tag, and build status.
+//
+// Setup: Needs ProcessCap for herdr and FsReadCap to inspect /Projects/openOODA*.
+//
+// Beats:
+//   1. Read visible terminal lines from Herdr panes wG:p1, wH:p1, wJ:p1, and wK:p1.
+//   2. Parse remaining token/quota percentages and flag QUOTA_RESERVE_ALERT when <= 2%.
+//   3. Walk openOODA, openOODA-kernel, openOODA-OS, openOODA-DE, and openOODA-tools.
+//   4. Print a single-screen status dashboard.
+
+import "std/core/text/num_buffer.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "eco/helpers.oo";
+
+fn status_parse_quota(pane_id: String, vis: String) -> String {
+    if pane_id == "wG:p1" || pane_id == "wK:p1" {
+        let idx: Int = str_index_of(vis, "tokens (");
+        if idx >= 0 {
+            let used: Int = eco_parse_uint(str_slice(vis, idx + 8, chars_len(vis)));
+            if used >= 0 && used <= 100 {
+                let rem: Int = 100 - used;
+                return int_to_str(rem) + "|" + int_to_str(used) + "% used (" + int_to_str(rem) + "% rem)";
+            }
+        }
+        if pane_id == "wK:p1" { return "100|shell ready"; }
+    } else if pane_id == "wJ:p1" {
+        let idx: Int = str_index_of(vis, "5h ");
+        if idx >= 0 {
+            let pct: Int = eco_parse_uint(str_slice(vis, idx + 3, chars_len(vis)));
+            if pct >= 0 && pct <= 100 {
+                return int_to_str(pct) + "|5h " + int_to_str(pct) + "% rem";
+            }
+        }
+    } else if pane_id == "wH:p1" {
+        let idx: Int = str_index_of(vis, "[stop]");
+        if idx >= 0 {
+            let start: Int = if idx > 16 { idx - 16 } else { 0 };
+            let win: String = str_slice(vis, start, idx);
+            let k_idx: Int = str_index_of(win, "s ");
+            if k_idx >= 0 {
+                let k: Int = eco_parse_uint(str_slice(win, k_idx + 2, chars_len(win)));
+                if k >= 0 {
+                    let used: Int = k / 10;
+                    let rem: Int = if used >= 100 { 0 } else { 100 - used };
+                    return int_to_str(rem) + "|streamed ~" + int_to_str(k) + "k (~" + int_to_str(rem) + "% rem)";
+                }
+            }
+        }
+    }
+    return "100|n/a";
+}
+
+fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, pane_id: String, ws: String, agent: String) -> String {
+    let tmp: String = "/tmp/eco_pane_" + str_replace(pane_id, ":", "_") + ".txt";
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-c");
+    a = list_push(a, "/home/ubermetroid/.local/bin/herdr pane read --source visible " + pane_id + " 2>/dev/null | tr -cd '\\11\\12\\15\\40-\\176' > " + tmp);
+    let _r: Result[Int, String] = sys_exec_wait(sys, "bash", a);
+    let vis: String = eco_read_trimmed(fs_r, tmp);
+    let _rm: Result[Void, String] = fs_remove_file(fs_w, tmp);
+    let qpair: String = status_parse_quota(pane_id, vis);
+    let pipe_idx: Int = str_index_of(qpair, "|");
+    let rem: Int = eco_parse_uint(str_slice(qpair, 0, pipe_idx));
+    let quota: String = str_slice(qpair, pipe_idx + 1, chars_len(qpair));
+    let mut state: String = if pane_id == "wK:p1" && quota == "shell ready" { "standby" } else { "idle" };
+    if str_contains(vis, "Running") || str_contains(vis, "Thinking") || str_contains(vis, "Generating") {
+        state = "working";
+    }
+    if pane_id == "wJ:p1" && rem == 0 && state == "idle" { state = "paused(0%)"; }
+    let alert: String = if rem <= 2 { "QUOTA_RESERVE_ALERT (rem=" + int_to_str(rem) + "% <= 2%)" } else { "OK" };
+    return "  " + eco_pad_right(pane_id, 7) + " " + eco_pad_right(ws, 16) + " " + eco_pad_right(agent, 24)
+        + " " + eco_pad_right(state, 11) + " " + eco_pad_right(quota, 30) + " " + alert;
+}
+
+fn status_count_oo_pages(fs_r: &FsReadCap, repo_dir: String) -> Int {
+    let mut total: Int = 0;
+    let subdirs: List[String] = list_push(list_push(list_push(list_new(), ""), "/core"), "/tests");
+    let mut i: Int = 0;
+    while i < list_len(subdirs) {
+        let d: String = repo_dir + list_get(subdirs, i);
+        i = i + 1;
+        if !path_exists(fs_r, d) { continue; }
+        let entries: List[String] = fs_read_dir(fs_r, d);
+        let mut j: Int = 0;
+        while j < list_len(entries) {
+            let f: String = list_get(entries, j);
+            j = j + 1;
+            if str_ends_with(f, ".oo") { total = total + 1; }
+        }
+    }
+    if total >= 6 { return total; }
+    let walked: List[String] = fs_walk(fs_r, repo_dir);
+    let mut k: Int = 0;
+    let mut wcount: Int = 0;
+    while k < list_len(walked) {
+        let p: String = list_get(walked, k);
+        k = k + 1;
+        if str_ends_with(p, ".oo") && !str_contains(p, "/.ooda-cache/") && !str_contains(p, "/dist/") && !str_contains(p, "/bin/") {
+            wcount = wcount + 1;
+        }
+    }
+    return wcount;
+}
+
+fn status_has_release_tag(fs_r: &FsReadCap, repo_dir: String) -> Bool {
+    let tags_dir: String = repo_dir + "/.git/refs/tags";
+    if path_exists(fs_r, tags_dir) {
+        let tlist: List[String] = fs_read_dir(fs_r, tags_dir);
+        let mut i: Int = 0;
+        while i < list_len(tlist) {
+            let t: String = list_get(tlist, i);
+            i = i + 1;
+            if str_starts_with(t, "v") && t != "v0.1.0" && t != "v0.2.0" { return true; }
+        }
+    }
+    let packed: String = eco_read_trimmed(fs_r, repo_dir + "/.git/packed-refs");
+    if str_contains(packed, "refs/tags/v0.2.1") || str_contains(packed, "refs/tags/v0.3.") || str_contains(packed, "refs/tags/v2.") {
+        return true;
+    }
+    return false;
+}
+
+fn status_repo_built(fs_r: &FsReadCap, org: String, repo_dir: String, repo: String) -> Bool {
+    if org == "openOODA" { return true; }
+    if path_exists(fs_r, repo_dir + "/bin/" + repo) { return true; }
+    if path_exists(fs_r, repo_dir + "/dist/" + repo) { return true; }
+    if org == "openOODA-tools" {
+        let blog: String = "/home/ubermetroid/fleet-gate/logs/" + repo + ".build.log";
+        let txt: String = eco_read_trimmed(fs_r, blog);
+        if str_contains(txt, "OK\tbuild") { return true; }
+    }
+    return false;
+}
+
+fn status_org_row(fs_r: &FsReadCap, org: String) -> String {
+    let org_dir: String = "/Projects/" + org;
+    let entries: List[String] = fs_read_dir(fs_r, org_dir);
+    let mut total: Int = 0;
+    let mut pages_ok: Int = 0;
+    let mut ver_ok: Int = 0;
+    let mut tag_ok: Int = 0;
+    let mut built_ok: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(entries) {
+        let r: String = list_get(entries, i);
+        i = i + 1;
+        if org != "openOODA" && (r == ".github" || r == "openOODA-tools.github.io") { continue; }
+        let rdir: String = org_dir + "/" + r;
+        if !path_exists(fs_r, rdir + "/.git") { continue; }
+        total = total + 1;
+        if org == "openOODA" || status_count_oo_pages(fs_r, rdir) >= 6 { pages_ok = pages_ok + 1; }
+        let mut ver: String = eco_read_trimmed(fs_r, rdir + "/VERSION");
+        if ver == "" { ver = eco_pkg_get(fs_r, rdir + "/ooda.pkg", "version"); }
+        if org == "openOODA" || (ver != "" && ver != "0.1.0" && ver != "0.2.0") { ver_ok = ver_ok + 1; }
+        if status_has_release_tag(fs_r, rdir) { tag_ok = tag_ok + 1; }
+        if status_repo_built(fs_r, org, rdir, r) { built_ok = built_ok + 1; }
+    }
+    let t_str: String = int_to_str(total);
+    return "  " + eco_pad_right(org, 18) + " " + eco_pad_left(t_str, 6)
+        + " " + eco_pad_left(int_to_str(pages_ok) + "/" + t_str, 10)
+        + " " + eco_pad_left(int_to_str(ver_ok) + "/" + t_str, 12)
+        + " " + eco_pad_left(int_to_str(tag_ok) + "/" + t_str, 13)
+        + " " + eco_pad_left(int_to_str(built_ok) + "/" + t_str, 13);
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
+    println("==============================================================================================");
+    println("  openOODA 5-ORG ECOSYSTEM & AGENT FLEET STATUS (PURE .oo DOGFOOD WATCHDOG)");
+    println("==============================================================================================");
+    println("");
+    println("[1] LIVE AGENT & QUOTA TELEMETRY (Reserve Threshold: >2% required, >=1% hard floor)");
+    println("  PANE    WORKSPACE        AGENT                    STATE       QUOTA / TOKENS                 ALERT");
+    println("  ------------------------------------------------------------------------------------------------------");
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wG:p1", "openOODA-kernel", "vibe (Mistral Large 4)"));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wH:p1", "openOODA-OS",     "grok (Grok 4.7 high)"));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wJ:p1", "openOODA-tools",  "mcode (M3.1-Flash)"));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wK:p1", "openOODA-DE",     "standby (DE shell)"));
+    println("");
+    println("[2] 5-ORGANIZATION COMPLETION MATRIX (Pages >= 6, Version/Tag >= v0.2.1, Build/Green)");
+    println("  ORGANIZATION        TOTAL   PAGES>=6   VER>=0.2.1   TAG>=v0.2.1   GREEN/BUILT");
+    println("  ------------------------------------------------------------------------------");
+    println(status_org_row(fs_r, "openOODA"));
+    println(status_org_row(fs_r, "openOODA-kernel"));
+    println(status_org_row(fs_r, "openOODA-OS"));
+    println(status_org_row(fs_r, "openOODA-DE"));
+    println(status_org_row(fs_r, "openOODA-tools"));
+    println("==============================================================================================");
+    return 0;
+}
