@@ -142,11 +142,17 @@ pub fn loop_driver_fetch_all(sys: &ProcessCap, fs_r: &FsReadCap, names: List[Str
 }
 
 // Run the fleet gate over every repo and write one verdict line per repo.
-// The returned number is the count of repos that did not earn a pass.
-pub fn loop_driver_gate_all(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, states: List[LoopRepo], run_id: String, queue: String, compiler: String) -> Int {
+// The returned counts keep the three states apart: a repo that earned a
+// pass, a repo that is still a backlog state, and a repo that failed the
+// gate. A backlog state is not a failure, because the four core repos and
+// the stubs of the fleet carry no build target and must never be read as a
+// broken tool.
+pub fn loop_driver_gate_all(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, states: List[LoopRepo], run_id: String, queue: String, compiler: String) -> FleetCounts {
     let verdict_path: String = queue + "/fleet_verdicts.oot";
     let manifest_path: String = queue + "/manifest/fleet.json";
     let mut manifest: String = "{\"run_id\":\"" + run_id + "\",\"repos\":[";
+    let mut passed: Int = 0;
+    let mut backlog: Int = 0;
     let mut failed: Int = 0;
     let mut j: Int = 0;
     while j < list_len(states) {
@@ -159,14 +165,16 @@ pub fn loop_driver_gate_all(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCa
         let line: String = fleet_gate_repo(sys, fs_r, fs_w, st.name, st.branch, st.sha, st.dir, st.has_build, st.has_ci, run_id, compiler);
         let _w: Bool = fleet_gate_write(fs_w, verdict_path, line);
         let verdict: String = fleet_verdict_line_verdict(line);
-        if !fleet_verdict_is_pass(verdict) { failed = failed + 1; }
+        if fleet_verdict_is_pass(verdict) { passed = passed + 1; }
+        else if fleet_verdict_is_backlog(verdict) { backlog = backlog + 1; }
+        else { failed = failed + 1; }
         if j > 0 { manifest = manifest + ","; }
         manifest = manifest + fleet_manifest_record(st.name, st.branch, st.sha, st.modules, st.has_build, st.has_ci, st.dir);
         j = j + 1;
     }
     manifest = manifest + "]}";
     let _mw: Result[Void, String] = fs_write_file(fs_w, manifest_path, manifest + "\n");
-    return failed;
+    return FleetCounts { passed: passed, backlog: backlog, failed: failed };
 }
 
 // Prepare the run: rebuild the compiler, purge the caches that are keyed by
@@ -206,6 +214,8 @@ pub fn loop_driver_prepare(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap
 // The result of one loop run.
 type LoopResult = struct {
     repos: Int,
+    passed: Int,
+    backlog: Int,
     failed: Int,
     gate_rc: Int
 };
@@ -221,10 +231,10 @@ pub fn loop_driver_execute(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap
     let states: List[LoopRepo] = loop_driver_fetch_all(sys, fs_r, names, cfg.core_org, cfg.org, cfg.repos, cfg.git_base);
     let prep: Int = loop_driver_prepare(sys, fs_r, fs_w, cfg.repos, cfg.cache, out_bin);
     if prep != 0 {
-        return LoopResult { repos: list_len(states), failed: list_len(states), gate_rc: prep };
+        return LoopResult { repos: list_len(states), passed: 0, backlog: 0, failed: list_len(states), gate_rc: prep };
     }
     let stamp: String = loop_cache_compiler_stamp(sys, out_bin);
     let run_id: String = loop_manifest_run_id(stamp, states);
-    let failed: Int = loop_driver_gate_all(sys, fs_r, fs_w, states, run_id, cfg.queue, out_bin);
-    return LoopResult { repos: list_len(states), failed: failed, gate_rc: 0 };
+    let counts: FleetCounts = loop_driver_gate_all(sys, fs_r, fs_w, states, run_id, cfg.queue, out_bin);
+    return LoopResult { repos: list_len(states), passed: counts.passed, backlog: counts.backlog, failed: counts.failed, gate_rc: 0 };
 }
