@@ -28,11 +28,18 @@ import "parity/scan.oo";
 import "parity/input.oo";
 import "parity/words.oo";
 import "parity/deviation.oo";
+import "parity/recipe/recipe.oo";
 
 // The most cases one tool holds. A case with an input takes two lines, and
 // the table is a page of at most 256 lines.
 pub fn parity_case_limit() -> Int {
     return 80;
+}
+
+// The most lines one table holds. The setup commands of the recipe stand in
+// the table as well, so the table is bounded by lines and not by cases alone.
+pub fn parity_case_line_limit() -> Int {
+    return 230;
 }
 
 // Report whether a word cannot be compared. A make variable has no value
@@ -91,38 +98,33 @@ pub fn parity_case_one(cmd: String, tool: String, at: Int, devs: List[String]) -
 }
 
 // Collect the parity cases of one tool from its Makefile test recipe. Every
-// case is one invocation of the tool under test.
+// case is one invocation of the tool under test, and every setup command of
+// the recipe stands in front of the case it prepares.
 pub fn parity_case_collect(fs_r: &FsReadCap, tool: String, mk_path: String, dev_path: String) -> List[String] {
     let mut found: List[String] = list_new();
     let devs: List[String] = parity_case_deviations(fs_r, dev_path);
     let r: Result[String, String] = fs_read_file(fs_r, mk_path);
     if r.is_err() { return found; }
     let lines: List[String] = text_split_lines(r.val);
-    let mut in_test: Bool = false;
+    let cmds: List[String] = parity_recipe_commands(lines);
+    let mut cases: Int = 0;
     let mut i: Int = 0;
-    while i < list_len(lines) && list_len(found) < parity_case_limit() {
-        let l: String = list_get(lines, i);
+    while i < list_len(cmds) && cases < parity_case_limit() && list_len(found) < parity_case_line_limit() {
+        let cmd: String = list_get(cmds, i);
         i = i + 1;
-        if !str_starts_with(l, "\t") {
-            let head: String = text_trim(l);
-            in_test = str_starts_with(head, "test:");
+        let places: List[Int] = parity_scan_places(cmd, tool);
+        if list_len(places) == 0 {
+            let setup: String = parity_recipe_setup(cmd, tool);
+            if setup != "" { found = list_push(found, setup); }
             continue;
         }
-        if !in_test { continue; }
-        let mut cmd: String = text_trim(l);
-        while str_ends_with(cmd, "\\") && i < list_len(lines) {
-            cmd = str_slice(cmd, 0, chars_len(cmd) - 1);
-            let nxt: String = list_get(lines, i);
-            i = i + 1;
-            cmd = cmd + " " + text_trim(nxt);
-        }
-        let places: List[Int] = parity_scan_places(cmd, tool);
         let mut p: Int = 0;
-        while p < list_len(places) && list_len(found) < parity_case_limit() {
+        while p < list_len(places) && cases < parity_case_limit() && list_len(found) < parity_case_line_limit() {
             let at: Int = list_get(places, p);
             p = p + 1;
             let block: String = parity_case_one(cmd, tool, at, devs);
             if block == "" { continue; }
+            cases = cases + 1;
             if !parity_case_has(found, block) { found = list_push(found, block); }
         }
     }

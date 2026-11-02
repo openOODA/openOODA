@@ -16,9 +16,10 @@ import "std/core/primitives/str.oo";
 import "std/fs/os/fs.oo";
 import "text/lines.oo";
 
-// Build the case table of one tool. The table names the upstream tool, the
-// tool under test, and one case per line.
-pub fn ci_apply_cases_table(repo: String, upstream: String, cases: List[String]) -> String {
+// The header of the case table of one tool. The header says what the table
+// holds and how the runner reads it, so a person who opens the file knows
+// what every line means.
+pub fn ci_apply_cases_header(repo: String, upstream: String) -> List[String] {
     let mut l: List[String] = list_new();
     l = list_push(l, "# Parity cases for " + repo + ".");
     if upstream == "" {
@@ -48,7 +49,19 @@ pub fn ci_apply_cases_table(repo: String, upstream: String, cases: List[String])
     l = list_push(l, "# A case may be preceded by an input line. That line names the command that");
     l = list_push(l, "# makes the input of the case and its arguments. The runner pipes that command");
     l = list_push(l, "# into both tools, so a tool that works on a stream is compared on a stream.");
+    l = list_push(l, "#");
+    l = list_push(l, "# A case may be preceded by a setup line. That line is a command that");
+    l = list_push(l, "# prepares the input of the cases that follow it, such as the command that");
+    l = list_push(l, "# makes the file the tool reads. The runner runs it again before each of the");
+    l = list_push(l, "# two tools, so both see the same input even when one of them changes it.");
     l = list_push(l, "");
+    return l;
+}
+
+// Build the case table of one tool. The table names the upstream tool, the
+// tool under test, and one case per line.
+pub fn ci_apply_cases_table(repo: String, upstream: String, cases: List[String]) -> String {
+    let mut l: List[String] = ci_apply_cases_header(repo, upstream);
     let mut i: Int = 0;
     while i < list_len(cases) {
         l = list_push(l, list_get(cases, i));
