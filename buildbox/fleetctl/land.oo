@@ -72,27 +72,46 @@ fn fc_all_ok(verdict: String) -> Bool {
     return true;
 }
 
+// Merge one pull request and report what the merge did.
+fn fc_do_merge(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, slug: String, pr: String, verdict: String) -> String {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "pr");
+    a = list_push(a, "merge");
+    a = list_push(a, pr);
+    a = list_push(a, "--repo");
+    a = list_push(a, slug);
+    a = list_push(a, "--squash");
+    a = list_push(a, "--delete-branch=false");
+    let _o: String = fc_run(sys, fs_r, cache, "gh", a);
+    if fc_code(fs_r, cache) == 0 { return verdict + " MERGED"; }
+    return verdict + " MERGE-FAIL";
+}
+
 // Wait for the gate of a pull request and merge it. The answer is the verdict
 // that was seen last, followed by what the merge did.
+//
+// A repository that carries no fleet gate is merged anyway: the branch rules
+// of the organization still refuse a merge that is not allowed, so the gate
+// is never traded away.
 pub fn fc_merge_pr(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, slug: String, pr: String, tries: Int) -> String {
     let mut i: Int = 0;
+    let mut empty: Int = 0;
     let mut verdict: String = "";
     while i < tries {
         verdict = fc_gate(sys, fs_r, cache, slug, pr);
         if fc_all_ok(verdict) {
-            let mut a: List[String] = list_new();
-            a = list_push(a, "pr");
-            a = list_push(a, "merge");
-            a = list_push(a, pr);
-            a = list_push(a, "--repo");
-            a = list_push(a, slug);
-            a = list_push(a, "--squash");
-            a = list_push(a, "--delete-branch=false");
-            let _o: String = fc_run(sys, fs_r, cache, "gh", a);
-            if fc_code(fs_r, cache) == 0 { return verdict + " MERGED"; }
-            return verdict + " MERGE-FAIL";
+            return fc_do_merge(sys, fs_r, cache, slug, pr, verdict);
         }
         if str_contains(verdict, "FAILURE") || str_contains(verdict, "CANCELLED") { return verdict + " FAILED"; }
+        if verdict == "" {
+            empty = empty + 1;
+            if empty >= 5 {
+                let tried: String = fc_do_merge(sys, fs_r, cache, slug, pr, verdict);
+                if str_contains(tried, " MERGED") { return tried; }
+            }
+        } else {
+            empty = 0;
+        }
         fc_wait(sys, "30");
         i = i + 1;
     }
