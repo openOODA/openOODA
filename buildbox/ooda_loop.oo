@@ -11,12 +11,14 @@
 //   2. Rebuild the compiler, purge the stale caches, and run the compiler gate.
 //   3. Fetch every repo and write one verdict line per repo.
 //   4. Fan out the diffs for advisory review and append the run state.
+//   5. Propose the repairs the buildbox can make, one bounded pull request at a time.
 
 import "std/core/text/num_buffer.oo";
 import "loop/setup.oo";
 import "loop/lock.oo";
 import "loop/run.oo";
 import "loop/driver.oo";
+import "repair/flow.oo";
 
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
     let nightly: Bool = loop_has_arg(args, "--nightly");
@@ -40,6 +42,13 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     let _f: Int = loop_run_fanout(sys, fs_r, fs_w, env, cfg.repos + "/oodac");
     let _q: Result[Void, String] = file_append_sync(fs_w, cfg.queue + "/state.oot", summary + "\n");
     println(summary);
+
+    // Step 4: propose the repairs the buildbox can make. The step is off
+    // until the owner turns it on, and it stops at a pull request either
+    // way, so a human decides what lands.
+    if loop_setup_env_or(env, "OODA_AUTO_REPAIR", "0") == "1" {
+        let _r: Int = auto_repair_run(sys, fs_r, fs_w, env, cfg);
+    }
     loop_lock_release(fs_w, lock_path);
     if res.failed == 0 { return 0; }
     return 1;

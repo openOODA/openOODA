@@ -8,6 +8,7 @@
 //   1. Read the program, package, and binary table.
 //   2. Find the package that installs one upstream tool.
 //   3. Find the name the package installs the program under.
+//   4. Find the install command of one upstream tool.
 //
 // The table was checked against the package index of ubuntu-latest. Every
 // program is listed, even the ones whose package carries their name, so the
@@ -24,6 +25,27 @@
 
 import "std/core/primitives/str.oo";
 import "text/lines.oo";
+
+// The install commands for the upstream tools that the package index of the
+// runner does not carry. The table holds one row per program and the row is
+// "program|command". The command runs when the program is not on the path yet.
+// A command never holds a bar, because the bar separates the fields.
+//
+// The upstream is the reference of the parity gate, so the gate cannot run
+// without it. A program the index of the runner does not carry is installed
+// from the place that publishes it: a gem, a release package, a release
+// archive, or a source tree. Every command was run on the runner before it
+// was written here.
+pub fn ci_install_rows() -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "bsondump|curl -fsSL https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2404-x86_64-100.13.0.tgz -o /tmp/mongodb-tools.tgz && sudo tar xzf /tmp/mongodb-tools.tgz -C /usr/local --strip-components=1\n");
+    l = list_push(l, "cbor-diag|sudo apt-get install -y -qq ruby-dev build-essential && sudo gem install cbor-diag --no-document\n");
+    l = list_push(l, "crc32|sudo apt-get install -y -qq cmake build-essential git && rm -rf /tmp/crc32src /tmp/crc32build && git clone --depth 1 -b v1.20 https://github.com/tmalbonph/crc32.git /tmp/crc32src && cmake -S /tmp/crc32src -B /tmp/crc32build && cmake --build /tmp/crc32build && sudo cmake --install /tmp/crc32build\n");
+    l = list_push(l, "fastfetch|curl -fsSL https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-amd64.deb -o /tmp/fastfetch.deb && sudo apt-get install -y -qq /tmp/fastfetch.deb\n");
+    l = list_push(l, "lolcat|sudo apt-get install -y -qq ruby && sudo gem install lolcat --no-document\n");
+    l = list_push(l, "pastel|curl -fsSL https://github.com/sharkdp/pastel/releases/download/v0.12.0/pastel_0.12.0_amd64.deb -o /tmp/pastel.deb && sudo apt-get install -y -qq /tmp/pastel.deb\n");
+    return l;
+}
 
 // The table. Every row is "program|package|binary". The rows are held in
 // chunks so one literal stays short enough for the compiler.
@@ -84,4 +106,28 @@ pub fn ci_package_binary(upstream: String) -> String {
     let q: Int = str_index_of(rest, "|");
     if q <= 0 { return ""; }
     return str_slice(rest, q + 1, chars_len(rest));
+}
+
+// Find the install command of one upstream tool. The empty string means the
+// program is installed from the package index of the runner, which is the
+// path every program takes when the index carries it.
+pub fn ci_package_install(upstream: String) -> String {
+    if upstream == "" { return ""; }
+    let chunks: List[String] = ci_install_rows();
+    let mut i: Int = 0;
+    while i < list_len(chunks) {
+        let rows: List[String] = text_split_lines(list_get(chunks, i));
+        let mut j: Int = 0;
+        while j < list_len(rows) {
+            let row: String = list_get(rows, j);
+            let p: Int = str_index_of(row, "|");
+            if p > 0 {
+                let name: String = str_slice(row, 0, p);
+                if name == upstream { return str_slice(row, p + 1, chars_len(row)); }
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return "";
 }

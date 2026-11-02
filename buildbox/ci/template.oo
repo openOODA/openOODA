@@ -27,6 +27,7 @@
 import "std/core/text/num_buffer.oo";
 import "text/lines.oo";
 import "ci/steps.oo";
+import "ci/packages.oo";
 
 // The head of the workflow file.
 pub fn ci_head(repo: String) -> List[String] {
@@ -158,14 +159,23 @@ pub fn ci_verify(repo: String, big: Bool) -> List[String] {
 // program is looked for in the standard places, because a package may install
 // the program under another name or outside the path. The gate fails closed
 // when the program is nowhere to be found.
+//
+// A program the package index of the runner does not carry is installed by the
+// command the package table names for it. That command is the way the program
+// is published, so the gate compares against the same program every run.
 pub fn ci_install_upstream(upstream: String, package: String, binary: String) -> List[String] {
     let mut l: List[String] = list_new();
+    let install: String = ci_package_install(upstream);
     l = list_push(l, "      - name: Install the upstream tool");
     l = list_push(l, "        working-directory: ${{ github.workspace }}");
     l = list_push(l, "        run: |");
     l = list_push(l, "          if ! command -v " + upstream + " >/dev/null 2>&1; then");
-    l = list_push(l, "            sudo apt-get update -qq");
-    l = list_push(l, "            sudo apt-get install -y -qq " + package);
+    if install != "" {
+        l = list_push(l, "            " + install);
+    } else {
+        l = list_push(l, "            sudo apt-get update -qq");
+        l = list_push(l, "            sudo apt-get install -y -qq " + package);
+    }
     l = list_push(l, "          fi");
     l = list_push(l, "          if ! command -v " + upstream + " >/dev/null 2>&1; then");
     l = list_push(l, "            for cand in " + upstream + " " + binary + "; do");
@@ -177,7 +187,11 @@ pub fn ci_install_upstream(upstream: String, package: String, binary: String) ->
     l = list_push(l, "              done");
     l = list_push(l, "            done");
     l = list_push(l, "          fi");
-    l = list_push(l, "          command -v " + upstream + " >/dev/null 2>&1 || { echo \"::error::the upstream tool " + upstream + " is required for the parity gate and the package " + package + " does not put it on this runner\"; exit 1; }");
+    if install != "" {
+        l = list_push(l, "          command -v " + upstream + " >/dev/null 2>&1 || { echo \"::error::the upstream tool " + upstream + " is required for the parity gate and the install command did not put it on this runner\"; exit 1; }");
+    } else {
+        l = list_push(l, "          command -v " + upstream + " >/dev/null 2>&1 || { echo \"::error::the upstream tool " + upstream + " is required for the parity gate and the package " + package + " does not put it on this runner\"; exit 1; }");
+    }
     l = list_push(l, "");
     return l;
 }
