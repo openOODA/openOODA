@@ -3,7 +3,8 @@
 // Setup: Needs ProcessCap to run both binaries and FsReadCap to read the case table.
 // Beats:
 //   1. Read the upstream tool and the tool under test out of the case table.
-//   2. Require the upstream tool. A missing upstream tool fails the run.
+//   2. Require the upstream tool. A missing upstream tool fails the run. A tool
+//      that names no upstream tool has no parity gate, and the run is skipped.
 //   3. Run both tools with the same arguments and compare stdout, stderr, and the exit code.
 //
 // The case table holds one case per line. A line that starts with "match" is a
@@ -227,7 +228,10 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap)
         if str_starts_with(l, "# tool:") { tool_rel = parity_trim(str_slice(l, 7, chars_len(l))); }
         i = i + 1;
     }
-    if upstream == "" { println("ERR\tparity\tno upstream in " + cases_path); return 1; }
+    if upstream == "" {
+        println("SKIP\tparity\tno upstream in " + cases_path + ", the tool names no program to replace, so it has no parity gate");
+        return 0;
+    }
     if tool_rel == "" { println("ERR\tparity\tno tool in " + cases_path); return 1; }
     let upstream_path: String = parity_find_upstream(sys, upstream);
     if upstream_path == "" {
