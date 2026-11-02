@@ -61,14 +61,10 @@ pub fn ci_apply_cases_table(repo: String, upstream: String, cases: List[String])
 // published release through the shared auto release workflow of the openOODA
 // repository.
 
-// Write the file of declared deviations of one repository. The file is only
-// written when it is not there yet, because the deviations are written by the
-// owner of the tool and are not a thing the contract may replace.
-pub fn ci_apply_deviations(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String, repo: String) -> Bool {
-    let dir: String = repo_dir + "/qa/parity";
-    let path: String = dir + "/deviations.oot";
-    if path_exists(fs_r, path) { return true; }
-    let _m: Result[Void, String] = fs_mkdir_p(fs_w, dir);
+// The header of the file of declared deviations. It is long enough to clear
+// the floor of the Page Rule, because a file of a page holds at least sixteen
+// lines, and it says what a declared deviation is and what it is not.
+pub fn ci_apply_deviations_header(repo: String) -> List[String] {
     let mut l: List[String] = list_new();
     l = list_push(l, "# Declared deviations of " + repo + ".");
     l = list_push(l, "#");
@@ -79,6 +75,39 @@ pub fn ci_apply_deviations(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String
     l = list_push(l, "#");
     l = list_push(l, "# Write the case line as it stands in qa/parity/cases.oot, with its");
     l = list_push(l, "# match word in front of it.");
+    l = list_push(l, "#");
+    l = list_push(l, "# A deviation is not a way to make the gate pass. The exit code of a");
+    l = list_push(l, "# declared case is still compared with the exit code of the upstream");
+    l = list_push(l, "# tool, and a case whose exit code differs is a failure that has to be");
+    l = list_push(l, "# fixed in the tool. A deviation says that the tool answers the same");
+    l = list_push(l, "# question the same way and words the answer its own way.");
+    l = list_push(l, "#");
+    l = list_push(l, "# The cases come from the test recipe of the repository, so a case line");
+    l = list_push(l, "# that is not in the table is a line the recipe does not hold any more.");
+    l = list_push(l, "# Such a line is ignored, and it does not change the gate.");
+    return l;
+}
+
+// Write the file of declared deviations of one repository. The cases the owner
+// wrote are kept, and the header is written again, so the file always says
+// what a declared deviation is.
+pub fn ci_apply_deviations(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String, repo: String) -> Bool {
+    let dir: String = repo_dir + "/qa/parity";
+    let path: String = dir + "/deviations.oot";
+    let _m: Result[Void, String] = fs_mkdir_p(fs_w, dir);
+    let mut l: List[String] = ci_apply_deviations_header(repo);
+    let old: Result[String, String] = fs_read_file(fs_r, path);
+    if old.is_ok() {
+        let lines: List[String] = text_split_lines(old.val);
+        let mut i: Int = 0;
+        while i < list_len(lines) {
+            let line: String = text_trim(list_get(lines, i));
+            i = i + 1;
+            if str_starts_with(line, "match ") || str_starts_with(line, "differ ") {
+                l = list_push(l, line);
+            }
+        }
+    }
     let w: Result[Void, String] = fs_write_file(fs_w, path, text_join_lines(l) + "\n");
     if w.is_err() { return false; }
     return true;
