@@ -25,10 +25,11 @@ import "ci/cases.oo";
 import "parity/cases.oo";
 
 
-pub fn ci_apply_release(fs_w: &FsWriteCap, repo_dir: String, repo: String, upstream: String) -> Bool {
+pub fn ci_apply_release(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String, repo: String, upstream: String) -> Bool {
     let dir: String = repo_dir + "/.github/workflows";
     let _m: Result[Void, String] = fs_mkdir_p(fs_w, dir);
-    let body: String = ci_release_workflow(repo, upstream, ci_package_of(upstream), ci_package_binary(upstream));
+    let big: Bool = ci_apply_is_big(fs_r, repo_dir);
+    let body: String = ci_release_workflow(repo, upstream, ci_package_of(upstream), ci_package_binary(upstream), big);
     let w: Result[Void, String] = fs_write_file(fs_w, dir + "/release.yml", body);
     if w.is_err() { return false; }
     return true;
@@ -132,13 +133,13 @@ pub fn ci_apply_repo(fs_r: &FsReadCap, fs_w: &FsWriteCap, fleet: String, repo: S
     let repo_dir: String = fleet + "/" + repo;
     let mk_path: String = repo_dir + "/Makefile";
     let cases: List[String] = parity_case_collect(fs_r, repo, mk_path, repo_dir + "/qa/parity/deviations.oot");
-    let _c: Bool = ci_apply_cases(fs_w, repo_dir, repo, upstream, cases);
+    let _c: Bool = ci_apply_cases(fs_r, fs_w, repo_dir, repo, upstream, cases);
     let _d: Bool = ci_apply_deviations(fs_r, fs_w, repo_dir, repo);
     let _h: Bool = ci_apply_harness(fs_r, fs_w, repo_dir, harness_dir);
     if ci_apply_has_build(fs_r, mk_path) {
         let _m: Bool = ci_mk_patch(fs_r, fs_w, mk_path);
     }
     let _w: Bool = ci_apply_workflow(fs_r, fs_w, repo_dir, repo, upstream);
-    let _r: Bool = ci_apply_release(fs_w, repo_dir, repo, upstream);
+    let _r: Bool = ci_apply_release(fs_r, fs_w, repo_dir, repo, upstream);
     return true;
 }

@@ -85,7 +85,7 @@ pub fn ci_rel_checkout(repo: String) -> List[String] {
 // The build steps of the release workflow file. The tool is built, verified,
 // and tested, and the parity gate proves the drop-in property, so a release
 // is never published for a tool that fails its own contract.
-pub fn ci_rel_build(repo: String, upstream: String, package: String, binary: String) -> List[String] {
+pub fn ci_rel_build(repo: String, upstream: String, package: String, binary: String, big: Bool) -> List[String] {
     let mut l: List[String] = list_new();
     l = list_push(l, "      - name: Require compiler and clang");
     l = list_push(l, "        working-directory: ${{ github.workspace }}");
@@ -110,7 +110,7 @@ pub fn ci_rel_build(repo: String, upstream: String, package: String, binary: Str
     l = list_push(l, "          OODA_FS_READDIR: ${{ github.workspace }}");
     l = list_push(l, "          OODA_FS_WRITEDIR: ${{ github.workspace }}");
     l = list_push(l, "          OODA_NO_JAIL: \"1\"");
-    l = list_push(l, "          OODA_BUILD_MULTI: \"1\"");
+    if big { l = list_push(l, "          OODA_BUILD_MULTI: \"1\""); }
     l = list_push(l, "        run: |");
     l = list_push(l, "          make build");
     l = list_push(l, "          make verify");
@@ -170,12 +170,12 @@ pub fn ci_rel_publish(repo: String) -> List[String] {
 }
 
 // Join the parts into one release workflow file.
-pub fn ci_release_workflow(repo: String, upstream: String, package: String, binary: String) -> String {
+pub fn ci_release_workflow(repo: String, upstream: String, package: String, binary: String, big: Bool) -> String {
     let mut all: List[String] = ci_rel_head(repo);
     let mut part: List[String] = ci_rel_checkout(repo);
     let mut i: Int = 0;
     while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
-    part = ci_rel_build(repo, upstream, package, binary);
+    part = ci_rel_build(repo, upstream, package, binary, big);
     i = 0;
     while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
     part = ci_rel_publish(repo);

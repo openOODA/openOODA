@@ -43,8 +43,10 @@ pub fn ci_apply_cases_header(repo: String, upstream: String) -> List[String] {
     l = list_push(l, "# against both tools. A case that the upstream tool does not understand is");
     l = list_push(l, "# skipped, because the upstream cannot be the reference there.");
     l = list_push(l, "#");
-    l = list_push(l, "# The cases come from the test recipe of this repository, so they are the");
-    l = list_push(l, "# arguments this tool already claims to accept.");
+    l = list_push(l, "# The cases are the owner's cases, written against the CLI of the upstream");
+    l = list_push(l, "# program: a case the upstream does not understand is skipped, and a tool");
+    l = list_push(l, "# whose cases are all skipped fails the gate. A new tool starts from the");
+    l = list_push(l, "# cases of its own test recipe, and the owner rewrites them.");
     l = list_push(l, "#");
     l = list_push(l, "# A case may be preceded by an input line. That line names the command that");
     l = list_push(l, "# makes the input of the case and its arguments. The runner pipes that command");
@@ -68,6 +70,44 @@ pub fn ci_apply_cases_table(repo: String, upstream: String, cases: List[String])
         i = i + 1;
     }
     return text_join_lines(l) + "\n";
+}
+
+// Report whether a line of a case table holds a case. A case line starts with
+// the match word or the differ word.
+pub fn ci_apply_case_line(line: String) -> Bool {
+    return str_starts_with(line, "match ") || str_starts_with(line, "differ ");
+}
+
+// Write the case table of one repository.
+//
+// The table is the owner's table. The contract offers a table built from the
+// test recipe of the repository, but that recipe holds the arguments the tool
+// claims to accept, and a tool whose arguments are not the arguments of the
+// upstream tool cannot be compared with it: every case is skipped and the
+// gate fails closed. The owner writes the cases against the upstream
+// program, so the table is kept as it is when the repository already holds
+// one. A repository without a table gets the table of its recipe, so the
+// contract still gives a new tool a starting point.
+pub fn ci_apply_cases(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String, repo: String, upstream: String, cases: List[String]) -> Bool {
+    let dir: String = repo_dir + "/qa/parity";
+    let _m: Result[Void, String] = fs_mkdir_p(fs_w, dir);
+    let path: String = dir + "/cases.oot";
+    let old: Result[String, String] = fs_read_file(fs_r, path);
+    if old.is_ok() {
+        let lines: List[String] = text_split_lines(old.val);
+        let mut kept: List[String] = list_new();
+        let mut i: Int = 0;
+        while i < list_len(lines) {
+            let line: String = text_trim(list_get(lines, i));
+            i = i + 1;
+            if ci_apply_case_line(line) { kept = list_push(kept, line); }
+        }
+        if list_len(kept) > 0 { return true; }
+    }
+    let body: String = ci_apply_cases_table(repo, upstream, cases);
+    let w: Result[Void, String] = fs_write_file(fs_w, path, body);
+    if w.is_err() { return false; }
+    return true;
 }
 
 // Write the release workflow file of one repository. A pushed tag becomes a
@@ -127,15 +167,6 @@ pub fn ci_apply_deviations(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String
 }
 
 // Write the case table of one repository.
-
-pub fn ci_apply_cases(fs_w: &FsWriteCap, repo_dir: String, repo: String, upstream: String, cases: List[String]) -> Bool {
-    let dir: String = repo_dir + "/qa/parity";
-    let _m: Result[Void, String] = fs_mkdir_p(fs_w, dir);
-    let body: String = ci_apply_cases_table(repo, upstream, cases);
-    let w: Result[Void, String] = fs_write_file(fs_w, dir + "/cases.oot", body);
-    if w.is_err() { return false; }
-    return true;
-}
 
 // Report whether a Makefile declares a build target. A repository without a
 // build target is a stub. The workflow fails it closed, so its Makefile keeps
