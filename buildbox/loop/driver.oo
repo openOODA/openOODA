@@ -89,21 +89,17 @@ pub fn loop_driver_run_gate(sys: &ProcessCap, compiler: String, oodac_dir: Strin
 }
 
 // Resolve the repo list for the run.
-//
-//   no flag        the four core repos only.
-//   OODA_FLEET     the four core repos plus the shipped tools listed in the
-//                  published catalog. The catalog is the exact list of the
-//                  tools that exist, so this mode needs no credential.
-//   OODA_FLEET_ALL the four core repos plus every repository of the
-//                  organization, read from the GitHub API. This is the only
-//                  path that covers the whole fleet.
+//   no flag: the four core repos only.
+//   OODA_FLEET: the four core repos plus the shipped tools in the catalog.
+//   OODA_FLEET_ALL: the four core repos plus every repo of the organization
+//   (or all five organizations when org is "all"), read from the GitHub API.
 pub fn loop_driver_repo_list(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, cache: String, org: String) -> List[String] {
     let mut names: List[String] = loop_manifest_core_repos();
     let fleet: String = loop_setup_env_or(env, "OODA_FLEET", "");
     let all: String = loop_setup_env_or(env, "OODA_FLEET_ALL", "");
     if all == "1" {
         let token: String = loop_setup_env_or(env, "OODA_GITHUB_TOKEN", "");
-        let found: List[String] = loop_manifest_repo_names(sys, fs_w, cache, token, org);
+        let found: List[String] = if org == "all" { loop_manifest_multi_org_names(sys, fs_w, cache, token) } else { loop_manifest_repo_names(sys, fs_w, cache, token, org) };
         let mut i: Int = 0;
         while i < list_len(found) {
             let n: String = list_get(found, i);
@@ -128,8 +124,9 @@ pub fn loop_driver_fetch_all(sys: &ProcessCap, fs_r: &FsReadCap, names: List[Str
     let mut states: List[LoopRepo] = list_new();
     let mut i: Int = 0;
     while i < list_len(names) {
-        let name: String = list_get(names, i);
-        let repo_org: String = if i < 4 { core_org } else { org };
+        let entry: String = list_get(names, i);
+        let name: String = loop_manifest_repo_name(entry);
+        let repo_org: String = if i < 4 { core_org } else { loop_manifest_entry_org(entry, org) };
         let dir: String = repos + "/" + name;
         let st: LoopRepo = loop_manifest_collect(sys, fs_r, git_base, repo_org, name, dir);
         if !st.ok {
@@ -224,11 +221,7 @@ type LoopResult = struct {
     gate_rc: Int
 };
 
-// Run the gate phase. The order is fixed: the inventory is resolved first, the
-// repos are fetched second, the compiler is rebuilt third, and the gate runs
-// last. The compiler build needs the fetched checkouts, so it cannot run
-// before the fetch. The run identity is derived from the compiler and the head
-// commits, so the same inputs always produce the same verdict records.
+// Run the gate phase: resolve inventory, fetch repos, rebuild compiler, and run gate.
 pub fn loop_driver_execute(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, cfg: LoopCfg, out_bin: String) -> LoopResult {
     let names: List[String] = loop_driver_repo_list(sys, fs_r, fs_w, env, cfg.cache, cfg.org);
     println("loop repos=" + int_to_str(list_len(names)));

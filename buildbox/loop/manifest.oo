@@ -87,6 +87,7 @@ pub fn loop_manifest_core_repos() -> List[String] {
 
 // The state of one repo after the fetch pass.
 type LoopRepo = struct {
+    org: String,
     name: String,
     branch: String,
     sha: String,
@@ -101,17 +102,55 @@ type LoopRepo = struct {
 pub fn loop_manifest_collect(sys: &ProcessCap, fs_r: &FsReadCap, base: String, org: String, name: String, dir: String) -> LoopRepo {
     let branch: String = loop_manifest_branch(sys, base, org, name);
     if branch == "" {
-        return LoopRepo { name: name, branch: "", sha: "", dir: dir, modules: 0, has_build: false, has_ci: false, ok: false };
+        return LoopRepo { org: org, name: name, branch: "", sha: "", dir: dir, modules: 0, has_build: false, has_ci: false, ok: false };
     }
     let fetched: Bool = loop_fetch_repo(sys, fs_r, base, org, name, branch, dir);
     if !fetched {
-        return LoopRepo { name: name, branch: branch, sha: "", dir: dir, modules: 0, has_build: false, has_ci: false, ok: false };
+        return LoopRepo { org: org, name: name, branch: branch, sha: "", dir: dir, modules: 0, has_build: false, has_ci: false, ok: false };
     }
     let sha: String = loop_manifest_head_sha(sys, base, org, name);
     let modules: Int = fleet_manifest_module_count(fs_r, dir);
     let has_build: Bool = fleet_manifest_has_build_target(fs_r, dir);
     let has_ci: Bool = fleet_manifest_ci_present(fs_r, dir);
-    return LoopRepo { name: name, branch: branch, sha: sha, dir: dir, modules: modules, has_build: has_build, has_ci: has_ci, ok: true };
+    return LoopRepo { org: org, name: name, branch: branch, sha: sha, dir: dir, modules: modules, has_build: has_build, has_ci: has_ci, ok: true };
+}
+
+// The five organizations of the ecosystem.
+pub fn loop_manifest_all_orgs() -> List[String] {
+    let mut out: List[String] = list_new();
+    out = list_push(out, "openOODA-tools");
+    out = list_push(out, "openOODA-kernel");
+    out = list_push(out, "openOODA-OS");
+    out = list_push(out, "openOODA-DE");
+    return out;
+}
+
+// Resolve the organization of a repo entry that may be "org/name" or "name".
+pub fn loop_manifest_entry_org(entry: String, fallback: String) -> String {
+    let idx: Int = str_index_of(entry, "/");
+    if idx <= 0 { return fallback; }
+    return str_slice(entry, 0, idx);
+}
+
+// Collect the repo entries of every organization in the ecosystem.
+pub fn loop_manifest_multi_org_names(sys: &ProcessCap, fs_w: &FsWriteCap, cache_dir: String, token: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let orgs: List[String] = loop_manifest_all_orgs();
+    let mut k: Int = 0;
+    while k < list_len(orgs) {
+        let cur_org: String = list_get(orgs, k);
+        let found: List[String] = loop_manifest_repo_names(sys, fs_w, cache_dir, token, cur_org);
+        let mut i: Int = 0;
+        while i < list_len(found) {
+            let n: String = list_get(found, i);
+            if n != "" && n != ".github" && !str_contains(n, ".github.io") {
+                out = list_push(out, cur_org + "/" + n);
+            }
+            i = i + 1;
+        }
+        k = k + 1;
+    }
+    return out;
 }
 
 // The run identity is derived from the compiler identity and the head commit
