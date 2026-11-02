@@ -58,25 +58,34 @@ pub fn parity_scan_tool_pos(line: String, tool: String) -> Int {
     return list_get(places, 0);
 }
 
-// Report the place of the last time the needle stands in the text. The answer
-// is -1 when the text does not hold the needle at all.
-pub fn parity_scan_last_at(text: String, needle: String) -> Int {
-    let n: Int = chars_len(text);
-    let ln: Int = chars_len(needle);
-    if ln == 0 || n < ln { return 0 - 1; }
-    let mut last: Int = 0 - 1;
+// Report how many command substitutions stand open at the given place of the
+// line. A substitution opens with a dollar and a bracket and closes with a
+// bracket, and a substitution stands inside double quotes as well, so the
+// closing bracket of a substitution ends the command even when a quote is
+// open.
+//
+// The recipe of a tool often writes its answer as a substitution, such as
+// test "$(./tool -c 5 file)" = "line". The answer of that invocation ends at
+// the bracket that closes the substitution, and not at the quote that closes
+// the string, so the place of the open substitutions has to be known before
+// the arguments are taken.
+pub fn parity_scan_sub_depth(line: String, up_to: Int) -> Int {
+    let n: Int = chars_len(line);
+    let mut sq: Bool = false;
+    let mut dq: Bool = false;
+    let mut depth: Int = 0;
     let mut i: Int = 0;
-    while i + ln <= n {
-        let mut same: Bool = true;
-        let mut j: Int = 0;
-        while j < ln {
-            if char_at(text, i + j) != char_at(needle, j) { same = false; break; }
-            j = j + 1;
+    while i < n && i < up_to {
+        let c: String = char_at(line, i);
+        if c == "'" && !dq { sq = !sq; i = i + 1; continue; }
+        if c == "\"" && !sq { dq = !dq; i = i + 1; continue; }
+        if !sq {
+            if c == "$" && i + 1 < n && char_at(line, i + 1) == "(" { depth = depth + 1; i = i + 2; continue; }
+            if c == ")" && depth > 0 { depth = depth - 1; i = i + 1; continue; }
         }
-        if same { last = i; }
         i = i + 1;
     }
-    return last;
+    return depth;
 }
 
 // Report the bound that stands in front of the tool. The bound is the
@@ -131,7 +140,9 @@ pub fn parity_scan_fd_cut(text: String) -> String {
 
 // Take the argument words of the tool that starts at the given place. The
 // words end at the metacharacter that ends the command. A word inside quotes
-// never ends the command, so an argument may hold a pipe.
+// never ends the command, so an argument may hold a pipe. The bracket that
+// closes a command substitution ends the command as well, even when a quote is
+// open, because the answer of the invocation stands inside that substitution.
 pub fn parity_scan_take(line: String, from: Int) -> String {
     let n: Int = chars_len(line);
     let mut j: Int = from;
@@ -143,10 +154,18 @@ pub fn parity_scan_take(line: String, from: Int) -> String {
     let mut out: String = "";
     let mut sq: Bool = false;
     let mut dq: Bool = false;
+    let mut sub: Int = parity_scan_sub_depth(line, from);
     while j < n {
         let c: String = char_at(line, j);
         if c == "'" && !dq { sq = !sq; out = out + c; j = j + 1; continue; }
         if c == "\"" && !sq { dq = !dq; out = out + c; j = j + 1; continue; }
+        if !sq && c == ")" && sub > 0 {
+            sub = sub - 1;
+            if sub == 0 { break; }
+            out = out + c;
+            j = j + 1;
+            continue;
+        }
         if !sq && !dq {
             if c == ">" || c == "<" {
                 out = parity_scan_fd_cut(out);
