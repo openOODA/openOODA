@@ -18,6 +18,7 @@ import "std/core/text/num_buffer.oo";
 import "std/core/primitives/str.oo";
 import "std/fs/os/fs.oo";
 import "std/fs/process/env.oo";
+import "text/lines.oo";
 import "parity/mapping.oo";
 import "ci/apply.oo";
 
@@ -54,6 +55,15 @@ fn fleet_apply_env(env: &EnvCap, key: String, fallback: String) -> String {
     return fallback;
 }
 
+// Report whether a checkout holds work in progress. The apply never writes
+// over the work of a person or an agent that is in the middle of a change,
+// so a dirty checkout is left exactly as it is.
+fn fleet_apply_dirty(sys: &ProcessCap, repo_dir: String) -> Bool {
+    let r: Result[String, String] = sys_exec(sys, "git", "-C", repo_dir, "status", "--porcelain");
+    if r.is_err() { return false; }
+    return text_trim(r.val) != "";
+}
+
 // Apply the contract to one repository. The answer tells the caller whether
 // the repository has an upstream program, because a tool without one has no
 // parity gate.
@@ -62,6 +72,31 @@ fn fleet_apply_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, fleet:
     let _b: Bool = fleet_apply_branch(sys, fleet + "/" + name, branch);
     let _ok: Bool = ci_apply_repo(fs_r, fs_w, fleet, name, upstream, harness);
     return upstream != "";
+}
+
+// Walk the fleet and apply the contract to every tool repository. The answer
+// is the one line summary of the walk.
+fn fleet_apply_walk(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, fleet: String, harness: String, rows: List[String], branch: String) -> String {
+    let entries: List[String] = fs_read_dir(fs_r, fleet);
+    let mut applied: Int = 0;
+    let mut no_upstream: Int = 0;
+    let mut skipped: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(entries) {
+        let name: String = list_get(entries, i);
+        i = i + 1;
+        if !fleet_apply_is_tool(name) { continue; }
+        if !path_exists(fs_r, fleet + "/" + name + "/Makefile") { continue; }
+        if fleet_apply_dirty(sys, fleet + "/" + name) {
+            println("fleet skip " + name + " the checkout holds work in progress");
+            skipped = skipped + 1;
+            continue;
+        }
+        let had: Bool = fleet_apply_one(sys, fs_r, fs_w, fleet, name, harness, rows, branch);
+        applied = applied + 1;
+        if !had { no_upstream = no_upstream + 1; }
+    }
+    return "fleet applied=" + int_to_str(applied) + " no_upstream=" + int_to_str(no_upstream) + " skipped=" + int_to_str(skipped);
 }
 
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
@@ -85,19 +120,6 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     let mut i: Int = 0;
     while i < list_len(extra) { rows = list_push(rows, list_get(extra, i)); i = i + 1; }
     println("fleet mapping rows=" + int_to_str(list_len(rows)));
-    let entries: List[String] = fs_read_dir(fs_r, fleet);
-    let mut applied: Int = 0;
-    let mut no_upstream: Int = 0;
-    i = 0;
-    while i < list_len(entries) {
-        let name: String = list_get(entries, i);
-        i = i + 1;
-        if !fleet_apply_is_tool(name) { continue; }
-        if !path_exists(fs_r, fleet + "/" + name + "/Makefile") { continue; }
-        let had: Bool = fleet_apply_one(sys, fs_r, fs_w, fleet, name, harness, rows, branch);
-        applied = applied + 1;
-        if !had { no_upstream = no_upstream + 1; }
-    }
-    println("fleet applied=" + int_to_str(applied) + " no_upstream=" + int_to_str(no_upstream));
+    println(fleet_apply_walk(sys, fs_r, fs_w, fleet, harness, rows, branch));
     return 0;
 }

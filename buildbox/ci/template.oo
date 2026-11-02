@@ -196,23 +196,20 @@ pub fn ci_install_upstream(upstream: String, package: String, binary: String) ->
     return l;
 }
 
-// The parity steps. The upstream tool is installed and the tool is compared
-// against it. A tool with no upstream program gets no parity step.
+// The parity step. The tool is compared against the upstream tool. A tool
+// with no upstream program gets no parity step.
 //
 // The target is the name of the target that runs the drop-in harness in this
 // repository. It is parity for a tool whose parity target is the harness and
 // parity-dropin for a tool that kept a parity target of its own.
 //
-// The binary is the name the package installs the program under. It is empty
-// when the package keeps the name. The workflow searches for the program in
-// the standard places and links it when it is not on the path, because a
-// program that the package installs under another name is still the upstream.
-pub fn ci_parity(repo: String, upstream: String, package: String, target: String, binary: String, big: Bool) -> List[String] {
+// The upstream is installed before this step, and before the test step,
+// because the test target depends on the parity target: a workflow that
+// installed the upstream after the test would ask the parity about a program
+// the runner does not have yet.
+pub fn ci_parity(repo: String, upstream: String, target: String, big: Bool) -> List[String] {
     let mut l: List[String] = list_new();
     if upstream == "" { return l; }
-    let mut part: List[String] = ci_install_upstream(upstream, package, binary);
-    let mut i: Int = 0;
-    while i < list_len(part) { l = list_push(l, list_get(part, i)); i = i + 1; }
     l = list_push(l, "      - name: Parity against the upstream tool");
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
     l = list_push(l, "        env:");
@@ -229,6 +226,10 @@ pub fn ci_parity(repo: String, upstream: String, package: String, target: String
 // Join the parts into one workflow file. A repository without a build target
 // is a stub: it fails closed on the build step and carries no parity step,
 // because the parity gate is the contract of a tool that exists.
+//
+// The upstream is installed right after the build, before the verify and the
+// test steps, because the test target depends on the parity target and the
+// parity target needs the upstream.
 pub fn ci_workflow(repo: String, upstream: String, package: String, target: String, binary: String, has_build: Bool, big: Bool) -> String {
     let mut all: List[String] = ci_head(repo);
     let mut part: List[String] = ci_checkout(repo);
@@ -237,11 +238,16 @@ pub fn ci_workflow(repo: String, upstream: String, package: String, target: Stri
     part = ci_build(repo, big);
     i = 0;
     while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    if has_build && upstream != "" {
+        part = ci_install_upstream(upstream, package, binary);
+        i = 0;
+        while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    }
     part = ci_verify(repo, big);
     i = 0;
     while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
     if has_build {
-        part = ci_parity(repo, upstream, package, target, binary, big);
+        part = ci_parity(repo, upstream, target, big);
         i = 0;
         while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
     }
