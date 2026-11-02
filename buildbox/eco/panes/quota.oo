@@ -80,9 +80,27 @@ pub fn eco_pane_quota_session(vis: String) -> String {
     return "100|n/a";
 }
 
-// The quota of the pane that reports the streamed tokens. The pane writes the
-// count in thousands, and the share that is left is the rest of the hundred.
-pub fn eco_pane_quota_wh(vis: String) -> String {
+// Read the last weekly creditUsagePercent from a Grok unified.jsonl log chunk.
+pub fn eco_grok_weekly_pct(jsonl: String) -> Int {
+    let key: String = "\"creditUsagePercent\":";
+    let klen: Int = chars_len(key);
+    let mut rest: String = jsonl;
+    let mut last_pct: Int = -1;
+    while true {
+        let idx: Int = str_index_of(rest, key);
+        if idx < 0 { break; }
+        rest = str_slice(rest, idx + klen, chars_len(rest));
+        let v: Int = eco_parse_uint(rest);
+        if v >= 0 && v <= 100 { last_pct = v; }
+    }
+    return last_pct;
+}
+
+// The quota of the Grok pane: combines weekly creditUsagePercent with live or
+// compacted session token telemetry.
+pub fn eco_pane_quota_wh_full(vis: String, wk_used: Int) -> String {
+    let mut tok_suf: String = "";
+    let mut stream_rem: Int = 100;
     let idx: Int = str_index_of(vis, "[stop]");
     if idx >= 0 {
         let start: Int = if idx > 16 { idx - 16 } else { 0 };
@@ -91,18 +109,31 @@ pub fn eco_pane_quota_wh(vis: String) -> String {
         if k_idx >= 0 {
             let k: Int = eco_parse_uint(str_slice(win, k_idx + 2, chars_len(win)));
             if k >= 0 {
-                let used: Int = k / 10;
-                let rem: Int = if used >= 100 { 0 } else { 100 - used };
-                return int_to_str(rem) + "|streamed ~" + int_to_str(k) + "k (~" + int_to_str(rem) + "% rem)";
+                let u: Int = k / 10;
+                stream_rem = if u >= 100 { 0 } else { 100 - u };
+                tok_suf = " / ~" + int_to_str(k) + "k";
             }
         }
+    }
+    if wk_used >= 0 && wk_used <= 100 {
+        let rem: Int = 100 - wk_used;
+        let to99: Int = if wk_used >= 99 { 0 } else { 99 - wk_used };
+        return int_to_str(rem) + "|Wk " + int_to_str(wk_used) + "% (" + int_to_str(rem) + "% rem, ->99%:" + int_to_str(to99) + "%)" + tok_suf;
+    }
+    if tok_suf != "" {
+        return int_to_str(stream_rem) + "|streamed" + tok_suf + " (~" + int_to_str(stream_rem) + "% rem)";
     }
     return "100|n/a";
 }
 
-// The quota of one pane, the way the pane writes it. The pane that carries no
-// quota of its own has the whole share left.
+// The quota of one pane, or the pacing target when pane_id starts with "pace:".
 pub fn eco_parse_pane_quota(pane_id: String, vis: String) -> String {
+    if pane_id == "pace" {
+        let rem: Int = eco_parse_uint(vis);
+        let used: Int = if rem <= 0 { 100 } else if rem >= 100 { 0 } else { 100 - rem };
+        if used >= 99 { return "AT_99%_TARGET (hold >=1% reserve)"; }
+        return "+" + int_to_str(99 - used) + "% to 99%";
+    }
     let tail: String = eco_tail_lines(vis, 8);
     if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wK:p1" {
         return eco_pane_quota_tokens(pane_id, vis);
@@ -111,7 +142,7 @@ pub fn eco_parse_pane_quota(pane_id: String, vis: String) -> String {
         return eco_pane_quota_session(tail);
     }
     if pane_id == "wH:p1" {
-        return eco_pane_quota_wh(vis);
+        return eco_pane_quota_wh_full(vis, -1);
     }
     return "100|n/a";
 }

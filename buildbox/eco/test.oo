@@ -36,6 +36,7 @@ fn eco_test_taxonomy(fails: &mut Int) -> Int {
     let _i: Int = eco_expect_eq("eco_cat_valid_ui", if eco_valid_category("UI") { "ok" } else { "bad" }, "ok", fails);
     let _j: Int = eco_expect_eq("eco_cat_invalid_empty", if eco_valid_category("") { "ok" } else { "bad" }, "bad", fails);
     let _k: Int = eco_expect_eq("eco_cat_invalid_sub", if eco_valid_category("H") { "ok" } else { "bad" }, "bad", fails);
+    let _l: Int = eco_expect_eq("eco_cat_invalid_lower", if eco_valid_category("sh") { "ok" } else { "bad" }, "bad", fails);
     return 0;
 }
 
@@ -52,12 +53,19 @@ fn eco_test_primitives(fs_r: &FsReadCap, fails: &mut Int) -> Int {
         let bver: String = eco_pkg_get(fs_r, pkg, "version");
         let bver_ok: String = if str_starts_with(bver, "0.2.") && bver != "0.2.0" { "ok" } else { bver };
         let _h: Int = eco_expect_eq("eco_pkg_boot_ver", bver_ok, "ok", fails);
+        let bpages: Int = eco_count_oo_pages(fs_r, "/Projects/openOODA-kernel/ookernel-boot");
+        let _hp: Int = eco_expect_eq("eco_count_pages_boot", if bpages >= 6 { "ok" } else { "low" }, "ok", fails);
     }
     let _i: Int = eco_expect_eq("eco_quota_wF_vibe", eco_parse_pane_quota("wF:p1", "114k/800k tokens (14%)"), "86|14% used (86% rem)", fails);
     let _j: Int = eco_expect_eq("eco_quota_wJ_active", eco_parse_pane_quota("wJ:p1", "Running 1h9min47s 273 tok/s | 5h 0% | Context 31% left"), "31|5h 0% rem / Ctx 31% left", fails);
     let _k: Int = eco_expect_eq("eco_quota_wJ_idle0", eco_parse_pane_quota("wJ:p1", "Idle | 5h 0% | Context 31% left"), "0|5h 0% rem / Ctx 31% left", fails);
     let hist: String = "Running old sweep\n1\n2\n3\n4\n5\n6\n7\n8\nIdle | 5h 0% | Context 31% left";
     let _l: Int = eco_expect_eq("eco_quota_wJ_hist", eco_parse_pane_quota("wJ:p1", hist), "0|5h 0% rem / Ctx 31% left", fails);
+    let jlog: String = "{\"creditUsagePercent\":7.0}\n{\"creditUsagePercent\":17.0}";
+    let _m: Int = eco_expect_eq("eco_grok_weekly_pct", int_to_str(eco_grok_weekly_pct(jlog)), "17", fails);
+    let _n: Int = eco_expect_eq("eco_quota_wH_wk", eco_pane_quota_wh_full("12s 40k [stop]", 17), "83|Wk 17% (83% rem, ->99%:82%) / ~40k", fails);
+    let _o: Int = eco_expect_eq("eco_pace_target_83", eco_parse_pane_quota("pace", "83"), "+82% to 99%", fails);
+    let _p: Int = eco_expect_eq("eco_pace_target_1", eco_parse_pane_quota("pace", "1"), "AT_99%_TARGET (hold >=1% reserve)", fails);
     return 0;
 }
 

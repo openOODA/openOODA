@@ -75,3 +75,34 @@ pub fn eco_tail_lines(s: String, max_lines: Int) -> String {
     }
     return out;
 }
+
+pub fn eco_count_oo_pages(fs_r: &FsReadCap, repo_dir: String) -> Int {
+    let mut total: Int = 0;
+    let subdirs: List[String] = list_push(list_push(list_push(list_new(), ""), "/core"), "/tests");
+    let mut i: Int = 0;
+    while i < list_len(subdirs) {
+        let d: String = repo_dir + list_get(subdirs, i);
+        i = i + 1;
+        if !path_exists(fs_r, d) { continue; }
+        let entries: List[String] = fs_read_dir(fs_r, d);
+        let mut j: Int = 0;
+        while j < list_len(entries) {
+            let f: String = list_get(entries, j);
+            j = j + 1;
+            if str_ends_with(f, ".oo") { total = total + 1; }
+        }
+    }
+    if total >= 6 { return total; }
+    let walked: List[String] = fs_walk(fs_r, repo_dir);
+    let mut k: Int = 0;
+    let mut wcount: Int = 0;
+    while k < list_len(walked) {
+        let p: String = list_get(walked, k);
+        k = k + 1;
+        if str_ends_with(p, ".oo") && !str_contains(p, "/.ooda-cache/") && !str_contains(p, "/dist/") && !str_contains(p, "/bin/") {
+            wcount = wcount + 1;
+        }
+    }
+    return wcount;
+}
+

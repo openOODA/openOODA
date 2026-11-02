@@ -18,59 +18,43 @@ import "eco/panes/quota.oo";
 
 fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, pane_id: String, ws: String, agent: String) -> String {
     let tmp: String = "/tmp/eco_pane_" + str_replace(pane_id, ":", "_") + ".txt";
-    let mut a: List[String] = list_new();
-    a = list_push(a, "-c");
-    a = list_push(a, "/home/ubermetroid/.local/bin/herdr pane read --source visible " + pane_id + " 2>/dev/null | tr -cd '\\11\\12\\15\\40-\\176' > " + tmp);
+    let mut a: List[String] = list_push(list_push(list_new(), "-c"), "/home/ubermetroid/.local/bin/herdr pane read --source visible " + pane_id + " 2>/dev/null | tr -cd '\\11\\12\\15\\40-\\176' > " + tmp + "; if [ '" + pane_id + "' = 'wH:p1' ]; then grep '\"creditUsagePercent\":' /home/ubermetroid/.grok/logs/unified.jsonl 2>/dev/null | tail -n 2 > " + tmp + ".wk; fi");
     let _r: Result[Int, String] = sys_exec_wait(sys, "bash", a);
     let vis: String = eco_read_trimmed(fs_r, tmp);
     let _rm: Result[Void, String] = fs_remove_file(fs_w, tmp);
-    let qpair: String = eco_parse_pane_quota(pane_id, vis);
+    let qpair: String = if pane_id == "wH:p1" {
+        let wk_txt: String = eco_read_trimmed(fs_r, tmp + ".wk");
+        let _rmw: Result[Void, String] = fs_remove_file(fs_w, tmp + ".wk");
+        eco_pane_quota_wh_full(vis, eco_grok_weekly_pct(wk_txt))
+    } else {
+        eco_parse_pane_quota(pane_id, vis)
+    };
     let pipe_idx: Int = str_index_of(qpair, "|");
     let rem: Int = eco_parse_uint(str_slice(qpair, 0, pipe_idx));
     let quota: String = str_slice(qpair, pipe_idx + 1, chars_len(qpair));
-    let tail: String = eco_tail_lines(vis, 8);
+    let tail: String = eco_tail_lines(vis, 12);
     let mut state: String = if pane_id == "wK:p1" && quota == "shell ready" { "standby" } else { "idle" };
-    if str_contains(tail, "Running ") || str_contains(tail, "Loading ") || str_contains(tail, "tok/s")
+    if str_contains(tail, "User input required") || str_contains(tail, "Enter select") {
+        state = "WAIT_INPUT";
+    } else if str_contains(tail, "Running ") || str_contains(tail, "Loading ") || str_contains(tail, "tok/s")
         || str_contains(tail, "Thinking") || str_contains(tail, "Generating") || str_contains(tail, "[stop]") {
         state = "working";
     }
     if pane_id == "wJ:p1" && rem == 0 && state == "idle" { state = "paused(0%)"; }
-    let alert: String = if rem <= 2 { "QUOTA_RESERVE_ALERT (rem=" + int_to_str(rem) + "% <= 2%)" } else { "OK" };
+    let alert: String = if rem <= 1 {
+        "QUOTA_RESERVE_ALERT (rem=" + int_to_str(rem) + "% <= 1%)"
+    } else {
+        "OK (" + eco_parse_pane_quota("pace", int_to_str(rem)) + ")"
+    };
     return "  " + eco_pad_right(pane_id, 7) + " " + eco_pad_right(ws, 16) + " " + eco_pad_right(agent, 24)
-        + " " + eco_pad_right(state, 11) + " " + eco_pad_right(quota, 30) + " " + alert;
+        + " " + eco_pad_right(state, 11) + " " + eco_pad_right(quota, 34) + " " + alert;
 }
 
 fn status_count_oo_pages(fs_r: &FsReadCap, repo_dir: String) -> Int {
-    let mut total: Int = 0;
-    let subdirs: List[String] = list_push(list_push(list_push(list_new(), ""), "/core"), "/tests");
-    let mut i: Int = 0;
-    while i < list_len(subdirs) {
-        let d: String = repo_dir + list_get(subdirs, i);
-        i = i + 1;
-        if !path_exists(fs_r, d) { continue; }
-        let entries: List[String] = fs_read_dir(fs_r, d);
-        let mut j: Int = 0;
-        while j < list_len(entries) {
-            let f: String = list_get(entries, j);
-            j = j + 1;
-            if str_ends_with(f, ".oo") { total = total + 1; }
-        }
-    }
-    if total >= 6 { return total; }
-    let walked: List[String] = fs_walk(fs_r, repo_dir);
-    let mut k: Int = 0;
-    let mut wcount: Int = 0;
-    while k < list_len(walked) {
-        let p: String = list_get(walked, k);
-        k = k + 1;
-        if str_ends_with(p, ".oo") && !str_contains(p, "/.ooda-cache/") && !str_contains(p, "/dist/") && !str_contains(p, "/bin/") {
-            wcount = wcount + 1;
-        }
-    }
-    return wcount;
+    return eco_count_oo_pages(fs_r, repo_dir);
 }
 
-fn status_has_release_tag(fs_r: &FsReadCap, repo_dir: String) -> Bool {
+fn status_has_release_tag(fs_r: &FsReadCap, org: String, repo_dir: String) -> Bool {
     let tags_dir: String = repo_dir + "/.git/refs/tags";
     if path_exists(fs_r, tags_dir) {
         let tlist: List[String] = fs_read_dir(fs_r, tags_dir);
@@ -78,11 +62,17 @@ fn status_has_release_tag(fs_r: &FsReadCap, repo_dir: String) -> Bool {
         while i < list_len(tlist) {
             let t: String = list_get(tlist, i);
             i = i + 1;
+            if org == "openOODA" && str_starts_with(t, "v") { return true; }
             if str_starts_with(t, "v") && t != "v0.1.0" && t != "v0.2.0" { return true; }
         }
     }
     let packed: String = eco_read_trimmed(fs_r, repo_dir + "/.git/packed-refs");
-    if str_contains(packed, "refs/tags/v0.2.1") || str_contains(packed, "refs/tags/v0.3.") || str_contains(packed, "refs/tags/v2.") {
+    if org == "openOODA" && str_contains(packed, "refs/tags/v") {
+        return true;
+    }
+    if str_contains(packed, "refs/tags/v0.2.1") || str_contains(packed, "refs/tags/v0.2.2")
+        || str_contains(packed, "refs/tags/v0.3.") || str_contains(packed, "refs/tags/v1.")
+        || str_contains(packed, "refs/tags/v2.") {
         return true;
     }
     return false;
@@ -112,7 +102,7 @@ fn status_org_row(fs_r: &FsReadCap, org: String) -> String {
     while i < list_len(entries) {
         let r: String = list_get(entries, i);
         i = i + 1;
-        if org != "openOODA" && (r == ".github" || r == "openOODA-tools.github.io") { continue; }
+        if org != "openOODA" && (r == ".github" || r == "openOODA-tools.github.io" || r == "std") { continue; }
         let rdir: String = org_dir + "/" + r;
         if !path_exists(fs_r, rdir + "/.git") { continue; }
         total = total + 1;
@@ -120,7 +110,7 @@ fn status_org_row(fs_r: &FsReadCap, org: String) -> String {
         let mut ver: String = eco_read_trimmed(fs_r, rdir + "/VERSION");
         if ver == "" { ver = eco_pkg_get(fs_r, rdir + "/ooda.pkg", "version"); }
         if org == "openOODA" || (ver != "" && ver != "0.1.0" && ver != "0.2.0") { ver_ok = ver_ok + 1; }
-        if status_has_release_tag(fs_r, rdir) { tag_ok = tag_ok + 1; }
+        if status_has_release_tag(fs_r, org, rdir) { tag_ok = tag_ok + 1; }
         if status_repo_built(fs_r, org, rdir, r) { built_ok = built_ok + 1; }
     }
     let t_str: String = int_to_str(total);
@@ -136,9 +126,9 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap
     println("  openOODA 5-ORG ECOSYSTEM & AGENT FLEET STATUS (PURE .oo DOGFOOD WATCHDOG)");
     println("==============================================================================================");
     println("");
-    println("[1] LIVE AGENT & QUOTA TELEMETRY (Reserve Threshold: >2% required, >=1% hard floor)");
-    println("  PANE    WORKSPACE        AGENT                    STATE       QUOTA / TOKENS                 ALERT");
-    println("  ------------------------------------------------------------------------------------------------------");
+    println("[1] LIVE AGENT & QUOTA TELEMETRY (Target: 99% pre-reset, >=1% hard reserve floor)");
+    println("  PANE    WORKSPACE        AGENT                    STATE       QUOTA / TOKENS                     STATUS / PACE TO 99%");
+    println("  --------------------------------------------------------------------------------------------------------------------------");
     println(status_pane_telemetry(sys, fs_r, fs_w, "wF:p1", "openOODA",        "vibe (Mistral Large 4)"));
     println(status_pane_telemetry(sys, fs_r, fs_w, "wG:p1", "openOODA-kernel", "vibe (Mistral Large 4)"));
     println(status_pane_telemetry(sys, fs_r, fs_w, "wH:p1", "openOODA-OS",     "grok (Grok 4.7 high)"));
