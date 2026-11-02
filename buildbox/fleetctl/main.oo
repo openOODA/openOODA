@@ -15,6 +15,7 @@ import "std/fs/process/env.oo";
 import "fleetctl/land.oo";
 import "fleetctl/release.oo";
 import "fleetctl/catalog.oo";
+import "fleetctl/report.oo";
 
 // Read one environment value with a fallback. The runtime only hands out the
 // names that begin with OODA_ or OO_, so every setting of the orchestrator is
@@ -76,16 +77,24 @@ fn fc_run_one(
 }
 
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
-    if list_len(args) < 2 {
-        println("usage: fleetctl land|release|status <tool>...");
+    if list_len(args) == 0 {
+        println("usage: fleetctl land|release|status <tool>... | report");
         return 2;
     }
     let cmd: String = list_get(args, 0);
-    if cmd != "land" && cmd != "release" && cmd != "status" && cmd != "catalog" {
+    if cmd != "land" && cmd != "release" && cmd != "status" && cmd != "catalog" && cmd != "report" {
         println("unknown command: " + cmd);
         return 2;
     }
     let fleet: String = fc_env(env, "OODA_FLEET_DIR", "/Projects/openOODA-tools");
+    if cmd == "report" {
+        let logs: String = fc_env(env, "OODA_GATE_LOGS", "/home/ubermetroid/fleet-gate/logs");
+        return fc_report(fs_r, fleet, logs);
+    }
+    if list_len(args) < 2 {
+        println("usage: fleetctl land|release|status <tool>...");
+        return 2;
+    }
     let org: String = fc_env(env, "OODA_ORG", "openOODA-tools");
     let cache: String = fc_env(env, "OODA_FLEET_CACHE", "/var/lib/ooda-buildbox/cache");
     let tries: Int = 60;
