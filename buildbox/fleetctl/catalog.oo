@@ -51,14 +51,18 @@ pub fn fc_catalog_set(fs_r: &FsReadCap, fs_w: &FsWriteCap, path: String, tool: S
     while i < list_len(lines) {
         let l: String = list_get(lines, i);
         i = i + 1;
-        if str_contains(l, needle) { in_tool = true; continue; }
-        if in_tool && str_contains(l, "\"version\":") {
-            out = list_push(out, fc_set_json_string(l, "version", "v" + version));
-            in_tool = false;
-            done = true;
+        if !in_tool {
+            out = list_push(out, l);
+            if str_contains(l, needle) { in_tool = true; }
             continue;
         }
-        if in_tool && desc != "" && str_contains(l, "\"description\":") {
+        if str_contains(l, "\"version\":") {
+            out = list_push(out, fc_set_json_string(l, "version", "v" + version));
+            done = true;
+            if desc == "" { in_tool = false; }
+            continue;
+        }
+        if desc != "" && str_contains(l, "\"description\":") {
             out = list_push(out, fc_set_json_string(l, "description", desc));
             in_tool = false;
             continue;
@@ -66,7 +70,7 @@ pub fn fc_catalog_set(fs_r: &FsReadCap, fs_w: &FsWriteCap, path: String, tool: S
         out = list_push(out, l);
     }
     if !done { return false; }
-    let w: Result[Void, String] = fs_write_file(fs_w, path, text_join_lines(out) + "\n");
+    let w: Result[Void, String] = fs_write_file(fs_w, path, text_join_lines(out));
     return w.is_ok();
 }
 
