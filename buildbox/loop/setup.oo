@@ -1,13 +1,14 @@
 // # Loop Setup - The Run Environment And The Working Directories
 //
-// Logline: Reads the run environment and creates the working directories the loop needs.
+// Logline: Reads the run environment, creates the working directories the loop needs, and builds the runtime the compiler links against.
 //
-// Setup: Needs EnvCap for the environment and FsWriteCap for the directories.
+// Setup: Needs EnvCap for the environment, FsWriteCap for the directories, and ProcessCap for the runtime build.
 //
 // Beats:
 //   1. Read one environment value with a fallback.
 //   2. Read the whole run configuration.
 //   3. Create the working directories of a run.
+//   4. Build the modular archives of the runtime checkout.
 //
 // Only OODA_ prefixed variables are visible to the process, so the buildbox
 // credential is OODA_GITHUB_TOKEN and never GITHUB_TOKEN.
@@ -48,4 +49,26 @@ pub fn loop_setup_make_dirs(fs_w: &FsWriteCap, repos: String, queue: String, cac
     let _m2: Result[Void, String] = fs_mkdir_p(fs_w, queue + "/manifest");
     let _m3: Result[Void, String] = fs_mkdir_p(fs_w, cache);
     return true;
+}
+
+// Build the runtime archives the compiler links against. The compiler gate
+// and every tool of the fleet link the runtime, and the archives are the
+// output of the build of the runtime checkout, so they have to exist before
+// anything is compiled.
+//
+// The build runs in the scripts directory of the runtime checkout, because
+// that is where its Makefile lives. The archives are built with the C
+// compiler of the host, so the host needs one.
+pub fn loop_setup_build_runtime(sys: &ProcessCap, repos: String) -> Int {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repos + "/oodar/scripts");
+    a = list_push(a, "make");
+    a = list_push(a, "-f");
+    a = list_push(a, "Makefile");
+    a = list_push(a, "modular");
+    let r: Result[Int, String] = sys_exec_wait(sys, "env", a);
+    let mut code: Int = 1;
+    if r.is_ok() { code = r.val; }
+    return code;
 }

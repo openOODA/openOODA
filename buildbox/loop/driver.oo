@@ -169,24 +169,6 @@ pub fn loop_driver_gate_all(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCa
     return failed;
 }
 
-// Build the runtime archives the compiler links against. The compiler gate
-// and every tool the loop builds link the runtime, and the archives are the
-// output of the build of the runtime checkout, so they have to exist before
-// anything is compiled.
-pub fn loop_driver_build_runtime(sys: &ProcessCap, repos: String) -> Int {
-    let mut a: List[String] = list_new();
-    a = list_push(a, "-C");
-    a = list_push(a, repos + "/oodar/scripts");
-    a = list_push(a, "make");
-    a = list_push(a, "-f");
-    a = list_push(a, "Makefile");
-    a = list_push(a, "modular");
-    let r: Result[Int, String] = sys_exec_wait(sys, "env", a);
-    let mut code: Int = 1;
-    if r.is_ok() { code = r.val; }
-    return code;
-}
-
 // Prepare the run: rebuild the compiler, purge the caches that are keyed by
 // source only, and run the compiler gate. Returns 0 when the run may go on.
 pub fn loop_driver_prepare(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, repos: String, cache: String, out_bin: String) -> Int {
@@ -195,7 +177,7 @@ pub fn loop_driver_prepare(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap
         println("ERR\tloop\tbuild failed");
         return 1;
     }
-    let runtime_rc: Int = loop_driver_build_runtime(sys, repos);
+    let runtime_rc: Int = loop_setup_build_runtime(sys, repos);
     if runtime_rc != 0 {
         println("ERR\tloop\truntime build failed");
         return 4;
