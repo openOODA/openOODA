@@ -1,0 +1,146 @@
+// # Fleet CI Flow - Repairs The Workflow Of A Branch Of A Tool
+//
+// Logline: Clones a tool, restores the indentation of the workflow of its branch and pushes the repair.
+//
+// Setup: Needs ProcessCap for git, FsReadCap and FsWriteCap for the files.
+//
+// Beats:
+//   1. Clone the repository of one tool into the work directory.
+//   2. Read one file of one branch of a repository.
+//   3. Repair the workflow of one branch and push the repair.
+//   4. Repair the contract branch and the repair branch of a tool.
+
+import "std/core/primitives/str.oo";
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "fleetctl/shell.oo";
+import "fleetci/ci_repair.oo";
+
+// The place of the workflow of the CI inside a repository.
+fn fc_path() -> String {
+    return ".github/workflows/ci.yml";
+}
+
+// Clone the repository of one tool into the work directory. The answer holds
+// the path of the clone, and it is empty when the clone failed.
+fn fc_clone(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String) -> String {
+    let dest: String = work + "/" + tool;
+    if path_exists(fs_r, dest) {
+        let _d: Result[Void, String] = fs_remove_tree(fs_w, fs_r, dest);
+    }
+    let mut mk: List[String] = list_new();
+    mk = list_push(mk, "-p");
+    mk = list_push(mk, work);
+    let _o: String = fc_run(sys, fs_r, cache, "mkdir", mk);
+    let mut a: List[String] = list_new();
+    a = list_push(a, "clone");
+    a = list_push(a, "--quiet");
+    a = list_push(a, "https://github.com/" + org + "/" + tool + ".git");
+    a = list_push(a, dest);
+    let _o2: String = fc_run(sys, fs_r, cache, "git", a);
+    if fc_code(fs_r, cache) != 0 { return ""; }
+    return dest;
+}
+
+// Read one file of one branch of a repository.
+fn fc_read_ref(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, ref: String, path: String) -> String {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "show");
+    a = list_push(a, ref + ":" + path);
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    return fc_all(fs_r, cache);
+}
+
+// Repair the workflows of one branch of one tool and push the repair. The
+// answer holds the number of the files that were repaired.
+//
+// The good workflows live in a directory. Every file of that directory is
+// read, and the file of the branch that carries the same name is repaired
+// with it. A branch whose workflow holds a different number of lines than the
+// good one is not the same workflow and is left alone.
+fn fc_fix_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, branch: String, template_dir: String) -> Int {
+    let mut b: List[String] = list_new();
+    b = list_push(b, "-C");
+    b = list_push(b, repo);
+    b = list_push(b, "checkout");
+    b = list_push(b, "-q");
+    b = list_push(b, "-B");
+    b = list_push(b, branch);
+    b = list_push(b, "origin/" + branch);
+    let _o: String = fc_run(sys, fs_r, cache, "git", b);
+    let entries: List[String] = fs_read_dir(fs_r, template_dir);
+    let mut changed: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(entries) {
+        let name: String = list_get(entries, i);
+        i = i + 1;
+        if !str_ends_with(name, ".yml") { continue; }
+        let tr: Result[String, String] = fs_read_file(fs_r, template_dir + "/" + name);
+        if tr.is_err() { continue; }
+        let path: String = ".github/workflows/" + name;
+        let broken: String = fc_read_ref(sys, fs_r, cache, repo, "origin/" + branch, path);
+        if broken == "" { continue; }
+        let good: String = fc_repair(tr.val, broken);
+        if good == "" { continue; }
+        let _w: Result[Void, String] = fs_write_file(fs_w, repo + "/" + path, good);
+        changed = changed + 1;
+    }
+    if changed == 0 { return 0; }
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "add");
+    a = list_push(a, "-A");
+    let _o2: String = fc_run(sys, fs_r, cache, "git", a);
+    let mut c: List[String] = list_new();
+    c = list_push(c, "-C");
+    c = list_push(c, repo);
+    c = list_push(c, "commit");
+    c = list_push(c, "-q");
+    c = list_push(c, "-m");
+    c = list_push(c, "fix(ci): give the workflows of the gate their indentation back");
+    let _o3: String = fc_run(sys, fs_r, cache, "git", c);
+    let mut p: List[String] = list_new();
+    p = list_push(p, "-C");
+    p = list_push(p, repo);
+    p = list_push(p, "push");
+    p = list_push(p, "-q");
+    p = list_push(p, "--force");
+    p = list_push(p, "origin");
+    p = list_push(p, "HEAD:refs/heads/" + branch);
+    let _o4: String = fc_run(sys, fs_r, cache, "git", p);
+    if fc_code(fs_r, cache) != 0 { return 0; }
+    return changed;
+}
+
+// Repair the contract branch and the repair branch of one tool. The contract
+// branch carries the gate of the fleet, and the repair branch of a tool that
+// is being repaired carries it too. A branch whose workflow is already whole
+// is left alone.
+pub fn fc_fix_tool(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String, template_dir: String) -> Int {
+    let repo: String = fc_clone(sys, fs_r, fs_w, cache, work, org, tool);
+    if repo == "" { println(tool + " CLONE-FAIL"); return 1; }
+    let mut rc: Int = 0;
+    let mut branches: List[String] = list_new();
+    branches = list_push(branches, "buildbox/fleet-contract");
+    branches = list_push(branches, "fix/" + tool + "-dropin");
+    let mut i: Int = 0;
+    while i < list_len(branches) {
+        let br: String = list_get(branches, i);
+        i = i + 1;
+        let mut exists: List[String] = list_new();
+        exists = list_push(exists, "-C");
+        exists = list_push(exists, repo);
+        exists = list_push(exists, "rev-parse");
+        exists = list_push(exists, "--verify");
+        exists = list_push(exists, "origin/" + br);
+        let _o: String = fc_run(sys, fs_r, cache, "git", exists);
+        if fc_code(fs_r, cache) != 0 { continue; }
+        let n: Int = fc_fix_branch(sys, fs_r, fs_w, cache, repo, br, template_dir);
+        if n > 0 { println(tool + " " + br + " REPAIRED files=" + int_to_str(n)); }
+        else { println(tool + " " + br + " SKIP"); }
+    }
+    return rc;
+}

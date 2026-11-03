@@ -1,0 +1,129 @@
+// # Fleet Fix Restore - Puts Back The Files A Branch Lost
+//
+// Logline: Names the files that one branch of a repository holds and another branch does not, and the files whose rights differ.
+//
+// Setup: Needs ProcessCap for git and FsReadCap to read the trees.
+//
+// Beats:
+//   1. List the entries of one ref of a repository.
+//   2. Name the path and the rights of one entry.
+//   3. Name the files that one ref holds and another ref does not.
+//   4. Name the files whose rights differ between two refs.
+//
+// A sweep of the fleet took the installers of some tools out of their
+// branches. A branch that lost a file of the default branch carries a change
+// that nothing asked for, and merging that branch takes the file away from
+// the default branch for good. The repair puts the file back.
+
+import "text/lines.oo";
+import "fleetctl/shell.oo";
+
+// List the entries of one ref of a repository. Every entry holds the rights
+// of the file, the kind of it, its name and its path.
+pub fn ff_tree(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, ref: String) -> List[String] {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "ls-tree");
+    a = list_push(a, "-r");
+    a = list_push(a, ref);
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    return text_split_lines(fc_all(fs_r, cache));
+}
+
+// The path of one entry of a tree. The path stands behind the tab.
+pub fn ff_tree_path(line: String) -> String {
+    let t: Int = str_index_of(line, "\t");
+    if t < 0 { return ""; }
+    return str_slice(line, t + 1, chars_len(line));
+}
+
+// The rights of one entry of a tree. The rights stand in front of the first
+// space.
+pub fn ff_tree_mode(line: String) -> String {
+    let s: Int = str_index_of(line, " ");
+    if s <= 0 { return ""; }
+    return str_slice(line, 0, s);
+}
+
+// Report whether a list of entries holds a path.
+pub fn ff_has(entries: List[String], path: String) -> Bool {
+    let mut i: Int = 0;
+    while i < list_len(entries) {
+        if ff_tree_path(list_get(entries, i)) == path { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+// The rights of one path in a list of entries. The answer is empty when the
+// list holds no such path.
+pub fn ff_mode_of(entries: List[String], path: String) -> String {
+    let mut i: Int = 0;
+    while i < list_len(entries) {
+        let line: String = list_get(entries, i);
+        i = i + 1;
+        if ff_tree_path(line) == path { return ff_tree_mode(line); }
+    }
+    return "";
+}
+
+// Report whether a path names a file of text. A file that is not text is not
+// put back, because the repair writes the file as a text and a file of bytes
+// would be damaged on the way.
+pub fn ff_is_text(path: String) -> Bool {
+    if str_ends_with(path, ".sh") { return true; }
+    if str_ends_with(path, ".py") { return true; }
+    if str_ends_with(path, ".oo") { return true; }
+    if str_ends_with(path, ".oot") { return true; }
+    if str_ends_with(path, ".md") { return true; }
+    if str_ends_with(path, ".yml") { return true; }
+    if str_ends_with(path, ".pkg") { return true; }
+    if str_ends_with(path, ".txt") { return true; }
+    if str_ends_with(path, "Makefile") { return true; }
+    if str_ends_with(path, "VERSION") { return true; }
+    return false;
+}
+
+// Name the files that one ref holds and another ref does not. The answer
+// holds the paths in the order of the first ref.
+pub fn ff_lost(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, src: String, dst: String) -> List[String] {
+    let a: List[String] = ff_tree(sys, fs_r, cache, repo, src);
+    let b: List[String] = ff_tree(sys, fs_r, cache, repo, dst);
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(a) {
+        let p: String = ff_tree_path(list_get(a, i));
+        i = i + 1;
+        if p == "" { continue; }
+        if !ff_has(b, p) && ff_is_text(p) { out = list_push(out, p); }
+    }
+    return out;
+}
+
+// Name the files that both refs hold but whose rights differ. A file that
+// lost the right to run is put back, because an installer that cannot run is
+// no installer.
+pub fn ff_moved(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, src: String, dst: String) -> List[String] {
+    let a: List[String] = ff_tree(sys, fs_r, cache, repo, src);
+    let b: List[String] = ff_tree(sys, fs_r, cache, repo, dst);
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(a) {
+        let line: String = list_get(a, i);
+        i = i + 1;
+        let p: String = ff_tree_path(line);
+        if p == "" { continue; }
+        let mode: String = ff_tree_mode(line);
+        let mut j: Int = 0;
+        while j < list_len(b) {
+            let other: String = list_get(b, j);
+            j = j + 1;
+            if ff_tree_path(other) == p && ff_tree_mode(other) != mode {
+                out = list_push(out, p);
+                break;
+            }
+        }
+    }
+    return out;
+}

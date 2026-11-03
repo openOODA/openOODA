@@ -1,0 +1,109 @@
+// # Fleet Fix Makefile - Reads The Blocks Of A Makefile
+//
+// Logline: Splits a Makefile into its header and its blocks, and names the target of every block.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Report whether a line of a Makefile starts a target.
+//   2. Name the lines of the header of a Makefile.
+//   3. Split a Makefile into its blocks.
+//   4. Name the target of a block.
+//   5. Find the block of one target.
+//   6. Report whether a text names an installer.
+//   7. Report whether a block holds a line.
+//
+// A Makefile is a list of blocks, and every block holds a target and the
+// words of its rule. The blocks are the parts of the build, so a block that
+// one Makefile holds and another does not is a part of the build that the
+// other one lost.
+
+import "std/core/primitives/str.oo";
+import "text/lines.oo";
+
+// Report whether a line of a Makefile starts a target. A target stands at
+// the front of the line, carries a colon and is followed by the words of its
+// rule. A line of a rule stands behind a space or a tab, and a comment
+// stands behind a hash.
+pub fn ff_mk_is_target(line: String) -> Bool {
+    if line == "" { return false; }
+    if str_starts_with(line, " ") { return false; }
+    if str_starts_with(line, "\t") { return false; }
+    if str_starts_with(line, "#") { return false; }
+    let c: Int = str_index_of(line, ":");
+    return c > 0;
+}
+
+// The lines of the header of a Makefile. The header holds the settings of
+// the build, and it stands in front of the first target.
+pub fn ff_mk_header_lines(lines: List[String]) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let l: String = list_get(lines, i);
+        if ff_mk_is_target(l) { break; }
+        out = list_push(out, l);
+        i = i + 1;
+    }
+    return out;
+}
+
+// Split a Makefile into its blocks. Every block holds a target and the words
+// of its rule, up to the next target.
+pub fn ff_mk_blocks(lines: List[String]) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut cur: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let l: String = list_get(lines, i);
+        if ff_mk_is_target(l) && list_len(cur) > 0 {
+            out = list_push(out, text_join_lines(cur));
+            cur = list_new();
+        }
+        cur = list_push(cur, l);
+        i = i + 1;
+    }
+    if list_len(cur) > 0 { out = list_push(out, text_join_lines(cur)); }
+    return out;
+}
+
+// The name of the target of a block. The name stands in front of the first
+// colon of the first line of the block.
+pub fn ff_mk_name(block: String) -> String {
+    let lines: List[String] = text_split_lines(block);
+    if list_len(lines) == 0 { return ""; }
+    let first: String = list_get(lines, 0);
+    let c: Int = str_index_of(first, ":");
+    if c <= 0 { return ""; }
+    return text_trim(str_slice(first, 0, c));
+}
+
+// Find the block of one target out of a list of blocks. The answer is empty
+// when the list holds no such target.
+pub fn ff_mk_find(blocks: List[String], name: String) -> String {
+    let mut i: Int = 0;
+    while i < list_len(blocks) {
+        let b: String = list_get(blocks, i);
+        i = i + 1;
+        if ff_mk_name(b) == name { return b; }
+    }
+    return "";
+}
+
+// Report whether a text names an installer. A text that names an installer
+// is a part of the build of a package, and a branch has to keep it.
+pub fn ff_mk_names_installer(text: String) -> Bool {
+    return str_contains(text, "install.sh") || str_contains(text, "uninstall.sh");
+}
+
+// Report whether a block holds a line. The line stands on its own, and the
+// spaces at its ends do not count.
+pub fn ff_mk_has_line(block: String, line: String) -> Bool {
+    let lines: List[String] = text_split_lines(block);
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        if text_trim(list_get(lines, i)) == text_trim(line) { return true; }
+        i = i + 1;
+    }
+    return false;
+}

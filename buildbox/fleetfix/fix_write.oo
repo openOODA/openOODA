@@ -1,0 +1,133 @@
+// # Fleet Fix Write - Writes The Files Of One Ref Back Into A Branch
+//
+// Logline: Puts the files that a branch lost, and the files whose rights differ, back into the working tree.
+//
+// Setup: Needs ProcessCap for git, FsReadCap and FsWriteCap for the files.
+//
+// Beats:
+//   1. Write one file of one ref into the working tree of the repository.
+//   2. Put every file that one ref holds and another ref lost back.
+//   3. Put every file whose rights differ back.
+//
+// The file is put back with git, because git puts a file back with the rights
+// it had. The rights are also written into the index of the repository, so a
+// file that lost the right to run gets it back even when the file itself was
+// already there. A file that cannot run is no installer.
+//
+// The version the file carries is moved to the version of the tree, so a file
+// that comes from an older release does not carry the version of that
+// release into a newer one.
+
+import "std/fs/os/fs.oo";
+import "fleetctl/shell.oo";
+import "fleetfix/fix_restore.oo";
+
+// Report whether a character belongs to a version number.
+fn ff_ver_char(c: String) -> Bool {
+    return str_contains("0123456789.", c);
+}
+
+// Replace every occurrence of a version that stands on its own. A version
+// that is the tail of a longer number is left alone.
+pub fn ff_replace_ver(s: String, old: String, new: String) -> String {
+    if old == "" || old == new { return s; }
+    let ol: Int = chars_len(old);
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        if i + ol <= n && str_slice(s, i, i + ol) == old {
+            let before_ok: Bool = i == 0 || !ff_ver_char(str_char_at(s, i - 1));
+            let after_ok: Bool = i + ol >= n || !ff_ver_char(str_char_at(s, i + ol));
+            if before_ok && after_ok {
+                out = out + new;
+                i = i + ol;
+                continue;
+            }
+        }
+        out = out + str_char_at(s, i);
+        i = i + 1;
+    }
+    return out;
+}
+
+// Move the version of a text to another version.
+pub fn ff_move_ver(s: String, old: String, new: String) -> String {
+    return ff_replace_ver(s, old, new);
+}
+
+// Write the rights of one file into the index of the repository. The answer
+// tells whether the index was written.
+fn ff_write_mode(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, path: String, mode: String) -> Bool {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "update-index");
+    if mode == "100755" { a = list_push(a, "--chmod=+x"); } else { a = list_push(a, "--chmod=-x"); }
+    a = list_push(a, "--");
+    a = list_push(a, path);
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    return fc_code(fs_r, cache) == 0;
+}
+
+// Give one file of the working tree the rights it had in its ref. The file
+// itself is changed, because the index takes the rights of the file when the
+// index is written again.
+fn ff_chmod(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, path: String, mode: String) -> Bool {
+    if mode == "" { return false; }
+    let mut a: List[String] = list_new();
+    if mode == "100755" { a = list_push(a, "+x"); } else { a = list_push(a, "-x"); }
+    a = list_push(a, path);
+    let _o: String = fc_run(sys, fs_r, cache, "chmod", a);
+    return fc_code(fs_r, cache) == 0;
+}
+
+// Write one file of one ref into the working tree of the repository.
+pub fn ff_restore_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, src: String, path: String, mode: String, old: String, new: String) -> Bool {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "checkout");
+    a = list_push(a, src);
+    a = list_push(a, "--");
+    a = list_push(a, path);
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    if fc_code(fs_r, cache) != 0 { return false; }
+    let r: Result[String, String] = fs_read_file(fs_r, repo + "/" + path);
+    if r.is_ok() {
+        let body: String = r.val;
+        if body != "" {
+            let _w: Result[Void, String] = fs_write_file(fs_w, repo + "/" + path, ff_move_ver(body, old, new));
+        }
+    }
+    if mode != "" {
+        let _c: Bool = ff_chmod(sys, fs_r, cache, repo + "/" + path, mode);
+        let _m: Bool = ff_write_mode(sys, fs_r, cache, repo, path, mode);
+    }
+    println("  put back " + path + " mode=" + mode);
+    return true;
+}
+
+// Put every file that one ref holds and another ref lost, and every file
+// whose rights differ, back into the working tree of the repository. The
+// answer holds the number of the files that were put back.
+pub fn ff_restore(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, src: String, dst: String, old: String, new: String) -> Int {
+    let lost: List[String] = ff_lost(sys, fs_r, cache, repo, src, dst);
+    let moved: List[String] = ff_moved(sys, fs_r, cache, repo, src, dst);
+    let entries: List[String] = ff_tree(sys, fs_r, cache, repo, src);
+    let mut all: List[String] = lost;
+    let mut i: Int = 0;
+    while i < list_len(moved) {
+        all = list_push(all, list_get(moved, i));
+        i = i + 1;
+    }
+    let mut n: Int = 0;
+    i = 0;
+    while i < list_len(all) {
+        let p: String = list_get(all, i);
+        i = i + 1;
+        let mode: String = ff_mode_of(entries, p);
+        if ff_restore_one(sys, fs_r, fs_w, cache, repo, src, p, mode, old, new) { n = n + 1; }
+    }
+    return n;
+}

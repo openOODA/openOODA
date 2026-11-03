@@ -1,0 +1,53 @@
+// # Fleet CI Fix - Restores The Workflow Of The Gate Of The Fleet
+//
+// Logline: Gives the workflow of the gate of every tool that lost its indentation the indentation back.
+//
+// Setup: Needs ProcessCap, FsReadCap, FsWriteCap and EnvCap.
+//
+// Beats:
+//   1. Read the fleet root, the work directory, the organization and the good workflow from the environment.
+//   2. Repair the contract branch and the repair branch of every tool that is named.
+//
+// Usage: fleetci <tool>...
+//
+// The good workflow is the workflow of a tool whose gate runs. The repair
+// keeps the words of the broken workflow and gives every line the indentation
+// of the line of the good workflow that stands at the same place. The tool
+// leaves a branch alone when its workflow is already whole, and it never
+// touches a branch that does not exist.
+
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "fleetci/ci_flow.oo";
+
+// Read one environment value with a fallback. The runtime only hands out the
+// names that begin with OODA_ or OO_, so every setting of the tool is named
+// that way.
+fn fc_env(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return fallback;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let work: String = fc_env(env, "OODA_CI_WORK", "/home/ubermetroid/fleet-ci");
+    let org: String = fc_env(env, "OODA_ORG", "openOODA-tools");
+    let cache: String = fc_env(env, "OODA_FLEET_CACHE", "/var/lib/ooda-buildbox/cache");
+    let template_path: String = fc_env(env, "OODA_CI_TEMPLATE", "/var/lib/ooda-buildbox/build/fleetci-template.yml");
+    let _mc: Result[Void, String] = fs_mkdir_p(fs_w, cache);
+    let _mw: Result[Void, String] = fs_mkdir_p(fs_w, work);
+    let tr: Result[String, String] = fs_read_file(fs_r, template_path);
+    if tr.is_err() { println("ERR no template at " + template_path); return 1; }
+    let template: String = tr.val;
+    let mut rc: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        let tool: String = list_get(args, i);
+        i = i + 1;
+        let r: Int = fc_fix_tool(sys, fs_r, fs_w, cache, work, org, tool, template);
+        if r != 0 { rc = r; }
+    }
+    println("done=" + int_to_str(list_len(args)) + " failed=" + int_to_str(rc));
+    return rc;
+}

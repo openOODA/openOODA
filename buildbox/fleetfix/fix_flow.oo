@@ -1,0 +1,159 @@
+// # Fleet Fix Flow - Repairs One Branch Of One Tool
+//
+// Logline: Clones a tool, puts the files and the workflows of a branch back, and pushes the repair.
+//
+// Setup: Needs ProcessCap for git, FsReadCap and FsWriteCap for the files.
+//
+// Beats:
+//   1. Clone the repository of one tool into the work directory.
+//   2. Read the version that a ref of a repository carries.
+//   3. Repair one branch of one tool and push the repair.
+//
+// The repair is always a step forward on the branch it repairs, so the push
+// never has to force anything and never throws away the work of another
+// agent.
+
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+import "fleetctl/shell.oo";
+import "fleetfix/fix_write.oo";
+import "fleetfix/fix_ci.oo";
+import "fleetfix/fix_make_merge.oo";
+import "ci/makefile.oo";
+
+// Clone the repository of one tool into the work directory. The answer holds
+// the path of the clone, and it is empty when the clone failed.
+pub fn ff_clone(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String) -> String {
+    let dest: String = work + "/" + tool;
+    if path_exists(fs_r, dest) {
+        let _d: Result[Void, String] = fs_remove_tree(fs_w, fs_r, dest);
+    }
+    let mut mk: List[String] = list_new();
+    mk = list_push(mk, "-p");
+    mk = list_push(mk, work);
+    let _o: String = fc_run(sys, fs_r, cache, "mkdir", mk);
+    let mut a: List[String] = list_new();
+    a = list_push(a, "clone");
+    a = list_push(a, "--quiet");
+    a = list_push(a, "https://github.com/" + org + "/" + tool + ".git");
+    a = list_push(a, dest);
+    let _o2: String = fc_run(sys, fs_r, cache, "git", a);
+    if fc_code(fs_r, cache) != 0 { return ""; }
+    return dest;
+}
+
+// Read the version that one file of one ref of a repository carries.
+fn ff_ref_version(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, ref: String) -> String {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "show");
+    a = list_push(a, ref + ":VERSION");
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    return text_trim(fc_all(fs_r, cache));
+}
+
+// Read the version that the working tree of a repository carries.
+fn ff_tree_version(fs_r: &FsReadCap, repo: String) -> String {
+    let r: Result[String, String] = fs_read_file(fs_r, repo + "/VERSION");
+    if r.is_err() { return ""; }
+    return text_trim(r.val);
+}
+
+// Put one branch of the repository on the working tree. The answer tells
+// whether the branch was there at all.
+fn ff_checkout(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, branch: String) -> Bool {
+    let mut co: List[String] = list_new();
+    co = list_push(co, "-C");
+    co = list_push(co, repo);
+    co = list_push(co, "checkout");
+    co = list_push(co, "-q");
+    co = list_push(co, "-B");
+    co = list_push(co, branch);
+    co = list_push(co, "origin/" + branch);
+    let _o: String = fc_run(sys, fs_r, cache, "git", co);
+    return fc_code(fs_r, cache) == 0;
+}
+
+// Write the repair of the working tree into a commit and push it to a
+// branch. The answer tells whether the commit and the push went through.
+//
+// The push replaces the branch, because the branch is ours and the repair
+// is the whole of it. The default branch is never replaced.
+fn ff_push(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, branch: String, push: String) -> Bool {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "add");
+    a = list_push(a, "-A");
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    let mut c: List[String] = list_new();
+    c = list_push(c, "-C");
+    c = list_push(c, repo);
+    c = list_push(c, "commit");
+    c = list_push(c, "-q");
+    c = list_push(c, "-m");
+    c = list_push(c, "fix(fleet): put back the files and the workflows of " + branch);
+    let _o2: String = fc_run(sys, fs_r, cache, "git", c);
+    if fc_code(fs_r, cache) != 0 { return false; }
+    let mut p: List[String] = list_new();
+    p = list_push(p, "-C");
+    p = list_push(p, repo);
+    p = list_push(p, "push");
+    p = list_push(p, "-q");
+    if push != "main" && push != "master" { p = list_push(p, "--force"); }
+    p = list_push(p, "origin");
+    p = list_push(p, "HEAD:refs/heads/" + push);
+    let _o3: String = fc_run(sys, fs_r, cache, "git", p);
+    return fc_code(fs_r, cache) == 0;
+}
+
+// Read one file of one ref of a repository.
+fn ff_read_ref(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, ref: String, path: String) -> String {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "show");
+    a = list_push(a, ref + ":" + path);
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    return fc_all(fs_r, cache);
+}
+
+// Put the Makefile of the default branch back into the Makefile of the
+// branch. The blocks of the branch are the truth, and the blocks of the
+// default branch come back where the branch lost a part of the build. The
+// gate of the drop-in property is wired in again afterwards, because the
+// branch may have lost it too.
+fn ff_merge_makefile(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, src: String) -> Bool {
+    let main_mk: String = ff_read_ref(sys, fs_r, cache, repo, src, "Makefile");
+    if main_mk == "" { return false; }
+    let r: Result[String, String] = fs_read_file(fs_r, repo + "/Makefile");
+    if r.is_err() { return false; }
+    let merged: List[String] = ff_mk_merge(text_split_lines(main_mk), text_split_lines(r.val));
+    let _w: Result[Void, String] = fs_write_file(fs_w, repo + "/Makefile", text_join_lines(merged));
+    let _p: Bool = ci_mk_patch(fs_r, fs_w, repo + "/Makefile");
+    println("  merged the Makefile of " + src);
+    return true;
+}
+
+// Repair one branch of one tool and push the repair.
+//
+// The branch is checked out from the origin, the files that the source ref
+// holds and the branch does not are put back, the Makefile of the branch is
+// put back together, and the workflows of the gate are written again out of
+// the generator of the contract. The answer holds the number of the files
+// that were put back.
+pub fn ff_fix_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, tool: String, branch: String, src: String, push: String, rows: List[String]) -> Int {
+    if !ff_checkout(sys, fs_r, cache, repo, branch) { return 0; }
+    let old: String = ff_ref_version(sys, fs_r, cache, repo, src);
+    let new: String = ff_tree_version(fs_r, repo);
+    let n: Int = ff_restore(sys, fs_r, fs_w, cache, repo, src, "HEAD", old, new);
+    let _m: Bool = ff_merge_makefile(sys, fs_r, fs_w, cache, repo, src);
+    let upstream: String = ff_upstream(fs_r, rows, tool);
+    if ff_has_contract(fs_r, repo) {
+        let _w: Bool = ff_write_workflows(fs_r, fs_w, repo, tool, upstream);
+    }
+    if !ff_push(sys, fs_r, fs_w, cache, repo, branch, push) { return n; }
+    return n + 1;
+}
