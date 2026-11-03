@@ -1,0 +1,62 @@
+// # Fleet Package Bump - Rewrites The Version In The Packaging Files Of One Tool
+//
+// Logline: Moves the version that the packaging files of a tool carry to the version of its tree.
+//
+// Setup: Needs FsReadCap and FsWriteCap for the files.
+//
+// Beats:
+//   1. Replace every occurrence of a word in a text.
+//   2. Rewrite the version of one file.
+//   3. Rewrite the version of every packaging file of one tool.
+//
+// The version of a tool lives in more than one place. The tree says which
+// version the tool is, and the packaging files say which version the package
+// of the tool is. When they disagree the package of a release carries the
+// version of an older release, so they move together.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "fleetpkg/pkg_scan.oo";
+
+// Replace every occurrence of a word in a text.
+fn fp_replace(s: String, old: String, new: String) -> String {
+    if old == "" { return s; }
+    let n: Int = chars_len(s);
+    let ol: Int = chars_len(old);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        if i + ol <= n && str_slice(s, i, i + ol) == old {
+            out = out + new;
+            i = i + ol;
+            continue;
+        }
+        out = out + str_char_at(s, i);
+        i = i + 1;
+    }
+    return out;
+}
+
+// Rewrite the version of one file. The answer tells whether the file changed.
+fn fp_bump_file(fs_r: &FsReadCap, fs_w: &FsWriteCap, path: String, old: String, new: String) -> Bool {
+    let r: Result[String, String] = fs_read_file(fs_r, path);
+    if r.is_err() { return false; }
+    let body: String = r.val;
+    let s: String = fp_replace(body, old, new);
+    if s == body { return false; }
+    let _w: Result[Void, String] = fs_write_file(fs_w, path, s);
+    return true;
+}
+
+// Rewrite the version of every packaging file of one tool. The answer holds
+// the number of the files that changed.
+pub fn fp_bump(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo: String, old: String, new: String) -> Int {
+    let files: List[String] = fp_pack_files(fs_r, repo);
+    let mut changed: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(files) {
+        if fp_bump_file(fs_r, fs_w, list_get(files, i), old, new) { changed = changed + 1; }
+        i = i + 1;
+    }
+    return changed;
+}

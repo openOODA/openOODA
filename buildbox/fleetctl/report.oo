@@ -1,6 +1,6 @@
 // # Fleet Report - Reads The Gate Verdicts Of The Tools Of The Fleet
 //
-// Logline: Prints the gate verdict and the parity score of every tool that carries a build target.
+// Logline: Prints the gate verdict, the parity score and the reason of the failure of every tool that carries a build target.
 //
 // Setup: Needs FsReadCap to read the gate logs of the fleet.
 //
@@ -8,7 +8,8 @@
 //   1. List the tools of the fleet that carry a build target.
 //   2. Read the verdict of every step of the gate of one tool out of its log.
 //   3. Read the match, differ, skip and fail counts of the parity step.
-//   4. Print the report of the fleet with the tools that pass and the tools that do not.
+//   4. Read the reason a step of the gate failed.
+//   5. Print the report of the fleet with the tools that pass and the tools that do not.
 //
 // The gate writes one log per step for every tool it runs. A step that passed
 // holds the word OK in its log and a step that failed holds an ERR or a make
@@ -21,7 +22,10 @@ import "std/fs/os/fs.oo";
 import "text/lines.oo";
 
 // The tools of the fleet that carry a build target. A repository without a
-// build target is a stub of the backlog and is not a tool of the fleet.
+// build target is a stub of the backlog and is not a tool of the fleet. The
+// word build on a line of its own is what makes a tool a tool of the fleet,
+// and the mention of the word in a comment or in the name of another target
+// does not.
 pub fn fc_report_tools(fs_r: &FsReadCap, fleet: String) -> List[String] {
     let entries: List[String] = fs_read_dir(fs_r, fleet);
     let mut tools: List[String] = list_new();
@@ -34,28 +38,22 @@ pub fn fc_report_tools(fs_r: &FsReadCap, fleet: String) -> List[String] {
         if !path_exists(fs_r, dir + "/.git") { continue; }
         let r: Result[String, String] = fs_read_file(fs_r, dir + "/Makefile");
         if r.is_err() { continue; }
-        if !fc_report_has_build(r.val) { continue; }
+        let mut has_build: Bool = false;
+        let lines: List[String] = text_split_lines(r.val);
+        let mut j: Int = 0;
+        while j < list_len(lines) {
+            if str_starts_with(text_trim(list_get(lines, j)), "build:") { has_build = true; }
+            j = j + 1;
+        }
+        if !has_build { continue; }
         tools = list_push(tools, name);
     }
     return tools;
 }
 
-// Whether a makefile carries a build target of its own. The word build on a
-// line of its own is what makes a tool a tool of the fleet, and the mention
-// of the word in a comment or in the name of another target does not.
-fn fc_report_has_build(makefile: String) -> Bool {
-    let lines: List[String] = text_split_lines(makefile);
-    let mut i: Int = 0;
-    while i < list_len(lines) {
-        let ln: String = text_trim(list_get(lines, i));
-        if str_starts_with(ln, "build:") { return true; }
-        i = i + 1;
-    }
-    return false;
-}
-
 // The verdict of one step of the gate of one tool. The answer is 0 when the
-// step passed and the code of the failure when it did not.
+// step passed, 90 when the gate never ran the step, and the code of the
+// failure when it did not.
 pub fn fc_report_step(fs_r: &FsReadCap, logs: String, tool: String, step: String) -> Int {
     let r: Result[String, String] = fs_read_file(fs_r, logs + "/" + tool + "." + step + ".log");
     if r.is_err() { return 90; }
@@ -66,50 +64,67 @@ pub fn fc_report_step(fs_r: &FsReadCap, logs: String, tool: String, step: String
     return 0;
 }
 
-// The match, differ, skip and fail counts of the parity step of one tool. The
-// answer holds the four counts and the word of the upstream.
-pub fn fc_report_parity(fs_r: &FsReadCap, logs: String, tool: String) -> String {
-    let r: Result[String, String] = fs_read_file(fs_r, logs + "/" + tool + ".parity.log");
-    if r.is_err() { return "-/-/-"; }
-    let lines: List[String] = text_split_lines(r.val);
-    let mut i: Int = 0;
-    while i < list_len(lines) {
-        let ln: String = text_trim(list_get(lines, i));
-        if str_starts_with(ln, "PARITY ") {
-            let up: String = fc_report_word(ln, 3);
-            return fc_report_count(ln, "match=") + "/" + fc_report_count(ln, "skip=") + "/" + fc_report_count(ln, "fail=") + " " + up;
-        }
-        i = i + 1;
-    }
-    return "-/-/-";
-}
-
-// The word at the given place of a line, counted from zero.
-fn fc_report_word(line: String, place: Int) -> String {
-    let parts: List[String] = text_split_lines(str_replace(line, " ", "\n"));
-    if place >= list_len(parts) { return ""; }
-    return list_get(parts, place);
-}
-
-// The number that follows the given word in a line.
-fn fc_report_count(line: String, word: String) -> String {
-    let idx: Int = str_index_of(line, word);
+// The token that follows the given marker in a line. The answer is the dash
+// when the line does not carry the marker.
+fn fc_report_field(line: String, marker: String) -> String {
+    let idx: Int = str_index_of(line, marker);
     if idx < 0 { return "-"; }
-    let rest: String = str_slice(line, idx + chars_len(word), chars_len(line));
+    let rest: String = str_slice(line, idx + chars_len(marker), chars_len(line));
     let parts: List[String] = text_split_lines(str_replace(rest, " ", "\n"));
     if list_len(parts) == 0 { return "-"; }
     return list_get(parts, 0);
 }
 
+// The match, differ, skip and fail counts of the parity step of one tool. The
+// answer holds the four counts and the word of the upstream.
+pub fn fc_report_parity(fs_r: &FsReadCap, logs: String, tool: String) -> String {
+    let r: Result[String, String] = fs_read_file(fs_r, logs + "/" + tool + ".parity.log");
+    if r.is_err() { return "-/-/-/- -"; }
+    let lines: List[String] = text_split_lines(r.val);
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let ln: String = text_trim(list_get(lines, i));
+        if str_starts_with(ln, "PARITY ") {
+            return fc_report_field(ln, "match=") + "/" + fc_report_field(ln, "differ=")
+                + "/" + fc_report_field(ln, "skip=") + "/" + fc_report_field(ln, "fail=")
+                + " " + fc_report_field(ln, " against ");
+        }
+        i = i + 1;
+    }
+    return "-/-/-/- -";
+}
+
+// The reason a step of the gate failed. The answer is the reason that the log
+// of the step names, and the word failed when the log names none.
+fn fc_report_class(fs_r: &FsReadCap, logs: String, tool: String, step: String) -> String {
+    let r: Result[String, String] = fs_read_file(fs_r, logs + "/" + tool + "." + step + ".log");
+    if r.is_err() { return "no log"; }
+    let lines: List[String] = text_split_lines(r.val);
+    let marker: String = "\t" + step + "\t";
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let ln: String = list_get(lines, i);
+        i = i + 1;
+        let p: Int = str_index_of(ln, marker);
+        if p >= 0 { return str_slice(ln, p + chars_len(marker), chars_len(ln)); }
+        if str_starts_with(ln, "  FAIL ") {
+            let q: Int = str_index_of(ln, "] ");
+            if q >= 0 { return str_slice(ln, q + 2, chars_len(ln)); }
+        }
+    }
+    return "failed";
+}
+
 // Print the report of the fleet. The report names every tool that carries a
-// build target with the verdict of its gate and the score of its parity, and
-// it ends with the number of tools that pass and the number that do not.
+// build target with the verdict of its gate, the score of its parity and the
+// reason of its first failing step, and it ends with the number of tools that
+// pass and the number that do not.
 pub fn fc_report(fs_r: &FsReadCap, fleet: String, logs: String) -> Int {
     let tools: List[String] = fc_report_tools(fs_r, fleet);
     println("FLEET GATE REPORT");
     println("tools=" + int_to_str(list_len(tools)));
     println("");
-    println("tool          build verify test  parity own   parity match/skip/fail upstream");
+    println("tool          build verify test  parity own   parity match/differ/skip/fail upstream  reason");
     let mut passed: Int = 0;
     let mut failed: Int = 0;
     let mut i: Int = 0;
@@ -123,13 +138,26 @@ pub fn fc_report(fs_r: &FsReadCap, fleet: String, logs: String) -> Int {
         let o: Int = fc_report_step(fs_r, logs, tool, "own");
         if b == 0 && v == 0 && t == 0 && p == 0 && o == 0 { passed = passed + 1; } else { failed = failed + 1; }
         let score: String = fc_report_parity(fs_r, logs, tool);
-        println(fc_report_pad(tool, 14) + fc_report_pad(int_to_str(b), 6) + fc_report_pad(int_to_str(v), 7)
-            + fc_report_pad(int_to_str(t), 6) + fc_report_pad(int_to_str(p), 8) + fc_report_pad(int_to_str(o), 6)
-            + "  " + score);
+        let mut reason: String = "-";
+        if b != 0 { reason = fc_report_class(fs_r, logs, tool, "build"); }
+        else if v != 0 { reason = fc_report_class(fs_r, logs, tool, "verify"); }
+        else if t != 0 { reason = fc_report_class(fs_r, logs, tool, "test"); }
+        else if p != 0 { reason = fc_report_class(fs_r, logs, tool, "parity"); }
+        else if o != 0 { reason = fc_report_class(fs_r, logs, tool, "own"); }
+        println(fc_report_pad(tool, 14) + fc_report_pad(fc_report_code(b), 6) + fc_report_pad(fc_report_code(v), 7)
+            + fc_report_pad(fc_report_code(t), 6) + fc_report_pad(fc_report_code(p), 8) + fc_report_pad(fc_report_code(o), 6)
+            + "  " + score + "  " + reason);
     }
     println("");
     println("passed=" + int_to_str(passed) + " failed=" + int_to_str(failed));
     return 0;
+}
+
+// The code of a verdict as a word of the report. A step that never ran is
+// shown as a dash and not as a number.
+fn fc_report_code(code: Int) -> String {
+    if code == 90 { return "-"; }
+    return int_to_str(code);
 }
 
 // Pad a name to the given width so that the report lines up in a column.

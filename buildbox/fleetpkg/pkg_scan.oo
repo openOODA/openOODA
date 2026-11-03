@@ -1,0 +1,146 @@
+// # Fleet Package Scan - Finds The Tools Whose Packaging Files Carry A Stale Version
+//
+// Logline: Reads the version of the tree and the version of the packaging files of every tool of the fleet and names the tools that disagree.
+//
+// Setup: Needs FsReadCap to read the files of the repositories.
+//
+// Beats:
+//   1. Read the version that stands at a place of a text.
+//   2. Read the first version of a text.
+//   3. List the packaging files of one tool.
+//   4. Name the tools whose packaging files disagree with their tree.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+
+// The run of digits that stands at the given place of a text.
+fn fp_digits(body: String, i: Int) -> String {
+    let n: Int = chars_len(body);
+    let mut j: Int = i;
+    let mut out: String = "";
+    while j < n {
+        let c: String = str_char_at(body, j);
+        if !char_is_digit(c) { break; }
+        out = out + c;
+        j = j + 1;
+    }
+    return out;
+}
+
+// The version that stands at the given place of a text. The answer is the
+// empty string when the place does not carry a version.
+fn fp_ver_at(body: String, i: Int) -> String {
+    let n: Int = chars_len(body);
+    let d1: String = fp_digits(body, i);
+    if d1 == "" { return ""; }
+    let p1: Int = i + chars_len(d1);
+    if p1 >= n { return ""; }
+    if str_char_at(body, p1) != "." { return ""; }
+    let d2: String = fp_digits(body, p1 + 1);
+    if d2 == "" { return ""; }
+    let p2: Int = p1 + 1 + chars_len(d2);
+    if p2 >= n { return ""; }
+    if str_char_at(body, p2) != "." { return ""; }
+    let d3: String = fp_digits(body, p2 + 1);
+    if d3 == "" { return ""; }
+    return d1 + "." + d2 + "." + d3;
+}
+
+// The first version of a text.
+fn fp_first_ver(body: String) -> String {
+    let n: Int = chars_len(body);
+    let mut i: Int = 0;
+    while i < n {
+        let v: String = fp_ver_at(body, i);
+        if v != "" { return v; }
+        i = i + 1;
+    }
+    return "";
+}
+
+// The packaging files of one tool: the package manifest, the files of the
+// packaging directory and the installer.
+pub fn fp_pack_files(fs_r: &FsReadCap, repo: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let manifest: String = repo + "/ooda.pkg";
+    if path_exists(fs_r, manifest) { out = list_push(out, manifest); }
+    let inst: String = repo + "/install.sh";
+    if path_exists(fs_r, inst) { out = list_push(out, inst); }
+    let dir: String = repo + "/packaging";
+    if path_exists(fs_r, dir) {
+        let walked: List[String] = fs_walk(fs_r, dir);
+        let mut i: Int = 0;
+        while i < list_len(walked) {
+            out = list_push(out, list_get(walked, i));
+            i = i + 1;
+        }
+    }
+    return out;
+}
+
+// The version that a file carries on a line that names the version of the
+// package. The answer is empty when the file names no such line. The line is
+// read by its field, so the version of another program that the file happens
+// to mention is never mistaken for the version of the package.
+fn fp_field_ver(body: String) -> String {
+    let lines: List[String] = text_split_lines(body);
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let ln: String = text_trim(list_get(lines, i));
+        i = i + 1;
+        let up: String = to_uppercase(ln);
+        let is_field: Bool = str_starts_with(up, "VERSION=") || str_starts_with(up, "VERSION:")
+            || str_starts_with(up, "PKGVER=") || str_starts_with(up, "PKGVER:")
+            || str_starts_with(up, "VERSION_PIN=") || str_starts_with(up, "RAW_VERSION=");
+        if !is_field { continue; }
+        let v: String = fp_first_ver(ln);
+        if v != "" { return v; }
+    }
+    return "";
+}
+
+// The version of the tree of one tool.
+pub fn fp_tree_ver(fs_r: &FsReadCap, repo: String) -> String {
+    let r: Result[String, String] = fs_read_file(fs_r, repo + "/VERSION");
+    if r.is_err() { return ""; }
+    return text_trim(r.val);
+}
+
+// The version that the packaging files of one tool carry when it is not the
+// version of its tree. The answer is empty when the tool agrees with itself.
+pub fn fp_stale_ver(fs_r: &FsReadCap, repo: String, tree: String) -> String {
+    if tree == "" { return ""; }
+    let files: List[String] = fp_pack_files(fs_r, repo);
+    let mut i: Int = 0;
+    while i < list_len(files) {
+        let p: String = list_get(files, i);
+        i = i + 1;
+        let r: Result[String, String] = fs_read_file(fs_r, p);
+        if r.is_err() { continue; }
+        let v: String = fp_field_ver(r.val);
+        if v != "" && v != tree { return v; }
+    }
+    return "";
+}
+
+// The tools of the fleet whose packaging files disagree with their tree. Every
+// answer holds the name of the tool, the stale version and the version of the
+// tree, separated by the bar.
+pub fn fp_scan(fs_r: &FsReadCap, fleet: String) -> List[String] {
+    let entries: List[String] = fs_read_dir(fs_r, fleet);
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(entries) {
+        let name: String = list_get(entries, i);
+        i = i + 1;
+        if !str_starts_with(name, "oo") { continue; }
+        let repo: String = fleet + "/" + name;
+        if !path_exists(fs_r, repo + "/.git") { continue; }
+        let tree: String = fp_tree_ver(fs_r, repo);
+        if tree == "" { continue; }
+        let stale: String = fp_stale_ver(fs_r, repo, tree);
+        if stale != "" { out = list_push(out, name + "|" + stale + "|" + tree); }
+    }
+    return out;
+}

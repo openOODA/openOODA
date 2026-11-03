@@ -1,0 +1,97 @@
+// # Fleet Package Flow - Opens And Merges The Pull Request Of One Tool
+//
+// Logline: Clones a tool, moves the version of its packaging files to the version of its tree, and merges the change through a pull request.
+//
+// Setup: Needs ProcessCap for git and the GitHub CLI, FsReadCap and FsWriteCap for the files.
+//
+// Beats:
+//   1. Clone the repository of one tool into the work directory.
+//   2. Put the new version on a branch and push the branch.
+//   3. Open the pull request of the branch and merge it once its gate is green.
+
+import "std/core/primitives/str.oo";
+import "fleetctl/shell.oo";
+import "fleetctl/land.oo";
+import "fleetpkg/pkg_bump.oo";
+
+// The name of the branch that carries the change of one tool.
+fn fp_branch_name(tool: String) -> String {
+    return "fix/" + tool + "-packaging-version";
+}
+
+// Clone the repository of one tool into the work directory. The answer holds
+// the path of the clone, and it is empty when the clone failed.
+fn fp_clone(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, work: String, org: String, tool: String) -> String {
+    let mut mk: List[String] = list_new();
+    mk = list_push(mk, "-p");
+    mk = list_push(mk, work);
+    let _o: String = fc_run(sys, fs_r, cache, "mkdir", mk);
+    let dest: String = work + "/" + tool;
+    let mut a: List[String] = list_new();
+    a = list_push(a, "clone");
+    a = list_push(a, "--depth");
+    a = list_push(a, "1");
+    a = list_push(a, "--branch");
+    a = list_push(a, "main");
+    a = list_push(a, "https://github.com/" + org + "/" + tool + ".git");
+    a = list_push(a, dest);
+    let _o2: String = fc_run(sys, fs_r, cache, "git", a);
+    if fc_code(fs_r, cache) != 0 { return ""; }
+    return dest;
+}
+
+// Put the new version of the packaging files on a branch and push the branch.
+fn fp_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, tool: String, old: String, new: String) -> Bool {
+    let mut b: List[String] = list_new();
+    b = list_push(b, "-C");
+    b = list_push(b, repo);
+    b = list_push(b, "checkout");
+    b = list_push(b, "-q");
+    b = list_push(b, "-B");
+    b = list_push(b, fp_branch_name(tool));
+    b = list_push(b, "origin/main");
+    let _o: String = fc_run(sys, fs_r, cache, "git", b);
+    let changed: Int = fp_bump(fs_r, fs_w, repo, old, new);
+    if changed == 0 { return false; }
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "add");
+    a = list_push(a, "-A");
+    let _o2: String = fc_run(sys, fs_r, cache, "git", a);
+    let mut c: List[String] = list_new();
+    c = list_push(c, "-C");
+    c = list_push(c, repo);
+    c = list_push(c, "commit");
+    c = list_push(c, "-q");
+    c = list_push(c, "-m");
+    c = list_push(c, "fix(packaging): the version of " + tool + " is " + new);
+    let _o3: String = fc_run(sys, fs_r, cache, "git", c);
+    let mut p: List[String] = list_new();
+    p = list_push(p, "-C");
+    p = list_push(p, repo);
+    p = list_push(p, "push");
+    p = list_push(p, "-q");
+    p = list_push(p, "--force");
+    p = list_push(p, "origin");
+    p = list_push(p, "HEAD:refs/heads/" + fp_branch_name(tool));
+    let _o4: String = fc_run(sys, fs_r, cache, "git", p);
+    return fc_code(fs_r, cache) == 0;
+}
+
+// Move the version of the packaging files of one tool and merge the change
+// through a pull request. The answer is zero when the change is merged.
+pub fn fp_fix_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String, old: String, new: String, tries: Int) -> Int {
+    let repo: String = fp_clone(sys, fs_r, cache, work, org, tool);
+    if repo == "" { println(tool + " CLONE-FAIL"); return 1; }
+    if !fp_branch(sys, fs_r, fs_w, cache, repo, tool, old, new) { println(tool + " BUMP-FAIL"); return 1; }
+    let slug: String = org + "/" + tool;
+    let pr: String = fc_open_pr(sys, fs_r, cache, slug, fp_branch_name(tool),
+        "fix(packaging): the version of " + tool + " is " + new,
+        "The packaging files of " + tool + " carry the version of its tree: " + new + ".");
+    if pr == "" { println(tool + " PR-FAIL"); return 1; }
+    let v: String = fc_merge_pr(sys, fs_r, cache, slug, pr, tries);
+    println(tool + " PR#" + pr + " " + v);
+    if !str_contains(v, " MERGED") { return 1; }
+    return 0;
+}
