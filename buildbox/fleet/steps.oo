@@ -12,7 +12,34 @@
 
 import "std/core/text/num_buffer.oo";
 import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
 import "text/lines.oo";
+
+// Resolve the built binary path across dist/<repo> (tools/core) and bin/<repo> (kernel/OS/DE).
+pub fn fleet_resolve_bin(fs_r: &FsReadCap, dir: String, repo: String) -> String {
+    let dpath: String = dir + "/dist/" + repo;
+    if path_exists(fs_r, dpath) { return dpath; }
+    let bpath: String = dir + "/bin/" + repo;
+    if path_exists(fs_r, bpath) { return bpath; }
+    return dpath;
+}
+
+// Check whether the repo Makefile defines a specific target such as det:.
+pub fn fleet_has_make_target(fs_r: &FsReadCap, dir: String, target: String) -> Bool {
+    let mk: String = dir + "/Makefile";
+    if !path_exists(fs_r, mk) { return false; }
+    let r: Result[String, String] = fs_read_file(fs_r, mk);
+    if r.is_err() { return false; }
+    let prefix: String = target + ":";
+    let lines: List[String] = text_split_lines(r.val);
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let l: String = text_trim(list_get(lines, i));
+        if str_starts_with(l, prefix) { return true; }
+        i = i + 1;
+    }
+    return false;
+}
 
 // The compiler is named in the environment of the child process, because a
 // tool Makefile finds the compiler through OODA_COMPILER and the checkout of
@@ -41,6 +68,17 @@ pub fn fleet_double_run(sys: &ProcessCap, bin_path: String) -> Bool {
     if r2.is_err() { return false; }
     if r1.val != r2.val { return false; }
     return true;
+}
+
+// Compare the built artifact with the installed copy when present; otherwise verify non-empty hash.
+pub fn fleet_check_installed_parity(sys: &ProcessCap, fs_r: &FsReadCap, bin_path: String, repo: String) -> Bool {
+    let inst: String = "/home/ubermetroid/.openooda/bin/" + repo;
+    if path_exists(fs_r, inst) {
+        return fleet_binary_parity(sys, bin_path, inst);
+    }
+    let r1: Result[String, String] = sys_exec(sys, "sha256sum", bin_path);
+    if r1.is_err() { return false; }
+    return fleet_hash_of(r1.val) != "";
 }
 
 // Compare the built artifact with the installed copy. The release path

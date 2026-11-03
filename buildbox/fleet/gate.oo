@@ -16,20 +16,22 @@ import "fleet/err_parse.oo";
 
 // A repo passes only when every check passed. A missing build target is a
 // backlog state. A missing CI workflow is a backlog state. Neither is a pass.
-pub fn fleet_gate_decide(has_build: Bool, build_rc: Int, verify_rc: Int, test_rc: Int, deterministic: Bool, parity_ok: Bool, scorecard: String) -> String {
+pub fn fleet_gate_decide(has_build: Bool, build_rc: Int, verify_rc: Int, test_rc: Int, det_rc: Int, deterministic: Bool, parity_ok: Bool, scorecard: String) -> String {
     if !has_build { return fleet_verdict(4); }
     if build_rc != 0 { return fleet_verdict(1); }
     if verify_rc != 0 { return fleet_verdict(2); }
     if test_rc != 0 { return fleet_verdict(3); }
+    if det_rc != 0 { return fleet_verdict(6); }
     if !deterministic { return fleet_verdict(6); }
     if !parity_ok { return fleet_verdict(6); }
     return fleet_verdict(0);
 }
 
-pub fn fleet_gate_detail(verdict: String, build_rc: Int, verify_rc: Int, test_rc: Int, parity_ok: Bool, scorecard: String) -> String {
+pub fn fleet_gate_detail(verdict: String, build_rc: Int, verify_rc: Int, test_rc: Int, det_rc: Int, parity_ok: Bool, scorecard: String) -> String {
     let d: String = "build=" + int_to_str(build_rc)
         + " verify=" + int_to_str(verify_rc)
         + " test=" + int_to_str(test_rc)
+        + " det=" + int_to_str(det_rc)
         + " parity=" + (if parity_ok { "ok" } else { "n/a" })
         + " scorecard=" + scorecard;
     return d;
@@ -41,6 +43,7 @@ pub fn fleet_gate_repo(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, re
     let mut build_rc: Int = 0;
     let mut verify_rc: Int = 0;
     let mut test_rc: Int = 0;
+    let mut det_rc: Int = 0;
     let mut deterministic: Bool = true;
     let mut parity_ok: Bool = true;
     let mut scorecard: String = "unavailable";
@@ -48,17 +51,22 @@ pub fn fleet_gate_repo(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, re
         build_rc = fleet_run_make(sys, dir, "build", compiler);
         if build_rc == 0 {
             verify_rc = fleet_run_make(sys, dir, "verify", compiler);
-            if verify_rc == 0 { test_rc = fleet_run_make(sys, dir, "test", compiler); }
+            if verify_rc == 0 {
+                test_rc = fleet_run_make(sys, dir, "test", compiler);
+                if test_rc == 0 && fleet_has_make_target(fs_r, dir, "det") {
+                    det_rc = fleet_run_make(sys, dir, "det", compiler);
+                }
+            }
         }
     }
-    let bin_path: String = dir + "/dist/" + repo;
+    let bin_path: String = fleet_resolve_bin(fs_r, dir, repo);
     if build_rc == 0 {
         deterministic = fleet_double_run(sys, bin_path);
-        parity_ok = true;
+        parity_ok = fleet_check_installed_parity(sys, fs_r, bin_path, repo);
         scorecard = fleet_scorecard(sys, bin_path);
     }
-    let verdict: String = fleet_gate_decide(has_build, build_rc, verify_rc, test_rc, deterministic, parity_ok, scorecard);
-    let detail: String = fleet_gate_detail(verdict, build_rc, verify_rc, test_rc, parity_ok, scorecard);
+    let verdict: String = fleet_gate_decide(has_build, build_rc, verify_rc, test_rc, det_rc, deterministic, parity_ok, scorecard);
+    let detail: String = fleet_gate_detail(verdict, build_rc, verify_rc, test_rc, det_rc, parity_ok, scorecard);
     return fleet_verdict_line(verdict, repo, branch, sha, detail, run_id);
 }
 

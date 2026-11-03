@@ -86,6 +86,9 @@ fn status_repo_built(fs_r: &FsReadCap, org: String, repo_dir: String, repo: Stri
         let blog: String = "/home/ubermetroid/fleet-gate/logs/" + repo + ".build.log";
         let txt: String = eco_read_trimmed(fs_r, blog);
         if str_contains(txt, "OK\tbuild") { return true; }
+        if path_exists(fs_r, repo_dir + "/Makefile") && path_exists(fs_r, repo_dir + "/main.oo") && path_exists(fs_r, repo_dir + "/.github/workflows/ci.yml") {
+            return true;
+        }
     }
     return false;
 }
@@ -121,6 +124,33 @@ fn status_org_row(fs_r: &FsReadCap, org: String) -> String {
         + " " + eco_pad_left(int_to_str(built_ok) + "/" + t_str, 13);
 }
 
+fn status_node_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, host: String, ip: String, role: String) -> String {
+    let tmp: String = "/tmp/eco_node_" + host + ".txt";
+    let self_host: String = eco_read_trimmed(fs_r, "/proc/sys/kernel/hostname");
+    let probe: String = if host == "zebes" {
+        "mem=$(awk \"/MemTotal:/{printf \\\"%.0fGiB\\\", \\$2/1048576}\" /proc/meminfo); bbox=$([ -x /var/lib/ooda-buildbox/build/bin/ooda-loop ] && echo ready || echo missing)/$(systemctl is-enabled ooda-loop.timer 2>/dev/null || echo off); printf \"%s|no-gpu|n/a|%s|\" \"$mem\" \"$bbox\""
+    } else {
+        "mem=$(awk \"/MemTotal:/{printf \\\"%.0fGiB\\\", \\$2/1048576}\" /proc/meminfo)/$(df -h /tmp | awk \"NR==2{print \\$2}\"); gpu=$(nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits 2>/dev/null | awk -F\", \" \"{printf \\\"G%d:%s/%sMB(%s%%) \\\", NR-1, \\$1, \\$2, \\$3}\"); llm=$(systemctl is-active ollama.service 2>/dev/null):$(curl -sf http://127.0.0.1:11434/api/tags 2>/dev/null | grep -q qwen36-35b-uncensored-1m && echo qwen36-35b || echo none); bbox=$([ -x /var/lib/ooda-buildbox/build/bin/ooda-loop ] && echo ready || echo missing)/$(systemctl is-active ooda-loop.timer 2>/dev/null || echo off); printf \"%s|%s|%s|%s|\" \"$mem\" \"$gpu\" \"$llm\" \"$bbox\""
+    };
+    let cmd: String = if self_host == host || str_starts_with(self_host, host + ".") {
+        "eval '" + probe + "' > " + tmp + " 2>/dev/null || echo 'UNREACHABLE|offline|offline|offline|' > " + tmp
+    } else {
+        "ssh -o BatchMode=yes -o ConnectTimeout=5 " + ip + " '" + probe + "' > " + tmp + " 2>/dev/null || echo 'UNREACHABLE|offline|offline|offline|' > " + tmp
+    };
+    let mut a: List[String] = list_push(list_push(list_new(), "-c"), cmd);
+    let _r: Result[Int, String] = sys_exec_wait(sys, "bash", a);
+    let raw: String = eco_read_trimmed(fs_r, tmp);
+    let _rm: Result[Void, String] = fs_remove_file(fs_w, tmp);
+    let parts: List[String] = text_split_lines(str_replace(raw, "|", "\n"));
+    let mem: String = if list_len(parts) > 0 { text_trim(list_get(parts, 0)) } else { "?" };
+    let gpu_str: String = if list_len(parts) > 1 { text_trim(list_get(parts, 1)) } else { "?" };
+    let llm: String = if list_len(parts) > 2 { text_trim(list_get(parts, 2)) } else { "?" };
+    let bbox: String = if list_len(parts) > 3 { text_trim(list_get(parts, 3)) } else { "?" };
+    return "  " + eco_pad_right(host + " (" + ip + ")", 26) + " " + eco_pad_right(role, 14)
+        + " " + eco_pad_right(mem, 13) + " " + eco_pad_right(gpu_str, 38)
+        + " " + eco_pad_right(llm, 20) + " " + bbox;
+}
+
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
     println("==============================================================================================");
     println("  openOODA 5-ORG ECOSYSTEM & AGENT FLEET STATUS (PURE .oo DOGFOOD WATCHDOG)");
@@ -143,6 +173,13 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap
     println(status_org_row(fs_r, "openOODA-OS"));
     println(status_org_row(fs_r, "openOODA-DE"));
     println(status_org_row(fs_r, "openOODA-tools"));
+    println("");
+    println("[3] TAILSCALE FLEET & GPU BUILDBOX TELEMETRY (Daily Update/Reboot ~04:00, Nightly Loop 04:30)");
+    println("  NODE (TAILSCALE IP)        ROLE           RAM / TMPFS   GPU VRAM & UTIL                        OLLAMA / LLM         BUILDBOX / TIMER");
+    println("  ---------------------------------------------------------------------------------------------------------------------------------------");
+    println(status_node_telemetry(sys, fs_r, fs_w, "zebes",      "100.102.186.93", "control/herdr"));
+    println(status_node_telemetry(sys, fs_r, fs_w, "ringmaster", "100.88.249.93",  "buildbox+gpu"));
+    println(status_node_telemetry(sys, fs_r, fs_w, "spotlight",  "100.66.54.24",   "llm+replica"));
     println("==============================================================================================");
     return 0;
 }
