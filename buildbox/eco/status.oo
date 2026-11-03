@@ -32,16 +32,15 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     let pipe_idx: Int = str_index_of(qpair, "|");
     let rem: Int = eco_parse_uint(str_slice(qpair, 0, pipe_idx));
     let quota: String = str_slice(qpair, pipe_idx + 1, chars_len(qpair));
-    let tail: String = eco_tail_lines(vis, 6);
+    let tail: String = eco_tail_lines(vis, 14);
     let mut state: String = if (pane_id == "wK:p1" || pane_id == "wN:p1" || pane_id == "wP:p1") && str_contains(quota, "shell ready") { "standby" } else { "idle" };
     if str_contains(tail, "User input required") || str_contains(tail, "Enter select") {
         state = "WAIT_INPUT";
-    } else if !str_contains(vis, "Interrupted") && !str_contains(vis, "Canceled.")
-        && (str_contains(tail, "Running") || str_contains(tail, "Loading") || str_contains(tail, "tok/s")
+    } else if str_contains(tail, "Running") || str_contains(tail, "Loading") || str_contains(tail, "tok/s")
         || str_contains(tail, "Thinking") || str_contains(tail, "Generating") || str_contains(tail, "[stop]")
-        || str_contains(tail, "Esc stop") || str_contains(tail, "Esc/Ctrl+C") || str_contains(tail, "background active")
-        || str_contains(tail, "Typing") || str_contains(tail, "esc twice")
-        || str_contains(vis, "Generating…") || str_contains(vis, "Running command…")) {
+        || str_contains(tail, "Esc stop") || str_contains(tail, "Esc/Ctrl+C") || str_contains(tail, "Esc to interrupt")
+        || str_contains(tail, "background active") || str_contains(tail, "Typing") || str_contains(tail, "esc twice")
+        || str_contains(tail, "Waiting for response") {
         state = "working";
     }
     if pane_id == "wJ:p1" && rem == 0 && state == "idle" { state = "paused(100%)"; }
