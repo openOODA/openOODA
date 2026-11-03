@@ -56,16 +56,17 @@ lower capability mask (zero dead bits) and pairs them with a 32-bit upper
 execution header so a 64-bit CPU validates WHAT and HOW/WHEN in 1 cycle:
 - Lower 32 bits [31:0] (WHAT): 32 Root Capabilities (1-cycle GPU 32-lane warp
   mask and 32-bit seccomp-BPF accumulator):
-  0:NET, 1:FS, 2:SYS, 3:ENV, 4:TIME, 5:RAND, 6:ARENA, 7:ALLOC, 8:FFI,
-  9:THREAD, 10:GPU, 11:METRICS, 12:SIGN, 13:MMIO, 14:DMA, 15:IRQ, 16:PCI,
-  17:COMPILER_READ, 18:TCP, 19:UDP, 20:BIND, 21:FSREAD, 22:FSWRITE,
-  23:PROCESS, 24:AUDIO, 25:CAMERA, 26:USB, 27:HID, 28:WINDOW, 29:FRAME,
+  0:NET, 1:PROCESS, 2:FSWRITE, 3:FSREAD, 4:SYS, 5:FS, 6:TIME, 7:RAND,
+  8:ALLOC, 9:ARENA, 10:FFI, 11:METRICS, 12:SIGN, 13:MMIO, 14:DMA, 15:IRQ,
+  16:PCI, 17:TCP, 18:UDP, 19:BIND, 20:AUDIO, 21:CAMERA, 22:USB, 23:HID,
+  24:WINDOW, 25:FRAME, 26:THREAD, 27:GPU, 28:ENV, 29:COMPILER_READ,
   30:BLOCK, 31:TPM.
   (Legacy dead aliases OODAR_CAP_HITL, OODAR_CAP_SYNC, OODAR_CAP_MEM, and
   OODAR_CAP_HTTP remain poison-guarded in caps.h and cannot be compiled.)
 - Upper 32 bits [63:32] (HOW & WHEN):
   [63:48] 16-bit OODA Epoch (instant temporal revocation),
-  [47:40] 8-bit Rights Mask (R/W/X/Delegate/Revoke),
+  [47:40] 8-bit Rights Mask (READ=0x01, WRITE=0x02, EXEC=0x04, DELEGATE=0x08,
+          ATTENUATE=0x10, REVOKE=0x20, SEAL=0x40, IMMUTABLE=0x80),
   [39:32] 8-bit Scope Badge (Arena/Namespace/Device index).
 
 ## 4. Capability Lifecycle (6 Stages)
@@ -86,13 +87,16 @@ execution header so a 64-bit CPU validates WHAT and HOW/WHEN in 1 cycle:
 
 openOODA enforces monotonic attenuation: a capability can only be narrowed.
 
-### 5.1 Permission Rights Mask (5 Bits)
-Each capability carries a 5-bit authority mask:
-- Bit 0 (1):  Read
-- Bit 1 (2):  Write
-- Bit 2 (4):  Execute
-- Bit 3 (8):  Delegate
-- Bit 4 (16): Revoke
+### 5.1 Permission Rights Mask (8 Bits, Bits [47:40])
+Each capability carries an 8-bit authority mask in the 64-bit register (with the lower 5 bits forming the classic 31-mask OCap bridge):
+- Bit 0 (0x01): READ
+- Bit 1 (0x02): WRITE
+- Bit 2 (0x04): EXEC
+- Bit 3 (0x08): DELEGATE
+- Bit 4 (0x10): ATTENUATE
+- Bit 5 (0x20): REVOKE
+- Bit 6 (0x40): SEAL
+- Bit 7 (0x80): IMMUTABLE
 
 ### 5.2 Subsumption & Subset Rules
 - Subsumption: FsCap (mask 31) satisfies FsReadCap and FsWriteCap.

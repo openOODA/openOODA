@@ -1,0 +1,102 @@
+// # CI Runner - The Parts Of The Workflow That Depend On The Runner
+//
+// Logline: Builds the head of the workflow, the checkouts of the toolchain, the step that looks for the toolchain and the step that holds the static governance gates.
+//
+// Setup: Pure functions. No caps. No IO.
+//
+// Beats:
+//   1. Build the head of the workflow file.
+//   2. Build the checkout steps.
+//   3. Build the step that looks for the toolchain of the runner.
+//   4. Build the step that holds the static governance gates of one tool.
+//
+// The toolchain of the fleet lives in the openOODA-core organization, and that
+// organization is private. The token of a runner reads no private repository
+// of another organization, so the checkout of the toolchain fails on a public
+// runner and the gate falls back to the static governance gates, which need
+// no compiler at all.
+//
+// The checkout of the toolchain therefore does not fail the job, and every
+// step that needs the compiler asks for it. The gates of a repository that
+// holds no toolchain still hold, and the gate of the fleet stays a gate.
+
+import "text/lines.oo";
+
+// The head of the workflow file.
+pub fn ci_head(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "name: ci");
+    l = list_push(l, "");
+    l = list_push(l, "on:");
+    l = list_push(l, "  push:");
+    l = list_push(l, "    branches: [main]");
+    l = list_push(l, "  pull_request:");
+    l = list_push(l, "  workflow_dispatch:");
+    l = list_push(l, "");
+    l = list_push(l, "jobs:");
+    l = list_push(l, "  gate:");
+    l = list_push(l, "    name: Fleet gate");
+    l = list_push(l, "    runs-on: ubuntu-latest");
+    l = list_push(l, "    steps:");
+    return l;
+}
+
+// The checkout steps. The tool, the compiler, the runtime, and the standard
+// library are checked out side by side, so the compiler resolves the standard
+// library the same way it does in the buildbox. A tool that reads a sibling
+// tool gets that sibling checked out beside it.
+//
+// The checkout of the toolchain and of the sibling does not fail the job. The
+// toolchain lives in another organization and that organization is private,
+// so the checkout of it answers that it is not found, and the gate of the
+// fleet falls back to the static governance gates instead of dying there.
+pub fn ci_checkout(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    let mut paths: List[String] = list_new();
+    paths = list_push(paths, repo);
+    paths = list_push(paths, "oodac");
+    paths = list_push(paths, "oodar");
+    paths = list_push(paths, "std");
+    let extras: List[String] = ci_sibling_tools(repo);
+    let mut i: Int = 0;
+    while i < list_len(extras) { paths = list_push(paths, list_get(extras, i)); i = i + 1; }
+    i = 0;
+    while i < list_len(paths) {
+        let path: String = list_get(paths, i);
+        l = list_push(l, "      - uses: actions/checkout@v4");
+        if path != repo { l = list_push(l, "        continue-on-error: true"); }
+        l = list_push(l, "        with:");
+        if path != repo {
+            let org: String = if path == "oodac" || path == "oodar" || path == "std" { "openOODA-core/" } else { "openOODA-tools/" };
+            l = list_push(l, "          repository: " + org + path);
+        }
+        l = list_push(l, "          path: " + path);
+        l = list_push(l, "");
+        i = i + 1;
+    }
+    l = list_push(l, "      - name: Look for the toolchain of the runner");
+    l = list_push(l, "        id: toolchain");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}");
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          if [ -x \"${GITHUB_WORKSPACE}/oodac/bin/oodac\" ]; then");
+    l = list_push(l, "            echo \"present=true\" >> \"${GITHUB_OUTPUT}\"");
+    l = list_push(l, "          else");
+    l = list_push(l, "            echo \"present=false\" >> \"${GITHUB_OUTPUT}\"");
+    l = list_push(l, "            echo \"The openOODA-core toolchain is not on this runner. The gate falls back to the static governance gates.\"");
+    l = list_push(l, "          fi");
+    l = list_push(l, "");
+    return l;
+}
+
+// The step that holds the static governance gates of one tool. The answer
+// holds the steps. The gates need no compiler, so they hold on a runner that
+// reads no toolchain at all.
+pub fn ci_static_gates(repo: String) -> List[String] {
+    let mut l: List[String] = list_new();
+    l = list_push(l, "      - name: Static governance gates");
+    l = list_push(l, "        if: steps.toolchain.outputs.present != 'true'");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
+    l = list_push(l, "        run: make line-cap file-law academy density vocab");
+    l = list_push(l, "");
+    return l;
+}

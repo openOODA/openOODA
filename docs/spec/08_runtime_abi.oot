@@ -15,6 +15,9 @@ The openOODA runtime substrate (oodar) implements a single-TU C runtime library:
 ### 1.1 Core Substrate Runtime Functions
 - oo_alloc(size: usize) -> *mut u8: Allocates heap memory within process quota.
 - oo_free(ptr: *mut u8): Releases dynamic heap memory.
+- oo_arena_bump_alloc(size: usize) -> *mut u8: Allocates from the 64-byte aligned (`_Alignas(64)`) bump arena, rounded up to 16-byte SIMD boundaries (`(size + 15) & ~15`).
+- oo_arena_mark() -> i64: Returns current 16-byte aligned arena mark in O(1).
+- oo_arena_reset(mark: i64): Restores the bump arena mark in 1 cycle (`O(1)` per-OODA-turn reclamation).
 - oo_checkpoint(arena: *mut Arena) -> usize: Returns current arena byte offset.
 - oo_rollback(arena: *mut Arena, mark: usize): Restores arena offset in O(1).
 - oo_cap_grant_*(cap_state: *mut CapState): Grants capability rights at init.
@@ -99,3 +102,17 @@ Plugins are compiled to position-independent dynamic shared objects (.so):
 - Prohibited: Plugins must NOT define main() or include host startup stubs.
 - Symbol isolation: All non-exported helper routines must be marked static
   or hidden to prevent symbol collisions between multiple plugins.
+
+## 6. 8-Word (`64-Byte` Cache-Line) Zero-Copy IPC Frame Layout
+
+All cross-domain IPC frames occupy exactly `8 × 64-bit words = 64 bytes` (one
+CPU cache line, `_Alignas(64)`):
+- `Word 0` (`+0..+7`):   `Magic[63:32] | Op[31:16] | Flags[15:0]`
+- `Word 1` (`+8..+15`):  `64-Bit Capability Cycle Register` (`epoch[63:48] | rights[47:40] | badge[39:32] | caps_mask[31:0]`)
+- `Word 2` (`+16..+23`): `Payload arg0` (`badge` / primary object handle)
+- `Word 3` (`+24..+31`): `Payload arg1` (`sender` / source endpoint)
+- `Word 4` (`+32..+39`): `Payload arg2` (`length` / byte count)
+- `Word 5` (`+40..+47`): `Payload arg3` (`tag` / message selector)
+- `Word 6` (`+48..+55`): `Payload arg4` (`seq` / monotonic sequence number)
+- `Word 7` (`+56..+63`): `64-Bit Non-Linear MAC / Folded Integrity Tag`
+
