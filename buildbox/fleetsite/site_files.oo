@@ -67,13 +67,35 @@ pub fn fs_put_installer(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, c
     return true;
 }
 
+// Put the release of a tool in one line of the catalog. The answer holds the
+// line. The catalog writes the release with a v in front of it, and the line
+// keeps that shape.
+fn fs_set_version(line: String, new: String) -> String {
+    let key: String = "\"version\": \"";
+    let at: Int = index_of(line, key);
+    if at < 0 { return line; }
+    let head: String = str_sub(line, 0, at + str_len(key));
+    let rest: String = str_sub(line, at + str_len(key), str_len(line));
+    let cut: Int = index_of(rest, "\"");
+    if cut < 0 { return line; }
+    let oldv: String = str_sub(rest, 0, cut);
+    let tail: String = str_sub(rest, cut, str_len(rest));
+    let pre: String = if starts_with(oldv, "v") { "v" } else { "" };
+    return head + str_concat(pre, new) + tail;
+}
+
 // Move the version of one tool in the catalog of the portal. The answer tells
 // whether the file changed.
 //
 // The catalog names every tool on a line of its own, and the version of the
 // tool stands on one of the lines that follow the name. The version that
 // stands there is the version of the tool.
-pub fn fs_bump_catalog(fs_r: &FsReadCap, fs_w: &FsWriteCap, path: String, tool: String, old: String, new: String) -> Bool {
+//
+// The catalog is written from the fleet, so the version of the tool is put
+// there and not searched for it. A catalog that holds a release of its own
+// that the fleet does not carry would send the reader to an installer that
+// installs an older tool.
+pub fn fs_bump_catalog(fs_r: &FsReadCap, fs_w: &FsWriteCap, path: String, tool: String, new: String) -> Bool {
     let r: Result[String, String] = fs_read_file(fs_r, path);
     if r.is_err() { return false; }
     let lines: List[String] = text_split_lines(r.val);
@@ -87,7 +109,7 @@ pub fn fs_bump_catalog(fs_r: &FsReadCap, fs_w: &FsWriteCap, path: String, tool: 
         if str_contains(ln, "\"id\": \"" + tool + "\"") { named = true; out = list_push(out, ln); continue; }
         if named && str_contains(ln, "\"version\":") {
             named = false;
-            let s: String = ff_replace_ver(ln, old, new);
+            let s: String = fs_set_version(ln, new);
             if s != ln { changed = true; }
             out = list_push(out, s);
             continue;
