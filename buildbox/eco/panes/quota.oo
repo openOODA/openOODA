@@ -56,8 +56,8 @@ pub fn eco_pane_quota_tokens(pane_id: String, vis: String) -> String {
 }
 
 // The quota of the pane that reports the session limit and the context. The
-// share of the context takes over when the session share is empty and the pane
-// is still busy.
+// 5h indicator in mcode displays the percentage of the 5h window USED (so 0%
+// means 0% used / 100% remaining).
 pub fn eco_pane_quota_session(vis: String) -> String {
     let mut ctx_str: String = "";
     let mut ctx_pct: Int = -1;
@@ -70,11 +70,10 @@ pub fn eco_pane_quota_session(vis: String) -> String {
     }
     let idx: Int = str_index_of(vis, "5h ");
     if idx >= 0 {
-        let pct: Int = eco_parse_uint(str_slice(vis, idx + 3, chars_len(vis)));
-        if pct >= 0 && pct <= 100 {
-            let active: Bool = str_contains(vis, "Running ") || str_contains(vis, "Loading ") || str_contains(vis, "tok/s");
-            let rem_eff: Int = if pct == 0 && active && ctx_pct > 0 { ctx_pct } else { pct };
-            return int_to_str(rem_eff) + "|5h " + int_to_str(pct) + "% rem" + ctx_str;
+        let used: Int = eco_parse_uint(str_slice(vis, idx + 3, chars_len(vis)));
+        if used >= 0 && used <= 100 {
+            let rem: Int = 100 - used;
+            return int_to_str(rem) + "|5h " + int_to_str(used) + "% used (" + int_to_str(rem) + "% rem)" + ctx_str;
         }
     }
     return "100|n/a";
