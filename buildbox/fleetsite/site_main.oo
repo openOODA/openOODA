@@ -1,0 +1,149 @@
+// # Fleet Site - Moves The Release Of The Fleet On The Portal
+//
+// Logline: Moves the version of every tool of the fleet in every file of the portal that carries it, and puts the installer of every tool back on the portal.
+//
+// Setup: Needs ProcessCap, FsReadCap, FsWriteCap and EnvCap.
+//
+// Beats:
+//   1. Read the portal root, the fleet root and the organization from the environment.
+//   2. Name the tools that the portal carries.
+//   3. Move the release of one tool in every file of the portal that carries it.
+//   4. Write the release of the portal into a commit and land it.
+//
+// Usage: fleetsite
+//
+// The portal names the release of every tool of the fleet in its badge, in its
+// package file, in its installer and in its catalog. A portal that names a
+// release that the fleet does not carry sends the reader to an installer that
+// installs an older tool, so the portal follows the fleet.
+
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "text/lines.oo";
+import "fleetctl/shell.oo";
+import "fleetsite/site_ref.oo";
+import "fleetsite/site_files.oo";
+
+// Read one environment value with a fallback. The runtime only hands out the
+// names that begin with OODA_ or OO_, so every setting of the tool is named
+// that way.
+fn fs_env(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return fallback;
+}
+
+// Move the release of one tool in every file of the portal that carries it,
+// and put the installer of the tool back on the portal. The answer holds the
+// number of the files that changed.
+pub fn fs_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, site: String, tool: String) -> Int {
+    let _f: Bool = fs_fetch_repo(sys, fs_r, cache, fleet, tool);
+    let vbody: String = fs_show_repo(sys, fs_r, cache, fleet, tool, "VERSION");
+    if vbody == "" { println(tool + " NO-VERSION"); return 1; }
+    let new: String = text_trim(vbody);
+    let old: String = fs_tool_version(fs_r, site, tool);
+    if old == "" { println(tool + " NO-SITE-VERSION"); return 1; }
+    let mut n: Int = fs_bump_tool(fs_r, fs_w, site, tool, old, new);
+    if fs_bump_catalog(fs_r, fs_w, site + "/data/tools.json", tool, old, new) { n = n + 1; }
+    if fs_bump_catalog(fs_r, fs_w, site + "/assets/js/tools-data.js", tool, old, new) { n = n + 1; }
+    if fs_put_installer(sys, fs_r, fs_w, cache, fleet, site, tool, "install.sh") { n = n + 1; }
+    if fs_put_installer(sys, fs_r, fs_w, cache, fleet, site, tool, "uninstall.sh") { n = n + 1; }
+    println(tool + " " + old + " -> " + new + " files=" + int_to_str(n));
+    return 0;
+}
+
+// Write the release of the portal into a commit of UberMetroid and land it on
+// the default branch and on the master branch of the origin.
+fn fs_land(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, site: String, msg: String) -> Bool {
+    let mut n: List[String] = list_new();
+    n = list_push(n, "-C");
+    n = list_push(n, site);
+    n = list_push(n, "config");
+    n = list_push(n, "user.name");
+    n = list_push(n, "UberMetroid");
+    let _o: String = fc_run(sys, fs_r, cache, "git", n);
+    let mut e: List[String] = list_new();
+    e = list_push(e, "-C");
+    e = list_push(e, site);
+    e = list_push(e, "config");
+    e = list_push(e, "user.email");
+    e = list_push(e, "jerydleuck@gmail.com");
+    let _o2: String = fc_run(sys, fs_r, cache, "git", e);
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, site);
+    a = list_push(a, "add");
+    a = list_push(a, "-A");
+    let _o3: String = fc_run(sys, fs_r, cache, "git", a);
+    let mut c: List[String] = list_new();
+    c = list_push(c, "-C");
+    c = list_push(c, site);
+    c = list_push(c, "commit");
+    c = list_push(c, "-q");
+    c = list_push(c, "--author");
+    c = list_push(c, "UberMetroid <jerydleuck@gmail.com>");
+    c = list_push(c, "-m");
+    c = list_push(c, msg);
+    let _o4: String = fc_run(sys, fs_r, cache, "git", c);
+    if fc_code(fs_r, cache) != 0 { return false; }
+    let mut i: Int = 0;
+    while i < 2 {
+        let br: String = if i == 0 { "main" } else { "master" };
+        let mut p: List[String] = list_new();
+        p = list_push(p, "-C");
+        p = list_push(p, site);
+        p = list_push(p, "push");
+        p = list_push(p, "--quiet");
+        p = list_push(p, "--force");
+        p = list_push(p, "origin");
+        p = list_push(p, "HEAD:refs/heads/" + br);
+        let _o5: String = fc_run(sys, fs_r, cache, "git", p);
+        if fc_code(fs_r, cache) != 0 { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let site: String = fs_env(env, "OODA_SITE_DIR", "/Projects/openOODA-tools/openOODA-tools.github.io");
+    let fleet: String = fs_env(env, "OODA_FLEET_DIR", "/Projects/openOODA-tools");
+    let cache: String = fs_env(env, "OODA_FLEET_CACHE", "/var/lib/ooda-buildbox/cache/site");
+    let _mc: Result[Void, String] = fs_mkdir_p(fs_w, cache);
+    // The work of the portal happens on the default branch of the portal, so
+    // that the release of the fleet lands on the tree that the portal serves.
+    let mut f: List[String] = list_new();
+    f = list_push(f, "-C");
+    f = list_push(f, site);
+    f = list_push(f, "fetch");
+    f = list_push(f, "--quiet");
+    f = list_push(f, "origin");
+    let _fo: String = fc_run(sys, fs_r, cache, "git", f);
+    let mut c: List[String] = list_new();
+    c = list_push(c, "-C");
+    c = list_push(c, site);
+    c = list_push(c, "checkout");
+    c = list_push(c, "-q");
+    c = list_push(c, "-B");
+    c = list_push(c, "portal");
+    c = list_push(c, "origin/main");
+    let _co: String = fc_run(sys, fs_r, cache, "git", c);
+    if fc_code(fs_r, cache) != 0 { println("CHECKOUT-FAIL"); return 1; }
+    let tools: List[String] = fs_site_tools(fs_r, site);
+    println("site=" + site + " tools=" + int_to_str(list_len(tools)));
+    let mut rc: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(tools) {
+        let t: String = list_get(tools, i);
+        i = i + 1;
+        let r: Int = fs_one(sys, fs_r, fs_w, cache, fleet, site, t);
+        if r != 0 { rc = r; }
+    }
+    let msg: String = "chore(site): the portal carries the release of the fleet";
+    if !fs_land(sys, fs_r, fs_w, cache, site, msg) {
+        println("LAND-FAIL");
+        return 1;
+    }
+    println("done tools=" + int_to_str(list_len(tools)) + " failed=" + int_to_str(rc));
+    return rc;
+}
