@@ -44,8 +44,8 @@ fn env_or(env: &EnvCap, name: String, dflt: String) -> String {
 
 // Build the request body. The diff arrives already redacted.
 fn fanout_request(model: String, safe: String) -> String {
-    let prompt: String = "Adversarially audit this openOODA compiler diff. Severity-ranked concrete findings with file:line. Plain text.\n";
-    return "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"" + json_esc(prompt + safe) + "\"}]}";
+    let prompt: String = "Adversarially audit this openOODA diff. Output ONLY severity-ranked concrete findings (HIGH/MED/LOW) with file:line and 1-sentence explanation. Plain text.\n\n";
+    return "{\"model\":\"" + model + "\",\"stream\":false,\"think\":false,\"options\":{\"temperature\":0.1,\"num_predict\":512},\"messages\":[{\"role\":\"user\",\"content\":\"" + json_esc(prompt + safe) + "\"}]}";
 }
 
 // Send the request. The body travels in a file, never on the command line.
@@ -89,7 +89,7 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap)
         process_exit(0);
     }
     let spot: String = env_or(env, "OODA_SPOTLIGHT", "http://100.66.54.24:11434");
-    let model: String = env_or(env, "OODA_MODEL", "satgeze/qwen36-35b-uncensored-1m:latest");
+    let model: String = env_or(env, "OODA_MODEL", "qwen36-35b-uncensored-1m-mtp:latest");
     let reqf: String = env_or(env, "OODA_CACHE", "/cache") + "/fanout.json";
     let w: Result[Void, String] = fs_write_file(fs_w, reqf, fanout_request(model, safe));
     if w.is_err() {
