@@ -24,7 +24,12 @@
 
 **openOODA** is an AI-native, capability-secured, fail-closed computing stack built from first principles across eight unified layers (`L0`–`L7`).
 
-In conventional systems, imported libraries and autonomous routines inherit the full ambient privileges of the user running the process. **openOODA** eliminates ambient authority across the entire stack: every external effect requires an explicit, unforgeable capability token verified at compile time and enforced at runtime by hardware and kernel isolation boundaries.
+In conventional systems, imported libraries and autonomous routines inherit the full ambient privileges of the user running the process. **openOODA** eliminates ambient authority across the entire stack: every external effect requires an explicit capability verified at compile time and enforced at runtime by hardware and kernel isolation boundaries.
+
+At its core, **openOODA** fuses three paradigms into a single computing substrate:
+- **Systems & OS Engineering (Linux/Unix Heritage)**: Bare-metal capability microkernel, Landlock and IOMMU hardware isolation, zero-root system services, deterministic linear-arena memory, and composable userland tools.
+- **Cryptographic Authority & Provenance (At Silicon Speed)**: Bearer capabilities governed by conservation of authority and monotonic attenuation, Merkle-DAG AST and build provenance, post-quantum warrants, and strict resource quotas—operating at compile-time and nanosecond kernel speed without blockchain consensus latency.
+- **Autonomous AI (Closed-Loop OODA & Adversarial Falsification)**: Bounded Observe–Orient–Decide–Act engines and formal verification workflows where autonomous loops synthesize, audit, and falsify software inside provable capability budgets.
 
 ## The Unified 8-Layer Architecture (`L0`–`L7`)
 

@@ -34,7 +34,7 @@ Every committed `.oo` file must begin with the standard 4-element Academy docstr
 //
 // Logline: Single-sentence imperative summary of functional responsibility.
 //
-// Setup: Preconditions, wired capability tokens, imported contracts.
+// Setup: Preconditions, wired capabilities, imported contracts.
 //
 // Beats:
 //   1. First sequential phase of execution.
@@ -51,8 +51,8 @@ Every committed `.oo` file must begin with the standard 4-element Academy docstr
 
 openOODA operates strictly on the Object-Capability (OCap) security model:
 
-### Unforgeable Capability Tokens
-- **Zero Ambient Authority**: Privileged operations (spawning processes, reading files, opening network sockets, modifying environment) require explicit, unforgeable capability tokens passed as arguments (`&ProcessCap`, `&FsReadCap`, `&FsWriteCap`, `&EnvCap`, `&NetCap`, `&SysCap`, `&TimeCap`, `&AllocCap`, `&ThreadCap`).
+### Explicit Capabilities
+- **Zero Ambient Authority**: Privileged operations (spawning processes, reading files, opening network sockets, modifying environment) require explicit capabilities passed as arguments (`&ProcessCap`, `&FsReadCap`, `&FsWriteCap`, `&EnvCap`, `&NetCap`, `&SysCap`, `&TimeCap`, `&AllocCap`, `&ThreadCap`).
 - **Landlock & Sandboxing**: All runtime execution and untrusted evaluation must execute within isolated Landlock sandboxes via `oodar`.
 - **Subprocess Safety**: Never invoke `/bin/sh -c` or `/bin/bash -c` blindly. Direct binary execution must use explicit argv arrays via `ProcessCap`. Clean environment variables of child processes to prevent leakage of credentials or internal state.
 
