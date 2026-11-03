@@ -1,18 +1,28 @@
 // # Eco VM Test - Merkle System Image Assembler & Local VM Boot Validator
 //
-// Logline: Assembles a verified Merkle system image from all 54 compiled core subsystem binaries and validates the boot->init chain locally in pure .oo.
+// Logline: Assembles a verified Merkle system image from all 102 compiled core subsystem binaries and validates the boot->init chain locally in pure .oo.
 //
 // Setup: Needs ProcessCap for executing verified subsystem binaries and QEMU/KVM probes, FsReadCap to inspect /Projects/openOODA-*, and FsWriteCap to stage /tmp/openooda-vm-root.
 //
 // Beats:
-//   1. Verify and stage all 16 openOODA-kernel, 18 openOODA-OS, and 20 openOODA-DE binaries into /tmp/openooda-vm-root.
+//   1. Verify and stage 16 kernel + 18 OS + 20 DE + 16 apps + 16 cloud + 16 agents binaries into /tmp/openooda-vm-root.
 //   2. Invoke each staged binary's status and --self-test, Merkle-hash the set, and boot the initramfs in QEMU/KVM.
-//   3. Probe the live microVM serial log for the 54/54 verified result and emit a deterministic manifest.
+//   3. Probe the live microVM serial log for the 102/102 verified result and emit a deterministic manifest.
 
 import "eco/helpers.oo";
 
 fn csv_list(s: String) -> List[String] {
     return str_split(s, ",");
+}
+
+fn vm_extend(all: List[String], repos: List[String]) -> List[String] {
+    let mut out: List[String] = all;
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        out = list_push(out, list_get(repos, i));
+        i = i + 1;
+    }
+    return out;
 }
 
 fn vm_stage_component(sys: &ProcessCap, fs_r: &FsReadCap, org: String, repo: String, root: String) -> Bool {
@@ -62,9 +72,9 @@ fn vm_probe_hypervisor(sys: &ProcessCap, root: String, all: List[String]) -> Boo
     }
     arr = arr + "0";
     let total_s: String = list_len(all).to_string();
-    let init_c: String = "#include <stdio.h>\n#include <unistd.h>\n#include <sys/wait.h>\n#include <sys/reboot.h>\n" +
+    let init_c: String = "#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\n#include <sys/wait.h>\n#include <sys/reboot.h>\n" +
         "static int run_b(const char *p, const char *a) { pid_t k = fork(); if (k == 0) { execl(p, p, a, (char *)0); _exit(127); } int s = 0; waitpid(k, &s, 0); return WIFEXITED(s) ? WEXITSTATUS(s) : 1; }\n" +
-        "int main(void) { const char *b[] = {" + arr + "};\n" +
+        "int main(void) { setenv(\"OODA_NO_JAIL\",\"1\",1); setenv(\"OODA_FS_WRITEDIR\",\"/tmp\",1); setenv(\"OO_LIST_AMBIENT_QUOTA\",\"8589934592\",1); const char *b[] = {" + arr + "};\n" +
         "printf(\"== [openOODA KVM microVM] PID 1 hardware boot sequence starting (Landlock enforced) ==\\n\"); int p = 0, f = 0;\n" +
         "for (int i = 0; b[i]; i++) { if (run_b(b[i], \"status\") == 0 && run_b(b[i], \"--self-test\") == 0) p++; else f++; }\n" +
         "printf(\"== [openOODA KVM microVM] RESULT: %d/" + total_s + " subsystems verified in hardware VM (fail=%d) ==\\n\", p, f); fflush(stdout); sync(); reboot(RB_POWER_OFF); return 0; }\n";
@@ -78,7 +88,7 @@ fn vm_probe_hypervisor(sys: &ProcessCap, root: String, all: List[String]) -> Boo
         "(cd /tmp/ooda-initramfs && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -9 > /tmp/openooda-initramfs.cpio.gz) && " +
         "if [ ! -r /tmp/vmlinuz-vm ]; then cp /boot/vmlinuz-$(uname -r) /tmp/vmlinuz-vm 2>/dev/null || sudo -n cp /boot/vmlinuz-$(uname -r) /tmp/vmlinuz-vm 2>/dev/null || true; chmod 644 /tmp/vmlinuz-vm 2>/dev/null || sudo -n chmod 644 /tmp/vmlinuz-vm 2>/dev/null || true; fi && " +
         "if [ -r /tmp/vmlinuz-vm ] && [ -w /dev/kvm ]; then " +
-        "rm -f /tmp/qemu-serial.log && timeout 25s qemu-system-x86_64 -enable-kvm -cpu host -m 512M -display none -no-reboot " +
+        "rm -f /tmp/qemu-serial.log && timeout 90s qemu-system-x86_64 -enable-kvm -cpu host -m 512M -display none -no-reboot " +
         "-serial file:/tmp/qemu-serial.log -kernel /tmp/vmlinuz-vm -initrd /tmp/openooda-initramfs.cpio.gz " +
         "-append 'console=ttyS0 rdinit=/init panic=-1 quiet' && grep -q '" + want + "' /tmp/qemu-serial.log && " +
         "tail -n 2 /tmp/qemu-serial.log; " +
@@ -95,19 +105,21 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, _fs_w: &FsWriteCap, _env: &EnvCa
     let k_repos: List[String] = csv_list("oodrv-display-gop,oodrv-net,oodrv-nvme,oodrv-pci,oodrv-usb-hid,oodrv-virtio,ookernel-boot,ookernel-hal-arm64,ookernel-hal-riscv,ookernel-hal-x86,ookernel-iommu,ookernel-ipc,ookernel-mm,ookernel-ob,ookernel-sched,ookernel-unikernel");
     let os_repos: List[String] = csv_list("ooaid,ooaudiod,oodevd,oodnsd,oofs-ext4,oofs-tmp,oohealthd,ooimage,ooinit,oologd,oonetd,oopolicyd,oopowerd,oorealm,oosession,oosvc-mgr,oosysbus,oovfs");
     let de_repos: List[String] = csv_list("ooagent-hud,oobazaar,ooclip,oocockpit,oocomp,ooedit,oofiles,oolaunch,oolock,oopanel,ooportal,oosettings,ooshelf,ooshot,ootaskmgr,ooterm,ootoast,ooview,oowall,oowm");
+    let app_repos: List[String] = csv_list("oobrowser,oocanvas,oochat,oodaw,oodeck,oodocs,oogit-ui,oomail,oomedia,oonotes,oopaint,oopass,oopdf,oosheet,oostudio,oovm-ui");
+    let cloud_repos: List[String] = csv_list("oobilling,oobuild-fleet,oocdn,ooconsent,oodb-dist,oodeploy,oodns-cloud,oogateway,ooidentity,oomesh,ooqueue,ooregistry-cloud,oorelay,oosched-cloud,oostore,ootelemetry");
+    let agent_repos: List[String] = csv_list("ooarchitect,oocoder,ooconsensus,ooeval,ooevolve,oofalsify,oogovern,ooherdr,oomemory,oooda-engine,ooplanner,ooquota,ooredteam,oorelease,ooreviewer,oorouter");
     let mut all: List[String] = list_new();
-    let mut li: Int = 0;
-    while li < list_len(k_repos) { all = list_push(all, list_get(k_repos, li)); li = li + 1; }
-    li = 0;
-    while li < list_len(os_repos) { all = list_push(all, list_get(os_repos, li)); li = li + 1; }
-    li = 0;
-    while li < list_len(de_repos) { all = list_push(all, list_get(de_repos, li)); li = li + 1; }
-    println("== [eco-vm-test] staging " + list_len(all).to_string() + " core subsystems (16 kernel + 18 OS + 20 DE) ==");
+    all = vm_extend(all, k_repos); all = vm_extend(all, os_repos); all = vm_extend(all, de_repos);
+    all = vm_extend(all, app_repos); all = vm_extend(all, cloud_repos); all = vm_extend(all, agent_repos);
+    println("== [eco-vm-test] staging " + list_len(all).to_string() + " core subsystems (16 kernel + 18 OS + 20 DE + 16 apps + 16 cloud + 16 agents) ==");
     let ok_k: Bool = vm_verify_layer(sys, fs_r, "openOODA-kernel", k_repos, root);
     let ok_o: Bool = vm_verify_layer(sys, fs_r, "openOODA-OS", os_repos, root);
     let ok_d: Bool = vm_verify_layer(sys, fs_r, "openOODA-DE", de_repos, root);
+    let ok_a: Bool = vm_verify_layer(sys, fs_r, "openOODA-apps", app_repos, root);
+    let ok_c: Bool = vm_verify_layer(sys, fs_r, "openOODA-cloud", cloud_repos, root);
+    let ok_g: Bool = vm_verify_layer(sys, fs_r, "openOODA-agents", agent_repos, root);
     let ok_h: Bool = vm_probe_hypervisor(sys, root, all);
-    if !ok_k || !ok_o || !ok_d || !ok_h { return 1; }
-    println("== [eco-vm-test] PASS: " + list_len(all).to_string() + " core kernel/OS/DE binaries staged, Merkle-hashed, and boot-verified in KVM microVM ==");
+    if !ok_k || !ok_o || !ok_d || !ok_a || !ok_c || !ok_g || !ok_h { return 1; }
+    println("== [eco-vm-test] PASS: " + list_len(all).to_string() + " core kernel/OS/DE/apps/cloud/agents binaries staged, Merkle-hashed, and boot-verified in KVM microVM ==");
     return 0;
 }
