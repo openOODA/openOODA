@@ -87,6 +87,13 @@ fn fs_land(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String,
     c = list_push(c, msg);
     let _o4: String = fc_run(sys, fs_r, cache, "git", c);
     if fc_code(fs_r, cache) != 0 { return false; }
+    if !fs_push_branches(sys, fs_r, cache, site) { return false; }
+    return true;
+}
+
+// Push the commit of the portal on the default branch and on the master
+// branch of the origin. The answer tells whether every push went through.
+fn fs_push_branches(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, site: String) -> Bool {
     let mut i: Int = 0;
     while i < 2 {
         let br: String = if i == 0 { "main" } else { "master" };
@@ -131,6 +138,19 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     if fc_code(fs_r, cache) != 0 { println("CHECKOUT-FAIL"); return 1; }
     let tools: List[String] = fs_site_tools(fs_r, site);
     println("site=" + site + " tools=" + int_to_str(list_len(tools)));
+    let rc: Int = fs_run_tools(sys, fs_r, fs_w, cache, fleet, site, tools);
+    let msg: String = "chore(site): the portal carries the release of the fleet";
+    if !fs_land(sys, fs_r, fs_w, cache, site, msg) {
+        println("LAND-FAIL");
+        return 1;
+    }
+    println("done tools=" + int_to_str(list_len(tools)) + " failed=" + int_to_str(rc));
+    return rc;
+}
+
+// Run the release of every tool of the list into the portal. The answer
+// holds the exit code of the last tool that failed.
+fn fs_run_tools(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, site: String, tools: List[String]) -> Int {
     let mut rc: Int = 0;
     let mut i: Int = 0;
     while i < list_len(tools) {
@@ -139,11 +159,5 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
         let r: Int = fs_one(sys, fs_r, fs_w, cache, fleet, site, t);
         if r != 0 { rc = r; }
     }
-    let msg: String = "chore(site): the portal carries the release of the fleet";
-    if !fs_land(sys, fs_r, fs_w, cache, site, msg) {
-        println("LAND-FAIL");
-        return 1;
-    }
-    println("done tools=" + int_to_str(list_len(tools)) + " failed=" + int_to_str(rc));
     return rc;
 }

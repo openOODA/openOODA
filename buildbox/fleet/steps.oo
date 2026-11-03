@@ -1,8 +1,8 @@
 // # Fleet Gate Steps - The Individual Checks One Repo Must Pass
 //
-// Logline: Runs the build, verify, test, determinism, parity, and scorecard checks against one repo checkout.
+// Logline: Runs the build, the tool, and the artifact checks against one repo checkout.
 //
-// Setup: Needs ProcessCap for make and the tool binary, and FsWriteCap for the scratch files.
+// Setup: Needs ProcessCap for make and the tool binary, and FsReadCap for the installed copy.
 //
 // Beats:
 //   1. Run one make target in a repo directory and return the exit code.
@@ -12,34 +12,7 @@
 
 import "std/core/text/num_buffer.oo";
 import "std/core/primitives/str.oo";
-import "std/fs/os/fs.oo";
 import "text/lines.oo";
-
-// Resolve the built binary path across dist/<repo> (tools/core) and bin/<repo> (kernel/OS/DE).
-pub fn fleet_resolve_bin(fs_r: &FsReadCap, dir: String, repo: String) -> String {
-    let dpath: String = dir + "/dist/" + repo;
-    if path_exists(fs_r, dpath) { return dpath; }
-    let bpath: String = dir + "/bin/" + repo;
-    if path_exists(fs_r, bpath) { return bpath; }
-    return dpath;
-}
-
-// Check whether the repo Makefile defines a specific target such as det:.
-pub fn fleet_has_make_target(fs_r: &FsReadCap, dir: String, target: String) -> Bool {
-    let mk: String = dir + "/Makefile";
-    if !path_exists(fs_r, mk) { return false; }
-    let r: Result[String, String] = fs_read_file(fs_r, mk);
-    if r.is_err() { return false; }
-    let prefix: String = target + ":";
-    let lines: List[String] = text_split_lines(r.val);
-    let mut i: Int = 0;
-    while i < list_len(lines) {
-        let l: String = text_trim(list_get(lines, i));
-        if str_starts_with(l, prefix) { return true; }
-        i = i + 1;
-    }
-    return false;
-}
 
 // The compiler is named in the environment of the child process, because a
 // tool Makefile finds the compiler through OODA_COMPILER and the checkout of

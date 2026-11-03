@@ -10,7 +10,6 @@
 //   3. Repair the workflow of one branch and push the repair.
 //   4. Repair the contract branch and the repair branch of a tool.
 
-import "std/core/primitives/str.oo";
 import "std/core/text/num_buffer.oo";
 import "std/fs/os/fs.oo";
 import "fleetctl/shell.oo";
@@ -70,6 +69,15 @@ fn fc_fix_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: S
     b = list_push(b, branch);
     b = list_push(b, "origin/" + branch);
     let _o: String = fc_run(sys, fs_r, cache, "git", b);
+    let changed: Int = fc_fix_workflows(sys, fs_r, fs_w, cache, repo, branch, template_dir);
+    if changed == 0 { return 0; }
+    if !fc_fix_commit_push(sys, fs_r, cache, repo, branch) { return 0; }
+    return changed;
+}
+
+// Write the good workflow of every template into the branch of the tool. The
+// answer holds the number of the files that were repaired.
+fn fc_fix_workflows(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, branch: String, template_dir: String) -> Int {
     let entries: List[String] = fs_read_dir(fs_r, template_dir);
     let mut changed: Int = 0;
     let mut i: Int = 0;
@@ -87,7 +95,12 @@ fn fc_fix_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: S
         let _w: Result[Void, String] = fs_write_file(fs_w, repo + "/" + path, good);
         changed = changed + 1;
     }
-    if changed == 0 { return 0; }
+    return changed;
+}
+
+// Commit the repaired workflows of one branch and push that branch. The
+// answer tells whether the push went through.
+fn fc_fix_commit_push(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, branch: String) -> Bool {
     let mut a: List[String] = list_new();
     a = list_push(a, "-C");
     a = list_push(a, repo);
@@ -111,8 +124,7 @@ fn fc_fix_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: S
     p = list_push(p, "origin");
     p = list_push(p, "HEAD:refs/heads/" + branch);
     let _o4: String = fc_run(sys, fs_r, cache, "git", p);
-    if fc_code(fs_r, cache) != 0 { return 0; }
-    return changed;
+    return fc_code(fs_r, cache) == 0;
 }
 
 // Repair the contract branch and the repair branch of one tool. The contract

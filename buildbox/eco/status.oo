@@ -34,6 +34,26 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     let rem: Int = eco_parse_uint(str_slice(qpair, 0, pipe_idx));
     let quota: String = str_slice(qpair, pipe_idx + 1, chars_len(qpair));
     let tail: String = eco_tail_lines(vis, 14);
+    let state: String = status_pane_state(pane_id, vis, quota, tail);
+    let live_agent: String = if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wH:p1" || pane_id == "wK:p1" {
+        eco_pane_vibe_agent(vis, agent)
+    } else {
+        agent
+    };
+    let alert: String = if state == "paused(limit)" {
+        "OK (waiting for 5h boundary)"
+    } else if rem <= 1 {
+        "QUOTA_RESERVE_ALERT (rem=" + int_to_str(rem) + "% <= 1%)"
+    } else {
+        "OK (" + eco_parse_pane_quota("pace", int_to_str(rem)) + ")"
+    };
+    return "  " + eco_pad_right(pane_id, 7) + " " + eco_pad_right(ws, 20) + " " + eco_pad_right(live_agent, 24)
+        + " " + eco_pad_right(state, 11) + " " + eco_pad_right(quota, 34) + " " + alert;
+}
+
+// The state of one pane, read from the quota of that pane and from the tail
+// of the text of that pane.
+fn status_pane_state(pane_id: String, vis: String, quota: String, tail: String) -> String {
     let mut state: String = if (pane_id == "wK:p1" || pane_id == "wN:p1" || pane_id == "wP:p1") && str_contains(quota, "shell ready") { "standby" } else { "idle" };
     if str_contains(tail, "User input required") || str_contains(tail, "Enter select") {
         state = "WAIT_INPUT";
@@ -44,19 +64,10 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
         || str_contains(tail, "Waiting for response") {
         state = "working";
     }
-    if pane_id == "wJ:p1" && rem == 0 && state == "idle" { state = "paused(100%)"; }
-    let live_agent: String = if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wH:p1" || pane_id == "wK:p1" {
-        eco_pane_vibe_agent(vis, agent)
-    } else {
-        agent
-    };
-    let alert: String = if rem <= 1 {
-        "QUOTA_RESERVE_ALERT (rem=" + int_to_str(rem) + "% <= 1%)"
-    } else {
-        "OK (" + eco_parse_pane_quota("pace", int_to_str(rem)) + ")"
-    };
-    return "  " + eco_pad_right(pane_id, 7) + " " + eco_pad_right(ws, 20) + " " + eco_pad_right(live_agent, 24)
-        + " " + eco_pad_right(state, 11) + " " + eco_pad_right(quota, 34) + " " + alert;
+    if (pane_id == "wJ:p1" || pane_id == "wN:p1") && str_contains(vis, "Usage limit reached") && state == "idle" {
+        state = "paused(limit)";
+    }
+    return state;
 }
 
 fn status_count_oo_pages(fs_r: &FsReadCap, repo_dir: String) -> Int {

@@ -28,6 +28,7 @@ import "std/core/text/num_buffer.oo";
 import "std/fs/os/fs.oo";
 import "text/lines.oo";
 import "fleetctl/shell.oo";
+import "fleetwork/net_clean.oo";
 import "ci/law.oo";
 
 // Put the vocabulary of the fleet into one piece of text. The answer holds
@@ -183,22 +184,7 @@ pub fn nw_remove_dead(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo: String) -> Int 
 // directory of the workflow.
 pub fn nw_clean_strays(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo: String) -> Int {
     let mut removed: Int = 0;
-    let mut names: List[String] = list_new();
-    names = list_push(names, "install-apt.sh");
-    names = list_push(names, "install-dnf.sh");
-    names = list_push(names, "install-rpm.sh");
-    names = list_push(names, "install-arch.sh");
-    names = list_push(names, "install-pacman.sh");
-    names = list_push(names, "install-zypper.sh");
-    let mut i: Int = 0;
-    while i < list_len(names) {
-        let p: String = repo + "/packaging/" + list_get(names, i);
-        i = i + 1;
-        if path_exists(fs_r, p) {
-            let _r: Result[Void, String] = fs_remove_file(fs_w, p);
-            removed = removed + 1;
-        }
-    }
+    removed = removed + nw_clean_installers(fs_r, fs_w, repo);
     let dup: String = repo + "/packaging/uninstall.sh";
     let root: String = repo + "/uninstall.sh";
     if path_exists(fs_r, dup) && path_exists(fs_r, root) {

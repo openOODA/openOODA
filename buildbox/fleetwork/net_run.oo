@@ -15,15 +15,14 @@
 // toolchain on the runner and falls back to the static governance gates when
 // the runner holds none, so the gate of a tool stays a gate.
 
-import "std/core/primitives/str.oo";
 import "std/core/text/num_buffer.oo";
-import "std/fs/os/fs.oo";
 import "text/lines.oo";
 import "fleetctl/shell.oo";
 import "parity/mapping.oo";
 import "ci/apply.oo";
 import "ci/makefile.oo";
 import "fleetwork/net_law.oo";
+import "fleetwork/net_push.oo";
 
 // The name of the agent that writes the repair, and the marker that the
 // commit of the repair carries in its body.
@@ -113,24 +112,8 @@ fn nw_land(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, tool
     c = list_push(c, nw_body());
     let _o2: String = fc_run(sys, fs_r, cache, "git", c);
     if fc_code(fs_r, cache) != 0 { println(tool + " COMMIT-FAIL"); return 1; }
-    let mut p: List[String] = list_new();
-    p = list_push(p, "-C");
-    p = list_push(p, repo);
-    p = list_push(p, "push");
-    p = list_push(p, "--quiet");
-    p = list_push(p, "origin");
-    p = list_push(p, "main:refs/heads/main");
-    let _o3: String = fc_run(sys, fs_r, cache, "git", p);
-    if fc_code(fs_r, cache) != 0 { println(tool + " PUSH-FAIL"); return 1; }
-    let mut p2: List[String] = list_new();
-    p2 = list_push(p2, "-C");
-    p2 = list_push(p2, repo);
-    p2 = list_push(p2, "push");
-    p2 = list_push(p2, "--quiet");
-    p2 = list_push(p2, "origin");
-    p2 = list_push(p2, "main:refs/heads/master");
-    let _o4: String = fc_run(sys, fs_r, cache, "git", p2);
-    if fc_code(fs_r, cache) != 0 { println(tool + " PUSH-FAIL"); return 1; }
+    if !nw_push_branch(sys, fs_r, cache, repo, "main", "main") { println(tool + " PUSH-FAIL"); return 1; }
+    if !nw_push_branch(sys, fs_r, cache, repo, "main", "master") { println(tool + " PUSH-FAIL"); return 1; }
     println(tool + " REPAIRED");
     return 0;
 }

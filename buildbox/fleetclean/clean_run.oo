@@ -14,100 +14,13 @@
 // in its trailer names a writer that no release of the fleet may carry, so
 // the trailer goes and the author of the commit becomes the one author of the
 // fleet. The tree of every commit stays the same, so the release that the
-// commit carries does not move, and the tag of a release keeps pointing at
-// the commit that carries its version.
+// commit carries does not move, and the tag of a release keeps pointing at the
+// commit that carries its version.
 
-import "std/core/primitives/str.oo";
-import "std/fs/os/fs.oo";
 import "text/lines.oo";
 import "fleetctl/shell.oo";
-import "fleetsync/sync_ref.oo";
+import "fleetclean/clean_release.oo";
 import "fleetsync/sync_push.oo";
-
-// The branches of the release line of a tool. The default branch, the master
-// branch and the branch of the contract carry every release of the fleet.
-fn fc_release_branches() -> List[String] {
-    let mut out: List[String] = list_new();
-    out = list_push(out, "main");
-    out = list_push(out, "master");
-    out = list_push(out, "buildbox/fleet-contract");
-    return out;
-}
-
-// The filter that gives every commit of the fleet its one author.
-fn fc_author_filter() -> String {
-    return "export GIT_AUTHOR_NAME=\"UberMetroid\"; export GIT_AUTHOR_EMAIL=\"jerydleuck@gmail.com\"; "
-        + "export GIT_COMMITTER_NAME=\"UberMetroid\"; export GIT_COMMITTER_EMAIL=\"jerydleuck@gmail.com\"";
-}
-
-// The filter that takes every trailer of another writer out of a message.
-// The name of the trailer is written in many a case, so the match is made
-// without regard to it. A trailer that keeps the case of its own name says
-// the same thing as one that does not.
-fn fc_msg_filter() -> String {
-    return "sed -E -e \"/^co-authored-by:/Id\" -e \"/^generated (by|with) /Id\" -e \"/^signed-off-by:/Id\"";
-}
-
-// Read one number of a version. A part that names no number is zero.
-fn fc_num(s: String) -> Int {
-    let r: Result[Int, String] = parse_int(text_trim(s));
-    if r.is_err() { return 0; }
-    return r.val;
-}
-
-// Compare two versions. The answer is above zero when the first one is the
-// higher one.
-fn fc_ver_cmp(a: String, b: String) -> Int {
-    let pa: List[String] = text_split_lines(str_replace(a, ".", "\n"));
-    let pb: List[String] = text_split_lines(str_replace(b, ".", "\n"));
-    let mut i: Int = 0;
-    while i < 3 {
-        let x: Int = fc_num(if i < list_len(pa) { list_get(pa, i) } else { "0" });
-        let y: Int = fc_num(if i < list_len(pb) { list_get(pb, i) } else { "0" });
-        if x > y { return 1; }
-        if x < y { return -1; }
-        i = i + 1;
-    }
-    return 0;
-}
-
-// The version that one tag of a repository carries.
-fn fc_tag_version(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, tag: String) -> String {
-    let mut a: List[String] = list_new();
-    a = list_push(a, "-C");
-    a = list_push(a, repo);
-    a = list_push(a, "show");
-    a = list_push(a, tag + ":VERSION");
-    let _o: String = fc_run(sys, fs_r, cache, "git", a);
-    if fc_code(fs_r, cache) != 0 { return ""; }
-    return text_trim(fc_all(fs_r, cache));
-}
-
-// The tag of a tool that carries the highest release of that tool. The
-// default branch and the master branch of a tool point at that tag, because
-// that is the release of the tool.
-pub fn fc_release_tag(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String) -> String {
-    let mut a: List[String] = list_new();
-    a = list_push(a, "-C");
-    a = list_push(a, repo);
-    a = list_push(a, "tag");
-    a = list_push(a, "-l");
-    a = list_push(a, "v*");
-    let _o: String = fc_run(sys, fs_r, cache, "git", a);
-    let tags: List[String] = text_split_lines(fc_all(fs_r, cache));
-    let mut best: String = "";
-    let mut bestv: String = "";
-    let mut i: Int = 0;
-    while i < list_len(tags) {
-        let t: String = text_trim(list_get(tags, i));
-        i = i + 1;
-        if t == "" { continue; }
-        let v: String = fc_tag_version(sys, fs_r, cache, repo, t);
-        if v == "" { continue; }
-        if best == "" || fc_ver_cmp(v, bestv) > 0 { best = t; bestv = v; }
-    }
-    return best;
-}
 
 // Put the branches of the release line of a tool on the working tree. The
 // default branch and the master branch take the release of the tool, and the
@@ -157,6 +70,43 @@ pub fn fc_clean_branch(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: 
     return fc_code(fs_r, cache) == 0;
 }
 
+// Push the rewritten branches of the release line of a tool. The answer
+// tells whether every push went through.
+fn fc_push_branches(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, branches: List[String]) -> Bool {
+    let mut i: Int = 0;
+    while i < list_len(branches) {
+        let n: String = list_get(branches, i);
+        i = i + 1;
+        let mut p: List[String] = list_new();
+        p = list_push(p, "-C");
+        p = list_push(p, repo);
+        p = list_push(p, "push");
+        p = list_push(p, "--quiet");
+        p = list_push(p, "--force");
+        p = list_push(p, "origin");
+        p = list_push(p, n + ":refs/heads/" + n);
+        let _o: String = fc_run(sys, fs_r, cache, "git", p);
+        if fc_code(fs_r, cache) != 0 { return false; }
+    }
+    return true;
+}
+
+// Push the tags that the rewrite moved. The answer tells whether the push
+// went through.
+fn fc_push_tags(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String) -> Bool {
+    let mut t: List[String] = list_new();
+    t = list_push(t, "-C");
+    t = list_push(t, repo);
+    t = list_push(t, "push");
+    t = list_push(t, "--quiet");
+    t = list_push(t, "--force");
+    t = list_push(t, "origin");
+    t = list_push(t, "--tags");
+    let _to: String = fc_run(sys, fs_r, cache, "git", t);
+    if fc_code(fs_r, cache) != 0 { return false; }
+    return true;
+}
+
 // Land the rewritten history of one tool on the branches of its release line
 // and on the tags that the rewrite moved. The answer tells whether
 // everything landed.
@@ -182,31 +132,8 @@ pub fn fc_clean_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache
     if list_len(branches) < 2 { return false; }
     if !fc_clean_branch(sys, fs_r, cache, repo, branches) { return false; }
     let _i: Bool = sy_identity(sys, fs_r, cache, repo);
-    let mut i: Int = 0;
-    while i < list_len(branches) {
-        let n: String = list_get(branches, i);
-        i = i + 1;
-        let mut p: List[String] = list_new();
-        p = list_push(p, "-C");
-        p = list_push(p, repo);
-        p = list_push(p, "push");
-        p = list_push(p, "--quiet");
-        p = list_push(p, "--force");
-        p = list_push(p, "origin");
-        p = list_push(p, n + ":refs/heads/" + n);
-        let _o: String = fc_run(sys, fs_r, cache, "git", p);
-        if fc_code(fs_r, cache) != 0 { return false; }
-    }
-    let mut t: List[String] = list_new();
-    t = list_push(t, "-C");
-    t = list_push(t, repo);
-    t = list_push(t, "push");
-    t = list_push(t, "--quiet");
-    t = list_push(t, "--force");
-    t = list_push(t, "origin");
-    t = list_push(t, "--tags");
-    let _to: String = fc_run(sys, fs_r, cache, "git", t);
-    if fc_code(fs_r, cache) != 0 { return false; }
+    if !fc_push_branches(sys, fs_r, cache, repo, branches) { return false; }
+    if !fc_push_tags(sys, fs_r, cache, repo) { return false; }
     // The default branch and the master branch of a tool must carry one tree.
     // The answer tells whether they do.
     if !fc_same_tree(sys, fs_r, cache, repo, "origin/main", "origin/master") {
