@@ -1,0 +1,86 @@
+// # Fleet Verify - Reports The State Of Every Repository Of The Fleet
+//
+// Logline: Reads the state of every repository of the fleet from its origin and writes one line for each of them.
+//
+// Setup: Needs ProcessCap, FsReadCap, FsWriteCap and EnvCap.
+//
+// Beats:
+//   1. Read the settings of the tool from the environment.
+//   2. Read the state of one repository of the fleet.
+//   3. Write the report of the whole fleet.
+//
+// Usage: fleetverify <clone-or-tool>...
+//
+// A name that holds a clone is read where it lies, and a name alone is
+// cloned into the work directory. The report holds one line for every
+// repository of the fleet. The line names the repository and it tells
+// whether the default branch and the master branch carry one tree, whether
+// the tag of the release sits on the default branch, what version the
+// repository carries, how many trailers of another writer its history holds,
+// who wrote it, whether it ships an installer and whether every workflow of
+// it is a sound document of YAML.
+
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "fleetverify/verify_ref.oo";
+import "fleetverify/verify_tag.oo";
+import "fleetverify/verify_files.oo";
+
+// Read one environment value with a fallback. The runtime only hands out the
+// names that begin with OODA_ or OO_, so every setting of the tool is named
+// that way.
+fn vf_env(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return fallback;
+}
+
+// Read the state of one repository of the fleet. The answer holds one line
+// of the report.
+fn vf_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String) -> String {
+    let name: String = vf_name(tool);
+    let repo: String = vf_open(sys, fs_r, fs_w, cache, work, org, tool);
+    if repo == "" { return name + "|CLONE-FAIL|-|-|-|-|-|-|-|-"; }
+    let _f: Bool = vf_fetch(sys, fs_r, cache, repo);
+    let main: String = vf_rev(sys, fs_r, cache, repo, "origin/main");
+    let master: String = vf_rev(sys, fs_r, cache, repo, "origin/master");
+    let eq: String = if main != "" && main == master { "Y" } else { "N" };
+    let tag: String = vf_release_tag(sys, fs_r, cache, repo);
+    let mut tm: String = "-";
+    let mut anc: String = "-";
+    if tag != "" {
+        let tc: String = vf_rev(sys, fs_r, cache, repo, tag + "^{commit}");
+        tm = if tc != "" && tc == main { "Y" } else { "N" };
+        anc = if vf_is_ancestor(sys, fs_r, cache, repo, tag, "origin/main") { "Y" } else { "N" };
+    }
+    let version: String = vf_version(sys, fs_r, cache, repo);
+    let trailers: Int = vf_trailer_count(sys, fs_r, cache, repo);
+    let authors: String = vf_authors(sys, fs_r, cache, repo);
+    let install: String = if vf_has_install(sys, fs_r, cache, repo) { "Y" } else { "N" };
+    let yaml: String = vf_yaml(sys, fs_r, fs_w, cache, repo, name);
+    let mut line: String = name + "|" + eq + "|" + tm + "|" + anc + "|" + version + "|" + tag + "|";
+    line = line + int_to_str(trailers) + "|" + authors + "|" + install + "|" + yaml;
+    return line;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let org: String = vf_env(env, "OODA_ORG", "openOODA-tools");
+    let work: String = vf_env(env, "OODA_VERIFY_WORK", "/home/ubermetroid/fleet-verify");
+    let cache: String = vf_env(env, "OODA_FLEET_CACHE", "/var/lib/ooda-buildbox/cache/verify");
+    let out: String = vf_env(env, "OODA_VERIFY_OUT", "/tmp/fleetverify.txt");
+    let _mc: Result[Void, String] = fs_mkdir_p(fs_w, cache);
+    let _mw: Result[Void, String] = fs_mkdir_p(fs_w, work);
+    let mut report: String = "";
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        let tool: String = list_get(args, i);
+        i = i + 1;
+        let line: String = vf_one(sys, fs_r, fs_w, cache, work, org, tool);
+        report = report + line + "\n";
+        println(line);
+        let _w: Result[Void, String] = fs_write_file(fs_w, out, report);
+    }
+    println("done tools=" + int_to_str(list_len(args)));
+    return 0;
+}

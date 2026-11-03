@@ -1,0 +1,66 @@
+// # Fleet Verify Tag - Names The Tag That Carries The Highest Release
+//
+// Logline: Reads the tags of one repository of the fleet and names the one that carries the highest release of it.
+//
+// Setup: Needs ProcessCap for git and FsReadCap to read the files.
+//
+// Beats:
+//   1. Read one number of a version.
+//   2. Compare two versions.
+//   3. Read the version that one tag of one repository of the fleet carries.
+//   4. Name the tag that carries the highest release of one repository of the fleet.
+
+import "std/core/primitives/str.oo";
+import "text/lines.oo";
+import "fleetverify/verify_ref.oo";
+
+// Read one number of a version. A part that names no number is zero.
+fn vf_num(s: String) -> Int {
+    let r: Result[Int, String] = parse_int(text_trim(s));
+    if r.is_err() { return 0; }
+    return r.val;
+}
+
+// Compare two versions. The answer is above zero when the first one is the
+// higher one.
+fn vf_ver_cmp(a: String, b: String) -> Int {
+    let pa: List[String] = text_split_lines(str_replace(a, ".", "\n"));
+    let pb: List[String] = text_split_lines(str_replace(b, ".", "\n"));
+    let mut i: Int = 0;
+    while i < 3 {
+        let x: Int = vf_num(if i < list_len(pa) { list_get(pa, i) } else { "0" });
+        let y: Int = vf_num(if i < list_len(pb) { list_get(pb, i) } else { "0" });
+        if x > y { return 1; }
+        if x < y { return -1; }
+        i = i + 1;
+    }
+    return 0;
+}
+
+// Read the version that one tag of one repository of the fleet carries. A tag
+// that names no version carries no release, and the answer is empty.
+fn vf_tag_version(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, tag: String) -> String {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "show");
+    a = list_push(a, tag + ":VERSION");
+    let _o: String = vf_git(sys, fs_r, cache, repo, a);
+    if fc_code(fs_r, cache) != 0 { return ""; }
+    return text_trim(fc_all(fs_r, cache));
+}
+
+// The tag that carries the highest release of one repository of the fleet.
+// The answer is empty when the repository carries no release at all.
+pub fn vf_release_tag(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String) -> String {
+    let tags: List[String] = vf_tags(sys, fs_r, cache, repo);
+    let mut best: String = "";
+    let mut bestv: String = "";
+    let mut i: Int = 0;
+    while i < list_len(tags) {
+        let t: String = list_get(tags, i);
+        i = i + 1;
+        let v: String = vf_tag_version(sys, fs_r, cache, repo, t);
+        if v == "" { continue; }
+        if best == "" || vf_ver_cmp(v, bestv) > 0 { best = t; bestv = v; }
+    }
+    return best;
+}

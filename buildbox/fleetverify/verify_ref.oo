@@ -1,0 +1,110 @@
+// # Fleet Verify Ref - Reads The Refs Of One Repository Of The Fleet
+//
+// Logline: Brings every ref of one repository of the fleet back from its origin and reads the refs that it holds.
+//
+// Setup: Needs ProcessCap for git and FsReadCap to read the files.
+//
+// Beats:
+//   1. Open the clone of one repository of the fleet, cloning it when only its name is given.
+//   2. Bring every ref of it back and let the origin win over the local copy of each of them.
+//   3. Read one ref of it.
+//   4. Read the tags of it.
+//   5. Read the name of a repository of the fleet from the path of its clone.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+import "fleetctl/shell.oo";
+import "fleetsync/sync_ref.oo";
+
+// Run a git command in one repository of the fleet. The answer holds the
+// output of the command.
+pub fn vf_git(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, args: List[String]) -> String {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        a = list_push(a, list_get(args, i));
+        i = i + 1;
+    }
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    return fc_all(fs_r, cache);
+}
+
+// Open the clone of one repository of the fleet. A path that holds a clone is
+// taken as it is, and a name alone is cloned into the work directory. The
+// answer holds the path of the clone, and it is empty when the clone failed.
+pub fn vf_open(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String) -> String {
+    if fs_path_exists(fs_r, tool + "/.git") { return tool; }
+    return sy_clone(sys, fs_r, fs_w, cache, work, org, tool);
+}
+
+// Bring every ref of one repository of the fleet back from its origin. The
+// origin wins over the local copy of every ref, so that the state that is
+// read is the state that the origin holds. A tag that the origin moved is
+// taken from the origin and not from the copy that is on the disk.
+pub fn vf_fetch(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String) -> Bool {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "fetch");
+    a = list_push(a, "--quiet");
+    a = list_push(a, "--force");
+    a = list_push(a, "--prune");
+    a = list_push(a, "origin");
+    a = list_push(a, "+refs/heads/*:refs/remotes/origin/*");
+    a = list_push(a, "+refs/tags/*:refs/tags/*");
+    let _o: String = vf_git(sys, fs_r, cache, repo, a);
+    return fc_code(fs_r, cache) == 0;
+}
+
+// Read one ref of one repository of the fleet. The answer holds the commit
+// that the ref names, and it is empty when the ref is not there.
+pub fn vf_rev(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, ref: String) -> String {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "rev-parse");
+    a = list_push(a, ref);
+    let _o: String = vf_git(sys, fs_r, cache, repo, a);
+    if fc_code(fs_r, cache) != 0 { return ""; }
+    return text_trim(fc_all(fs_r, cache));
+}
+
+// Read the tags of one repository of the fleet.
+pub fn vf_tags(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String) -> List[String] {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "tag");
+    a = list_push(a, "-l");
+    let _o: String = vf_git(sys, fs_r, cache, repo, a);
+    let mut out: List[String] = list_new();
+    let lines: List[String] = text_split_lines(fc_all(fs_r, cache));
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let t: String = text_trim(list_get(lines, i));
+        i = i + 1;
+        if t != "" { out = list_push(out, t); }
+    }
+    return out;
+}
+
+// Report whether one ref of one repository of the fleet is an ancestor of
+// another. The answer tells whether the release that the tag carries is on
+// the branch that the origin holds.
+pub fn vf_is_ancestor(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, a: String, b: String) -> Bool {
+    let mut args: List[String] = list_new();
+    args = list_push(args, "merge-base");
+    args = list_push(args, "--is-ancestor");
+    args = list_push(args, a);
+    args = list_push(args, b);
+    let _o: String = vf_git(sys, fs_r, cache, repo, args);
+    return fc_code(fs_r, cache) == 0;
+}
+
+// Read the name of a repository of the fleet from the path of its clone. The
+// name is the last part of the path.
+pub fn vf_name(path: String) -> String {
+    let parts: List[String] = text_split_lines(str_replace(path, "/", "\n"));
+    let n: Int = list_len(parts);
+    if n == 0 { return path; }
+    let last: String = list_get(parts, n - 1);
+    if last == "" { return path; }
+    return last;
+}
