@@ -32,7 +32,9 @@ fn rel_update_pkg(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String, repo: S
     if entry == "" { entry = "main.oo"; }
     let mut lic: String = eco_pkg_get(fs_r, pkg_path, "license");
     if lic == "" { lic = "Apache-2.0"; }
-    let body: String = "name=" + repo + "\nversion=" + ver + "\nlayer=" + layer + "\ncategory=" + cat
+    let cur_layer: String = eco_pkg_get(fs_r, pkg_path, "layer");
+    let final_layer: String = if cur_layer == layer || cur_layer == "L0-core" || cur_layer == "L1-kernel" || cur_layer == "L2-OS" || cur_layer == "L3-tools" || cur_layer == "L4-DE" || cur_layer == "L5-apps" || cur_layer == "L6-cloud" || cur_layer == "L7-agents" { cur_layer } else { layer };
+    let body: String = "name=" + repo + "\nversion=" + ver + "\nlayer=" + final_layer + "\ncategory=" + cat
         + "\ntags=" + tags + "\nupstream=" + up + "\nstatus=shipped\ndescription=" + desc
         + "\ncaps=" + caps + "\ndeps=" + deps + "\nentry=" + entry + "\npayload=" + entry + "\nlicense=" + lic + "\n";
     let w1: Result[Void, String] = fs_write_file(fs_w, pkg_path, body);
@@ -109,10 +111,10 @@ fn rel_build_and_stage(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, re
 }
 
 fn rel_git_and_gh(sys: &ProcessCap, fs_r: &FsReadCap, org: String, repo_dir: String, repo: String, tag: String, sha: String) -> Int {
-    let env_pfx: String = "GIT_TERMINAL_PROMPT=0 OODA_FS_READDIR=/Projects:/home/ubermetroid:/tmp ";
+    let env_pfx: String = "GIT_TERMINAL_PROMPT=0 GIT_AUTHOR_NAME=UberMetroid GIT_AUTHOR_EMAIL=jerydleuck@gmail.com GIT_COMMITTER_NAME=UberMetroid GIT_COMMITTER_EMAIL=jerydleuck@gmail.com OODA_FS_READDIR=/Projects:/home/ubermetroid:/tmp ";
     let mut g_args: List[String] = list_new();
     g_args = list_push(g_args, "-c");
-    g_args = list_push(g_args, "if [ -n \"$(git -C " + repo_dir + " status --porcelain)\" ]; then git -C " + repo_dir + " add -A && git -C " + repo_dir + " commit -q -m \"release(" + repo + "): " + tag + "\"; fi; "
+    g_args = list_push(g_args, "if [ -n \"$(git -C " + repo_dir + " status --porcelain)\" ]; then git -C " + repo_dir + " add -A && " + env_pfx + "git -C " + repo_dir + " commit -q -m \"release(" + repo + "): " + tag + "\"; fi; "
         + env_pfx + "git -C " + repo_dir + " push -q origin HEAD:refs/heads/master || true; "
         + env_pfx + "git -C " + repo_dir + " push -q origin HEAD:refs/heads/main || true; "
         + env_pfx + "git -C " + repo_dir + " tag -f " + tag + " && "

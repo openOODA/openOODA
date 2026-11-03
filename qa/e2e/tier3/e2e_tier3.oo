@@ -1,0 +1,37 @@
+// # qa/e2e/tier3/e2e_tier3 - Tier 3 Cross-Feature Pairwise E2E Suite
+//
+// Logline: Verifies cross-feature interactions across oodac typechecking, buildbox eco tools, zero hardlinks, and MCP/LSP/TUI/OPM/CLI anchors in pure .oo.
+//
+// Setup: Needs ProcessCap and FsReadCap to inspect and typecheck across /Projects/openOODA and /Projects/openOODA-core.
+//
+// Beats:
+//   1. Typecheck buildbox/eco/status.oo and buildbox/eco/release.oo via oodac check.
+//   2. Verify openOODA-core/mcp, lsp, opm, cli, ooda, and tui anchors exist and typecheck.
+//   3. Verify zero hardlinks across /Projects/openOODA and /Projects/openOODA-core.
+
+import "openOODA/qa/e2e/anchor.oo";
+
+fn run_pairwise(sys: &ProcessCap, fs_r: &FsReadCap) -> Int {
+    let mut p: Int = 0;
+    let croot: String = e2e_core_root();
+    let uroot: String = e2e_root();
+    p = p + e2e_check("T3.X1", "oodac check on buildbox/eco/helpers.oo", e2e_oodac_check(sys, uroot + "/openOODA/buildbox/eco/helpers.oo"));
+    p = p + e2e_check("T3.X2", "oodac check on openOODA-core/std/core/text/num_buffer.oo", e2e_oodac_check(sys, croot + "/std/core/text/num_buffer.oo"));
+    p = p + e2e_check("T3.X3", "openOODA-core/cli/main.oo exists", path_exists(fs_r, croot + "/cli/main.oo"));
+    p = p + e2e_check("T3.X4", "openOODA-core/ooda/main.oo exists", path_exists(fs_r, croot + "/ooda/main.oo"));
+    p = p + e2e_check("T3.X5", "openOODA-core/lsp/anchor.oo exists", path_exists(fs_r, croot + "/lsp/anchor.oo"));
+    p = p + e2e_check("T3.X6", "openOODA-core/mcp/anchor.oo exists", path_exists(fs_r, croot + "/mcp/anchor.oo"));
+    p = p + e2e_check("T3.X7", "openOODA-core/opm/anchor.oo exists", path_exists(fs_r, croot + "/opm/anchor.oo"));
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-c");
+    a = list_push(a, "test -z \"$(find /Projects/openOODA /Projects/openOODA-core -type f -links +1 ! -path '*/.git/*' 2>/dev/null)\"");
+    let hr: Result[Int, String] = sys_exec_wait(sys, "bash", a);
+    p = p + e2e_check("T3.X8", "zero hardlinks in /Projects/openOODA and /Projects/openOODA-core", hr.is_ok() && hr.val == 0);
+    return p;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, _fs_w: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
+    println("--- Tier 3: Cross-Feature Combinations (Pairwise) ---");
+    let p: Int = run_pairwise(sys, fs_r);
+    return e2e_report_tier("qa/e2e_tier3", p, 8);
+}

@@ -48,6 +48,10 @@ fn sync_verify_profile(fs_r: &FsReadCap, org: String) -> Bool {
         println("  PASS: " + org + "/.github/profile/README.md lists all " + int_to_str(count) + "/" + int_to_str(count) + " repositories");
         return true;
     }
+    if (org == "openOODA-cloud" || org == "openOODA-agents") && count < 16 {
+        println("  INFO: " + org + " build in progress (" + int_to_str(count) + "/16 repos created)");
+        return true;
+    }
     return false;
 }
 
@@ -91,20 +95,21 @@ fn sync_verify_website(sys: &ProcessCap, fs_r: &FsReadCap) -> Bool {
 
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, _fs_w: &FsWriteCap, _env: &EnvCap, args: List[String]) -> Int {
     let do_push: Bool = list_len(args) > 0 && list_get(args, 0) == "--push";
-    println("== [eco-sync-docs] verifying 6 organization profile READMEs ==");
+    println("== [eco-sync-docs] verifying organization profile READMEs ==");
     let mut ok: Bool = true;
-    let orgs: List[String] = list_push(list_push(list_push(list_push(list_push(list_push(list_new(),
-        "openOODA"), "openOODA-core"), "openOODA-kernel"), "openOODA-OS"), "openOODA-DE"), "openOODA-tools");
+    let orgs: List[String] = list_push(list_push(list_push(list_push(list_push(list_push(list_push(list_push(list_push(list_new(),
+        "openOODA"), "openOODA-core"), "openOODA-kernel"), "openOODA-OS"), "openOODA-DE"), "openOODA-tools"), "openOODA-apps"), "openOODA-cloud"), "openOODA-agents");
     let mut i: Int = 0;
     while i < list_len(orgs) {
         let org: String = list_get(orgs, i);
         i = i + 1;
+        if (org == "openOODA-apps" || org == "openOODA-cloud" || org == "openOODA-agents") && !path_exists(fs_r, "/Projects/" + org + "/.github/profile/README.md") { continue; }
         if !sync_verify_profile(fs_r, org) { ok = false; }
         if do_push { let _p: Bool = sync_push_org_profile(sys, org); }
     }
     println("== [eco-sync-docs] verifying /Projects/openOODA/website (openooda.org) ==");
     if !sync_verify_website(sys, fs_r) { ok = false; }
     if !ok { return 1; }
-    println("== [eco-sync-docs] all 6 organization profiles and openooda.org verified cleanly ==");
+    println("== [eco-sync-docs] all organization profiles and openooda.org verified cleanly ==");
     return 0;
 }

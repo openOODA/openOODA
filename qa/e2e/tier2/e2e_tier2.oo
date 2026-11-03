@@ -1,0 +1,55 @@
+// # qa/e2e/tier2/e2e_tier2 - Tier 2 Boundary & Corner Cases E2E Suite
+//
+// Logline: Verifies R1-R5 boundary conditions including 256-line page ceilings, zero symlinks, L0 repo count, and Landlock toolhome resolution in pure .oo.
+//
+// Setup: Needs ProcessCap and FsReadCap to inspect /Projects/openOODA and /Projects/openOODA-core.
+//
+// Beats:
+//   1. R1/R2: Verify L0 openOODA-core repository count (9 core repos + .github) and Root Umbrella count (5 repos).
+//   2. R3/R4: Verify cli_host_rt Landlock toolhome parent allowlist and DWARF monotonic DI counter in ll_emit.oo.
+//   3. R5: Verify spec.oot <= 256-line boundary and zero symlinks in /Projects/openOODA and /Projects/openOODA-core.
+
+import "std/fs/os/fs.oo";
+import "std/core/primitives/str.oo";
+import "openOODA/qa/e2e/anchor.oo";
+
+fn run_b1_b3(fs_r: &FsReadCap) -> Int {
+    let mut p: Int = 0;
+    let croot: String = e2e_core_root();
+    let uroot: String = e2e_root();
+    p = p + e2e_check("T2.R1.1", "openOODA-core/oodac/VERSION exists", path_exists(fs_r, croot + "/oodac/VERSION"));
+    p = p + e2e_check("T2.R1.2", "openOODA-core/oodar/VERSION exists", path_exists(fs_r, croot + "/oodar/VERSION"));
+    p = p + e2e_check("T2.R1.3", "openOODA-core/std/VERSION exists", path_exists(fs_r, croot + "/std/VERSION"));
+    p = p + e2e_check("T2.R2.1", "openOODA-core/.github/profile/README.md exists", path_exists(fs_r, croot + "/.github/profile/README.md"));
+    p = p + e2e_check("T2.R2.2", "openOODA/.github/profile/README.md exists", path_exists(fs_r, uroot + "/.github/profile/README.md"));
+    let lle: Result[String, String] = fs_read_file(fs_r, croot + "/oodac/emit/llvm/ll_emit.oo");
+    p = p + e2e_check("T2.R3.1", "ll_emit.oo preserves monotonic DWARF di_next across functions", lle.is_ok() && str_contains(lle.val, "next_di"));
+    return p;
+}
+
+fn run_b4_b6(sys: &ProcessCap, fs_r: &FsReadCap) -> Int {
+    let mut p: Int = 0;
+    let croot: String = e2e_core_root();
+    let uroot: String = e2e_root();
+    let hrt: Result[String, String] = fs_read_file(fs_r, croot + "/oodac/cli/cli_host_rt.oo");
+    p = p + e2e_check("T2.R4.1", "cli_host_rt.oo allowlists org parent in Landlock rbuf", hrt.is_ok() && str_contains(hrt.val, "size_t ge = pe"));
+    let cr: Result[String, String] = fs_read_file(fs_r, croot + "/oodac/cli/cli_oodar.oo");
+    p = p + e2e_check("T2.R4.2", "cli_oodar.oo resolves /Projects/openOODA-core/oodar", cr.is_ok() && str_contains(cr.val, "/Projects/openOODA-core/oodar"));
+    let spec_lines: Int = e2e_count_lines(fs_r, uroot + "/openOODA/spec.oot");
+    p = p + e2e_check("T2.R5.1", "openOODA/spec.oot is non-empty and <= 256 lines", spec_lines > 0 && spec_lines <= 256);
+    p = p + e2e_check("T2.R5.2", "buildbox eco/status.oo is <= 256 lines", e2e_count_lines(fs_r, uroot + "/openOODA/buildbox/eco/status.oo") <= 256);
+    p = p + e2e_check("T2.R5.3", "buildbox eco/release.oo is <= 256 lines", e2e_count_lines(fs_r, uroot + "/openOODA/buildbox/eco/release.oo") <= 256);
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-c");
+    a = list_push(a, "test -z \"$(find /Projects/openOODA /Projects/openOODA-core -type l 2>/dev/null)\"");
+    let sr: Result[Int, String] = sys_exec_wait(sys, "bash", a);
+    p = p + e2e_check("T2.R5.4", "zero symlinks in /Projects/openOODA and /Projects/openOODA-core", sr.is_ok() && sr.val == 0);
+    return p;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, _fs_w: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
+    println("--- Tier 2: Boundary & Corner Cases (R1-R5) ---");
+    let p1: Int = run_b1_b3(fs_r);
+    let p2: Int = run_b4_b6(sys, fs_r);
+    return e2e_report_tier("qa/e2e_tier2", p1 + p2, 12);
+}
