@@ -152,7 +152,7 @@ fn rel_git_and_gh(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: St
     let slug: String = org + "/" + repo;
     let desc: String = eco_pkg_get(fs_r, repo_dir + "/ooda.pkg", "description");
     let notes_file: String = "/tmp/eco_rel_notes_" + repo + ".md";
-    let _wn: Result[Void, String] = fs_write_file(fs_w, notes_file, "## " + repo + " " + tag + "\n\n" + desc + "\n\n### Agent Provenance & Changes\n- **Agent / Model**: `" + def_agent + "`\n- **Workspace / Layer**: `" + ws_label + "`\n- **Binary SHA-256**: `" + sha + "`\n");
+    let _wn: Result[Void, String] = fs_write_file(fs_w, notes_file, "## " + repo + " " + tag + "\n\n" + desc + "\n\n### Agent Provenance & Changes\n");
     let priv_cmd: String = if org != "openOODA" {
         env_pfx + "gh api -X PATCH repos/" + slug + " -f private=true >/dev/null 2>&1 || true; "
     } else {
@@ -160,7 +160,8 @@ fn rel_git_and_gh(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: St
     };
     let mut gh_args: List[String] = list_new();
     gh_args = list_push(gh_args, "-c");
-    gh_args = list_push(gh_args, "csum=$(git -C " + repo_dir + " log -1 --oneline 2>/dev/null || echo '" + tag + "'); echo \"- **Changes**: \\`$csum\\`\" >> " + notes_file + "; "
+    gh_args = list_push(gh_args, "ag=\"${OODA_AGENT:-" + def_agent + "}\"; csum=$(git -C " + repo_dir + " log -1 --oneline 2>/dev/null || echo '" + tag + "'); "
+        + "printf '%s\\n' \"- **Agent / Model**: \\`$ag\\`\" \"- **Workspace / Layer**: \\`" + ws_label + "\\`\" \"- **Binary SHA-256**: \\`" + sha + "\\`\" \"- **Changes**: \\`$csum\\`\" >> " + notes_file + "; "
         + priv_cmd + env_pfx + "gh release view " + tag + " --repo " + slug + " >/dev/null 2>&1 && ("
         + env_pfx + "gh release upload " + tag + " " + bin_path + " " + sha_path + " --repo " + slug + " --clobber && "
         + env_pfx + "gh release edit " + tag + " --repo " + slug + " --notes-file " + notes_file + ") || "
