@@ -23,7 +23,7 @@
 import "std/core/text/num_buffer.oo";
 import "text/lines.oo";
 import "ci/template.oo";
-import "ci/steps.oo";
+import "ci/runner.oo";
 
 // The head of the release workflow file.
 pub fn ci_rel_head(repo: String) -> List[String] {
@@ -42,6 +42,8 @@ pub fn ci_rel_head(repo: String) -> List[String] {
     l = list_push(l, "  build:");
     l = list_push(l, "    name: Build the release asset");
     l = list_push(l, "    runs-on: ubuntu-latest");
+    l = list_push(l, "    outputs:");
+    l = list_push(l, "      toolchain: ${{ steps.toolchain.outputs.present }}");
     l = list_push(l, "    steps:");
     return l;
 }
@@ -54,16 +56,19 @@ pub fn ci_rel_checkout(repo: String) -> List[String] {
     l = list_push(l, "          path: " + repo);
     l = list_push(l, "");
     l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        continue-on-error: true");
     l = list_push(l, "        with:");
     l = list_push(l, "          repository: openOODA-core/oodac");
     l = list_push(l, "          path: oodac");
     l = list_push(l, "");
     l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        continue-on-error: true");
     l = list_push(l, "        with:");
     l = list_push(l, "          repository: openOODA-core/oodar");
     l = list_push(l, "          path: oodar");
     l = list_push(l, "");
     l = list_push(l, "      - uses: actions/checkout@v4");
+    l = list_push(l, "        continue-on-error: true");
     l = list_push(l, "        with:");
     l = list_push(l, "          repository: openOODA-core/std");
     l = list_push(l, "          path: std");
@@ -73,6 +78,7 @@ pub fn ci_rel_checkout(repo: String) -> List[String] {
     while i < list_len(extras) {
         let name: String = list_get(extras, i);
         l = list_push(l, "      - uses: actions/checkout@v4");
+        l = list_push(l, "        continue-on-error: true");
         l = list_push(l, "        with:");
         l = list_push(l, "          repository: openOODA-tools/" + name);
         l = list_push(l, "          path: " + name);
@@ -87,7 +93,19 @@ pub fn ci_rel_checkout(repo: String) -> List[String] {
 // is never published for a tool that fails its own contract.
 pub fn ci_rel_build(repo: String, upstream: String, package: String, binary: String, big: Bool) -> List[String] {
     let mut l: List[String] = list_new();
+    l = list_push(l, "      - name: Look for the toolchain of the runner");
+    l = list_push(l, "        id: toolchain");
+    l = list_push(l, "        working-directory: ${{ github.workspace }}");
+    l = list_push(l, "        run: |");
+    l = list_push(l, "          if [ -x \"${GITHUB_WORKSPACE}/oodac/bin/oodac\" ]; then");
+    l = list_push(l, "            echo \"present=true\" >> \"${GITHUB_OUTPUT}\"");
+    l = list_push(l, "          else");
+    l = list_push(l, "            echo \"present=false\" >> \"${GITHUB_OUTPUT}\"");
+    l = list_push(l, "            echo \"The openOODA-core toolchain is not on this runner. The release asset is published from the buildbox.\"");
+    l = list_push(l, "          fi");
+    l = list_push(l, "");
     l = list_push(l, "      - name: Require compiler and clang");
+    l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        working-directory: ${{ github.workspace }}");
     l = list_push(l, "        run: |");
     l = list_push(l, "          test -x oodac/bin/oodac || chmod +x oodac/bin/oodac");
@@ -95,6 +113,7 @@ pub fn ci_rel_build(repo: String, upstream: String, package: String, binary: Str
     l = list_push(l, "          command -v clang >/dev/null || { echo \"clang is required for the build\"; exit 1; }");
     l = list_push(l, "");
     l = list_push(l, "      - name: Build the oodar runtime");
+    l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        working-directory: ${{ github.workspace }}");
     l = list_push(l, "        run: make -C oodar/scripts -f Makefile modular");
     l = list_push(l, "");
@@ -104,6 +123,7 @@ pub fn ci_rel_build(repo: String, upstream: String, package: String, binary: Str
         while k < list_len(part) { l = list_push(l, list_get(part, k)); k = k + 1; }
     }
     l = list_push(l, "      - name: Build, verify, and test");
+    l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
     l = list_push(l, "        env:");
     l = list_push(l, "          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac");
@@ -128,6 +148,7 @@ pub fn ci_rel_build(repo: String, upstream: String, package: String, binary: Str
 pub fn ci_rel_stage(repo: String) -> List[String] {
     let mut l: List[String] = list_new();
     l = list_push(l, "      - name: Stage the release asset");
+    l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        working-directory: ${{ github.workspace }}");
     l = list_push(l, "        run: |");
     l = list_push(l, "          test -x " + repo + "/dist/" + repo + " || { echo \"::error::dist/" + repo + " was not produced\"; exit 1; }");
@@ -159,6 +180,7 @@ pub fn ci_rel_publish(repo: String) -> List[String] {
     let mut l: List[String] = list_new();
     l = list_push(l, "  publish:");
     l = list_push(l, "    needs: build");
+    l = list_push(l, "    if: needs.build.outputs.toolchain == 'true'");
     l = list_push(l, "    uses: openOODA/openOODA/.github/workflows/auto-release.yml@master");
     l = list_push(l, "    with:");
     l = list_push(l, "      target_tag: ${{ github.ref_name }}");

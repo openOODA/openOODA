@@ -1,0 +1,67 @@
+// # Fleet Network - Writes The Workflow Of The Gate Of The Whole Fleet Again
+//
+// Logline: Writes the workflow of the gate of every tool of the fleet again, puts the static governance gates in every Makefile that lacks them, and lands the repair.
+//
+// Setup: Needs ProcessCap, FsReadCap, FsWriteCap and EnvCap.
+//
+// Beats:
+//   1. Read the fleet root, the organization and the table of the upstreams from the environment.
+//   2. Write the workflow of the gate of one tool and land it.
+//   3. Write the gate of the whole fleet.
+//
+// Usage: fleetwork <tool>...
+//
+// The toolchain of the fleet lives in the openOODA-core organization, and that
+// organization is private. A runner reads no private repository of another
+// organization, so the checkout of the toolchain answers that it is not found
+// and the gate of the fleet used to die there. The workflow of the gate looks
+// for the toolchain now and falls back to the static governance gates when
+// the runner holds none, and the gates of the fleet are the same for every
+// tool.
+
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "parity/mapping.oo";
+import "fleetwork/net_run.oo";
+
+// Read one environment value with a fallback. The runtime only hands out the
+// names that begin with OODA_ or OO_, so every setting of the tool is named
+// that way.
+fn nw_env(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return fallback;
+}
+
+// Read the table of the upstreams of the fleet. The table of the organization
+// is the truth, and the backlog holds the tools the table does not name.
+fn nw_rows(fs_r: &FsReadCap, profile: String, backlog: String) -> List[String] {
+    let mut rows: List[String] = parity_map_rows(fs_r, profile);
+    let extra: List[String] = parity_map_rows(fs_r, backlog);
+    let mut i: Int = 0;
+    while i < list_len(extra) {
+        rows = list_push(rows, list_get(extra, i));
+        i = i + 1;
+    }
+    return rows;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let fleet: String = nw_env(env, "OODA_FLEET_DIR", "/Projects/openOODA-tools");
+    let cache: String = nw_env(env, "OODA_FLEET_CACHE", "/var/lib/ooda-buildbox/cache/net");
+    let profile: String = nw_env(env, "OODA_PROFILE", "/Projects/openOODA-tools/.github/profile/README.md");
+    let backlog: String = nw_env(env, "OODA_BACKLOG", "/Projects/openOODA/openOODA/docs/tools-backlog.oot");
+    let _mc: Result[Void, String] = fs_mkdir_p(fs_w, cache);
+    let rows: List[String] = nw_rows(fs_r, profile, backlog);
+    let mut rc: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        let tool: String = list_get(args, i);
+        i = i + 1;
+        let r: Int = nw_one(sys, fs_r, fs_w, cache, fleet, tool, rows);
+        if r != 0 { rc = r; }
+    }
+    println("done tools=" + int_to_str(list_len(args)) + " failed=" + int_to_str(rc));
+    return rc;
+}

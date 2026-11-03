@@ -10,7 +10,6 @@
 
 import "std/core/text/num_buffer.oo";
 import "text/lines.oo";
-import "ci/steps.oo";
 import "ci/packages.oo";
 import "ci/runner.oo";
 
@@ -19,6 +18,7 @@ import "ci/runner.oo";
 pub fn ci_build(repo: String, big: Bool) -> List[String] {
     let mut l: List[String] = list_new();
     l = list_push(l, "      - name: Require a build target");
+    l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
     l = list_push(l, "        run: |");
     l = list_push(l, "          if ! grep -qE '^build[[:space:]]*:' Makefile; then");
@@ -27,6 +27,7 @@ pub fn ci_build(repo: String, big: Bool) -> List[String] {
     l = list_push(l, "          fi");
     l = list_push(l, "");
     l = list_push(l, "      - name: Build the tool");
+    l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
     l = list_push(l, "        env:");
     l = list_push(l, "          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac");
@@ -37,6 +38,7 @@ pub fn ci_build(repo: String, big: Bool) -> List[String] {
     l = list_push(l, "        run: make build");
     l = list_push(l, "");
     l = list_push(l, "      - name: Require the tool binary");
+    l = list_push(l, "        if: always() && steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        if: always()");
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
     l = list_push(l, "        run: |");
@@ -59,6 +61,7 @@ pub fn ci_verify(repo: String, big: Bool) -> List[String] {
     i = 0;
     while i < list_len(part) { l = list_push(l, list_get(part, i)); i = i + 1; }
     l = list_push(l, "      - name: Pure test audit");
+    l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
     l = list_push(l, "        run: |");
     l = list_push(l, "          if make -n pure >/dev/null 2>&1; then");
@@ -92,6 +95,7 @@ pub fn ci_install_upstream(upstream: String, package: String, binary: String) ->
     let mut l: List[String] = list_new();
     let install: String = ci_package_install(upstream);
     l = list_push(l, "      - name: Install the upstream tool");
+    l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        working-directory: ${{ github.workspace }}");
     l = list_push(l, "        run: |");
     l = list_push(l, "          if ! command -v " + upstream + " >/dev/null 2>&1; then");
@@ -176,5 +180,8 @@ pub fn ci_workflow(repo: String, upstream: String, package: String, target: Stri
         i = 0;
         while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
     }
+    part = ci_static_gates(repo);
+    i = 0;
+    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
     return text_join_lines(all) + "\n";
 }

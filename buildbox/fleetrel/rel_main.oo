@@ -1,0 +1,97 @@
+// # Fleet Release - Publishes The Release Of Every Tool Of The Fleet
+//
+// Logline: Runs the release of the organization for every tool of the fleet that is named, and names the tools whose release did not land.
+//
+// Setup: Needs ProcessCap, FsReadCap and EnvCap.
+//
+// Beats:
+//   1. Read the organization, the fleet root, the release tool and the release of the fleet from the environment.
+//   2. Read the version that one tool carries.
+//   3. Publish the release of one tool.
+//   4. Publish the release of every tool that is named.
+//
+// Usage: fleetrel <tool>[@<version>]...
+//
+// The version of a tool is the version that the tool carries, so a tool that
+// was published above the release of the fleet keeps its own line. A name
+// that carries a version names that version.
+//
+// The release is published from this machine, because the toolchain of the
+// organization is private and the runner of the organization reads no private
+// repository of another organization. The release tool builds the tool, proves
+// it with its own tests and with the parity gate, and lands the release on
+// the default branch, on the master branch and on the tag of the release.
+
+import "std/core/primitives/str.oo";
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "text/lines.oo";
+
+// Read one environment value with a fallback. The runtime only hands out the
+// names that begin with OODA_ or OO_, so every setting of the tool is named
+// that way.
+fn fr_env(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return fallback;
+}
+
+// The version that one tool carries. The answer is empty when the tool
+// carries no version at all.
+fn fr_version(fs_r: &FsReadCap, fleet: String, tool: String) -> String {
+    let r: Result[String, String] = fs_read_file(fs_r, fleet + "/" + tool + "/VERSION");
+    if r.is_err() { return ""; }
+    return text_trim(r.val);
+}
+
+// Split the name of one tool from the version that is named with it. The
+// answer holds the name of the tool.
+fn fr_tool(name: String) -> String {
+    let parts: List[String] = text_split_lines(str_replace(name, "@", "\n"));
+    if list_len(parts) == 0 { return name; }
+    return list_get(parts, 0);
+}
+
+// The version that is named with the name of one tool. The answer is empty
+// when the name carries no version.
+fn fr_named_version(name: String) -> String {
+    let parts: List[String] = text_split_lines(str_replace(name, "@", "\n"));
+    if list_len(parts) < 2 { return ""; }
+    return list_get(parts, 1);
+}
+
+// Publish the release of one tool. The answer holds zero when the release
+// landed.
+fn fr_one(sys: &ProcessCap, fs_r: &FsReadCap, org: String, fleet: String, tool: String, named: String, version: String, bin: String) -> Int {
+    let v: String = if named != "" { named } else { version };
+    if v == "" { println(tool + " NO-VERSION"); return 1; }
+    let mut a: List[String] = list_new();
+    a = list_push(a, org);
+    a = list_push(a, tool);
+    a = list_push(a, v);
+    let r: Result[Int, String] = sys_exec_wait(sys, bin, a);
+    if r.is_err() { println(tool + " RELEASE-ERROR"); return 1; }
+    if r.val != 0 { println(tool + " RELEASE-FAIL"); return 1; }
+    println(tool + " RELEASED " + v);
+    return 0;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, args: List[String]) -> Int {
+    let org: String = fr_env(env, "OODA_ORG", "openOODA-tools");
+    let fleet: String = fr_env(env, "OODA_FLEET_DIR", "/Projects/openOODA-tools");
+    let bin: String = fr_env(env, "OODA_RELEASE_BIN", "/var/lib/ooda-buildbox/build/bin/eco-release");
+    let mut rc: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        let name: String = list_get(args, i);
+        i = i + 1;
+        let tool: String = fr_tool(name);
+        let named: String = fr_named_version(name);
+        let version: String = fr_version(fs_r, fleet, tool);
+        let r: Int = fr_one(sys, fs_r, org, fleet, tool, named, version, bin);
+        if r != 0 { rc = r; }
+    }
+    println("done tools=" + int_to_str(list_len(args)) + " failed=" + int_to_str(rc));
+    return rc;
+}

@@ -1,0 +1,155 @@
+// # Fleet Network Run - Writes The Workflow Of The Gate Of One Tool Again
+//
+// Logline: Writes the workflow of the gate of one tool again, puts the canonical static governance gates in the Makefile of the tool, and lands the repair.
+//
+// Setup: Needs ProcessCap for git, FsReadCap and FsWriteCap for the files.
+//
+// Beats:
+//   1. Bring the default branch of one tool back from the origin.
+//   2. Write the workflow of the gate of one tool and the workflow of its release.
+//   3. Put the canonical static governance gates in the Makefile of one tool.
+//   4. Land the repair on the default branch and on the master branch.
+//
+// The toolchain of the fleet lives in another organization and that
+// organization is private. The workflow of the gate therefore looks for the
+// toolchain on the runner and falls back to the static governance gates when
+// the runner holds none, so the gate of a tool stays a gate.
+
+import "std/core/primitives/str.oo";
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+import "fleetctl/shell.oo";
+import "parity/mapping.oo";
+import "ci/apply.oo";
+import "ci/makefile.oo";
+import "fleetwork/net_law.oo";
+
+// The name of the agent that writes the repair, and the marker that the
+// commit of the repair carries in its body.
+pub fn nw_agent() -> String {
+    return "m3.1-flash";
+}
+
+// The body of the commit of the repair. The marker of the agent stands in
+// the body of the message, and the message carries no trailer of any other
+// writer.
+pub fn nw_body() -> String {
+    return "[agent: " + nw_agent() + "]";
+}
+
+// The subject of the commit of the repair.
+pub fn nw_message(tool: String) -> String {
+    return "chore(ci): the gates of " + tool + " are one shape and fail closed";
+}
+
+// Run a git command in the repository of one tool. The answer tells whether
+// the command left the code zero.
+fn nw_git(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, args: List[String]) -> Bool {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        a = list_push(a, list_get(args, i));
+        i = i + 1;
+    }
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    return fc_code(fs_r, cache) == 0;
+}
+
+// Bring the default branch of one tool back from the origin and put it on the
+// working tree. The answer tells whether the branch is there.
+fn nw_checkout(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String) -> Bool {
+    let mut f: List[String] = list_new();
+    f = list_push(f, "fetch");
+    f = list_push(f, "--quiet");
+    f = list_push(f, "--force");
+    f = list_push(f, "origin");
+    if !nw_git(sys, fs_r, cache, repo, f) { return false; }
+    let mut c: List[String] = list_new();
+    c = list_push(c, "checkout");
+    c = list_push(c, "-q");
+    c = list_push(c, "-B");
+    c = list_push(c, "main");
+    c = list_push(c, "origin/main");
+    return nw_git(sys, fs_r, cache, repo, c);
+}
+
+// Report whether the working tree of one tool holds a change.
+fn nw_dirty(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String) -> Bool {
+    let mut s: List[String] = list_new();
+    s = list_push(s, "status");
+    s = list_push(s, "--porcelain");
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    let mut i: Int = 0;
+    while i < list_len(s) { a = list_push(a, list_get(s, i)); i = i + 1; }
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    return text_trim(fc_all(fs_r, cache)) != "";
+}
+
+// Land the repair of one tool. The answer holds zero when the repair landed.
+// The commit carries the marker of the agent in its body and the name of the
+// owner as its author, and it carries no trailer of any other writer.
+fn nw_land(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, tool: String) -> Int {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "add");
+    a = list_push(a, "-A");
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    let mut c: List[String] = list_new();
+    c = list_push(c, "-C");
+    c = list_push(c, repo);
+    c = list_push(c, "commit");
+    c = list_push(c, "-q");
+    c = list_push(c, "--author");
+    c = list_push(c, "UberMetroid <jerydleuck@gmail.com>");
+    c = list_push(c, "-m");
+    c = list_push(c, nw_message(tool));
+    c = list_push(c, "-m");
+    c = list_push(c, nw_body());
+    let _o2: String = fc_run(sys, fs_r, cache, "git", c);
+    if fc_code(fs_r, cache) != 0 { println(tool + " COMMIT-FAIL"); return 1; }
+    let mut p: List[String] = list_new();
+    p = list_push(p, "-C");
+    p = list_push(p, repo);
+    p = list_push(p, "push");
+    p = list_push(p, "--quiet");
+    p = list_push(p, "origin");
+    p = list_push(p, "main:refs/heads/main");
+    let _o3: String = fc_run(sys, fs_r, cache, "git", p);
+    if fc_code(fs_r, cache) != 0 { println(tool + " PUSH-FAIL"); return 1; }
+    let mut p2: List[String] = list_new();
+    p2 = list_push(p2, "-C");
+    p2 = list_push(p2, repo);
+    p2 = list_push(p2, "push");
+    p2 = list_push(p2, "--quiet");
+    p2 = list_push(p2, "origin");
+    p2 = list_push(p2, "main:refs/heads/master");
+    let _o4: String = fc_run(sys, fs_r, cache, "git", p2);
+    if fc_code(fs_r, cache) != 0 { println(tool + " PUSH-FAIL"); return 1; }
+    println(tool + " REPAIRED");
+    return 0;
+}
+
+// Write the workflow of the gate of one tool, put the canonical static
+// governance gates in its Makefile, and land the repair on both default
+// branches. The answer holds zero when the repair landed.
+pub fn nw_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, tool: String, rows: List[String]) -> Int {
+    let repo: String = fleet + "/" + tool;
+    if !path_exists(fs_r, repo + "/.git") { println(tool + " NO-REPO"); return 1; }
+    if !nw_checkout(sys, fs_r, cache, repo) { println(tool + " CHECKOUT-FAIL"); return 1; }
+    let upstream: String = parity_map_lookup(rows, tool);
+    let _v: Int = nw_fix_vocab(fs_r, fs_w, repo);
+    let _d: Int = nw_remove_dead(fs_r, fs_w, repo);
+    let _c: Int = nw_clean_strays(fs_r, fs_w, repo);
+    let _w: Bool = ci_apply_workflow(fs_r, fs_w, repo, tool, upstream);
+    let _r: Bool = ci_apply_release(fs_r, fs_w, repo, tool, upstream);
+    let _m: Bool = ci_mk_patch(fs_r, fs_w, repo + "/Makefile");
+    let _l: Bool = nw_law_patch(sys, fs_r, fs_w, cache, repo);
+    if !nw_dirty(sys, fs_r, cache, repo) { println(tool + " NO-CHANGE"); return 0; }
+    return nw_land(sys, fs_r, cache, repo, tool);
+}

@@ -70,7 +70,7 @@ fn rel_ensure_ci_and_det(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String) 
     let cur_ci: String = eco_read_trimmed(fs_r, wf_path);
     if !path_exists(fs_r, wf_path) || !str_contains(cur_ci, "openOODA-core/oodac") {
         let _mk: Result[Void, String] = fs_mkdir_p(fs_w, wf_dir);
-        let ci_body: String = "name: ci\non:\n  push:\n    branches: [main, master]\n  pull_request:\njobs:\n  verify:\n    name: Fleet gate\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Bootstrap openOODA toolchain when not on self-hosted runner\n        run: |\n          if [ ! -x /Projects/openOODA-core/oodac/bin/oodac ]; then\n            sudo mkdir -p /Projects/openOODA-core && sudo chown -R \"$(id -u):$(id -g)\" /Projects\n            git clone --depth=1 https://github.com/openOODA-core/oodac.git /Projects/openOODA-core/oodac\n            git clone --depth=1 https://github.com/openOODA-core/oodar.git /Projects/openOODA-core/oodar\n            git clone --depth=1 https://github.com/openOODA-core/std.git /Projects/openOODA-core/std\n          fi\n      - name: Static governance gates and compiler verification\n        env:\n          OODA_COMPILER: /Projects/openOODA-core/oodac/bin/oodac\n          OODA_NO_JAIL: \"1\"\n          OODA_FS_READDIR: /Projects\n          OODA_FS_WRITEDIR: /Projects:/tmp\n        run: |\n          if [ -x \"${OODA_COMPILER}\" ]; then\n            make build verify test det\n          else\n            make line-cap file-law academy density vocab\n          fi\n";
+        let ci_body: String = "name: ci\non:\n  push:\n    branches: [main, master]\n  pull_request:\njobs:\n  verify:\n    name: Fleet gate\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Bootstrap openOODA toolchain when not on self-hosted runner\n        run: |\n          if [ ! -x /Projects/openOODA-core/oodac/bin/oodac ]; then\n            sudo mkdir -p /Projects/openOODA-core && sudo chown -R \"$(id -u):$(id -g)\" /Projects\n            git clone --depth=1 https://github.com/openOODA-core/oodac.git /Projects/openOODA-core/oodac\n            git clone --depth=1 https://github.com/openOODA-core/oodar.git /Projects/openOODA-core/oodar\n            git clone --depth=1 https://github.com/openOODA-core/std.git /Projects/openOODA-core/std\n          fi\n      - name: Static governance gates and compiler verification\n        env:\n          OODA_COMPILER: /Projects/openOODA-core/oodac/bin/oodac\n          OODA_NO_JAIL: \"1\"\n          OODA_FS_READDIR: /Projects\n          OODA_FS_WRITEDIR: /Projects:/tmp\n        run: |\n          if [ -x \"${OODA_COMPILER}\" ]; then\n            make build verify test det\n          else\n            make line-cap file-law academy density vocab shape\n          fi\n";
         let _w: Result[Void, String] = fs_write_file(fs_w, wf_path, ci_body);
     }
     let gi_path: String = repo_dir + "/.gitignore";
@@ -114,7 +114,7 @@ fn rel_org_agent(org: String) -> String {
     if org == "openOODA-core" { return "vibe (GLM-5.3 [high])"; }
     if org == "openOODA-kernel" { return "vibe (GLM-5.3 [high])"; }
     if org == "openOODA-OS" { return "grok (Grok 4.7 [high])"; }
-    if org == "openOODA-tools" { return "mcode (M3.1-Flash)"; }
+    if org == "openOODA-tools" { return "m3.1-flash"; }
     if org == "openOODA-DE" { return "vibe (GLM-5.3 [high])"; }
     if org == "openOODA-apps" { return "devin (SWE-2 Max)"; }
     if org == "openOODA-cloud" { return "mcode (M3.1-Flash)"; }
@@ -140,7 +140,7 @@ fn rel_git_and_gh(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: St
     let ws_label: String = rel_org_ws(org);
     let mut g_args: List[String] = list_new();
     g_args = list_push(g_args, "-c");
-    g_args = list_push(g_args, "ag=\"${OODA_AGENT:-" + def_agent + "}\"; if [ -n \"$(git -C " + repo_dir + " status --porcelain)\" ]; then git -C " + repo_dir + " add -A && " + env_pfx + "git -C " + repo_dir + " commit -q -m \"release(" + repo + "): " + tag + " [agent: $ag]\"; fi; "
+    g_args = list_push(g_args, "ag=\"${OODA_AGENT:-" + def_agent + "}\"; if [ -n \"$(git -C " + repo_dir + " status --porcelain)\" ]; then git -C " + repo_dir + " add -A && " + env_pfx + "git -C " + repo_dir + " commit -q -m \"release(" + repo + "): " + tag + "\" -m \"[agent: $ag]\"; fi; "
         + "csum=$(git -C " + repo_dir + " log -1 --oneline 2>/dev/null || echo '" + tag + "'); "
         + env_pfx + "git -C " + repo_dir + " push -q origin HEAD:refs/heads/master || true; "
         + env_pfx + "git -C " + repo_dir + " push -q origin HEAD:refs/heads/main || true; "
