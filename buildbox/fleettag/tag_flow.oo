@@ -1,0 +1,80 @@
+// # Fleet Tag Flow - Puts The Release Tags Of A Tool Back On The Default Branch
+//
+// Logline: Moves every release tag of a repository that points away from the default branch onto the commit of the default branch that names the same version.
+//
+// Setup: Needs ProcessCap for git, FsReadCap and FsWriteCap for the files.
+//
+// Beats:
+//   1. Move one tag of a repository onto one commit and push it.
+//   2. Put every tag of a repository back on the default branch.
+//
+// A tag that names a version the default branch never carried is left alone,
+// because the tool cannot know which commit the owner meant. The report
+// names every such tag, so the owner can decide.
+
+import "std/core/text/num_buffer.oo";
+import "fleetctl/shell.oo";
+import "fleettag/tag_scan.oo";
+
+// Move one tag of a repository onto one commit and push the move.
+fn ft_move(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, tag: String, commit: String) -> Bool {
+    let mut t: List[String] = list_new();
+    t = list_push(t, "-C");
+    t = list_push(t, repo);
+    t = list_push(t, "tag");
+    t = list_push(t, "-f");
+    t = list_push(t, tag);
+    t = list_push(t, commit);
+    let _o: String = fc_run(sys, fs_r, cache, "git", t);
+    if fc_code(fs_r, cache) != 0 { return false; }
+    let mut p: List[String] = list_new();
+    p = list_push(p, "-C");
+    p = list_push(p, repo);
+    p = list_push(p, "push");
+    p = list_push(p, "-q");
+    p = list_push(p, "--force");
+    p = list_push(p, "origin");
+    p = list_push(p, "refs/tags/" + tag);
+    let _o2: String = fc_run(sys, fs_r, cache, "git", p);
+    return fc_code(fs_r, cache) == 0;
+}
+
+// Put every tag of a repository back on the default branch. The answer holds
+// the number of the tags that were moved, and the tool prints the tags that
+// were left alone and why.
+pub fn ft_fix_one(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, name: String) -> Int {
+    let mut f: List[String] = list_new();
+    f = list_push(f, "-C");
+    f = list_push(f, repo);
+    f = list_push(f, "fetch");
+    f = list_push(f, "-q");
+    f = list_push(f, "--tags");
+    f = list_push(f, "origin");
+    let _o: String = fc_run(sys, fs_r, cache, "git", f);
+    let tags: List[String] = ft_tags(sys, fs_r, cache, repo);
+    let mut moved: Int = 0;
+    let mut left: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(tags) {
+        let tag: String = list_get(tags, i);
+        i = i + 1;
+        let commit: String = ft_commit_of(sys, fs_r, cache, repo, tag);
+        if commit == "" { continue; }
+        if ft_on_main(sys, fs_r, cache, repo, commit) { continue; }
+        let version: String = str_slice(tag, 1, chars_len(tag));
+        let target: String = ft_find_version(sys, fs_r, cache, repo, version);
+        if target == "" {
+            left = left + 1;
+            println(name + " " + tag + " LEFT-ALONE the default branch never carried " + version);
+            continue;
+        }
+        if ft_move(sys, fs_r, cache, repo, tag, target) {
+            moved = moved + 1;
+            println(name + " " + tag + " MOVED to " + str_slice(target, 0, 7));
+        } else {
+            left = left + 1;
+            println(name + " " + tag + " FAILED the push of the move");
+        }
+    }
+    return moved;
+}

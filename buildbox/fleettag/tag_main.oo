@@ -1,0 +1,74 @@
+// # Fleet Tag Fix - Puts The Release Tags Of The Fleet Back On The Default Branch
+//
+// Logline: Moves the release tags of the fleet that point away from the default branch onto the commit that names the same version.
+//
+// Setup: Needs ProcessCap, FsReadCap, FsWriteCap and EnvCap.
+//
+// Beats:
+//   1. Read the fleet root and the organization from the environment.
+//   2. Put the tags of one tool back on the default branch.
+//   3. Report the number of the tags that were moved and the number of the tags that were left alone.
+//
+// Usage: fleettag <tool>...
+//
+// The tool names no tool when it sweeps the whole fleet. A tag that names a
+// version the default branch never carried is left alone, because nobody can
+// tell which commit the owner meant, and the report names every such tag.
+
+import "std/core/text/num_buffer.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "fleettag/tag_flow.oo";
+
+// Read one environment value with a fallback. The runtime only hands out the
+// names that begin with OODA_ or OO_, so every setting of the tool is named
+// that way.
+fn ft_env(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return fallback;
+}
+
+// The tools of the fleet.
+fn ft_tools(fs_r: &FsReadCap, fleet: String) -> List[String] {
+    let entries: List[String] = fs_read_dir(fs_r, fleet);
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(entries) {
+        let name: String = list_get(entries, i);
+        i = i + 1;
+        if !str_starts_with(name, "oo") { continue; }
+        if !path_exists(fs_r, fleet + "/" + name + "/.git") { continue; }
+        out = list_push(out, name);
+    }
+    return out;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let fleet: String = ft_env(env, "OODA_FLEET_DIR", "/home/ubermetroid/fleet-clean");
+    let cache: String = ft_env(env, "OODA_FLEET_CACHE", "/var/lib/ooda-buildbox/cache/tag");
+    let _mc: Result[Void, String] = fs_mkdir_p(fs_w, cache);
+    let mut tools: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        tools = list_push(tools, list_get(args, i));
+        i = i + 1;
+    }
+    if list_len(tools) == 0 { tools = ft_tools(fs_r, fleet); }
+    let mut moved: Int = 0;
+    let mut left: Int = 0;
+    i = 0;
+    while i < list_len(tools) {
+        let name: String = list_get(tools, i);
+        i = i + 1;
+        let repo: String = fleet + "/" + name;
+        if !path_exists(fs_r, repo + "/.git") {
+            println(name + " NO-CLONE");
+            continue;
+        }
+        let n: Int = ft_fix_one(sys, fs_r, cache, repo, name);
+        moved = moved + n;
+    }
+    println("tools=" + int_to_str(list_len(tools)) + " moved=" + int_to_str(moved));
+    return 0;
+}
