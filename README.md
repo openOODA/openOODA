@@ -8,67 +8,37 @@
       /_/                   \___/ \___/|____/_/   \_\
 </pre>
 
-### openOODA — Primary Systems Language for the AI Era
+### openOODA — Capability-Secure Computing Stack for the AI Era (Stealth Pre-Release)
 
-[openooda.org](https://openooda.org)
+[openooda.org](https://openooda.org) • [@openOODA](https://github.com/openOODA)
 
 </div>
 
 ---
 
-## This repo: openOODA
+> **Status: Stealth Mode (Private Pre-Release Development)**
+>
+> `openOODA` is currently in private pre-release development across Layers 0 through 7 and is not publicly released yet. Keep an eye on [openooda.org](https://openooda.org) and [@openOODA](https://github.com/openOODA) for our upcoming public launch.
 
-Strategic governance, RFCs, and the 24 laws. The front door.
+## About openOODA
 
-## Install
+**openOODA** is an AI-native, capability-secured, fail-closed computing stack built from first principles across eight unified layers (`L0`–`L7`).
 
-```sh
-curl -fsSL https://openooda.org/install.sh | bash
-```
+In conventional systems, imported libraries and autonomous routines inherit the full ambient privileges of the user running the process. **openOODA** eliminates ambient authority across the entire stack: every external effect requires an explicit, unforgeable capability token verified at compile time and enforced at runtime by hardware and kernel isolation boundaries.
 
-## Docs
+## The Unified 8-Layer Architecture (`L0`–`L7`)
 
-All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://github.com/openOODA/openOODA) or at [openooda.org](https://openooda.org).
-
-## Testing & Quality Assurance
-
-The ecosystem enforces a tiered, sovereign testing model driven by `cli qa`:
-- **Repository Probes**: Hermetic, self-contained probes in each repository's `qa/` suite run via `cli qa` (or `cli qa --all` for the full polyrepo).
-- **Test Lifecycle Governance**: Automated test auditing and dead-code prevention via `qa/audit_tests.py`. Tests support standardized lifecycle annotations:
-  - `// @status: deprecated`
-  - `// @deprecated_at: YYYY-MM-DD`
-  - `// @reason: <rationale>`
-  - `// @superseded_by: <path>`
-- **Pruning & Maintenance**: Automated discovery and retirement of orphaned, tautological, or expired tests using `python3 qa/audit_tests.py --prune`.
-- **Architectural Guardrails**: Strict compliance with `AGENTS.md` House Laws (16–256 lines/page, $\le 8$ pages/directory, $\le 40$ lines/function, peak RSS $\le 64\text{ MB}$, check CPU time $\le 3.0\text{s}$, and bit-identical double-run determinism).
-
-## Strategic Architecture Pillars
-
-- **Pillar 1: Asymmetric Performance ($T$) — Compile-Time Bounds Elision (RFC 0002)**: SMT QF_LIA verification conditions mathematically prove index bounds at compile time; unchecked LLVM IR emission bypasses runtime boundary branches while maintaining fail-closed safety.
-- **Pillar 2: Weight Subtraction ($W$) — Parameterized Generics Rollout (RFC 0009)**: Monomorphization pipeline in `oodac` eliminates redundant monomorphic duplicates across `std/core/collection/` (`List[T]`, `Map[K, V]`, `Set[T]`).
-- **Pillar 3: Frictionless Physics ($F$) — Zero-Copy GPU Dispatch & AVX-512 Lowering (RFC 0014)**: Direct capability-gated unified memory dispatch with 64-byte aligned bump arenas and hardware-accelerated vector SIMD intrinsics.
-- **Pillar 4: Autonomous Coordination ($C$) — Actor Channels without GC (RFC 0019)**: Lock-free bounded actor channels with zero-copy ownership transfer and private thread arenas, forbidding shared mutable state (`&mut T`) across actor boundaries.
-- **Pillar 5: Agent-Native Self-Healing Ecosystem (RFC 0022)**: Rich LSP verification status hovers and single-turn automated repair via `cli fix` reading `.blackbox/autopsy.json`.
-- **Pillar 6: Universal Governance & Verification Discipline (RFC 0006)**: Bit-identical double-run determinism gate across all polyrepos, rigid House Laws sizing (16–256 lines/page), and full binary parity verification (`sha256sum ~/.openooda/bin/<tool> == sha256sum dist/<tool>`).
-
-## The Polyrepo
-
-| Repo | Purpose |
-|------|---------|
-| [openOODA/openOODA](https://github.com/openOODA/openOODA) | Governance, RFCs, laws |
-| [openOODA-core/oodar](https://github.com/openOODA-core/oodar) | Runtime substrate |
-| [openOODA-core/oodac](https://github.com/openOODA-core/oodac) | Compiler |
-| [openOODA-core/std](https://github.com/openOODA-core/std) | Standard library |
-| [openOODA-core/ooda](https://github.com/openOODA-core/ooda) | `ooda` workflow driver |
-| [openOODA/install](https://github.com/openOODA/install) | How the toolchain lands (install.sh, apt, dnf, pacman) |
-| [openOODA-core/opm](https://github.com/openOODA-core/opm) | Package manager |
-| [openOODA/catalog](https://github.com/openOODA/catalog) | Public package catalog |
-| [openOODA-core/lsp](https://github.com/openOODA-core/lsp) | Language Server Protocol daemon |
-| [openOODA-core/cli](https://github.com/openOODA-core/cli) | Sovereign developer driver (build, test, fmt, qa) |
-| [openOODA-core/mcp](https://github.com/openOODA-core/mcp) | MCP server, flight recording, and telemetry engine |
-| [openOODA-core/tui](https://github.com/openOODA-core/tui) | Interactive terminal UI and coding harness |
-| [openOODA/website](https://github.com/openOODA/website) | Website source |
-| [openOODA/.github](https://github.com/openOODA/.github) | Org profile, shared community files, workflows |
+| Layer | Domain | Architectural Focus | Status |
+| :--- | :--- | :--- | :---: |
+| **Root (`@openOODA`)** | **Umbrella & Portal** | Public portal, architectural standards, and release announcements ([openooda.org](https://openooda.org)) | **Public** |
+| **Layer 0 (`L0`)** | **Core Language & Toolchain** | Capability-secure systems language, self-hosting native compiler, deterministic standard library, and developer tooling | *Stealth (Private)* |
+| **Layer 1 (`L1`)** | **Microkernel & Drivers** | Capability microkernel, hardware abstraction layers, IOMMU DMA isolation, and user-space device drivers | *Stealth (Private)* |
+| **Layer 2 (`L2`)** | **Zero-Root Operating System** | Least-privilege system services, capability filesystems, networking stack, and isolated compatibility realms | *Stealth (Private)* |
+| **Layer 3 (`L3`)** | **Userland Toolchain** | Capability-scoped command-line utilities, structured data pipelines, and system inspection tools | *Stealth (Private)* |
+| **Layer 4 (`L4`)** | **Desktop Environment** | Capability compositor, spatial window management, interactive privacy portals, and visual authority indicators | *Stealth (Private)* |
+| **Layer 5 (`L5`)** | **Native Applications** | Productivity, creative, communication, and engineering applications with zero ambient tracking | *Stealth (Private)* |
+| **Layer 6 (`L6`)** | **Distributed Cloud Grid** | Content-addressed storage, encrypted mesh networking, cluster scheduling, and distributed compute | *Stealth (Private)* |
+| **Layer 7 (`L7`)** | **Autonomous OODA Loops** | Capability-bounded Observe–Orient–Decide–Act engines, formal verification workflows, and fleet governance | *Stealth (Private)* |
 
 ## License
 

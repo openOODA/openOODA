@@ -62,6 +62,17 @@ fn sy_tools(fs_r: &FsReadCap, fleet: String) -> List[String] {
     return out;
 }
 
+// Split one name of a tool into the tool and the release it moves to. A name
+// that names no release moves to the release of the fleet.
+fn sy_split(arg: String) -> List[String] {
+    let at: Int = str_index_of(arg, "@");
+    if at < 0 { return list_push(list_new(), arg); }
+    let mut out: List[String] = list_new();
+    out = list_push(out, str_slice(arg, 0, at));
+    out = list_push(out, str_slice(arg, at + 1, chars_len(arg)));
+    return out;
+}
+
 // Land the release of one tool on both default branches of the origin. The
 // answer is zero when the release landed.
 pub fn sy_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String, branch: String, src: String, ver: String, rows: List[String]) -> Int {
@@ -93,22 +104,32 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     let _mw: Result[Void, String] = fs_mkdir_p(fs_w, work);
     let rows: List[String] = sy_rows(fs_r, profile, backlog);
     let mut tools: List[String] = list_new();
+    let mut vers: List[String] = list_new();
     if list_len(args) > 0 {
         let mut i: Int = 0;
         while i < list_len(args) {
-            tools = list_push(tools, list_get(args, i));
+            let pair: List[String] = sy_split(list_get(args, i));
             i = i + 1;
+            if list_len(pair) == 0 { continue; }
+            tools = list_push(tools, list_get(pair, 0));
+            if list_len(pair) > 1 { vers = list_push(vers, list_get(pair, 1)); } else { vers = list_push(vers, ver); }
         }
     } else {
         tools = sy_tools(fs_r, fleet);
+        let mut i: Int = 0;
+        while i < list_len(tools) {
+            vers = list_push(vers, ver);
+            i = i + 1;
+        }
     }
     println("tools=" + int_to_str(list_len(tools)) + " version=" + ver + " branch=" + branch);
     let mut rc: Int = 0;
     let mut i: Int = 0;
     while i < list_len(tools) {
         let t: String = list_get(tools, i);
+        let v: String = list_get(vers, i);
         i = i + 1;
-        let r: Int = sy_one(sys, fs_r, fs_w, cache, work, org, t, branch, src, ver, rows);
+        let r: Int = sy_one(sys, fs_r, fs_w, cache, work, org, t, branch, src, v, rows);
         if r != 0 { rc = r; }
     }
     println("done tools=" + int_to_str(list_len(tools)) + " failed=" + int_to_str(rc));

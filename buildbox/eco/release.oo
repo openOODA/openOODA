@@ -125,9 +125,14 @@ fn rel_git_and_gh(sys: &ProcessCap, fs_r: &FsReadCap, org: String, repo_dir: Str
     let slug: String = org + "/" + repo;
     let desc: String = eco_pkg_get(fs_r, repo_dir + "/ooda.pkg", "description");
     let notes: String = repo + " " + tag + " (" + org + " | sha256=" + sha + ") " + desc;
+    let priv_cmd: String = if org != "openOODA" {
+        env_pfx + "gh api -X PATCH repos/" + slug + " -f private=true >/dev/null 2>&1 || true; "
+    } else {
+        ""
+    };
     let mut gh_args: List[String] = list_new();
     gh_args = list_push(gh_args, "-c");
-    gh_args = list_push(gh_args, env_pfx + "gh release view " + tag + " --repo " + slug + " >/dev/null 2>&1 && "
+    gh_args = list_push(gh_args, priv_cmd + env_pfx + "gh release view " + tag + " --repo " + slug + " >/dev/null 2>&1 && "
         + env_pfx + "gh release upload " + tag + " " + bin_path + " " + sha_path + " --repo " + slug + " --clobber || "
         + env_pfx + "gh release create " + tag + " " + bin_path + " " + sha_path + " --repo " + slug + " --title \"" + repo + " " + tag + "\" --notes \"" + notes + "\"");
     let c_res: Result[Int, String] = sys_exec_wait(sys, "bash", gh_args);

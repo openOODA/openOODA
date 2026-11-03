@@ -87,6 +87,20 @@ pub fn sy_ref_version(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: S
     return text_trim(fc_all(fs_r, cache));
 }
 
+// Report whether the repository holds one ref. The answer tells whether the
+// branch of a repair of a tool is there at all.
+pub fn sy_has_ref(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, ref: String) -> Bool {
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
+    a = list_push(a, "rev-parse");
+    a = list_push(a, "--verify");
+    a = list_push(a, "--quiet");
+    a = list_push(a, ref);
+    let _o: String = fc_run(sys, fs_r, cache, "git", a);
+    return fc_code(fs_r, cache) == 0;
+}
+
 // Read the version that the working tree of the repository carries.
 pub fn sy_tree_version(fs_r: &FsReadCap, repo: String) -> String {
     let r: Result[String, String] = fs_read_file(fs_r, repo + "/VERSION");

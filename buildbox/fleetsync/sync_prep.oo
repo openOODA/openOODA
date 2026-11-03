@@ -20,6 +20,7 @@ import "std/fs/os/fs.oo";
 import "text/lines.oo";
 import "fleetctl/shell.oo";
 import "fleetfix/fix_write.oo";
+import "fleetfix/fix_restore.oo";
 import "fleetfix/fix_ci.oo";
 import "fleetfix/fix_make_merge.oo";
 import "ci/makefile.oo";
@@ -74,19 +75,51 @@ pub fn sy_file_law(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo: String) -> Int {
     return 1;
 }
 
+// Put back the files of one ref that the branch lost and that do not carry
+// code.
+//
+// An installer, a page of the verification and a file of the packaging belong
+// to the tool and not to the branch that wrote them, so they come back. A page
+// of code does not: a page of the default branch may call a name that the
+// branch does not have, and a tree that calls a name that is not there does
+// not build.
+//
+// The version of the ref comes back with the file, moved to the version of
+// the tree, so that the file that comes back names the release of the tree.
+pub fn sy_restore_assets(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, src: String) -> Int {
+    let lost: List[String] = ff_lost(sys, fs_r, cache, repo, src, "HEAD");
+    let entries: List[String] = ff_tree(sys, fs_r, cache, repo, src);
+    let old: String = sy_ref_version(sys, fs_r, cache, repo, src);
+    let new: String = sy_tree_version(fs_r, repo);
+    let mut n: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(lost) {
+        let p: String = list_get(lost, i);
+        i = i + 1;
+        if str_ends_with(p, ".oo") || str_ends_with(p, ".oot") { continue; }
+        let mode: String = ff_mode_of(entries, p);
+        if ff_restore_one(sys, fs_r, fs_w, cache, repo, src, p, mode, old, new) { n = n + 1; }
+    }
+    return n;
+}
+
 // Build the tree of one tool that the release is made from. The answer holds
 // the number of the files that were put back.
 //
 // A tool whose branch of the contract is not there is built from its default
-// branch, so that the newest tool of the fleet is released as well.
+// branch, so that the newest tool of the fleet is released as well. A tool
+// whose installers live in a branch of a repair gets them back from there,
+// because the default branch lost them as well.
 pub fn sy_prepare(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, tool: String, branch: String, src: String, rows: List[String]) -> Int {
     let base: String = branch;
     if !sy_checkout(sys, fs_r, cache, repo, base) {
         if !sy_checkout(sys, fs_r, cache, repo, "main") { return 0; }
     }
-    let old: String = sy_ref_version(sys, fs_r, cache, repo, src);
-    let new: String = sy_tree_version(fs_r, repo);
-    let n: Int = ff_restore(sys, fs_r, fs_w, cache, repo, src, "HEAD", old, new);
+    let mut n: Int = sy_restore_assets(sys, fs_r, fs_w, cache, repo, src);
+    let repair: String = "origin/fix/" + tool + "-installers";
+    if sy_has_ref(sys, fs_r, cache, repo, repair) {
+        n = n + sy_restore_assets(sys, fs_r, fs_w, cache, repo, repair);
+    }
     let _m: Bool = sy_merge_makefile(sys, fs_r, fs_w, cache, repo, src);
     let _l: Int = sy_file_law(fs_r, fs_w, repo);
     let upstream: String = ff_upstream(fs_r, rows, tool);
