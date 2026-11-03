@@ -66,9 +66,9 @@ fn rel_ensure_ci_and_det(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String) 
     let wf_dir: String = repo_dir + "/.github/workflows";
     let wf_path: String = wf_dir + "/ci.yml";
     let cur_ci: String = eco_read_trimmed(fs_r, wf_path);
-    if !path_exists(fs_r, wf_path) || !str_contains(cur_ci, "openOODA/oodac") {
+    if !path_exists(fs_r, wf_path) || !str_contains(cur_ci, "openOODA-core/oodac") {
         let _mk: Result[Void, String] = fs_mkdir_p(fs_w, wf_dir);
-        let ci_body: String = "name: ci\non:\n  push:\n    branches: [main, master]\n  pull_request:\njobs:\n  verify:\n    name: Fleet gate\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Bootstrap openOODA toolchain when not on self-hosted runner\n        run: |\n          if [ ! -x /Projects/openOODA/oodac/bin/oodac ]; then\n            sudo mkdir -p /Projects/openOODA && sudo chown -R \"$(id -u):$(id -g)\" /Projects\n            git clone --depth=1 https://github.com/openOODA/oodac.git /Projects/openOODA/oodac\n            git clone --depth=1 https://github.com/openOODA/oodar.git /Projects/openOODA/oodar\n            git clone --depth=1 https://github.com/openOODA/std.git /Projects/openOODA/std\n          fi\n      - name: Static governance gates and compiler verification\n        env:\n          OODA_COMPILER: /Projects/openOODA/oodac/bin/oodac\n          OODA_NO_JAIL: \"1\"\n          OODA_FS_READDIR: /Projects\n          OODA_FS_WRITEDIR: /Projects:/tmp\n        run: |\n          if [ -x \"${OODA_COMPILER}\" ]; then\n            make build verify test det\n          else\n            make line-cap file-law academy density vocab\n          fi\n";
+        let ci_body: String = "name: ci\non:\n  push:\n    branches: [main, master]\n  pull_request:\njobs:\n  verify:\n    name: Fleet gate\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Bootstrap openOODA toolchain when not on self-hosted runner\n        run: |\n          if [ ! -x /Projects/openOODA-core/oodac/bin/oodac ]; then\n            sudo mkdir -p /Projects/openOODA-core && sudo chown -R \"$(id -u):$(id -g)\" /Projects\n            git clone --depth=1 https://github.com/openOODA-core/oodac.git /Projects/openOODA-core/oodac\n            git clone --depth=1 https://github.com/openOODA-core/oodar.git /Projects/openOODA-core/oodar\n            git clone --depth=1 https://github.com/openOODA-core/std.git /Projects/openOODA-core/std\n          fi\n      - name: Static governance gates and compiler verification\n        env:\n          OODA_COMPILER: /Projects/openOODA-core/oodac/bin/oodac\n          OODA_NO_JAIL: \"1\"\n          OODA_FS_READDIR: /Projects\n          OODA_FS_WRITEDIR: /Projects:/tmp\n        run: |\n          if [ -x \"${OODA_COMPILER}\" ]; then\n            make build verify test det\n          else\n            make line-cap file-law academy density vocab\n          fi\n";
         let _w: Result[Void, String] = fs_write_file(fs_w, wf_path, ci_body);
     }
     let gi_path: String = repo_dir + "/.gitignore";
@@ -148,7 +148,7 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap
     let repo_dir: String = "/Projects/" + org + "/" + repo;
     if !path_exists(fs_r, repo_dir + "/.git") { println("error: missing repo " + repo_dir); return 1; }
     let pages: Int = eco_count_oo_pages(fs_r, repo_dir);
-    if org != "openOODA" && pages < 6 {
+    if org != "openOODA" && org != "openOODA-core" && pages < 6 {
         println("FAIL: " + org + "/" + repo + " has only " + int_to_str(pages) + " .oo pages (minimum 6 required)");
         return 1;
     }

@@ -5,7 +5,7 @@
 // Setup: Needs FsReadCap to read a known ooda.pkg manifest when present.
 //
 // Beats:
-//   1. Check that eco_org_layer maps all 5 organizations and rejects unknown orgs.
+//   1. Check that eco_org_layer maps all 6 organizations and rejects unknown orgs.
 //   2. Check that eco_valid_category accepts the 12+2 canonical category codes and rejects invalid codes.
 //   3. Check that eco_parse_uint, eco_pad_left, and eco_pad_right handle normal and boundary inputs.
 //   4. Check that eco_pkg_get reads real ooda.pkg fields and fails closed on missing files.
@@ -31,6 +31,10 @@ fn eco_test_taxonomy(fails: &mut Int) -> Int {
     let _d: Int = eco_expect_eq("eco_layer_de", eco_org_layer("openOODA-DE"), "de", fails);
     let _e: Int = eco_expect_eq("eco_layer_tools", eco_org_layer("openOODA-tools"), "tools", fails);
     let _f: Int = eco_expect_eq("eco_layer_core", eco_org_layer("openOODA"), "core", fails);
+    let _f0: Int = eco_expect_eq("eco_layer_openooda_core", eco_org_layer("openOODA-core"), "core", fails);
+    let _f1: Int = eco_expect_eq("eco_layer_apps", eco_org_layer("openOODA-apps"), "apps", fails);
+    let _f2: Int = eco_expect_eq("eco_layer_cloud", eco_org_layer("openOODA-cloud"), "cloud", fails);
+    let _f3: Int = eco_expect_eq("eco_layer_agents", eco_org_layer("openOODA-agents"), "agents", fails);
     let _g: Int = eco_expect_eq("eco_layer_unknown", eco_org_layer("openOODA-nope"), "", fails);
     let _h: Int = eco_expect_eq("eco_cat_valid_hw", if eco_valid_category("HW") { "ok" } else { "bad" }, "ok", fails);
     let _i: Int = eco_expect_eq("eco_cat_valid_ui", if eco_valid_category("UI") { "ok" } else { "bad" }, "ok", fails);
@@ -56,11 +60,11 @@ fn eco_test_primitives(fs_r: &FsReadCap, fails: &mut Int) -> Int {
         let bpages: Int = eco_count_oo_pages(fs_r, "/Projects/openOODA-kernel/ookernel-boot");
         let _hp: Int = eco_expect_eq("eco_count_pages_boot", if bpages >= 6 { "ok" } else { "low" }, "ok", fails);
     }
-    let _i: Int = eco_expect_eq("eco_quota_wF_vibe", eco_parse_pane_quota("wF:p1", "114k/800k tokens (14%)"), "86|14% used (86% rem)", fails);
-    let _j: Int = eco_expect_eq("eco_quota_wJ_active", eco_parse_pane_quota("wJ:p1", "Running 1h9min47s 273 tok/s | 5h 0% | Context 31% left"), "31|5h 0% rem / Ctx 31% left", fails);
-    let _k: Int = eco_expect_eq("eco_quota_wJ_idle0", eco_parse_pane_quota("wJ:p1", "Idle | 5h 0% | Context 31% left"), "0|5h 0% rem / Ctx 31% left", fails);
+    let _i: Int = eco_expect_eq("eco_quota_wF_vibe", eco_parse_pane_quota("wF:p1", "114k/800k tokens (14%)"), "65|Mo 35% (65% rem) / Ctx 86% left", fails);
+    let _j: Int = eco_expect_eq("eco_quota_wJ_active", eco_parse_pane_quota("wJ:p1", "Running 1h9min47s 273 tok/s | 5h 0% | Context 31% left"), "100|5h 0% used (100% rem) / Ctx 31% left", fails);
+    let _k: Int = eco_expect_eq("eco_quota_wJ_idle0", eco_parse_pane_quota("wJ:p1", "Idle | 5h 0% | Context 31% left"), "100|5h 0% used (100% rem) / Ctx 31% left", fails);
     let hist: String = "Running old sweep\n1\n2\n3\n4\n5\n6\n7\n8\nIdle | 5h 0% | Context 31% left";
-    let _l: Int = eco_expect_eq("eco_quota_wJ_hist", eco_parse_pane_quota("wJ:p1", hist), "0|5h 0% rem / Ctx 31% left", fails);
+    let _l: Int = eco_expect_eq("eco_quota_wJ_hist", eco_parse_pane_quota("wJ:p1", hist), "100|5h 0% used (100% rem) / Ctx 31% left", fails);
     let jlog: String = "{\"creditUsagePercent\":7.0}\n{\"creditUsagePercent\":17.0}";
     let _m: Int = eco_expect_eq("eco_grok_weekly_pct", int_to_str(eco_grok_weekly_pct(jlog)), "17", fails);
     let _n: Int = eco_expect_eq("eco_quota_wH_wk", eco_pane_quota_wh_full("12s 40k [stop]", 17), "83|Wk 17% (83% rem, ->99%:82%) / ~40k", fails);

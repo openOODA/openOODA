@@ -74,14 +74,14 @@ fn sync_verify_website(sys: &ProcessCap, fs_r: &FsReadCap) -> Bool {
         let r: Result[Int, String] = sys_exec_wait(sys, "bash", a);
         if r.is_err() || r.val != 0 { println("  FAIL: website test " + t); return false; }
     }
-    let oodac: String = "/Projects/openOODA/oodac/bin/oodac";
+    let oodac: String = "/Projects/openOODA-core/oodac/bin/oodac";
     let walked: List[String] = fs_walk(fs_r, web_dir);
     let mut j: Int = 0;
     while j < list_len(walked) {
         let p: String = list_get(walked, j);
         j = j + 1;
         if !str_ends_with(p, ".oo") || str_contains(p, "/.git/") { continue; }
-        let ca: List[String] = list_push(list_push(list_new(), "-c"), "cd " + web_dir + " && " + oodac + " check " + p + " >/dev/null");
+        let ca: List[String] = list_push(list_push(list_new(), "-c"), "cd " + web_dir + " && OODA_NO_JAIL=1 OODA_FS_READDIR=/Projects OODA_FS_WRITEDIR=/Projects:/tmp " + oodac + " check " + p + " >/dev/null");
         let cr: Result[Int, String] = sys_exec_wait(sys, "bash", ca);
         if cr.is_err() || cr.val != 0 { println("  FAIL: oodac check failed on " + p); return false; }
     }
@@ -91,10 +91,10 @@ fn sync_verify_website(sys: &ProcessCap, fs_r: &FsReadCap) -> Bool {
 
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, _fs_w: &FsWriteCap, _env: &EnvCap, args: List[String]) -> Int {
     let do_push: Bool = list_len(args) > 0 && list_get(args, 0) == "--push";
-    println("== [eco-sync-docs] verifying 5 organization profile READMEs ==");
+    println("== [eco-sync-docs] verifying 6 organization profile READMEs ==");
     let mut ok: Bool = true;
-    let orgs: List[String] = list_push(list_push(list_push(list_push(list_push(list_new(),
-        "openOODA"), "openOODA-kernel"), "openOODA-OS"), "openOODA-DE"), "openOODA-tools");
+    let orgs: List[String] = list_push(list_push(list_push(list_push(list_push(list_push(list_new(),
+        "openOODA"), "openOODA-core"), "openOODA-kernel"), "openOODA-OS"), "openOODA-DE"), "openOODA-tools");
     let mut i: Int = 0;
     while i < list_len(orgs) {
         let org: String = list_get(orgs, i);
@@ -105,6 +105,6 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, _fs_w: &FsWriteCap, _env: &EnvCa
     println("== [eco-sync-docs] verifying /Projects/openOODA/website (openooda.org) ==");
     if !sync_verify_website(sys, fs_r) { ok = false; }
     if !ok { return 1; }
-    println("== [eco-sync-docs] all 5 organization profiles and openooda.org verified cleanly ==");
+    println("== [eco-sync-docs] all 6 organization profiles and openooda.org verified cleanly ==");
     return 0;
 }

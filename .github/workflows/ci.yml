@@ -29,17 +29,17 @@ jobs:
       - name: checkout oodac (prebuilt compiler)
         uses: actions/checkout@v4
         with:
-          repository: openOODA/oodac
+          repository: openOODA-core/oodac
           path: oodac
       - name: checkout oodar (Gen 1 C host, for the std/fs/net/secrets bindings)
         uses: actions/checkout@v4
         with:
-          repository: openOODA/oodar
+          repository: openOODA-core/oodar
           path: oodar
       - name: checkout std (standard library for governance script imports)
         uses: actions/checkout@v4
         with:
-          repository: openOODA/std
+          repository: openOODA-core/std
           path: std
       - name: require compiler
         run: |
@@ -156,7 +156,7 @@ jobs:
         run: |
           set -euo pipefail
           for r in oodac oodar std ooda cli tui opm lsp mcp; do
-            gh repo clone "openOODA/$r" "$r" -- --quiet --depth 1
+            gh repo clone "openOODA-core/$r" "$r" -- --quiet --depth 1
           done
           test -x oodac/bin/oodac || chmod +x oodac/bin/oodac
       - name: install release toolchain (user-truth)
@@ -233,10 +233,10 @@ jobs:
           set -euo pipefail
           fails=0
           for r in ooda cli tui oodac oodar opm lsp mcp; do
-            tag=$(gh release view --repo "openOODA/$r" --json tagName -q .tagName) || { echo "FAIL: $r has no release"; fails=1; continue; }
-            names=$(gh release view --repo "openOODA/$r" --json assets -q '.assets[].name' | tr '\n' ' ')
+            tag=$(gh release view --repo "openOODA-core/$r" --json tagName -q .tagName) || { echo "FAIL: $r has no release"; fails=1; continue; }
+            names=$(gh release view --repo "openOODA-core/$r" --json assets -q '.assets[].name' | tr '\n' ' ')
             echo "$names" | grep -q "sha256" || { echo "FAIL: $r $tag ships no .sha256 sidecar ($names)"; fails=1; }
-            msgs=$(gh api "repos/openOODA/$r/compare/$tag...master" --jq '.commits[].commit.message' 2>/dev/null | head -5 || true)
+            msgs=$(gh api "repos/openOODA-core/$r/compare/$tag...master" --jq '.commits[].commit.message' 2>/dev/null | head -5 || true)
             odd=$(printf '%s' "$msgs" | grep -v -e '^necrometer' -e 'bump VERSION' -e '(scoped to necrometer-dev)' -e '^$' || true)
             if [ -n "$odd" ]; then echo "FAIL: $r $tag trails master by functional commits: $odd"; fails=1; fi
           done

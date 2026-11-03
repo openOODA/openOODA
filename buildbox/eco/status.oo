@@ -1,6 +1,6 @@
-// # Eco Status - Live Herdr Agent Quota & 5-Organization Completion Matrix
+// # Eco Status - Live Herdr Agent Quota & 8-Organization (L0-L7) Completion Matrix
 //
-// Logline: Queries Herdr panes for live agent quota telemetry and scans all 5 organizations for page count, version, release tag, and build status.
+// Logline: Queries Herdr panes for live agent quota telemetry and scans all 8 organizations (L0-L7) for page count, version, release tag, and build status.
 //
 // Setup: Needs ProcessCap for herdr and FsReadCap to inspect /Projects/openOODA*.
 //
@@ -32,14 +32,15 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     let pipe_idx: Int = str_index_of(qpair, "|");
     let rem: Int = eco_parse_uint(str_slice(qpair, 0, pipe_idx));
     let quota: String = str_slice(qpair, pipe_idx + 1, chars_len(qpair));
-    let tail: String = eco_tail_lines(vis, 18);
-    let mut state: String = if pane_id == "wK:p1" && quota == "shell ready" { "standby" } else { "idle" };
+    let tail: String = eco_tail_lines(vis, 6);
+    let mut state: String = if (pane_id == "wK:p1" || pane_id == "wN:p1" || pane_id == "wP:p1") && str_contains(quota, "shell ready") { "standby" } else { "idle" };
     if str_contains(tail, "User input required") || str_contains(tail, "Enter select") {
         state = "WAIT_INPUT";
-    } else if str_contains(tail, "Running") || str_contains(tail, "Loading") || str_contains(tail, "tok/s")
+    } else if !str_contains(vis, "Interrupted") && !str_contains(vis, "Canceled.") && !str_contains(tail, "Ask Mcode")
+        && (str_contains(tail, "Running") || str_contains(tail, "Loading") || str_contains(tail, "tok/s")
         || str_contains(tail, "Thinking") || str_contains(tail, "Generating") || str_contains(tail, "[stop]")
         || str_contains(tail, "Esc stop") || str_contains(tail, "Esc/Ctrl+C") || str_contains(tail, "background active")
-        || str_contains(tail, "Typing") || str_contains(tail, "esc twice") {
+        || str_contains(tail, "Typing") || str_contains(tail, "esc twice")) {
         state = "working";
     }
     if pane_id == "wJ:p1" && rem == 0 && state == "idle" { state = "paused(100%)"; }
@@ -48,7 +49,7 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     } else {
         "OK (" + eco_parse_pane_quota("pace", int_to_str(rem)) + ")"
     };
-    return "  " + eco_pad_right(pane_id, 7) + " " + eco_pad_right(ws, 16) + " " + eco_pad_right(agent, 24)
+    return "  " + eco_pad_right(pane_id, 7) + " " + eco_pad_right(ws, 20) + " " + eco_pad_right(agent, 24)
         + " " + eco_pad_right(state, 11) + " " + eco_pad_right(quota, 34) + " " + alert;
 }
 
@@ -57,6 +58,7 @@ fn status_count_oo_pages(fs_r: &FsReadCap, repo_dir: String) -> Int {
 }
 
 fn status_has_release_tag(fs_r: &FsReadCap, org: String, repo_dir: String) -> Bool {
+    let is_l0: Bool = org == "openOODA" || org == "openOODA-core";
     let tags_dir: String = repo_dir + "/.git/refs/tags";
     if path_exists(fs_r, tags_dir) {
         let tlist: List[String] = fs_read_dir(fs_r, tags_dir);
@@ -64,12 +66,12 @@ fn status_has_release_tag(fs_r: &FsReadCap, org: String, repo_dir: String) -> Bo
         while i < list_len(tlist) {
             let t: String = list_get(tlist, i);
             i = i + 1;
-            if org == "openOODA" && str_starts_with(t, "v") { return true; }
+            if is_l0 && str_starts_with(t, "v") { return true; }
             if str_starts_with(t, "v") && t != "v0.1.0" && t != "v0.2.0" { return true; }
         }
     }
     let packed: String = eco_read_trimmed(fs_r, repo_dir + "/.git/packed-refs");
-    if org == "openOODA" && str_contains(packed, "refs/tags/v") {
+    if is_l0 && str_contains(packed, "refs/tags/v") {
         return true;
     }
     if str_contains(packed, "refs/tags/v0.2.1") || str_contains(packed, "refs/tags/v0.2.2")
@@ -81,7 +83,7 @@ fn status_has_release_tag(fs_r: &FsReadCap, org: String, repo_dir: String) -> Bo
 }
 
 fn status_repo_built(fs_r: &FsReadCap, org: String, repo_dir: String, repo: String) -> Bool {
-    if org == "openOODA" { return true; }
+    if org == "openOODA" || org == "openOODA-core" { return true; }
     if path_exists(fs_r, repo_dir + "/bin/" + repo) { return true; }
     if path_exists(fs_r, repo_dir + "/dist/" + repo) { return true; }
     if org == "openOODA-tools" {
@@ -96,6 +98,7 @@ fn status_repo_built(fs_r: &FsReadCap, org: String, repo_dir: String, repo: Stri
 }
 
 fn status_org_row(fs_r: &FsReadCap, org: String) -> String {
+    let is_l0: Bool = org == "openOODA" || org == "openOODA-core";
     let org_dir: String = "/Projects/" + org;
     let entries: List[String] = fs_read_dir(fs_r, org_dir);
     let mut total: Int = 0;
@@ -107,14 +110,14 @@ fn status_org_row(fs_r: &FsReadCap, org: String) -> String {
     while i < list_len(entries) {
         let r: String = list_get(entries, i);
         i = i + 1;
-        if org != "openOODA" && (r == ".github" || r == "openOODA-tools.github.io" || r == "std") { continue; }
+        if !is_l0 && (r == ".github" || r == "openOODA-tools.github.io" || r == "std") { continue; }
         let rdir: String = org_dir + "/" + r;
         if !path_exists(fs_r, rdir + "/.git") { continue; }
         total = total + 1;
-        if org == "openOODA" || status_count_oo_pages(fs_r, rdir) >= 6 { pages_ok = pages_ok + 1; }
+        if is_l0 || status_count_oo_pages(fs_r, rdir) >= 6 { pages_ok = pages_ok + 1; }
         let mut ver: String = eco_read_trimmed(fs_r, rdir + "/VERSION");
         if ver == "" { ver = eco_pkg_get(fs_r, rdir + "/ooda.pkg", "version"); }
-        if org == "openOODA" || (ver != "" && ver != "0.1.0" && ver != "0.2.0") { ver_ok = ver_ok + 1; }
+        if is_l0 || (ver != "" && ver != "0.1.0" && ver != "0.2.0") { ver_ok = ver_ok + 1; }
         if status_has_release_tag(fs_r, org, rdir) { tag_ok = tag_ok + 1; }
         if status_repo_built(fs_r, org, rdir, r) { built_ok = built_ok + 1; }
     }
@@ -155,27 +158,33 @@ fn status_node_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
 
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
     println("==============================================================================================");
-    println("  openOODA 5-ORG ECOSYSTEM & AGENT FLEET STATUS (PURE .oo DOGFOOD WATCHDOG)");
+    println("  openOODA 9-ORG (ROOT + L0-L7) ECOSYSTEM & AGENT FLEET STATUS (PURE .oo DOGFOOD WATCHDOG)");
     println("==============================================================================================");
     println("");
     println("[1] LIVE AGENT & QUOTA TELEMETRY (Target: 99% pre-reset, >=1% hard reserve floor)");
-    println("  PANE    WORKSPACE        AGENT                    STATE       QUOTA / TOKENS                     STATUS / PACE TO 99%");
-    println("  --------------------------------------------------------------------------------------------------------------------------");
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wF:p1", "openOODA",        "vibe (Mistral Large 4)"));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wG:p1", "openOODA-kernel", "vibe (Mistral Large 4)"));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wH:p1", "openOODA-OS",     "grok (Grok 4.7 high)"));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wJ:p1", "openOODA-tools",  "mcode (M3.1-Flash)"));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wK:p1", "openOODA-DE",     "vibe (Mistral Large 4)"));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wM:p1", "code-review",     "devin (SWE-2 Max)"));
+    println("  PANE    WORKSPACE            AGENT                    STATE       QUOTA / TOKENS                     STATUS / PACE TO 99%");
+    println("  ------------------------------------------------------------------------------------------------------------------------------");
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wF:p1", "(L0) openOODA-core",   "vibe (Mistral Large 4)"));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wG:p1", "(L1) openOODA-kernel", "vibe (Mistral Large 4)"));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wH:p1", "(L2) openOODA-OS",     "grok (Grok 4.7 high)"));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wJ:p1", "(L3) openOODA-tools",  "mcode (M3.1-Flash)"));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wK:p1", "(L4) openOODA-DE",     "vibe (Mistral Large 4)"));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wM:p1", "(L5) openOODA-apps",   "devin (SWE-2 Max)"));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wN:p1", "(L6) openOODA-cloud",  "vibe (Mistral Large 4)"));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wP:p1", "(L7) openOODA-agents", "vibe (Mistral Large 4)"));
     println("");
-    println("[2] 5-ORGANIZATION COMPLETION MATRIX (Pages >= 6, Version/Tag >= v0.2.1, Build/Green)");
+    println("[2] 9-ORGANIZATION (ROOT + L0-L7) COMPLETION MATRIX (Pages >= 6, Version/Tag >= v0.2.1, Build/Green)");
     println("  ORGANIZATION        TOTAL   PAGES>=6   VER>=0.2.1   TAG>=v0.2.1   GREEN/BUILT");
     println("  ------------------------------------------------------------------------------");
     println(status_org_row(fs_r, "openOODA"));
+    println(status_org_row(fs_r, "openOODA-core"));
     println(status_org_row(fs_r, "openOODA-kernel"));
     println(status_org_row(fs_r, "openOODA-OS"));
-    println(status_org_row(fs_r, "openOODA-DE"));
     println(status_org_row(fs_r, "openOODA-tools"));
+    println(status_org_row(fs_r, "openOODA-DE"));
+    println(status_org_row(fs_r, "openOODA-apps"));
+    println(status_org_row(fs_r, "openOODA-cloud"));
+    println(status_org_row(fs_r, "openOODA-agents"));
     println("");
     println("[3] TAILSCALE FLEET & GPU BUILDBOX TELEMETRY (Daily Update/Reboot ~04:00, Nightly Loop 04:30)");
     println("  NODE (TAILSCALE IP)        ROLE           RAM / TMPFS   GPU VRAM & UTIL                        OLLAMA / LLM         BUILDBOX / TIMER");
