@@ -148,41 +148,50 @@ else
   WARNS=$((WARNS + 1))
 fi
 
-# --- Test 8: 20 Normative Capability Tokens ---
-echo "Test 8 [20 Normative Capability Tokens]:"
+# --- Test 8: 32 Explicit Capabilities ---
+echo "Test 8 [32 Explicit Capabilities]:"
 CAP_TOKENS=(
   FsReadCap FsWriteCap FsCap ProcessCap SysCap
   NetCap TcpCap UdpCap BindCap EnvCap
   TimeCap RandCap AllocCap ArenaCap ThreadCap
   GpuCap FfiCap MetricsCap SignCap CompilerReadCap
+  AudioCap CameraCap UsbCap HidCap WindowCap
+  FrameCap MmioCap DmaCap IrqCap PciCap
+  BlockCap TpmCap
 )
 CAP_MISSING=0
 for cap in "${CAP_TOKENS[@]}"; do
   if ! grep -q "$cap" "$SPEC_FILE"; then
-    echo "  FAIL: Capability token '$cap' not found in spec!"
+    echo "  FAIL: Capability '$cap' not found in spec!"
     CAP_MISSING=$((CAP_MISSING + 1))
   fi
 done
 
 if [ "$CAP_MISSING" -eq 0 ]; then
-  echo "  PASS: All ${#CAP_TOKENS[@]} capability tokens are present in spec"
+  echo "  PASS: All ${#CAP_TOKENS[@]} explicit capabilities are present in spec"
 else
-  echo "  FAIL: $CAP_MISSING capability tokens missing from spec"
+  echo "  FAIL: $CAP_MISSING explicit capabilities missing from spec"
   FAILS=$((FAILS + CAP_MISSING))
 fi
 
-# --- Test 9: Substrate Bits and Excised Dead Bits ---
+# --- Test 9: Substrate Bits (32) and Excised Dead Bits ---
 echo "Test 9 [Substrate Bits & Excised Bits]:"
-if grep -q "26" "$SPEC_FILE" && \
+if grep -q "32" "$SPEC_FILE" && \
    grep -q "Audio" "$SPEC_FILE" && \
    grep -q "Camera" "$SPEC_FILE" && \
    grep -q "Usb" "$SPEC_FILE" && \
    grep -q "Hid" "$SPEC_FILE" && \
    grep -q "Window" "$SPEC_FILE" && \
-   grep -q "Frame" "$SPEC_FILE"; then
-  echo "  PASS: All 6 reserved device bits documented"
+   grep -q "Frame" "$SPEC_FILE" && \
+   grep -q "Mmio" "$SPEC_FILE" && \
+   grep -q "Dma" "$SPEC_FILE" && \
+   grep -q "Irq" "$SPEC_FILE" && \
+   grep -q "Pci" "$SPEC_FILE" && \
+   grep -q "Block" "$SPEC_FILE" && \
+   grep -q "Tpm" "$SPEC_FILE"; then
+  echo "  PASS: All 32 capabilities (including 13 hardware bits) documented"
 else
-  echo "  FAIL: Substrate reserved device bits incomplete in spec!"
+  echo "  FAIL: Substrate hardware capability bits incomplete in spec!"
   FAILS=$((FAILS + 1))
 fi
 

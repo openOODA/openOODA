@@ -13,10 +13,9 @@ openOODA enforces Negative Trust and Zero Ambient Authority:
 - Capability handles are passed explicitly from callers as function arguments.
 - Global singletons or hidden system access methods are strictly prohibited.
 
-## 2. The 20 Normative Language Capabilities
+## 2. The 32 Explicit Capabilities (19 Software/OS + 13 Hardware)
 
-The language exposes exactly 20 explicit capabilities:
-
+The language and runtime expose 32 explicit capabilities across bits 0..31:
 1.  FsReadCap: Read files and iterate directory structures.
 2.  FsWriteCap: Create, write, modify, and truncate filesystem files.
 3.  FsCap: Full filesystem umbrella subsuming read and write authority.
@@ -37,49 +36,37 @@ The language exposes exactly 20 explicit capabilities:
 18. MetricsCap: Read process telemetry counters and execution statistics.
 19. SignCap: Sign and verify capability HMAC seals and cryptographic warrants.
 20. CompilerReadCap: Introspect compiler ASTs and language server symbols.
+21. AudioCap: Capture and play back low-latency PCM audio streams.
+22. CameraCap: Capture video frames from hardware camera sensors.
+23. UsbCap: Open USB devices and execute endpoint bulk/control transfers.
+24. HidCap: Read HID input reports and write keyboard/controller state.
+25. WindowCap: Create and manage Wayland compositor window surfaces.
+26. FrameCap: Present DMA-BUF and shared-memory display framebuffers.
+27. MmioCap: Map and access device memory-mapped I/O (MMIO) BAR regions.
+28. DmaCap: Allocate physical DMA ring buffers and configure IOMMU mappings.
+29. IrqCap: Register, mask, and acknowledge hardware interrupt lines.
+30. PciCap: Probe PCIe buses and read/write PCI configuration space.
+31. BlockCap: Issue raw NVMe/virtio-blk block device sector reads and writes.
+32. TpmCap: Access TPM 2.0 / HSM hardware root of trust and PCR quotes.
 
-## 3. Substrate Capability Bit Lattice (caps.h)
+## 3. Single-Cycle 64-Bit Capability Register (32 + 32 = 64)
 
-The runtime C substrate (oodar/sec/cap/caps.h) defines 26 bit positions:
-
-### 3.1 Active Language Substrate Bits
-- Bit 0  (1u):       OODAR_CAP_NET
-- Bit 1  (2u):       OODAR_CAP_PROCESS
-- Bit 2  (4u):       OODAR_CAP_FSWRITE
-- Bit 3  (8u):       OODAR_CAP_FSREAD
-- Bit 4  (16u):      OODAR_CAP_SYS
-- Bit 5  (32u):      OODAR_CAP_FS
-- Bit 6  (64u):      OODAR_CAP_TIME
-- Bit 7  (128u):     OODAR_CAP_RAND
-- Bit 8  (256u):     OODAR_CAP_ALLOC
-- Bit 9  (512u):     OODAR_CAP_ARENA
-- Bit 10 (1024u):    OODAR_CAP_FFI
-- Bit 11 (2048u):    OODAR_CAP_METRICS
-- Bit 12 (4096u):    OODAR_CAP_SIGN
-- Bit 17 (1u << 17): OODAR_CAP_TCP
-- Bit 18 (1u << 18): OODAR_CAP_UDP
-- Bit 19 (1u << 19): OODAR_CAP_BIND
-- Bit 26 (1u << 26): OODAR_CAP_THREAD
-- Bit 27 (1u << 27): OODAR_CAP_GPU
-- Bit 28 (1u << 28): OODAR_CAP_ENV
-- Bit 29 (1u << 29): OODAR_CAP_COMPILER_READ
-
-### 3.2 Reserved Hardware Substrate Bits (6)
-Hardware device bits reserved for future hardware language capabilities:
-- Bit 20 (1u << 20): OODAR_CAP_AUDIO
-- Bit 21 (1u << 21): OODAR_CAP_CAMERA
-- Bit 22 (1u << 22): OODAR_CAP_USB
-- Bit 23 (1u << 23): OODAR_CAP_HID
-- Bit 24 (1u << 24): OODAR_CAP_WINDOW
-- Bit 25 (1u << 25): OODAR_CAP_FRAME
-
-### 3.3 Excised Dead Bits (4)
-The following bit positions were permanently retired in v2.1.0 and must
-never be reallocated or queried:
-- Bit 13 (0x2000):  OODAR_CAP_HITL (excised)
-- Bit 14 (0x4000):  OODAR_CAP_SYNC (excised)
-- Bit 15 (0x8000):  OODAR_CAP_MEM  (excised)
-- Bit 16 (0x10000): OODAR_CAP_HTTP (excised)
+The runtime C substrate (oodar/sec/cap/caps.h) fills all 32 bits of the
+lower capability mask (zero dead bits) and pairs them with a 32-bit upper
+execution header so a 64-bit CPU validates WHAT and HOW/WHEN in 1 cycle:
+- Lower 32 bits [31:0] (WHAT): 32 Root Capabilities (1-cycle GPU 32-lane warp
+  mask and 32-bit seccomp-BPF accumulator):
+  0:NET, 1:FS, 2:SYS, 3:ENV, 4:TIME, 5:RAND, 6:ARENA, 7:ALLOC, 8:FFI,
+  9:THREAD, 10:GPU, 11:METRICS, 12:SIGN, 13:MMIO, 14:DMA, 15:IRQ, 16:PCI,
+  17:COMPILER_READ, 18:TCP, 19:UDP, 20:BIND, 21:FSREAD, 22:FSWRITE,
+  23:PROCESS, 24:AUDIO, 25:CAMERA, 26:USB, 27:HID, 28:WINDOW, 29:FRAME,
+  30:BLOCK, 31:TPM.
+  (Legacy dead aliases OODAR_CAP_HITL, OODAR_CAP_SYNC, OODAR_CAP_MEM, and
+  OODAR_CAP_HTTP remain poison-guarded in caps.h and cannot be compiled.)
+- Upper 32 bits [63:32] (HOW & WHEN):
+  [63:48] 16-bit OODA Epoch (instant temporal revocation),
+  [47:40] 8-bit Rights Mask (R/W/X/Delegate/Revoke),
+  [39:32] 8-bit Scope Badge (Arena/Namespace/Device index).
 
 ## 4. Capability Lifecycle (6 Stages)
 
@@ -191,7 +178,7 @@ Each step names the code that does the work.
 - The generic gate compares the given token with the wanted token
   (oodar/sec/cap/cap_require.c:23).
 - A zero or forged token exits with code 1 (oodar/sec/cap/cap_require.c:28).
-- All 22 per-token gates use one dual_check helper
+- All 32 per-capability gates use one dual_check helper
   (oodar/sec/cap/cap_require.c:45).
 - The helper first checks the bitmask token (oodar/sec/cap/cap_require.c:45).
 - A bitmask failure exits with code 1 (oodar/sec/cap/cap_require.c:53).

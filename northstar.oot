@@ -32,7 +32,7 @@ Each layer stabilizes a deterministic foundation for the layer above it across t
   - **L0.1 (Host/Silicon ABI Substrate)**: Syscall & hardware bridge (`openOODA-core/oodar/`; `oo_*` symbols across 6 per-domain subdirs per the v2.0.0 layout).
   - **L0.2 (Deterministic Runtime & Memory)**: Linear arena allocators with O(1) bulk resets, deterministic ARC, and Landlock isolation (`openOODA-core/oodar/` & `openOODA-core/std/`).
   - **L0.3 (Self-Hosted Compiler & IR)**: Lexer, parser, Merkle AST, SSA mem2reg, optimization passes, and direct ELF64/WASM emission (`openOODA-core/oodac/`).
-  - **L0.4 (Language Semantics, Stdlib & Developer Tools)**: ADTs, 20 capability tokens, refinement types, typestates, SECRET taint tracking, SMT contracts, `std`, `cli`, `ooda`, `opm`, `lsp`, `mcp`, and `tui`.
+  - **L0.4 (Language Semantics, Stdlib & Developer Tools)**: ADTs, 32 explicit capabilities (64-bit cycle register), refinement types, typestates, SECRET taint tracking, SMT contracts, `std`, `cli`, `ooda`, `opm`, `lsp`, `mcp`, and `tui`.
 - **Layer 1 (`@openOODA-kernel`, 16 repos — Bare-Metal Microkernel, HAL & Drivers)**: UEFI `ooboot`, `x86_64`/`aarch64`/`riscv64` HALs (page tables PML4/Sv39, SIMD, MMU, APIC/GIC), NT `Ob` + seL4 `CSpace` hybrid microkernel (`ookernel-*`), and Ring-3 drivers (`oodrv-*`).
 - **Layer 2 (`@openOODA-OS`, 18 repos — Zero-Root System Daemons & Image Builder)**: `ooinit`, `oosvc-mgr`, `oovfs`, `oofs-ext4`, `oofs-tmp`, `oonetd`, `oodns`, `oosysbus`, `ooauthd`, `oosandbox`, `oohealthd`, `ooupdate`, `ooimage`, `ooaid`, and `oorealm`.
 - **Layer 3 (`@openOODA-tools`, 257 repos — Userland CLI / TUI / MCP Utilities)**: 257 capability-sandboxed userland utilities across 12 functional categories (`oosh`, `oogrep`, `oofind`, `oojq`, `oollama`, etc.).
@@ -131,16 +131,16 @@ CallExpr          ::= PrimaryExpr "(" [ ArgList ] ")" [ "?" ] ;
 - Core ADTs: Standard library primitives `Option[T]` and `Result[T, E]`.
 - Pattern Matching: `match` expressions must exhaustively handle all variants.
 
-### 4.2 Static Capability Verification (20 Language Tokens + 26 Substrate Caps)
-- 20 language tokens: `FsReadCap`, `FsWriteCap`, `NetCap`, `TcpCap`, `UdpCap`, `SysCap`,
-  `ProcessCap`, `EnvCap`, `TimeCap`, `RandCap`, `AllocCap`, `ThreadCap`, `GpuCap`,
-  `FfiCap`, `FsCap`, `ArenaCap`, `MetricsCap`, `SignCap`, `BindCap`, `CompilerReadCap`.
-  Bit positions are mapped in `oodar/sec/cap/cap_table.json`.
-- 26 substrate caps: canonical host runtime capabilities in `oodar/sec/cap/caps.h`
-  (20 active language tokens + 6 reserved device capabilities).
+### 4.2 Static Capability Verification (32 Explicit Capabilities, 64-Bit Cycle Register)
+- 32 explicit capabilities (19 Software/OS + 13 Hardware): `FsReadCap`, `FsWriteCap`, `NetCap`, `TcpCap`,
+  `UdpCap`, `SysCap`, `ProcessCap`, `EnvCap`, `TimeCap`, `RandCap`, `AllocCap`, `ThreadCap`, `GpuCap`,
+  `FfiCap`, `FsCap`, `ArenaCap`, `MetricsCap`, `SignCap`, `BindCap`, `CompilerReadCap`, `AudioCap`,
+  `CameraCap`, `UsbCap`, `HidCap`, `WindowCap`, `FrameCap`, `MmioCap`, `DmaCap`, `IrqCap`, `PciCap`,
+  `BlockCap`, `TpmCap`. Bit positions `0..31` are mapped in `oodar/sec/cap/cap_table.json` and `caps.h`.
+- 64-bit capability register (`32 + 32 = 64`): lower 32 bits encode the 32 root capabilities (`WHAT`, matching a 32-lane GPU warp); upper 32 bits encode 16-bit OODA Epoch + 8-bit Rights Mask + 8-bit Scope Badge (`HOW & WHEN`).
 - Functions accept borrowed capability references (`&FsReadCap`) without taking ownership.
-- Capability attenuation allows token holders to derive strictly narrowed subsets.
-- Calling privileged functions without valid capability tokens fails compilation (`E_CAP`).
+- Capability attenuation allows capability holders to derive strictly narrowed subsets.
+- Calling privileged functions without valid capabilities fails compilation (`E_CAP`).
 
 ### 4.3 Typestate Protocol Verification
 - Types parameterize abstract lifecycle states (`File[Unopened]`, `File[Opened]`, `File[Closed]`).

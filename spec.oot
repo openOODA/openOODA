@@ -81,10 +81,10 @@ them. Language servers suppress them from code completion.
 - Mutable reference: &mut T.
 - Capability reference: &Cap.
 
-## 5. Capabilities & Security Lattice
+## 5. Capabilities & 64-Bit Cycle Register (32 + 32 = 64)
 
-### 5.1 The 20 Normative Language Capabilities
-All side-effect operations require one of 20 explicit capabilities:
+### 5.1 The 32 Explicit Capabilities (19 Software + 13 Hardware)
+All side-effect operations require one of 32 explicit capabilities:
 1.  FsReadCap: Read files and list filesystem directories.
 2.  FsWriteCap: Write and modify filesystem files.
 3.  FsCap: Umbrella filesystem capability subsuming read and write.
@@ -105,21 +105,34 @@ All side-effect operations require one of 20 explicit capabilities:
 18. MetricsCap: Read process telemetry counters and metrics.
 19. SignCap: Sign and verify capability HMAC seals and warrants.
 20. CompilerReadCap: Query compiler and language server symbol tables.
+21. AudioCap: Capture and play back PCM audio streams.
+22. CameraCap: Capture video frames from camera hardware.
+23. UsbCap: Execute USB device endpoint transfers.
+24. HidCap: Read and write human interface device (HID) reports.
+25. WindowCap: Create and manage compositor window surfaces.
+26. FrameCap: Present DMA-BUF and shared-memory display frames.
+27. MmioCap: Access device memory-mapped I/O (MMIO) BAR regions.
+28. DmaCap: Allocate physical DMA rings and IOMMU mappings.
+29. IrqCap: Register and acknowledge hardware interrupt lines.
+30. PciCap: Probe PCIe buses and configuration space.
+31. BlockCap: Issue raw NVMe and block device sector I/O.
+32. TpmCap: Access TPM 2.0 / HSM hardware root of trust.
 
-### 5.2 Substrate Capabilities (26 Bits)
-The runtime C substrate defines 26 capability bit positions in caps.h:
-- Active language capabilities: 20 capability bits.
-- Reserved device bits (6): Audio (20), Camera (21), Usb (22), Hid (23),
-  Window (24), Frame (25).
-- Dead excised bits: 13 (HITL), 14 (SYNC), 15 (MEM), 16 (HTTP).
-  Excised bits are permanently retired and must not be reallocated.
+### 5.2 Single-Cycle 64-Bit Register & Substrate Bits (32 Bits)
+The runtime C substrate defines 32 capability bits (0..31) in caps.h:
+- Lower 32 bits (WHAT): 19 Software/OS + 13 Hardware capabilities
+  (Gpu, Audio, Camera, Usb, Hid, Window, Frame, Mmio, Dma, Irq, Pci,
+  Block, Tpm), fitting a 32-lane GPU warp and seccomp-BPF accumulator.
+- Upper 32 bits (HOW & WHEN): 16-bit OODA Epoch + 8-bit Rights Mask +
+  8-bit Scope Badge, validated together in a single 64-bit CPU cycle.
+- Legacy excised names (HITL, SYNC, MEM, HTTP) are poison-guarded.
 
 ### 5.3 Attenuation Algebra
 - Subsumption: FsCap satisfies FsReadCap and FsWriteCap. NetCap satisfies
   TcpCap, UdpCap, and BindCap.
 - Subset Rule: A child capability must be a subset of the parent capability:
   (parent & child) == child.
-- Cryptographic Sealing: Attenuated tokens use HMAC-SHA256 parent signatures.
+- Cryptographic Sealing: Attenuated capabilities use HMAC-SHA256 seals.
 - Path Scoping: OoPathCap restricts FsReadCap to designated path prefixes.
 - TLS Attenuation: TlsCap attenuates from TcpCap with verified credentials.
 
