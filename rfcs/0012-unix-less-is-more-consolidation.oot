@@ -1,0 +1,132 @@
+# RFC 0012: Unix Less-Is-More Consolidation and Multi-Call Symlink Dispatch
+File: openOODA/rfcs/0012-unix-less-is-more-consolidation.oot
+
+* **RFC ID**: 0012
+* **Title**: Unix Less-Is-More Consolidation and Multi-Call Symlink Dispatch
+* **Author**: openOODA Core Architecture Team
+* **Status**: Accepted
+* **Type**: Standards Track / Architecture
+* **Decision Driver**: Maintaining 377 separate product repositories across 9
+  organizations creates maintenance drag and 1,079 duplicated harness files.
+  First-principles Unix composition and multi-call `argv[0]` symlink dispatch
+  allow 248 redundant utility and daemon repositories to be absorbed into 129
+  canonical binaries while preserving 100% drop-in CLI compatibility.
+* **Supersedes**: None
+* **Related**: RFC 0001 (capability security), RFC 0003 (file format),
+  RFC 0004 (engineering model), RFC 0010 (tools fleet governance),
+  RFC 0011 (tools fleet validation), northstar.oot
+* **Target Release**: v2.12.0
+* **Created**: 2026-11-04
+
+---
+
+## 1. Context
+
+Across the 9 openOODA organizations (`@openOODA` umbrella plus L0 through L7),
+377 product repositories were built to prove 100% capability-sandboxed coverage
+from bare-metal UEFI boot (`ooboot`) to autonomous OODA loops (`oooda-engine`).
+A line-level audit of all 377 repositories identified two structural sources of
+duplication:
+1. **Multi-Binary Proliferation**: Separate repositories exist for tools that
+   share the same parser, codec, or protocol engine (for example, `oowget` and
+   `oowget2` alongside `oocurl`; `oosdiff`, `oowdiff`, and `oocmp` alongside
+   `oodiff`; `oosha256` and `oomd5` alongside `oob3sum`; `oobash`, `ootrue`,
+   `oofalse`, and `ooyes` alongside `oosh`; `oostore-cas` and `ooregistry-cloud`
+   alongside `oostore`).
+2. **Duplicated Harness Boilerplate**: 1,079 tiny `.oo` wrapper pages (`cli.oo`,
+   `fs/fsprobe.oo`, `fs/record.oo`, `core/options.oo`) are copied across the
+   fleet instead of being imported from `openOODA-core/std`.
+
+In classic Unix systems (BusyBox, Toybox, coreutils, zstd/xz/gzip symlinks), a
+single verified binary dispatches its sub-persona from `argv[0]` (the invoked
+program basename). Previously, `openOODA-core/oodar` exposed `oo_sys_args(cap)`
+starting at `argv[1]`, omitting `argv[0]`.
+
+## 2. Specification
+
+### 2.1 Capability-Gated `oo_sys_argv0` Runtime and Compiler Intrinsics
+
+1. **L0.1 Runtime (`openOODA-core/oodar`)**:
+   - `OoStr oo_sys_argv0(long long cap)` requires `ProcessCap` (`CAP_PROCESS`,
+     bit 6) via `oo_cap_require_process(cap, "sys_argv0")`.
+   - When `cap == 0`, the function fails closed and returns the empty string
+     `""`.
+   - When `cap != 0`, the function reads `/proc/self/cmdline` up to the first
+     NUL byte (`\0`, bounded to 4096 bytes), strips any leading directory path
+     prefix before the final `/`, and returns the invoked binary basename.
+2. **L0.3 Compiler (`openOODA-core/oodac`)**:
+   - Registers `sys_argv0(p: &ProcessCap) -> String` and `oo_sys_argv0` in the
+     type checker (`tc_call_arity.oo`, `tc_call_ret.oo`, `tc_names.oo`,
+     `tc_names_known.oo`, `sealed_k.oo`) and LLVM backend (`ll_cap.oo`,
+     `ll_need_tab.oo`, `ll_bs_p1.oo`), lowering `sys_argv0(cap)` to
+     `@oo_sys_argv0(i64)`.
+3. **L0.4 Standard Library (`openOODA-core/std`)**:
+   - `std/fs/process/process.oo` exposes `pub fn sys_argv0(p: &ProcessCap) -> String`
+     and `pub fn process_argv0(p: &ProcessCap) -> String`.
+
+### 2.2 Multi-Call Symlink Dispatch Contract
+
+1. Any consolidated multi-call binary reads `let prog: String = sys_argv0(sys);`
+   at startup under `&ProcessCap`.
+2. When invoked through an alias symlink in `/opt/ooda/bin/` (or with an
+   explicit subcommand matching the alias), the binary selects the exact CLI
+   flag table, output format, and exit-code contract of the aliased utility:
+   - **HTTP/Transfer (`oocurl`)**: dispatches `oocurl`, `curl`, `oowget`,
+     `wget`, `oowget2`, `wget2`, `oofetch`.
+   - **Diff/Comparison (`oodiff`)**: dispatches `oodiff`, `diff`, `oosdiff`,
+     `sdiff`, `oowdiff`, `wdiff`, `oocmp`, `cmp`, `oocomm`, `comm`.
+   - **Cryptographic Digests (`oob3sum`)**: dispatches `oob3sum`, `b3sum`,
+     `oosha256`, `sha256sum`, `oomd5`, `md5sum`, `oocksum`, `cksum`, `oohash`.
+   - **Archive/Compression (`ootar`, `oozstd`, `oogzip`, `ooxz`, `oozip`)**:
+     dispatches compress, decompress (`gunzip`, `unxz`, `zstdcat`, `unzip`), and
+     stream cat modes from `argv[0]`.
+   - **Shell Builtins (`oosh`)**: dispatches `oosh`, `sh`, `oobash`, `bash`,
+     `ootrue`, `true`, `oofalse`, `false`, `ooyes`, `yes`, `oowhich`, `which`.
+   - **Cloud Storage & Control Plane (`oostore`, `oomesh`, `oodeploy`,
+     `oogateway`, `ooidentity`, `ootelemetry`, `oobilling`, `oodb-dist`)**:
+     consolidates the 18 `openOODA-cloud` services into 8 canonical distributed
+     engines (`oostore` absorbs `oostore-cas` and `ooregistry-cloud`; `oomesh`
+     absorbs `oodns-cloud` and `oorelay`; `oodeploy` absorbs `oobuild-fleet`,
+     `ooinfer-grid`, and `oosched-cloud`; `oogateway` absorbs `oocdn`).
+
+### 2.3 9-Organization Consolidation Target (377 -> 129 Canonical Repos)
+
+Across all 9 organizations, the consolidation blueprint reduces active product
+repositories from 377 to 129 canonical repositories (`65.8%` reduction) while
+retaining 100% capability coverage and CLI symlink compatibility:
+- `@openOODA`: 4 -> 4 (unchanged governance, website, status, install).
+- `@openOODA-core` (L0): 11 -> 11 (unchanged compiler, runtime, std, toolchain).
+- `@openOODA-kernel` (L1): 16 -> 6 (`ooboot`, `oohal`, `ookernel`, `oodrv-storage`, `oodrv-io`, `oodrv-virt`).
+- `@openOODA-OS` (L2): 18 -> 8 (`ooinit`, `oovfs`, `oonetd`, `oosysbus`, `ooauthd`, `oohealthd`, `ooimage`, `ooaid`).
+- `@openOODA-tools` (L3): 257 -> 64 canonical multi-call utilities.
+- `@openOODA-DE` (L4): 20 -> 9 (`oocomp`, `oopanel`, `ooportal`, `ooterm`, `oofiles`, `oosettings`, `oolock`, `oobazaar`, `ooagent-hud`).
+- `@openOODA-apps` (L5): 17 -> 11 (`oobrowser`, `oostudio`, `oooffice`, `oonotes`, `oocanvas`, `oomedia`, `oodaw`, `oopdf`, `oomail`, `oopass`, `oovm-ui`).
+- `@openOODA-cloud` (L6): 18 -> 8 (`oomesh`, `oostore`, `oodeploy`, `oogateway`, `ooidentity`, `oodb-dist`, `ootelemetry`, `oobilling`).
+- `@openOODA-agents` (L7): 16 -> 8 (`oooda-engine`, `ooherdr`, `ooquota`, `oofalsify`, `ooconsensus`, `oocoder`, `oomemory`, `oogovern`).
+
+## 3. Security
+
+`oo_sys_argv0` is strictly capability-gated by `ProcessCap` (`CAP_PROCESS`). A
+program without `ProcessCap` cannot inspect its invocation vector and receives
+`""` (fail-closed). Path components in `/proc/self/cmdline` are stripped inside
+`oodar` before returning the basename so callers match against simple command
+names without directory traversal ambiguity.
+
+## 4. Testing
+
+1. `oodar/qa/tests_challenger_sys.c` verifies both the `cap == 0` fail-closed
+   path and the `cap != 0` basename extraction path.
+2. `std/qa/probe_cap_process.oo` verifies `sys_argv0(p)` and `process_argv0(p)`
+   through the self-hosted `oodac` compiler.
+3. Every multi-call binary must pass RFC 0011 parity tests under each of its
+   aliased `argv[0]` symlinks before the absorbed repository is archived.
+
+## 5. Rollout
+
+1. **Phase 1 (Foundation & 100% Fleet Usability)**: Land `oo_sys_argv0` in
+   `oodar` (`v4.0.90`), `oodac` (`v0.11.63`), and `std` (`v1.0.86`); complete
+   all 18 `openOODA-cloud` capability-backed manifests (`377/377 = 100.0%`
+   USABLE across all 9 organizations); purge all `.ooda-cache/` build residue.
+2. **Phase 2 (Multi-Call Dispatch & Symlink Migration)**: Add `sys_argv0(sys)`
+   dispatch tables to the 64 canonical `openOODA-tools` binaries and 8 canonical
+   `openOODA-cloud` engines, verify symlink parity, and archive absorbed repos.
