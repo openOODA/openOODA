@@ -31,7 +31,7 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     let rem: Int = eco_parse_uint(str_slice(qpair, 0, pipe_idx));
     let quota: String = str_slice(qpair, pipe_idx + 1, chars_len(qpair));
     let state: String = status_pane_state(pane_id, vis, quota, tail);
-    let live_agent: String = if str_contains(tail, "SWE-2") { "devin (SWE-2 Free)" } else if str_contains(tail, "M3.1-Flash") { "mcode (M3.1-Flash)" } else if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wH:p1" || pane_id == "wK:p1" { eco_pane_vibe_agent(tail, agent) } else { agent };
+    let live_agent: String = if str_contains(tail, "SWE-2 Max") { "devin (SWE-2 Max)" } else if str_contains(tail, "SWE-2 High") { "devin (SWE-2 High)" } else if str_contains(tail, "SWE-2") { "devin (SWE-2 Free)" } else if str_contains(tail, "M3.1-Flash") { "mcode (M3.1-Flash)" } else if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wH:p1" || pane_id == "wK:p1" { eco_pane_vibe_agent(tail, agent) } else { agent };
     let alert: String = if state == "paused(limit)" { "OK (waiting for 5h boundary)" } else if rem <= 1 { "QUOTA_RESERVE_ALERT (rem=" + int_to_str(rem) + "% <= 1%)" } else { "OK (" + eco_parse_pane_quota("pace", int_to_str(rem)) + ")" };
     return "  " + eco_pad_right(pane_id, 7) + " " + eco_pad_right(ws, 20) + " " + eco_pad_right(live_agent, 22) + " " + eco_pad_right(state, 10) + " " + eco_pad_right(quota, 38) + " " + alert;
 }
@@ -39,6 +39,9 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
 // The state of one pane, read from the quota of that pane and from the tail
 // of the text of that pane.
 fn status_pane_state(pane_id: String, vis: String, quota: String, tail: String) -> String {
+    if (pane_id == "wG:p1" || pane_id == "wJ:p1" || pane_id == "wJ:p2" || pane_id == "wN:p1" || pane_id == "wN:p2") && (str_contains(vis, "Usage limit reached") || str_contains(vis, "Code: 42212") || str_contains(quota, "5h 100% (0% rem")) && !str_contains(tail, "Esc stop") {
+        return "paused(limit)";
+    }
     let mut state: String = if (pane_id == "wK:p1" || pane_id == "wN:p1" || pane_id == "wP:p1") && str_contains(quota, "shell ready") { "standby" } else { "idle" };
     if str_contains(tail, "User input required") || str_contains(tail, "Enter select") || str_contains(tail, "Bypass mode") {
         state = "WAIT_INPUT";
@@ -49,7 +52,7 @@ fn status_pane_state(pane_id: String, vis: String, quota: String, tail: String) 
         || str_contains(tail, "Waiting for response") {
         state = "working";
     }
-    if (pane_id == "wJ:p1" || pane_id == "wJ:p2" || pane_id == "wN:p1" || pane_id == "wN:p2") && str_contains(vis, "Usage limit reached") && state == "idle" {
+    if (pane_id == "wG:p1" || pane_id == "wJ:p1" || pane_id == "wJ:p2" || pane_id == "wN:p1" || pane_id == "wN:p2") && (str_contains(vis, "Usage limit reached") || str_contains(vis, "Code: 42212") || str_contains(quota, "5h 100% (0% rem")) && state == "idle" {
         state = "paused(limit)";
     }
     return state;
@@ -175,7 +178,7 @@ fn status_print_orgs(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap) -> I
 }
 
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
-    let qcmd: String = "python3 -c 'import json,urllib.request,os\ntry:\n a=json.load(open(os.path.expanduser(\"~/.minimax/auth/prod/en/mcode-public/auth.json\")))\n rec=list(a[\"records\"].values())[0]\n t=(rec.get(\"credentials\",rec) if isinstance(rec,dict) else json.loads(rec))[\"accessToken\"]\n r=json.loads(urllib.request.urlopen(urllib.request.Request(\"https://platform.minimax.io/v1/api/openplatform/coding_plan/remains?business=Agent&device_platform=mcode\",headers={\"Authorization\":\"Bearer \"+t,\"X-Group-Id\":\"2019488697572930158\",\"User-Agent\":\"mcode/0.7.4\"}),timeout=4).read())\n m=r[\"model_remains\"][0][\"current_interval_remaining_percent\"]\nexcept Exception: m=33\ntry:\n k=open(os.path.expanduser(\"~/.vibe/.env\")).read().split(\"=\",1)[1].strip().strip(\"\\\"\")\n b=json.loads(urllib.request.urlopen(urllib.request.Request(\"https://api.mistral.ai/v1/billing/budget\",headers={\"Authorization\":\"Bearer \"+k}),timeout=4).read())\n v=max(0,100-int(b[\"vibe_budget\"][\"usage_percentage\"]))\nexcept Exception: v=10\nprint(f\"{m}\\n{v}\")' > /tmp/eco_live_q.txt 2>/dev/null";
+    let qcmd: String = "python3 -c 'import json,urllib.request,os\ntry:\n a=json.load(open(os.path.expanduser(\"~/.minimax/auth/prod/en/mcode-public/auth.json\")))\n rec=list(a[\"records\"].values())[0]\n t=(rec.get(\"credentials\",rec) if isinstance(rec,dict) else json.loads(rec))[\"accessToken\"]\n r=json.loads(urllib.request.urlopen(urllib.request.Request(\"https://platform.minimax.io/v1/api/openplatform/coding_plan/remains?business=Agent&device_platform=mcode\",headers={\"Authorization\":\"Bearer \"+t,\"X-Group-Id\":\"2019488697572930158\",\"User-Agent\":\"mcode/0.7.4\"}),timeout=4).read())\n m=r[\"model_remains\"][0][\"current_interval_remaining_percent\"]\nexcept Exception: m=33\ntry:\n k=open(os.path.expanduser(\"~/.vibe/.env\")).read().splitlines()[0].split(\"=\",1)[1].strip().strip(\"\\\"\")\n b=json.loads(urllib.request.urlopen(urllib.request.Request(\"https://api.mistral.ai/v1/billing/budget\",headers={\"Authorization\":\"Bearer \"+k}),timeout=4).read())\n v=max(0,100-int(b[\"vibe_budget\"][\"usage_percentage\"]))\nexcept Exception: v=10\nprint(f\"{m}\\n{v}\")' > /tmp/eco_live_q.txt 2>/dev/null";
     let _qr: Result[Int, String] = sys_exec_wait(sys, "bash", list_push(list_push(list_new(), "-c"), qcmd));
     let qlines: List[String] = text_split_lines(eco_read_trimmed(fs_r, "/tmp/eco_live_q.txt"));
     let _qrm: Result[Void, String] = fs_remove_file(fs_w, "/tmp/eco_live_q.txt");
@@ -190,11 +193,11 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap
     println("  ------------------------------------------------------------------------------------------------------------------------------");
     println(status_pane_telemetry(sys, fs_r, fs_w, "wF:p1", "(L0) openOODA-core",   "vibe (GLM-5.3 [high])", m_rem, v_rem));
     println(status_pane_telemetry(sys, fs_r, fs_w, "wG:p1", "(L1) openOODA-kernel", "mcode (M3.1-Flash)",    m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wH:p1", "(L2) openOODA-OS",     "devin (SWE-2 Free)",    m_rem, v_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wH:p1", "(L2) openOODA-OS",     "devin (SWE-2 Max)",     m_rem, v_rem));
     println(status_pane_telemetry(sys, fs_r, fs_w, "wJ:p1", "(L3) openOODA-tools",  "mcode (M3.1-Flash)",    m_rem, v_rem));
     println(status_pane_telemetry(sys, fs_r, fs_w, "wJ:p2", "(L3) openOODA-tools",  "mcode (M3.1-Flash)",    m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wK:p1", "(L4) openOODA-DE",     "devin (SWE-2 Free)",    m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wK:p2", "(L4) openOODA-DE",     "devin (SWE-2 Free)",    m_rem, v_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wK:p1", "(L4) openOODA-DE",     "devin (SWE-2 Max)",     m_rem, v_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wK:p2", "(L4) openOODA-DE",     "devin (SWE-2 Max)",     m_rem, v_rem));
     println(status_pane_telemetry(sys, fs_r, fs_w, "wM:p1", "(L5) openOODA-apps",   "devin (SWE-2 Max)",     m_rem, v_rem));
     println(status_pane_telemetry(sys, fs_r, fs_w, "wN:p1", "(L6) openOODA-cloud",  "mcode (M3.1-Flash)",    m_rem, v_rem));
     println(status_pane_telemetry(sys, fs_r, fs_w, "wN:p2", "(L6) openOODA-cloud",  "mcode (M3.1-Flash)",    m_rem, v_rem));
