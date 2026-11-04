@@ -114,19 +114,19 @@ pub fn eco_repo_is_usable(fs_r: &FsReadCap, org: String, repo_dir: String) -> Bo
     let eng: String = eco_read_trimmed(fs_r, repo_dir + "/core/engine.oo");
     let main_txt: String = eco_read_trimmed(fs_r, repo_dir + "/main.oo");
     let cli_txt: String = eco_read_trimmed(fs_r, repo_dir + "/cli.oo") + eco_read_trimmed(fs_r, repo_dir + "/cli/opts.oo") + eco_read_trimmed(fs_r, repo_dir + "/cli/render.oo") + eco_read_trimmed(fs_r, repo_dir + "/sec/cli.oo");
-    let fs_txt: String = eco_read_trimmed(fs_r, repo_dir + "/fs/manifest.oo") + eco_read_trimmed(fs_r, repo_dir + "/fs/procscan.oo") + eco_read_trimmed(fs_r, repo_dir + "/fs/logfile.oo") + eco_read_trimmed(fs_r, repo_dir + "/fs/io.oo") + eco_read_trimmed(fs_r, repo_dir + "/net/serve.oo") + eco_read_trimmed(fs_r, repo_dir + "/read.oo") + eco_read_trimmed(fs_r, repo_dir + "/upstream.oo");
+    let fs_txt: String = eco_read_trimmed(fs_r, repo_dir + "/fs/manifest.oo") + eco_read_trimmed(fs_r, repo_dir + "/fs/fsprobe.oo") + eco_read_trimmed(fs_r, repo_dir + "/fs/record.oo") + eco_read_trimmed(fs_r, repo_dir + "/fs/procscan.oo") + eco_read_trimmed(fs_r, repo_dir + "/fs/logfile.oo") + eco_read_trimmed(fs_r, repo_dir + "/fs/io.oo") + eco_read_trimmed(fs_r, repo_dir + "/net/serve.oo") + eco_read_trimmed(fs_r, repo_dir + "/read.oo") + eco_read_trimmed(fs_r, repo_dir + "/upstream.oo");
     let combined: String = main_txt + "\n" + cli_txt + "\n" + eng + "\n" + fs_txt;
     let has_io: Bool = str_contains(combined, "read_file(") || str_contains(combined, "fs_read_file(")
         || str_contains(combined, "fs_write_file(") || str_contains(combined, "fs_read_dir(")
         || str_contains(combined, "fs_is_dir(") || str_contains(combined, "fs_path_exists(")
         || str_contains(combined, "tcp_conn_") || str_contains(combined, "tcp_connect(")
         || str_contains(combined, "oo_path_exists(") || str_contains(combined, "sys_exec(");
-    let has_scaffold_pipe: Bool = str_contains(combined, "[status|verify|inspect]") || str_contains(combined, "status, verify, and inspect") || str_contains(combined, "status|verify|inspect");
+    if has_io { return true; }
     if str_contains(eng, "active_items: Int") && str_contains(eng, "1048576") {
-        if has_io && !has_scaffold_pipe { return true; }
         return false;
     }
-    if has_scaffold_pipe && !has_io {
+    let has_scaffold_pipe: Bool = str_contains(combined, "[status|verify|inspect]") || str_contains(combined, "status, verify, and inspect") || str_contains(combined, "status|verify|inspect");
+    if has_scaffold_pipe {
         return false;
     }
     return true;
