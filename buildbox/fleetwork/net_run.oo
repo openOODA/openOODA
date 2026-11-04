@@ -22,6 +22,7 @@ import "parity/mapping.oo";
 import "ci/apply.oo";
 import "ci/makefile.oo";
 import "fleetwork/net_law.oo";
+import "fleetwork/net_parity.oo";
 import "fleetwork/net_push.oo";
 
 // The name of the agent that writes the repair, and the marker that the
@@ -121,7 +122,7 @@ fn nw_land(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, tool
 // Write the workflow of the gate of one tool, put the canonical static
 // governance gates in its Makefile, and land the repair on both default
 // branches. The answer holds zero when the repair landed.
-pub fn nw_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, tool: String, rows: List[String]) -> Int {
+pub fn nw_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, parity_dir: String, tool: String, rows: List[String]) -> Int {
     let repo: String = fleet + "/" + tool;
     if !path_exists(fs_r, repo + "/.git") { println(tool + " NO-REPO"); return 1; }
     if !nw_checkout(sys, fs_r, cache, repo) { println(tool + " CHECKOUT-FAIL"); return 1; }
@@ -129,6 +130,7 @@ pub fn nw_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: Stri
     let _v: Int = nw_fix_vocab(fs_r, fs_w, repo);
     let _d: Int = nw_remove_dead(fs_r, fs_w, repo);
     let _c: Int = nw_clean_strays(fs_r, fs_w, repo);
+    let _p: Int = nw_install_parity(fs_r, fs_w, parity_dir, repo);
     let _w: Bool = ci_apply_workflow(fs_r, fs_w, repo, tool, upstream);
     let _r: Bool = ci_apply_release(fs_r, fs_w, repo, tool, upstream);
     let _m: Bool = ci_mk_patch(fs_r, fs_w, repo + "/Makefile");

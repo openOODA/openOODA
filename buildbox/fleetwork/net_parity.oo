@@ -1,0 +1,49 @@
+// # Fleet Network Parity - Puts The Canonical Runner Of The Parity Gate In One Tool
+//
+// Logline: Puts the one runner of the parity gate into the table of the cases of one tool, so every tool of the fleet compares itself against the upstream in the same way.
+//
+// Setup: Needs FsReadCap and FsWriteCap for the files.
+//
+// Beats:
+//   1. Put the canonical runner of the parity gate into one tool.
+//
+// The fleet held ten shapes of the runner of the parity gate, and only five of
+// them knew that a tool that names no upstream program has no parity gate. A
+// runner that is written by hand drifts, and a tool that is an openOODA tool
+// and not a drop-in replacement then fails a gate that it can never pass.
+//
+// The runner of the parity gate is one page of the contract now, and the
+// contract installs it in every tool of the fleet. The runner keeps the gate
+// closed for a tool that names an upstream program: a missing upstream fails,
+// a table without a match case fails, and a case that differs fails. A tool
+// that names no upstream program has no parity gate, and the runner says so
+// and passes.
+
+import "std/fs/os/fs.oo";
+
+// Put the canonical runner of the parity gate into one tool. The answer holds
+// the number of the files that were written. A file that already holds the
+// canonical text is left alone, so the repair of a tool that already holds
+// the runner changes nothing.
+pub fn nw_install_parity(fs_r: &FsReadCap, fs_w: &FsWriteCap, src: String, repo: String) -> Int {
+    let mut written: Int = 0;
+    let mut names: List[String] = list_new();
+    names = list_push(names, "run.oo");
+    names = list_push(names, "words.oo");
+    let mut i: Int = 0;
+    while i < list_len(names) {
+        let name: String = list_get(names, i);
+        i = i + 1;
+        let from: String = src + "/" + name;
+        let to: String = repo + "/qa/parity/" + name;
+        let body: Result[String, String] = fs_read_file(fs_r, from);
+        if body.is_err() { continue; }
+        let old: Result[String, String] = fs_read_file(fs_r, to);
+        if old.is_ok() && old.val == body.val { continue; }
+        let dir: String = repo + "/qa/parity";
+        let _m: Result[Void, String] = fs_mkdir_p(fs_w, dir);
+        let _w: Result[Void, String] = fs_write_file(fs_w, to, body.val);
+        written = written + 1;
+    }
+    return written;
+}
