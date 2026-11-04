@@ -109,3 +109,23 @@ pub fn eco_count_oo_pages(fs_r: &FsReadCap, repo_dir: String) -> Int {
     return wcount;
 }
 
+pub fn eco_repo_is_usable(fs_r: &FsReadCap, org: String, repo_dir: String) -> Bool {
+    if org == "openOODA" || org == "openOODA-core" { return true; }
+    let eng: String = eco_read_trimmed(fs_r, repo_dir + "/core/engine.oo");
+    if str_contains(eng, "active_items: Int") && str_contains(eng, "1048576") {
+        let srv: String = eco_read_trimmed(fs_r, repo_dir + "/net/serve.oo");
+        if str_contains(srv, "tcp_conn_bind") { return true; }
+        return false;
+    }
+    let main_txt: String = eco_read_trimmed(fs_r, repo_dir + "/main.oo");
+    let cli_txt: String = eco_read_trimmed(fs_r, repo_dir + "/cli.oo") + eco_read_trimmed(fs_r, repo_dir + "/cli/opts.oo");
+    let combined: String = main_txt + "\n" + cli_txt + "\n" + eng;
+    if (str_contains(combined, "[status|verify|inspect]") || str_contains(combined, "status, verify, and inspect") || str_contains(combined, "status|verify|inspect"))
+        && !str_contains(combined, "read_file(") && !str_contains(combined, "fs_read_file(")
+        && !str_contains(combined, "tcp_conn_") && !str_contains(combined, "oo_path_exists(") {
+        return false;
+    }
+    return true;
+}
+
+

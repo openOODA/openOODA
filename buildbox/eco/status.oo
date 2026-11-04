@@ -120,7 +120,7 @@ fn status_org_row(fs_r: &FsReadCap, org: String) -> String {
     let entries: List[String] = fs_read_dir(fs_r, org_dir);
     let mut total: Int = 0;
     let mut pages_ok: Int = 0;
-    let mut ver_ok: Int = 0;
+    let mut usable_ok: Int = 0;
     let mut tag_ok: Int = 0;
     let mut built_ok: Int = 0;
     let mut i: Int = 0;
@@ -132,16 +132,15 @@ fn status_org_row(fs_r: &FsReadCap, org: String) -> String {
         if !path_exists(fs_r, rdir + "/.git") { continue; }
         total = total + 1;
         if is_l0 || status_count_oo_pages(fs_r, rdir) >= 6 { pages_ok = pages_ok + 1; }
-        let mut ver: String = eco_read_trimmed(fs_r, rdir + "/VERSION");
-        if ver == "" { ver = eco_pkg_get(fs_r, rdir + "/ooda.pkg", "version"); }
-        if is_l0 || (ver != "" && ver != "0.1.0" && ver != "0.2.0") { ver_ok = ver_ok + 1; }
+        if eco_repo_is_usable(fs_r, org, rdir) { usable_ok = usable_ok + 1; }
         if status_has_release_tag(fs_r, org, rdir) { tag_ok = tag_ok + 1; }
         if status_repo_built(fs_r, org, rdir, r) { built_ok = built_ok + 1; }
     }
     let t_str: String = int_to_str(total);
+    let scaffolds: Int = total - usable_ok;
     return "  " + eco_pad_right(org, 18) + " " + eco_pad_left(t_str, 6)
-        + " " + eco_pad_left(int_to_str(pages_ok) + "/" + t_str, 10)
-        + " " + eco_pad_left(int_to_str(ver_ok) + "/" + t_str, 12)
+        + " " + eco_pad_left(int_to_str(usable_ok) + "/" + t_str, 10)
+        + " " + eco_pad_left(int_to_str(scaffolds), 12)
         + " " + eco_pad_left(int_to_str(tag_ok) + "/" + t_str, 13)
         + " " + eco_pad_left(int_to_str(built_ok) + "/" + t_str, 13);
 }
@@ -149,11 +148,7 @@ fn status_org_row(fs_r: &FsReadCap, org: String) -> String {
 fn status_node_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, host: String, ip: String, role: String) -> String {
     let tmp: String = "/tmp/eco_node_" + host + ".txt";
     let self_host: String = eco_read_trimmed(fs_r, "/proc/sys/kernel/hostname");
-    let probe: String = if host == "zebes" {
-        "mem=$(awk \"/MemTotal:/{printf \\\"%.0fGiB\\\", \\$2/1048576}\" /proc/meminfo); bbox=$([ -x /var/lib/ooda-buildbox/build/bin/ooda-loop ] && echo ready || echo missing)/$(systemctl is-enabled ooda-loop.timer 2>/dev/null || echo off); printf \"%s|no-gpu|n/a|%s|\" \"$mem\" \"$bbox\""
-    } else {
-        "mem=$(awk \"/MemTotal:/{printf \\\"%.0fGiB\\\", \\$2/1048576}\" /proc/meminfo)/$(df -h /tmp | awk \"NR==2{print \\$2}\"); gpu=$(nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits 2>/dev/null | awk -F\", \" \"{printf \\\"G%d:%s/%sMB(%s%%) \\\", NR-1, \\$1, \\$2, \\$3}\"); llm=$(systemctl is-active ollama.service 2>/dev/null):$(curl -sf http://127.0.0.1:11434/api/tags 2>/dev/null | grep -q qwen36-35b-uncensored-1m && echo qwen36-35b || echo none); bbox=$([ -x /var/lib/ooda-buildbox/build/bin/ooda-loop ] && echo ready || echo missing)/$(systemctl is-active ooda-loop.timer 2>/dev/null || echo off); printf \"%s|%s|%s|%s|\" \"$mem\" \"$gpu\" \"$llm\" \"$bbox\""
-    };
+    let probe: String = "mem=$(awk \"/MemTotal:/{printf \\\"%.0fGiB\\\", \\$2/1048576}\" /proc/meminfo)/$(df -h /tmp | awk \"NR==2{print \\$2}\"); gpu=$(nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits 2>/dev/null | awk -F\", \" \"{printf \\\"G%d:%s/%sMB(%s%%) \\\", NR-1, \\$1, \\$2, \\$3}\"); llm=$(systemctl is-active ooda-inference.service 2>/dev/null):$(curl -sf http://127.0.0.1:11435/health 2>/dev/null | grep -q ooaid && echo ooaid:11435 || echo none); bbox=$([ -x /var/lib/ooda-buildbox/build/bin/ooda-loop ] && echo ready || echo missing)/$(systemctl is-active ooda-loop.timer 2>/dev/null || echo off); printf \"%s|%s|%s|%s|\" \"$mem\" \"$gpu\" \"$llm\" \"$bbox\"";
     let cmd: String = if self_host == host || str_starts_with(self_host, host + ".") {
         "eval '" + probe + "' > " + tmp + " 2>/dev/null || echo 'UNREACHABLE|offline|offline|offline|' > " + tmp
     } else {
@@ -190,8 +185,8 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap
     println(status_pane_telemetry(sys, fs_r, fs_w, "wN:p1", "(L6) openOODA-cloud",  "mcode (M3.1-Flash)"));
     println(status_pane_telemetry(sys, fs_r, fs_w, "wP:p1", "(L7) openOODA-agents", "devin (SWE-2 Max)"));
     println("");
-    println("[2] 9-ORGANIZATION (ROOT + L0-L7) COMPLETION MATRIX (Pages >= 6, Version/Tag >= v0.2.1, Build/Green)");
-    println("  ORGANIZATION        TOTAL   PAGES>=6   VER>=0.2.1   TAG>=v0.2.1   GREEN/BUILT");
+    println("[2] 9-ORGANIZATION (ROOT + L0-L7) USABILITY MATRIX (USABLE vs SCAFFOLD SHELLS)");
+    println("  ORGANIZATION        TOTAL     USABLE    SCAFFOLDS   TAG>=v0.2.1   GREEN/BUILT");
     println("  ------------------------------------------------------------------------------");
     println(status_org_row(fs_r, "openOODA"));
     println(status_org_row(fs_r, "openOODA-core"));
@@ -204,7 +199,7 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap
     println(status_org_row(fs_r, "openOODA-agents"));
     println("");
     println("[3] TAILSCALE FLEET & GPU BUILDBOX TELEMETRY (Daily Update/Reboot ~04:00, Nightly Loop 04:30)");
-    println("  NODE (TAILSCALE IP)        ROLE           RAM / TMPFS   GPU VRAM & UTIL                        OLLAMA / LLM         BUILDBOX / TIMER");
+    println("  NODE (TAILSCALE IP)        ROLE           RAM / TMPFS   GPU VRAM & UTIL                        OODA-INFERENCE       BUILDBOX / TIMER");
     println("  ---------------------------------------------------------------------------------------------------------------------------------------");
     println(status_node_telemetry(sys, fs_r, fs_w, "zebes",      "100.102.186.93", "control/herdr"));
     println(status_node_telemetry(sys, fs_r, fs_w, "ringmaster", "100.88.249.93",  "buildbox+gpu"));
