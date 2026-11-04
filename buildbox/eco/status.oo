@@ -6,7 +6,7 @@
 //
 // Beats:
 //   1. Read visible terminal lines from Herdr panes wF:p1, wG:p1, wH:p1, wJ:p1, and wK:p1.
-//   2. Parse remaining token/quota percentages and flag QUOTA_RESERVE_ALERT when <= 2%.
+//   2. Parse remaining token/quota percentages and flag QUOTA_RESERVE_ALERT when <= 5%.
 //   3. Walk openOODA, openOODA-kernel, openOODA-OS, openOODA-DE, and openOODA-tools.
 //   4. Print a single-screen status dashboard.
 
@@ -32,7 +32,7 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     let quota: String = str_slice(qpair, pipe_idx + 1, chars_len(qpair));
     let state: String = status_pane_state(pane_id, vis, quota, tail);
     let live_agent: String = if str_contains(tail, "SWE-2 Max") { "devin (SWE-2 Max)" } else if str_contains(tail, "SWE-2 High") { "devin (SWE-2 High)" } else if str_contains(tail, "SWE-2") { "devin (SWE-2 Free)" } else if str_contains(tail, "M3.1-Flash") { "mcode (M3.1-Flash)" } else if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wH:p1" || pane_id == "wK:p1" { eco_pane_vibe_agent(tail, agent) } else { agent };
-    let alert: String = if state == "paused(limit)" { "OK (waiting for 5h boundary)" } else if rem <= 1 { "QUOTA_RESERVE_ALERT (rem=" + int_to_str(rem) + "% <= 1%)" } else { "OK (" + eco_parse_pane_quota("pace", int_to_str(rem)) + ")" };
+    let alert: String = if state == "paused(limit)" { "OK (waiting for 5h boundary)" } else if rem <= 5 { "QUOTA_RESERVE_ALERT (rem=" + int_to_str(rem) + "% <= 5%)" } else { "OK (" + eco_parse_pane_quota("pace", int_to_str(rem)) + ")" };
     return "  " + eco_pad_right(pane_id, 7) + " " + eco_pad_right(ws, 20) + " " + eco_pad_right(live_agent, 22) + " " + eco_pad_right(state, 10) + " " + eco_pad_right(quota, 38) + " " + alert;
 }
 
@@ -153,6 +153,7 @@ fn status_node_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
 }
 
 fn status_print_orgs(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap) -> Int {
+    println("  Quota Pacing Policy: 90% Soft Throttle (1-pane max) / 95% Hard Cutoff (>=5% reserve floor)");
     println("");
     println("[2] 9-ORGANIZATION (ROOT + L0-L7) USABILITY MATRIX (USABLE vs SCAFFOLD SHELLS)");
     println("  ORGANIZATION        TOTAL     USABLE    SCAFFOLDS   TAG>=v0.2.1   GREEN/BUILT");
@@ -188,8 +189,8 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap
     println("  openOODA 9-ORG (ROOT + L0-L7) ECOSYSTEM & AGENT FLEET STATUS (PURE .oo DOGFOOD WATCHDOG)");
     println("==============================================================================================");
     println("");
-    println("[1] LIVE AGENT & QUOTA TELEMETRY (Target: 99% pre-reset, >=1% hard reserve floor)");
-    println("  PANE    WORKSPACE            AGENT                    STATE       QUOTA / TOKENS                     STATUS / PACE TO 99%");
+    println("[1] LIVE AGENT & QUOTA TELEMETRY (Target: 90% soft throttle / 95% hard cutoff, >=5% reserve floor)");
+    println("  PANE    WORKSPACE            AGENT                    STATE       QUOTA / TOKENS                     STATUS / PACE TO 90%/95%");
     println("  ------------------------------------------------------------------------------------------------------------------------------");
     println(status_pane_telemetry(sys, fs_r, fs_w, "wF:p1", "(L0) openOODA-core",   "vibe (GLM-5.3 [high])", m_rem, v_rem));
     println(status_pane_telemetry(sys, fs_r, fs_w, "wG:p1", "(L1) openOODA-kernel", "mcode (M3.1-Flash)",    m_rem, v_rem));
