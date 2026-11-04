@@ -95,21 +95,28 @@ pub fn nw_fix_vocab(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo: String) -> Int {
 // Read the size debt of one tool. The answer holds the debt. The debt is
 // read out of the gate of the tool itself, so the debt and the gate can never
 // name different things.
+//
+// The gate of the shape writes the whole inventory of the violations of the
+// tool into the file .ooda-cache/shape.now, and the debt is that inventory.
+// The debt was read out of the answer of the gate before, and the answer of
+// the gate names only the violations that are new and the violations that
+// grew. A violation that the debt already names was therefore lost from the
+// debt, and the debt of a tool was empty on one round and full on the next.
 pub fn nw_law_baseline(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String) -> String {
     let mut a: List[String] = list_new();
     a = list_push(a, "-C");
     a = list_push(a, repo);
     a = list_push(a, "shape");
     let _o: String = fc_run(sys, fs_r, cache, "make", a);
-    let lines: List[String] = text_split_lines(fc_all(fs_r, cache));
+    let inv: Result[String, String] = fs_read_file(fs_r, repo + "/.ooda-cache/shape.now");
+    if inv.is_err() { return ""; }
+    let lines: List[String] = text_split_lines(inv.val);
     let mut entries: List[String] = list_new();
     let mut i: Int = 0;
     while i < list_len(lines) {
-        let line: String = list_get(lines, i);
+        let line: String = text_trim(list_get(lines, i));
         i = i + 1;
-        if !str_contains(line, "new size violation ") { continue; }
-        let entry: String = text_trim(str_replace(line, "VIOLATION: new size violation ", ""));
-        if entry != "" { entries = list_push(entries, entry); }
+        if line != "" { entries = list_push(entries, line); }
     }
     let mut out: String = "";
     let mut j: Int = 0;
