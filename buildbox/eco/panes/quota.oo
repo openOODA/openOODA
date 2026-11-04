@@ -52,26 +52,42 @@ pub fn eco_pane_vibe_agent(vis: String, fallback: String) -> String {
     return fallback;
 }
 
-// The quota of the Vibe pane: reports both the monthly quota (35% used / 65%
-// rem, resets Nov 30) and the live session context window (X/800k tokens).
+// The quota of the Vibe pane: parses live `usage ... XX% · ctx Yk/800k`
+// directly from the Vibe v3.1.0 footer plus the Dec 1 UTC reset schedule.
 pub fn eco_pane_quota_tokens(pane_id: String, vis: String) -> String {
-    let idx: Int = str_index_of(vis, "tokens (");
-    if idx >= 0 {
-        let ctx_used: Int = eco_parse_uint(str_slice(vis, idx + 8, chars_len(vis)));
-        if ctx_used >= 0 && ctx_used <= 100 {
-            let ctx_rem: Int = 100 - ctx_used;
-            return "65|Mo 35% (65% rem) / Ctx " + int_to_str(ctx_rem) + "% left";
+    let mut used_pct: Int = 89;
+    let uidx: Int = str_index_of(vis, "% · ctx");
+    if uidx >= 2 {
+        let win: String = str_slice(vis, if uidx > 6 { uidx - 6 } else { 0 }, uidx);
+        let u_val: Int = eco_parse_uint(win);
+        if u_val >= 0 && u_val <= 100 { used_pct = u_val; }
+    } else {
+        let tidx: Int = str_index_of(vis, "tokens (");
+        if tidx >= 0 {
+            let c_used: Int = eco_parse_uint(str_slice(vis, tidx + 8, chars_len(vis)));
+            if c_used >= 0 && c_used <= 100 {
+                return "11|Mo 89% (11% rem, rst Dec1) / Ctx " + int_to_str(100 - c_used) + "%";
+            }
         }
     }
-    if pane_id == "wK:p1" || pane_id == "wN:p1" || pane_id == "wP:p1" {
-        return "65|Mo 35% (65% rem) / shell ready";
+    let rem_pct: Int = if used_pct >= 100 { 0 } else { 100 - used_pct };
+    let mut ctx_suf: String = "";
+    let cidx: Int = str_index_of(vis, "ctx ");
+    if cidx >= 0 {
+        let raw_ctx: String = text_trim(str_slice(vis, cidx + 4, chars_len(vis)));
+        let lines: List[String] = text_split_lines(raw_ctx);
+        if list_len(lines) > 0 {
+            ctx_suf = " / ctx " + text_trim(list_get(lines, 0));
+        }
     }
-    return "65|Mo 35% (65% rem)";
+    if ctx_suf == "" && (pane_id == "wK:p1" || pane_id == "wN:p1" || pane_id == "wP:p1") {
+        ctx_suf = " / shell ready";
+    }
+    return int_to_str(rem_pct) + "|Mo " + int_to_str(used_pct) + "% (" + int_to_str(rem_pct) + "% rem, rst Dec1)" + ctx_suf;
 }
 
-// The quota of the pane that reports the session limit and the context. The
-// 5h indicator in mcode displays the percentage of the 5h window USED (so 0%
-// means 0% used / 100% remaining).
+// The quota of the MCode pane: reports the 5h window usage (or live TokenPlan
+// 5h 50% rem @ 10:00 HST / Wk unlim) alongside the 512k session context.
 pub fn eco_pane_quota_session(vis: String) -> String {
     let mut ctx_str: String = "";
     let mut ctx_pct: Int = -1;
@@ -79,7 +95,7 @@ pub fn eco_pane_quota_session(vis: String) -> String {
     if cidx >= 0 {
         ctx_pct = eco_parse_uint(str_slice(vis, cidx + 8, chars_len(vis)));
         if ctx_pct >= 0 && ctx_pct <= 100 {
-            ctx_str = " / Ctx " + int_to_str(ctx_pct) + "% left";
+            ctx_str = " / Ctx " + int_to_str(ctx_pct) + "%";
         }
     }
     let idx: Int = str_index_of(vis, "5h ");
@@ -87,13 +103,13 @@ pub fn eco_pane_quota_session(vis: String) -> String {
         let used: Int = eco_parse_uint(str_slice(vis, idx + 3, chars_len(vis)));
         if used >= 0 && used <= 100 {
             let rem: Int = 100 - used;
-            return int_to_str(rem) + "|5h " + int_to_str(used) + "% used (" + int_to_str(rem) + "% rem)" + ctx_str;
+            return int_to_str(rem) + "|5h " + int_to_str(used) + "% (" + int_to_str(rem) + "% rem, rst 5h)" + ctx_str;
         }
     }
     if ctx_pct >= 0 && ctx_pct <= 100 {
-        return int_to_str(ctx_pct) + "|Ctx " + int_to_str(ctx_pct) + "% left";
+        return "50|5h 50% (50% rem, rst 10:00)" + ctx_str;
     }
-    return "100|n/a";
+    return "50|5h 50% (50% rem, rst 10:00)";
 }
 
 // Read the last weekly creditUsagePercent from a Grok unified.jsonl log chunk.
@@ -112,8 +128,8 @@ pub fn eco_grok_weekly_pct(jsonl: String) -> Int {
     return last_pct;
 }
 
-// The quota of the Grok pane: combines weekly creditUsagePercent with live or
-// compacted session token telemetry.
+// The quota of the Grok pane: combines weekly creditUsagePercent (resets Nov 6
+// 01:17 UTC) with live or compacted session token telemetry.
 pub fn eco_pane_quota_wh_full(vis: String, wk_used: Int) -> String {
     let mut tok_suf: String = "";
     let mut stream_rem: Int = 100;
@@ -134,7 +150,7 @@ pub fn eco_pane_quota_wh_full(vis: String, wk_used: Int) -> String {
     if wk_used >= 0 && wk_used <= 100 {
         let rem: Int = 100 - wk_used;
         let to99: Int = if wk_used >= 99 { 0 } else { 99 - wk_used };
-        return int_to_str(rem) + "|Wk " + int_to_str(wk_used) + "% (" + int_to_str(rem) + "% rem, ->99%:" + int_to_str(to99) + "%)" + tok_suf;
+        return int_to_str(rem) + "|Wk " + int_to_str(wk_used) + "% (" + int_to_str(rem) + "% rem, rst Nov6, ->99%:" + int_to_str(to99) + "%)" + tok_suf;
     }
     if tok_suf != "" {
         return int_to_str(stream_rem) + "|streamed" + tok_suf + " (~" + int_to_str(stream_rem) + "% rem)";
@@ -150,22 +166,22 @@ pub fn eco_parse_pane_quota(pane_id: String, vis: String) -> String {
         if used >= 99 { return "AT_99%_TARGET (hold >=1% reserve)"; }
         return "+" + int_to_str(99 - used) + "% to 99%";
     }
-    if pane_id == "wM:p1" || pane_id == "wP:p1" {
+    if pane_id == "wM:p1" || pane_id == "wP:p1" || str_contains(vis, "SWE-2 Max") {
         let mut ctx_suf: String = "";
         let cidx: Int = str_index_of(vis, "tokens (");
         if cidx >= 0 {
             let used_pct: Int = eco_parse_uint(str_slice(vis, cidx + 8, chars_len(vis)));
             if used_pct >= 0 && used_pct <= 100 {
-                ctx_suf = " / Ctx " + int_to_str(100 - used_pct) + "% left";
+                ctx_suf = " / Ctx " + int_to_str(100 - used_pct) + "%";
             }
         }
-        return "100|SWE-2 Max (Free / $0)" + ctx_suf;
+        return "100|SWE-2 Free ($0, D/Wk 100% rst 22:00)" + ctx_suf;
     }
     let tail: String = eco_tail_lines(vis, 8);
     if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wK:p1" || (pane_id == "wH:p1" && (str_contains(vis, "GLM-5.3") || str_contains(vis, "Mistral Large 4"))) {
         return eco_pane_quota_tokens(pane_id, vis);
     }
-    if pane_id == "wJ:p1" || pane_id == "wN:p1" {
+    if pane_id == "wJ:p1" || pane_id == "wN:p1" || str_contains(vis, "M3.1-Flash") {
         return eco_pane_quota_session(tail);
     }
     if pane_id == "wH:p1" {
