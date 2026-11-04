@@ -23,7 +23,7 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     let vis: String = eco_read_trimmed(fs_r, tmp);
     let _rm: Result[Void, String] = fs_remove_file(fs_w, tmp);
     let tail: String = eco_tail_lines(vis, 14);
-    let is_grok: Bool = pane_id == "wH:p1" && !str_contains(tail, "GLM-5.3") && !str_contains(tail, "Mistral Large 4") && !str_contains(tail, "SWE-2 Max") && !str_contains(tail, "M3.1-Flash");
+    let is_grok: Bool = pane_id == "wH:p1" && !str_contains(tail, "GLM-5.3") && !str_contains(tail, "Mistral Large 4") && !str_contains(tail, "SWE-2") && !str_contains(tail, "M3.1-Flash");
     let wk_txt: String = eco_read_trimmed(fs_r, tmp + ".wk");
     let _rmw: Result[Void, String] = fs_remove_file(fs_w, tmp + ".wk");
     let qpair: String = if is_grok { eco_pane_quota_wh_full(vis, eco_grok_weekly_pct(wk_txt)) } else { eco_parse_pane_quota(pane_id, vis) };
@@ -31,7 +31,7 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     let rem: Int = eco_parse_uint(str_slice(qpair, 0, pipe_idx));
     let quota: String = str_slice(qpair, pipe_idx + 1, chars_len(qpair));
     let state: String = status_pane_state(pane_id, vis, quota, tail);
-    let live_agent: String = if str_contains(tail, "SWE-2 Max") { "devin (SWE-2 Max)" } else if str_contains(tail, "M3.1-Flash") { "mcode (M3.1-Flash)" } else if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wH:p1" || pane_id == "wK:p1" { eco_pane_vibe_agent(tail, agent) } else { agent };
+    let live_agent: String = if str_contains(tail, "SWE-2") { "devin (SWE-2 Free)" } else if str_contains(tail, "M3.1-Flash") { "mcode (M3.1-Flash)" } else if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wH:p1" || pane_id == "wK:p1" { eco_pane_vibe_agent(tail, agent) } else { agent };
     let alert: String = if state == "paused(limit)" { "OK (waiting for 5h boundary)" } else if rem <= 1 { "QUOTA_RESERVE_ALERT (rem=" + int_to_str(rem) + "% <= 1%)" } else { "OK (" + eco_parse_pane_quota("pace", int_to_str(rem)) + ")" };
     return "  " + eco_pad_right(pane_id, 7) + " " + eco_pad_right(ws, 20) + " " + eco_pad_right(live_agent, 22) + " " + eco_pad_right(state, 10) + " " + eco_pad_right(quota, 38) + " " + alert;
 }
@@ -40,7 +40,7 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
 // of the text of that pane.
 fn status_pane_state(pane_id: String, vis: String, quota: String, tail: String) -> String {
     let mut state: String = if (pane_id == "wK:p1" || pane_id == "wN:p1" || pane_id == "wP:p1") && str_contains(quota, "shell ready") { "standby" } else { "idle" };
-    if str_contains(tail, "User input required") || str_contains(tail, "Enter select") {
+    if str_contains(tail, "User input required") || str_contains(tail, "Enter select") || str_contains(tail, "Bypass mode") {
         state = "WAIT_INPUT";
     } else if str_contains(tail, "Running") || str_contains(tail, "Loading") || str_contains(tail, "tok/s")
         || str_contains(tail, "Thinking") || str_contains(tail, "Generating") || str_contains(tail, "[stop]")

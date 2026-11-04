@@ -166,23 +166,23 @@ pub fn eco_parse_pane_quota(pane_id: String, vis: String) -> String {
         if used >= 99 { return "AT_99%_TARGET (hold >=1% reserve)"; }
         return "+" + int_to_str(99 - used) + "% to 99%";
     }
-    if pane_id == "wM:p1" || pane_id == "wP:p1" || str_contains(vis, "SWE-2 Max") {
+    let tail: String = eco_tail_lines(vis, 8);
+    if pane_id == "wM:p1" || pane_id == "wP:p1" || str_contains(tail, "SWE-2") {
         let mut ctx_suf: String = "";
-        let cidx: Int = str_index_of(vis, "tokens (");
+        let cidx: Int = str_index_of(tail, "tokens (");
         if cidx >= 0 {
-            let used_pct: Int = eco_parse_uint(str_slice(vis, cidx + 8, chars_len(vis)));
+            let used_pct: Int = eco_parse_uint(str_slice(tail, cidx + 8, chars_len(tail)));
             if used_pct >= 0 && used_pct <= 100 {
                 ctx_suf = " / Ctx " + int_to_str(100 - used_pct) + "%";
             }
         }
         return "100|SWE-2 Free ($0, D/Wk 100% rst 22:00)" + ctx_suf;
     }
-    let tail: String = eco_tail_lines(vis, 8);
-    if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wK:p1" || (pane_id == "wH:p1" && (str_contains(vis, "GLM-5.3") || str_contains(vis, "Mistral Large 4"))) {
-        return eco_pane_quota_tokens(pane_id, vis);
-    }
-    if pane_id == "wJ:p1" || pane_id == "wN:p1" || str_contains(vis, "M3.1-Flash") {
+    if pane_id == "wJ:p1" || pane_id == "wN:p1" || str_contains(tail, "M3.1-Flash") {
         return eco_pane_quota_session(tail);
+    }
+    if pane_id == "wF:p1" || pane_id == "wG:p1" || pane_id == "wK:p1" || (pane_id == "wH:p1" && (str_contains(tail, "GLM-5.3") || str_contains(tail, "Mistral Large 4"))) {
+        return eco_pane_quota_tokens(pane_id, vis);
     }
     if pane_id == "wH:p1" {
         return eco_pane_quota_wh_full(vis, -1);
