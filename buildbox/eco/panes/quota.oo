@@ -170,6 +170,23 @@ pub fn eco_pane_quota_health(rem: Int, state: String) -> String {
     return "OK (target 90% / 5% floor)";
 }
 
+// The quota of the Devin pane: computes Zero-Trust local shadow quota remaining
+// against the 25M daily shadow budget when the online API reports 0% used.
+pub fn eco_pane_quota_devin(vis: String, live_rem: Int) -> String {
+    let rem: Int = if live_rem >= 0 && live_rem <= 100 { live_rem } else { 8 };
+    let used: Int = 100 - rem;
+    let tail: String = eco_tail_lines(vis, 8);
+    let mut ctx_suf: String = "";
+    let cidx: Int = str_index_of(tail, "tokens (");
+    if cidx >= 0 {
+        let used_pct: Int = eco_parse_uint(str_slice(tail, cidx + 8, chars_len(tail)));
+        if used_pct >= 0 && used_pct <= 100 {
+            ctx_suf = " / Ctx " + int_to_str(100 - used_pct) + "%";
+        }
+    }
+    return int_to_str(rem) + "|Shadow " + int_to_str(used) + "% (" + int_to_str(rem) + "% rem, API:0% lag, rst 22h)" + ctx_suf;
+}
+
 // The quota of one pane, or the pacing target when pane_id starts with "pace:".
 pub fn eco_parse_pane_quota(pane_id: String, vis: String) -> String {
     if pane_id == "pace" {
@@ -181,15 +198,7 @@ pub fn eco_parse_pane_quota(pane_id: String, vis: String) -> String {
     }
     let tail: String = eco_tail_lines(vis, 8);
     if pane_id == "wM:p1" || pane_id == "wP:p1" || pane_id == "wK:p2" || str_contains(tail, "SWE-2") {
-        let mut ctx_suf: String = "";
-        let cidx: Int = str_index_of(tail, "tokens (");
-        if cidx >= 0 {
-            let used_pct: Int = eco_parse_uint(str_slice(tail, cidx + 8, chars_len(tail)));
-            if used_pct >= 0 && used_pct <= 100 {
-                ctx_suf = " / Ctx " + int_to_str(100 - used_pct) + "%";
-            }
-        }
-        return "100|SWE-2 Free ($0, D/Wk 100% rst 22:00)" + ctx_suf;
+        return eco_pane_quota_devin(vis, 8);
     }
     if pane_id == "wJ:p1" || pane_id == "wJ:p2" || pane_id == "wN:p1" || pane_id == "wN:p2" || str_contains(tail, "M3.1-Flash") {
         return eco_pane_quota_session(tail, -1);

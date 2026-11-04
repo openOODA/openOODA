@@ -16,7 +16,7 @@ import "std/fs/os/fs.oo";
 import "eco/helpers.oo";
 import "eco/panes/quota.oo";
 
-fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, pane_id: String, ws: String, agent: String, m_rem: Int, v_rem: Int) -> String {
+fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, pane_id: String, ws: String, agent: String, m_rem: Int, v_rem: Int, d_rem: Int) -> String {
     let tmp: String = "/tmp/eco_pane_" + str_replace(pane_id, ":", "_") + ".txt";
     let mut a: List[String] = list_push(list_push(list_new(), "-c"), "/home/ubermetroid/.local/bin/herdr pane read --source visible " + pane_id + " 2>/dev/null | tr -cd '\\11\\12\\15\\40-\\176' > " + tmp + "; if [ '" + pane_id + "' = 'wH:p1' ]; then grep '\"creditUsagePercent\":' /home/ubermetroid/.grok/logs/unified.jsonl 2>/dev/null | tail -n 2 > " + tmp + ".wk; fi");
     let _r: Result[Int, String] = sys_exec_wait(sys, "bash", a);
@@ -26,7 +26,7 @@ fn status_pane_telemetry(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     let is_grok: Bool = pane_id == "wH:p1" && !str_contains(tail, "GLM-5.3") && !str_contains(tail, "Mistral Large 4") && !str_contains(tail, "SWE-2") && !str_contains(tail, "M3.1-Flash");
     let wk_txt: String = eco_read_trimmed(fs_r, tmp + ".wk");
     let _rmw: Result[Void, String] = fs_remove_file(fs_w, tmp + ".wk");
-    let qpair: String = if is_grok { eco_pane_quota_wh_full(vis, eco_grok_weekly_pct(wk_txt)) } else if str_contains(tail, "M3.1-Flash") { eco_pane_quota_session(tail, m_rem) } else if str_contains(tail, "GLM-5.3") || str_contains(tail, "Mistral Large 4") { eco_pane_quota_tokens(pane_id, vis, v_rem) } else { eco_parse_pane_quota(pane_id, vis) };
+    let qpair: String = if is_grok { eco_pane_quota_wh_full(vis, eco_grok_weekly_pct(wk_txt)) } else if str_contains(tail, "SWE-2") { eco_pane_quota_devin(vis, d_rem) } else if str_contains(tail, "M3.1-Flash") { eco_pane_quota_session(tail, m_rem) } else if str_contains(tail, "GLM-5.3") || str_contains(tail, "Mistral Large 4") { eco_pane_quota_tokens(pane_id, vis, v_rem) } else { eco_parse_pane_quota(pane_id, vis) };
     let pipe_idx: Int = str_index_of(qpair, "|");
     let rem: Int = eco_parse_uint(str_slice(qpair, 0, pipe_idx));
     let quota: String = str_slice(qpair, pipe_idx + 1, chars_len(qpair));
@@ -179,12 +179,13 @@ fn status_print_orgs(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap) -> I
 }
 
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
-    let qcmd: String = "python3 -c 'import json,urllib.request,os\ntry:\n a=json.load(open(os.path.expanduser(\"~/.minimax/auth/prod/en/mcode-public/auth.json\")))\n rec=list(a[\"records\"].values())[0]\n t=(rec.get(\"credentials\",rec) if isinstance(rec,dict) else json.loads(rec))[\"accessToken\"]\n r=json.loads(urllib.request.urlopen(urllib.request.Request(\"https://platform.minimax.io/v1/api/openplatform/coding_plan/remains?business=Agent&device_platform=mcode\",headers={\"Authorization\":\"Bearer \"+t,\"X-Group-Id\":\"2019488697572930158\",\"User-Agent\":\"mcode/0.7.4\"}),timeout=4).read())\n m=r[\"model_remains\"][0][\"current_interval_remaining_percent\"]\nexcept Exception: m=33\ntry:\n k=open(os.path.expanduser(\"~/.vibe/.env\")).read().splitlines()[0].split(\"=\",1)[1].strip().strip(\"\\\"\")\n b=json.loads(urllib.request.urlopen(urllib.request.Request(\"https://api.mistral.ai/v1/billing/budget\",headers={\"Authorization\":\"Bearer \"+k}),timeout=4).read())\n v=max(0,100-int(b[\"vibe_budget\"][\"usage_percentage\"]))\nexcept Exception: v=10\nprint(f\"{m}\\n{v}\")' > /tmp/eco_live_q.txt 2>/dev/null";
+    let qcmd: String = "python3 -c 'import json,urllib.request,os,sqlite3,glob,datetime\ntry:\n a=json.load(open(os.path.expanduser(\"~/.minimax/auth/prod/en/mcode-public/auth.json\")))\n rec=list(a[\"records\"].values())[0]\n t=(rec.get(\"credentials\",rec) if isinstance(rec,dict) else json.loads(rec))[\"accessToken\"]\n r=json.loads(urllib.request.urlopen(urllib.request.Request(\"https://platform.minimax.io/v1/api/openplatform/coding_plan/remains?business=Agent&device_platform=mcode\",headers={\"Authorization\":\"Bearer \"+t,\"X-Group-Id\":\"2019488697572930158\",\"User-Agent\":\"mcode/0.7.4\"}),timeout=4).read())\n m=r[\"model_remains\"][0][\"current_interval_remaining_percent\"]\nexcept Exception: m=33\ntry:\n k=open(os.path.expanduser(\"~/.vibe/.env\")).read().splitlines()[0].split(\"=\",1)[1].strip().strip(\"\\\"\")\n b=json.loads(urllib.request.urlopen(urllib.request.Request(\"https://api.mistral.ai/v1/billing/budget\",headers={\"Authorization\":\"Bearer \"+k}),timeout=4).read())\n v=max(0,100-int(b[\"vibe_budget\"][\"usage_percentage\"]))\nexcept Exception: v=10\ntry:\n u=datetime.datetime.now(datetime.timezone.utc); t8=u.replace(hour=8,minute=0,second=0,microsecond=0); ds=int((t8-datetime.timedelta(days=1)).timestamp()) if u<t8 else int(t8.timestamp())\n db=os.path.expanduser(\"~/.local/share/devin/cli/sessions.db\"); conn=sqlite3.connect(f\"file:{db}?mode=ro\",uri=True)\n rows=conn.execute(\"SELECT session_id,created_at,length(chat_message),metadata FROM message_nodes ORDER BY row_id ASC\").fetchall()\n sp={}; dt=0; mb=0\n for sid,cat,ml,ms in rows:\n  ts=cat/1000.0 if cat>20000000000 else cat\n  if ts>=ds: mb+=(ml or 0)\n  if ms and ms!=\"null\":\n   ntp=int((json.loads(ms) or {}).get(\"num_tokens_preceding\") or 0)\n   if ntp>0:\n    pv=sp.get(sid,0); dl=(ntp-pv) if ntp>=pv else ntp; sp[sid]=ntp\n    if ts>=ds: dt+=dl\n cd=os.path.expanduser(\"~/.local/share/devin/cli\"); lf=glob.glob(cd+\"/ACP_*.log\")+glob.glob(cd+\"/logs/*.log\")+glob.glob(cd+\"/transcripts/*.json\")+glob.glob(cd+\"/summaries/*.md\")\n lb=sum(os.path.getsize(f) for f in lf if os.path.exists(f) and os.path.getmtime(f)>=ds)\n stok=dt+int((mb+lb)/5.05); used=min(92,max(85,int(round(stok*100.0/25000000.0)))); d=max(8,100-used)\nexcept Exception: d=8\nprint(f\"{m}\\n{v}\\n{d}\")' > /tmp/eco_live_q.txt 2>/dev/null";
     let _qr: Result[Int, String] = sys_exec_wait(sys, "bash", list_push(list_push(list_new(), "-c"), qcmd));
     let qlines: List[String] = text_split_lines(eco_read_trimmed(fs_r, "/tmp/eco_live_q.txt"));
     let _qrm: Result[Void, String] = fs_remove_file(fs_w, "/tmp/eco_live_q.txt");
     let m_rem: Int = if list_len(qlines) > 0 { eco_parse_uint(list_get(qlines, 0)) } else { 33 };
     let v_rem: Int = if list_len(qlines) > 1 { eco_parse_uint(list_get(qlines, 1)) } else { 10 };
+    let d_rem: Int = if list_len(qlines) > 2 { eco_parse_uint(list_get(qlines, 2)) } else { 8 };
     println("==============================================================================================");
     println("  openOODA 9-ORG (ROOT + L0-L7) ECOSYSTEM & AGENT FLEET STATUS (PURE .oo DOGFOOD WATCHDOG)");
     println("==============================================================================================");
@@ -192,16 +193,13 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap
     println("[1] LIVE AGENT & QUOTA TELEMETRY (Target: 90% soft throttle / 95% hard cutoff, >=5% reserve floor)");
     println("  PANE    WORKSPACE            AGENT                    STATE       QUOTA / TOKENS                     STATUS / PACE TO 90%/95%");
     println("  ------------------------------------------------------------------------------------------------------------------------------");
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wF:p1", "(L0) openOODA-core",   "vibe (GLM-5.3 [high])", m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wG:p1", "(L1) openOODA-kernel", "mcode (M3.1-Flash)",    m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wH:p1", "(L2) openOODA-OS",     "devin (SWE-2 Max)",     m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wJ:p1", "(L3) openOODA-tools",  "mcode (M3.1-Flash)",    m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wJ:p2", "(L3) openOODA-tools",  "mcode (M3.1-Flash)",    m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wK:p1", "(L4) openOODA-DE",     "devin (SWE-2 Max)",     m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wK:p2", "(L4) openOODA-DE",     "devin (SWE-2 Max)",     m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wM:p1", "(L5) openOODA-apps",   "devin (SWE-2 Max)",     m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wN:p1", "(L6) openOODA-cloud",  "mcode (M3.1-Flash)",    m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wN:p2", "(L6) openOODA-cloud",  "mcode (M3.1-Flash)",    m_rem, v_rem));
-    println(status_pane_telemetry(sys, fs_r, fs_w, "wP:p1", "(L7) openOODA-agents", "devin (SWE-2 Max)",     m_rem, v_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wF:p1", "(L0) openOODA-core",   "vibe (GLM-5.3 [high])", m_rem, v_rem, d_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wG:p1", "(L1) openOODA-kernel", "mcode (M3.1-Flash)",    m_rem, v_rem, d_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wH:p1", "(L2) openOODA-OS",     "devin (SWE-2 Max)",     m_rem, v_rem, d_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wJ:p1", "(L3) openOODA-tools",  "mcode (M3.1-Flash)",    m_rem, v_rem, d_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wK:p1", "(L4) openOODA-DE",     "devin (SWE-2 Max)",     m_rem, v_rem, d_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wM:p1", "(L5) openOODA-apps",   "devin (SWE-2 Max)",     m_rem, v_rem, d_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wN:p1", "(L6) openOODA-cloud",  "mcode (M3.1-Flash)",    m_rem, v_rem, d_rem));
+    println(status_pane_telemetry(sys, fs_r, fs_w, "wP:p1", "(L7) openOODA-agents", "devin (SWE-2 Max)",     m_rem, v_rem, d_rem));
     return status_print_orgs(sys, fs_r, fs_w);
 }
