@@ -70,7 +70,12 @@ jobs:
           OO_LINT_ROOTS: openOODA
         run: |
           set -euo pipefail
-          bash openOODA/qa/lint_oo_size.sh
+          if [ -x /home/ubermetroid/.local/bin/lint-oo-size ]; then
+            /home/ubermetroid/.local/bin/lint-oo-size
+          else
+            (cd openOODA && ../oodac/bin/oodac build qa/lint_oo_size.oo -o /tmp/lint-oo-size)
+            /tmp/lint-oo-size
+          fi
       - name: size lint inventory (polyrepo advisory)
         working-directory: ${{ github.workspace }}
         continue-on-error: true
@@ -78,7 +83,7 @@ jobs:
           OODA_POLYROOT: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          bash openOODA/qa/lint_oo_size.sh | tee /tmp/size_inventory.txt
+          /tmp/lint-oo-size | tee /tmp/size_inventory.txt
           tail -3 /tmp/size_inventory.txt
       - name: upload size inventory
         if: always()

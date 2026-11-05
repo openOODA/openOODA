@@ -5,7 +5,7 @@ These governance rules do not change. They apply across all repository directori
 
 ## 1. Basic Rules
 
-The 24 laws below do not change. They apply across all repository directories.
+The 25 laws below do not change. They apply across all repository directories.
 
 ### 1.1 First Principles & Specification Derivation
   Identify the root cause of a defect. Implement structural repairs rather than temporary workarounds.
@@ -227,29 +227,28 @@ The 24 laws below do not change. They apply across all repository directories.
 
 ### 1.23 Three-Layer Architecture (Strategic, Operational, Tactical) — Polyrepo
 openOODA operates as a 3-Tier Multi-Repository Architecture across 13 repos:
-- **Strategic Governance** (`openOODA/openOODA/`): process boards, RFCs, the 24 laws.
+- **Strategic Governance** (`openOODA/openOODA/`): process boards, RFCs, the 25 laws.
 - **Operational Logistics** (`cli/`, `ooda/`, `lsp/`, `mcp/`, `opm/`, `install/`, `catalog/`, `tui/`): drivers, servers, installer, catalog. `cli/` holds the language CLI driver; `ooda/` is the back-compat router that forwards to it; `tui/` is the terminal UI driver. `bb/` retired 2026-09-25 (crash autopsy folded into `mcp crash_report`; CI gates oodac-native); the C ABI in `oodar/core/blackbox/` and the `blackbox_*` exported symbols stay put.
 - **Tactical Code Physics** (`std/`, `oodac/`, `oodar/`): the actual code. `std/` is the 8-domain standard library (282 anchor.oo); `oodac/` is the compiler; `oodar/` is the C host substrate (oo_* runtime across 6 per-domain subdirs, 32 explicit capabilities, Landlock sandbox, PQC primitives ML-KEM-768 + ML-DSA-65, GPU HIP/ROCm dispatch).
 - **Meta** (`.github/`, `website/`): org profile and website source.
 
-Governance modifications must not trigger compiler rebuild cascades. Compiler
-modifications must not alter governance process boards. The directory topology
-remains stationary: `Delta_path = 0`. See rfcs/0004-engineering-model.oot.
+Governance modifications must not trigger compiler rebuild cascades. Compiler modifications
+must not alter governance process boards. The directory topology remains stationary: `Delta_path = 0`. See rfcs/0004-engineering-model.oot.
 
 ### 1.24 Auto-Release Discipline — Push to master is the Release
-The version number is derived from git history, not declared by hand. The git tag is
-auto-created on every push to master. The GitHub release is auto-generated from commits.
-There is no hand-maintained release counter: the sequence is the tags. Per-repo VERSION
-files exist only as consumed product identity or documented frozen counters (§1.21).
-No manual `git tag`, no manual `gh release create`: the reusable workflow
-`openOODA/openOODA/.github/workflows/auto-release.yml` handles tagging and release creation.
-PATCH bumps on every push. Release notes are commit messages. Operational rule: write code,
-commit, push — release happens. Drift is impossible by construction. See `practices/release.oot`.
-Load-bearing: install.sh reads install/VERSION; cli CI gates cli/VERSION.
+The version number is derived from git history, not declared by hand. The git tag is auto-created on every push to master. The GitHub release is auto-generated from commits.
+There is no hand-maintained release counter: the sequence is the tags. Per-repo VERSION files exist only as consumed product identity or documented frozen counters (§1.21).
+No manual `git tag`, no manual `gh release create`: the reusable workflow `openOODA/openOODA/.github/workflows/auto-release.yml` handles tagging and release creation.
+PATCH bumps on every push. Release notes are commit messages. Operational rule: write code, commit, push — release happens. Drift is impossible by construction. See `practices/release.oot`. Load-bearing: install.sh reads install/VERSION; cli CI gates cli/VERSION.
+
+### 1.25 Zero Symlinks and Hardlinks Law
+  Zero symlinks (`ln -s`) or hardlinks (`ln`) permitted across repositories, bin/, dist/, and installation paths.
+  Every binary in bin/ or dist/ must be a real, standalone compiled ELF binary (! -L, link count == 1), never a symlink or hardlink.
+  Consolidated canonical tools must expose personas and modes via explicit CLI subcommands or flags, never symlink aliases.
+  Code sharing across repositories must happen at compile time via import "std/..." from openOODA-core/std, never filesystem links.
 
 ## 2. Planning Rules
 Focus: Select at most 5 tasks per execution turn. File size: every file <= 256 lines.
 Sprint alignment: select from near-term task backlog in roadmap.oot and accepted RFCs in rfcs/.
 Near-term milestones are tracked in roadmap.oot; repos deliver components to schedule.
-Task prioritization: (1) fix broken tests and compile errors, (2) fix security vulnerabilities
-(rfcs/0001-capability-security.oot), (3) implement scheduled features, (4) refactor code last.
+Task prioritization: (1) fix broken tests and compile errors, (2) fix security vulnerabilities (rfcs/0001-capability-security.oot), (3) implement scheduled features, (4) refactor code last.
