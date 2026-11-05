@@ -25,6 +25,15 @@
 // a consolidated binary answers a program it replaces: the persona is a token,
 // never a file, so Rule 1.25 admits no other path to it.
 //
+// The case that follows the persona line names the persona word as its first
+// argument, so the case reads as the command line it compares:
+// "persona oounzip unzip" and "match oounzip -l archive.zip". The runner
+// takes that first argument out of the arguments of the upstream, so the
+// upstream runs "unzip -l archive.zip" while the tool runs
+// "oounzip -l archive.zip". A case that does not name the persona of its
+// persona line fails the gate, because a case that lost its persona would
+// compare the default persona against the upstream and prove nothing.
+//
 // The persona cases live in their own table, qa/parity/personas.oot, and the
 // runner reads it after the case table. The generator that rewrites the case
 // table from the test recipe never touches that file, so the cases that hold
@@ -63,7 +72,7 @@ type ParityCount = struct {
 // files and the standard input is closed, so a tool that reads the input never
 // waits for it. The run is bounded by the timeout helper.
 fn parity_run(sys: &ProcessCap, tool: String, words: List[String], from: Int, out_path: String, err_path: String, input_words: List[String]) -> Int { let mut secs: String = "10";
-    let mut first: Int = from; if list_get(words, from) == "timeout" && from + 1 < list_len(words) {
+    let mut first: Int = from; if from < list_len(words) && list_get(words, from) == "timeout" && from + 1 < list_len(words) {
         secs = list_get(words, from + 1); first = from + 2;
     }
     let mut script: String = "t=''; command -v timeout >/dev/null 2>&1 && t='timeout " + secs + "'; "; if list_len(input_words) > 0 {
@@ -138,10 +147,14 @@ fn parity_run_setup(sys: &ProcessCap, setup: List[String]) -> String { let mut n
 // The argument vector of the upstream, with the persona word taken out. The
 // upstream program does not answer to a persona: it is the program itself,
 // and it never sees the word that names the persona.
+//
+// Only the first argument is the persona token, so only that one is taken out.
+// A later argument that happens to carry the same word is a real argument of
+// the case and stays where it is.
 fn parity_strip(words: List[String], persona: String) -> List[String] { let mut out: List[String] = list_new();
     let mut i: Int = 0; while i < list_len(words) {
         let w: String = list_get(words, i);
-        if persona != "" && i > 0 && w == persona { i = i + 1; continue; }
+        if persona != "" && i == 1 && w == persona { i = i + 1; continue; }
         out = list_push(out, w); i = i + 1; }
     return out; }
 
@@ -180,14 +193,14 @@ fn parity_cases(sys: &ProcessCap, fs_r: &FsReadCap, lines: List[String], upstrea
             p_word = list_get(pw, 0); p_prog = list_get(pw, 1); continue; }
         let words: List[String] = parity_words(l); if list_len(words) < 2 { continue; }
         let kind: String = list_get(words, 0); if kind != "match" && kind != "differ" { continue; }
+        if p_word != "" && list_get(words, 1) != p_word { c.fails = c.fails + 1;
+            println("  FAIL " + kind + " [" + l + "] the case does not name the persona " + p_word); p_word = ""; p_prog = ""; continue; }
         let up_name: String = if p_prog == "" { upstream } else { p_prog };
         if up_name == "" { c.missing = c.missing + 1;
-            println("  FAIL " + kind + " [" + l + "] the case names no upstream program");
-            p_word = ""; p_prog = ""; continue; }
+            println("  FAIL " + kind + " [" + l + "] the case names no upstream program"); p_word = ""; p_prog = ""; continue; }
         if up_name != cached { cached = up_name; cached_path = parity_find_upstream(sys, up_name); }
         if cached_path == "" { c.missing = c.missing + 1;
-            println("  FAIL " + kind + " [" + l + "] the upstream " + up_name + " is not installed");
-            p_word = ""; p_prog = ""; continue; }
+            println("  FAIL " + kind + " [" + l + "] the upstream " + up_name + " is not installed"); p_word = ""; p_prog = ""; continue; }
         c.used = c.used + 1;
         let up_words: List[String] = parity_strip(words, p_word);
         let _s1: String = parity_run_setup(sys, setup); let up_rc: Int = parity_run(sys, cached_path, up_words, 1, ".ooda-cache/parity/up.out", ".ooda-cache/parity/up.err", input_words);
