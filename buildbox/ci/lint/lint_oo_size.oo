@@ -190,8 +190,34 @@ pub fn main(_sys: &ProcessCap, fs_r: &FsReadCap, _fs_w: &FsWriteCap, env: &EnvCa
         else if !str_starts_with(a, "--") && text_trim(a) != "" { arg_roots = list_push(arg_roots, text_trim(a)); }
     }
     let rr: Result[String, String] = env_get(env, "OO_LINT_ROOTS");
-    let rstr: String = if rr.is_ok() && text_trim(rr.val) != "" { text_trim(rr.val) } else { "oodac,oodar,std,openOODA" };
-    let roots: List[String] = if list_len(arg_roots) > 0 { arg_roots } else { lint_split_comma(rstr) };
+    let env_roots: String = if rr.is_ok() { text_trim(rr.val) } else { "" };
+    let mut roots: List[String] = arg_roots;
+    if list_len(roots) == 0 && env_roots != "" { roots = lint_split_comma(env_roots); }
+    if list_len(roots) == 0 {
+        let dfl: List[String] = lint_split_comma("oodac,oodar,std,openOODA");
+        let mut any: Bool = false;
+        let mut di: Int = 0;
+        while di < list_len(dfl) {
+            let rt: String = list_get(dfl, di);
+            let b0: String = if str_starts_with(rt, "/") { rt } else { poly + "/" + rt };
+            if path_exists(fs_r, b0) || (!str_starts_with(rt, "/") && path_exists(fs_r, poly + "-core/" + rt)) { any = true; }
+            di = di + 1;
+        }
+        if any { roots = dfl; }
+        else { roots = list_new(); roots = list_push(roots, poly); }
+    }
+    let mut n_ok: Int = 0;
+    let mut ri: Int = 0;
+    while ri < list_len(roots) {
+        let rt: String = list_get(roots, ri);
+        let b0: String = if str_starts_with(rt, "/") { rt } else { poly + "/" + rt };
+        if path_exists(fs_r, b0) || (!str_starts_with(rt, "/") && path_exists(fs_r, poly + "-core/" + rt)) { n_ok = n_ok + 1; }
+        ri = ri + 1;
+    }
+    if n_ok == 0 {
+        println("ERR\tlint-oo-size\tno lint root is readable under " + poly + "; set OODA_FS_READDIR to cover the target tree or run with OODA_NO_JAIL=1");
+        return 2;
+    }
     let gathered: List[String] = lint_gather_all(fs_r, poly, roots, max_d);
     let dense_str: String = list_get(gathered, list_len(gathered) - 1);
     return lint_scan_all_and_print(fs_r, poly, max_l, max_fns, max_fn, max_d, flagged_only, gathered, dense_str);
