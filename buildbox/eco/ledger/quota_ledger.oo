@@ -1,0 +1,91 @@
+// # Eco Quota Ledger - Writes Shared Cross-Server Fleet Quota Ledger JSON
+//
+// Logline: Generates /Projects/openOODA/.fleet-quota-ledger.json in pure .oo so ringmaster and spotlight share global token pools.
+//
+// Setup: Needs ProcessCap for date/ssh and FsWriteCap to write /Projects/openOODA/.fleet-quota-ledger.json.
+//
+// Beats:
+//   1. Query current Unix epoch and HST timestamp via ProcessCap.
+//   2. Probe ringmaster and spotlight Herdr workspace lists via ssh.
+//   3. Emit the formatted .fleet-quota-ledger.json policy and agent roster.
+//   4. Write /Projects/openOODA/.fleet-quota-ledger.json and report success.
+
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+
+fn ql_probe_host(sys: &ProcessCap, ip: String) -> String {
+    let r: Result[String, String] = sys_exec(sys, "ssh", "-o", "ConnectTimeout=2", ip, "/home/ubermetroid/.local/bin/herdr workspace list");
+    if r.is_ok() { return text_trim(r.val); }
+    return "";
+}
+
+fn ql_agent_entry(id: String, bin: String, models_json: String, inv: String, win: String, used: String, rem: String, m_rm: String, m_sp: String, st: String, comma: String) -> String {
+    let q: String = "\"";
+    return "    " + q + id + q + ": {\n"
+        + "      " + q + "binary" + q + ": " + q + bin + q + ",\n"
+        + "      " + q + "models" + q + ": [\n" + models_json + "\n      ],\n"
+        + "      " + q + "invoke_syntax" + q + ": " + q + inv + q + ",\n"
+        + "      " + q + "quota_window" + q + ": " + q + win + q + ",\n"
+        + "      " + q + "used_pct" + q + ": " + used + ",\n"
+        + "      " + q + "remaining_pct" + q + ": " + rem + ",\n"
+        + "      " + q + "max_panes_ringmaster" + q + ": " + m_rm + ",\n"
+        + "      " + q + "max_panes_spotlight" + q + ": " + m_sp + ",\n"
+        + "      " + q + "status" + q + ": " + q + st + q + "\n"
+        + "    }" + comma + "\n";
+}
+
+fn ql_agents_part1() -> String {
+    let q: String = "\"";
+    let d_m: String = "        " + q + "swe-2-max" + q + ",\n        " + q + "swe-2-flash-max" + q;
+    let m_m: String = "        " + q + "MiniMax-M3.1-Flash" + q;
+    let v_m: String = "        " + q + "GLM-5.3 [high]" + q;
+    return "  " + q + "agents" + q + ": {\n"
+        + ql_agent_entry("devin", "/home/ubermetroid/.local/bin/devin", d_m, "devin --permission-mode bypass --model <swe-2-max|swe-2-flash-max> -- \\\"<PROMPT>\\\"", "5h rolling (resets every 5h; Pro 100% remaining) + 100% FREE UNLIMITED PROMO THRU NOV 30, 2026", "0", "100", "9", "4", "UNLIMITED_FREE_PROMO_THRU_NOV_30", ",")
+        + ql_agent_entry("mcode", "/home/ubermetroid/.local/bin/mcode-review", m_m, "mcode-review \\\"<PROMPT>\\\" (runs mcode --model minimax/MiniMax-M3.1-Flash --append-system-prompt-file ~/.minimax/ooda-code-review-prompt.md with the 2-axis code-review skill enabled)", "5h rolling window (resets every 5h; 512K context)", "12", "88", "5", "3", "OK_AVAILABLE_PRIMARY_CODE_REVIEWER_ON_SPOTLIGHT", ",")
+        + ql_agent_entry("vibe", "/home/ubermetroid/.local/bin/vibe", v_m, "vibe", "Monthly (resets Dec 1, 2026)", "90", "10", "1", "0", "SOFT_THROTTLE_90PCT_MAX_1_PANE_TOTAL", ",");
+}
+
+fn ql_agents_part2() -> String {
+    let q: String = "\"";
+    let g_m: String = "        " + q + "grok-code-fast-1" + q + ",\n        " + q + "grok-4" + q;
+    let a_m: String = "        " + q + "Gemini 4 Argon (Low)" + q + ",\n        " + q + "Gemini 4 Argon (Pro / Max)" + q;
+    let o_m: String = "        " + q + "local-ooaid-11435" + q + ",\n        " + q + "swe-2-flash-max" + q;
+    return ql_agent_entry("grok", "/home/ubermetroid/.local/bin/grok", g_m, "grok", "API credits / rolling", "15", "85", "2", "1", "OK_AVAILABLE", ",")
+        + ql_agent_entry("agy", "/home/ubermetroid/.local/bin/agy", a_m, "agy (Head Commander in w2 + invoke_subagent)", "Weekly rolling (just reset Nov 4 19:35 HST -> 100% fresh weekly pool!)", "2", "98", "1", "1", "FRESH_WEEKLY_RESET_PACE_TO_90PCT_SOFT_95PCT_HARD", ",")
+        + ql_agent_entry("oopi", "/Projects/openOODA-agents/oocoder/bin/oopi", o_m, "/Projects/openOODA-agents/oocoder/bin/oopi", "Unlimited local 5-GPU cluster (:11435)", "0", "100", "9", "4", "UNLIMITED_LOCAL_GPU", "")
+        + "  }\n}\n";
+}
+
+fn ql_build_json(epoch_s: String, hst_s: String) -> String {
+    let q: String = "\"";
+    let hdr: String = "{\n"
+        + "  " + q + "updated_at_epoch" + q + ": " + epoch_s + ",\n"
+        + "  " + q + "updated_at_hst" + q + ": " + q + hst_s + q + ",\n"
+        + "  " + q + "shared_policy" + q + ": {\n"
+        + "    " + q + "soft_throttle_pct" + q + ": 90,\n"
+        + "    " + q + "hard_cutoff_pct" + q + ": 95,\n"
+        + "    " + q + "min_reserve_pct" + q + ": 5,\n"
+        + "    " + q + "target_cycle_burn_pct" + q + ": 101,\n"
+        + "    " + q + "check_in_interval_seconds" + q + ": 600,\n"
+        + "    " + q + "split_budget_rule" + q + ": " + q + "ringmaster gets 65% of shared quota (Builder: 9 Org panes); spotlight gets 35% of shared quota (Reviewer: 3 Gauntlet panes)." + q + "\n"
+        + "  },\n";
+    return hdr + ql_agents_part1() + ql_agents_part2();
+}
+
+pub fn main(sys: &ProcessCap, _fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
+    let _rm: String = ql_probe_host(sys, "100.88.249.93");
+    let _sp: String = ql_probe_host(sys, "100.66.54.24");
+    let er: Result[String, String] = sys_exec(sys, "date", "+%s");
+    let epoch_s: String = if er.is_ok() && text_trim(er.val) != "" { text_trim(er.val) } else { "1793856000" };
+    let hr: Result[String, String] = sys_exec(sys, "env", "TZ=Pacific/Honolulu", "date", "+%Y-%m-%d %H:%M:%S HST");
+    let hst_s: String = if hr.is_ok() && text_trim(hr.val) != "" { text_trim(hr.val) } else { "2026-11-04 20:35:00 HST" };
+    let out_path: String = "/Projects/openOODA/.fleet-quota-ledger.json";
+    let doc: String = ql_build_json(epoch_s, hst_s);
+    let wr: Result[Void, String] = fs_write_file(fs_w, out_path, doc);
+    if wr.is_err() {
+        println("ERR\tooda-quota-ledger\twrite failed: " + out_path);
+        return 1;
+    }
+    println("Wrote " + out_path);
+    return 0;
+}

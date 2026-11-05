@@ -1,0 +1,104 @@
+// # Test Status - Pure .oo 7-Test Layout, Overflow, And Telemetry Verifier For openOODA/status
+//
+// Logline: Executes all 7 layout, overflow, interactive sort, Zero-Trust privacy, Devin promo, and openOODA.org theme tests in pure .oo.
+//
+// Setup: Uses FsReadCap to inspect /Projects/openOODA/status/index.html. Zero Python or bash!
+//
+// Beats:
+//   1. Test 01-03: 5-GPU cards, CSS overflow containment, and viewport segmented bar fit.
+//   2. Test 04-05: Interactive sort buttons/throttle markers and Zero-Trust privacy gate.
+//   3. Test 06-07: Devin SWE-2 Max + Flash Max promo telemetry and openOODA.org theme elements.
+
+import "std/core/text/num_buffer.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "eco/status_sync/test_status_helpers.oo";
+
+fn ts_test_01_and_03(html: String) -> Bool {
+    if !str_contains(html, "-- [1] LIVE 5-GPU HARDWARE TELEMETRY (GPU-00..GPU-04 // ANONYMIZED NODES) --") { return false; }
+    if !str_contains(html, "GPU-00") || !str_contains(html, "GPU-01") || !str_contains(html, "GPU-02") || !str_contains(html, "GPU-03") || !str_contains(html, "GPU-04") { return false; }
+    if ts_count_occ(html, "class=\"gpu-card\"") != 5 { return false; }
+    if ts_count_occ(html, "class=\"gpu-seg-track\"") != 10 { return false; }
+    if !ts_check_gpu_seg_bars(html) { return false; }
+    println("PASS\ttest_01_live_5_gpu_header_and_five_cards");
+    println("PASS\ttest_03_simulated_card_content_fit_across_viewports");
+    return true;
+}
+
+fn ts_test_02_css(css: String) -> Bool {
+    let gg: String = ts_extract_css_rule(css, ".gpu-grid");
+    if !str_contains(gg, "grid-template-columns") || !str_contains(gg, "320px") { return false; }
+    let mut sels: List[String] = list_new();
+    sels = list_push(list_push(list_push(sels, ".gpu-card"), ".stat-card"), ".quota-row");
+    sels = list_push(list_push(list_push(sels, ".ns-card"), ".panel"), ".org-push-row");
+    let mut i: Int = 0;
+    while i < list_len(sels) {
+        let r: String = ts_extract_css_rule(css, list_get(sels, i));
+        i = i + 1;
+        if !str_contains(r, "min-width: 0") || !str_contains(r, "overflow: hidden") { return false; }
+    }
+    let gbl: String = ts_extract_css_rule(css, ".gpu-bar-line");
+    if !str_contains(gbl, "flex-wrap: wrap") || !str_contains(gbl, "min-width: 0") || !str_contains(gbl, "overflow: hidden") { return false; }
+    let gst: String = ts_extract_css_rule(css, ".gpu-seg-track");
+    if !str_contains(gst, "max-width: 100%") || !str_contains(gst, "overflow: hidden") { return false; }
+    let tb: String = ts_extract_css_rule(css, ".term-badge");
+    if !str_contains(tb, "max-width: 100%") || !str_contains(tb, "overflow: hidden") || !str_contains(tb, "text-overflow: ellipsis") { return false; }
+    println("PASS\ttest_02_gpu_grid_and_card_overflow_css");
+    return true;
+}
+
+fn ts_test_04_and_05(fs_r: &FsReadCap, status_dir: String, html: String) -> Bool {
+    if !str_contains(html, "window.sortQuotaGraph") { return false; }
+    if !str_contains(html, "data-sort=\"rem-pct\"") || !str_contains(html, "data-sort=\"reset-sec\"") || !str_contains(html, "data-sort=\"tps\"") || !str_contains(html, "data-sort=\"capacity\"") || !str_contains(html, "data-sort=\"name\"") { return false; }
+    if ts_count_occ(html, "class=\"quota-row\"") != 5 { return false; }
+    if !str_contains(html, "left:90%;") || !str_contains(html, "left:95%;") || !str_contains(html, "90% Soft Throttle") || !str_contains(html, "95% Hard Cutoff") { return false; }
+    println("PASS\ttest_04_interactive_sort_and_throttle_rules_preserved");
+    let leak: String = ts_has_privacy_leak(html);
+    if leak != "" {
+        println("FAIL\ttest_05_zero_trust_privacy_gate\tleak=" + leak);
+        return false;
+    }
+    if path_exists(fs_r, status_dir + "/__pycache__") { return false; }
+    println("PASS\ttest_05_zero_trust_privacy_gate");
+    return true;
+}
+
+fn ts_test_06_and_07(html: String) -> Bool {
+    if !str_contains(html, "[ FREE UNLIMITED PROMO THRU NOV 30 // SWE-2 MAX + SWE-2 FLASH MAX (3X SPEED) ]") { return false; }
+    if !str_contains(html, "SWE-2 Max + SWE-2 Flash Max") || !str_contains(html, "FREE PROMO Nov30 (23.0M+ burn)") || !str_contains(html, "24h burn:") { return false; }
+    if str_contains(html, "SHADOW QUOTA:") || str_contains(html, "API REPORTS 0% (LAG/PROMO)") { return false; }
+    if !str_contains(html, "<div class=\"quota-row\" data-name=\"devin\" data-rem-pct=\"100\" data-used-pct=\"0\"") { return false; }
+    if !str_contains(html, "<code>wQ:p1</code>") || !str_contains(html, "<code>wQ:p2</code>") || !str_contains(html, "idlescreen (ooda)") || !str_contains(html, "18 Layer/Project Panes") { return false; }
+    if !str_contains(html, "Pro · 100% remaining (resets 22:00 HST / 08:00 UTC)") { return false; }
+    println("PASS\ttest_06_devin_swe2_max_and_swe2_flash_free_promo_telemetry");
+    let mut ids: List[String] = list_new();
+    ids = list_push(list_push(list_push(list_push(ids, "id=\"spotlight-canvas\""), "id=\"header-wordmark\""), "id=\"footer-dock\""), "id=\"nav-up\"");
+    ids = list_push(list_push(list_push(list_push(ids, "id=\"nav-down\""), "id=\"act-pulse\""), "id=\"act-theme\""), "id=\"act-storm\"");
+    ids = list_push(list_push(list_push(list_push(ids, "id=\"dock-swatch-name\""), "id=\"footer-accent-picker\""), "id=\"burn-hero\""), "id=\"ticker-graph\"");
+    ids = list_push(list_push(list_push(list_push(ids, "id=\"gpu-telemetry\""), "id=\"quota-graph\""), "id=\"panes-matrix\""), "id=\"heatmap-gates\"");
+    let mut i: Int = 0;
+    while i < list_len(ids) {
+        if !str_contains(html, list_get(ids, i)) { return false; }
+        i = i + 1;
+    }
+    if !str_contains(html, "LIVE COMBINED FLEET BURN // TOK/SEC") || !str_contains(html, "[▼ SCROLL TO TICKER &amp; TOK/S TIMELINE]") || !str_contains(html, "<svg class=\"tok-line-chart\"") || !str_contains(html, "isWord = inWmRow") { return false; }
+    println("PASS\ttest_07_openooda_org_theme_burn_hero_and_ticker_graph");
+    return true;
+}
+
+pub fn ts_verify_status_dir(fs_r: &FsReadCap, status_dir: String) -> Int {
+    let idx_path: String = status_dir + "/index.html";
+    let r: Result[String, String] = fs_read_file(fs_r, idx_path);
+    if r.is_err() {
+        println("FAIL\ttest_status\tmissing " + idx_path);
+        return 1;
+    }
+    let html: String = r.val;
+    let css: String = ts_extract_between(html, "<style>", "</style>");
+    if !ts_test_01_and_03(html) { println("FAIL\ttest_01_or_03"); return 1; }
+    if !ts_test_02_css(css) { println("FAIL\ttest_02_css"); return 1; }
+    if !ts_test_04_and_05(fs_r, status_dir, html) { println("FAIL\ttest_04_or_05"); return 1; }
+    if !ts_test_06_and_07(html) { println("FAIL\ttest_06_or_07"); return 1; }
+    println("Ran 7 tests in pure .oo — OK");
+    return 0;
+}

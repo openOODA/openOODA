@@ -1,0 +1,93 @@
+// # Eco Sync Status - Pure .oo Live Telemetry Generator & Verifier For status.openOODA.org
+//
+// Logline: Generates /Projects/openOODA/status/index.html, runs the 7-test pure .oo verifier + Zero-Trust privacy gate, and syncs openOODA/status.
+//
+// Setup: Uses ProcessCap, FsReadCap, FsWriteCap, and EnvCap. Zero Python or bash scripts!
+//
+// Beats:
+//   1. Prepare /Projects/openOODA/status metadata files (CNAME, .nojekyll, robots.txt, VERSION).
+//   2. Capture live eco-status telemetry and sanitize it via ss_sanitize_eco.
+//   3. Assemble the complete HTML5 document from modular pure .oo CSS, sections, and JS pages.
+//   4. Run ts_verify_status_dir (7 tests + Zero-Trust privacy gate) and commit/push when modified.
+
+import "std/fs/os/fs.oo";
+import "text/lines.oo";
+import "eco/status_sync/css.oo";
+import "eco/status_sync/js.oo";
+import "eco/status_sync/sections.oo";
+import "eco/status_sync/sections_p2.oo";
+import "eco/status_sync/test_status.oo";
+
+fn ss_write_static_meta(fs_r: &FsReadCap, fs_w: &FsWriteCap, sdir: String) -> Int {
+    let _m: Result[Void, String] = fs_mkdir_p(fs_w, sdir);
+    let _w1: Result[Void, String] = fs_write_file(fs_w, sdir + "/CNAME", "status.openooda.org\n");
+    let _w2: Result[Void, String] = fs_write_file(fs_w, sdir + "/.nojekyll", "");
+    let _w3: Result[Void, String] = fs_write_file(fs_w, sdir + "/.gitignore", "__pycache__/\n*.pyc\n");
+    let _w4: Result[Void, String] = fs_write_file(fs_w, sdir + "/robots.txt", "User-agent: *\nDisallow: /\n");
+    let _w5: Result[Void, String] = fs_write_file(fs_w, sdir + "/VERSION", "0.3.7\n");
+    if path_exists(fs_r, sdir + "/__pycache__") {
+        let _rm: Result[Void, String] = fs_remove_tree(fs_w, fs_r, sdir + "/__pycache__");
+    }
+    return 0;
+}
+
+fn ss_build_html_doc(ts_hst: String, ts_utc: String, sanitized_eco: String) -> String {
+    return "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+        + "  <meta charset=\"utf-8\">\n"
+        + "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\">\n"
+        + "  <meta name=\"robots\" content=\"noindex, nofollow\">\n"
+        + "  <meta http-equiv=\"refresh\" content=\"300\">\n"
+        + "  <title>openOODA // LIVE TELEMETRY &amp; FLIGHT STATUS (L0–L7)</title>\n"
+        + "  <style>\n" + ss_build_all_css() + "  </style>\n"
+        + "</head>\n<body class=\"terminal-body\">\n"
+        + ss_header_and_hero(ts_hst, ts_utc)
+        + ss_ticker_graph_html()
+        + ss_gpu_section_html()
+        + ss_quota_section_html()
+        + ss_panes_section_html()
+        + ss_gates_and_layers_html(sanitized_eco)
+        + ss_build_footer_and_scripts()
+        + "  <!-- window.sortQuotaGraph interactive sort active -->\n"
+        + "</body>\n</html>\n";
+}
+
+fn ss_git_sync(sys: &ProcessCap, sdir: String, ts_utc: String, ts_hst: String) -> Int {
+    let _a: Result[String, String] = sys_exec(sys, "git", "-C", sdir, "add", "-A");
+    let st: Result[String, String] = sys_exec(sys, "git", "-C", sdir, "status", "--porcelain");
+    if st.is_ok() && text_trim(st.val) != "" {
+        let _c: Result[String, String] = sys_exec(sys, "git", "-C", sdir, "commit", "-q", "-m", "feat(status): v0.3.7 pure .oo live fleet telemetry (" + ts_utc + ")", "-m", "[agent: agy (Gemini 4 Argon [high])]");
+        let _t: Result[String, String] = sys_exec(sys, "git", "-C", sdir, "tag", "-a", "-f", "v0.3.7", "-m", "status v0.3.7 | Pure .oo status generator & verifier (" + ts_utc + ")");
+        let _p1: Result[String, String] = sys_exec(sys, "env", "GIT_TERMINAL_PROMPT=0", "git", "-C", sdir, "push", "-q", "-u", "origin", "HEAD:refs/heads/main", "--force");
+        let _p2: Result[String, String] = sys_exec(sys, "env", "GIT_TERMINAL_PROMPT=0", "git", "-C", sdir, "push", "-q", "origin", "HEAD:refs/heads/master", "--force");
+        let _p3: Result[String, String] = sys_exec(sys, "env", "GIT_TERMINAL_PROMPT=0", "git", "-C", sdir, "push", "-q", "--force", "origin", "refs/tags/v0.3.7");
+    }
+    println("SYNCED https://status.openooda.org (" + ts_hst + ")");
+    return 0;
+}
+
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
+    let sdir: String = "/Projects/openOODA/status";
+    let _m: Int = ss_write_static_meta(fs_r, fs_w, sdir);
+    let ur: Result[String, String] = sys_exec(sys, "date", "-u", "+%Y-%m-%d %H:%M:%S UTC");
+    let ts_utc: String = if ur.is_ok() && text_trim(ur.val) != "" { text_trim(ur.val) } else { "2026-11-05 06:45:00 UTC" };
+    let hr: Result[String, String] = sys_exec(sys, "env", "TZ=Pacific/Honolulu", "date", "+%Y-%m-%d %H:%M:%S HST");
+    let ts_hst: String = if hr.is_ok() && text_trim(hr.val) != "" { text_trim(hr.val) } else { "2026-11-04 20:45:00 HST" };
+    let er: Result[String, String] = sys_exec(sys, "/home/ubermetroid/.local/bin/eco-status.bin");
+    let raw_eco: String = if er.is_ok() { er.val } else { "" };
+    let sanitized_eco: String = ss_sanitize_eco(raw_eco);
+    let doc: String = ss_build_html_doc(ts_hst, ts_utc, sanitized_eco);
+    let wr: Result[Void, String] = fs_write_file(fs_w, sdir + "/index.html", doc);
+    if wr.is_err() {
+        println("[FATAL] Failed to write " + sdir + "/index.html");
+        return 1;
+    }
+    let leak: String = ts_has_privacy_leak(doc);
+    if leak != "" {
+        println("[FATAL] Zero-Trust privacy gate failed: sensitive token detected (" + leak + ")");
+        return 1;
+    }
+    println("[PASS] Zero-Trust privacy gate verified: 0 sensitive tokens in " + sdir + "/index.html");
+    let vrc: Int = ts_verify_status_dir(fs_r, sdir);
+    if vrc != 0 { return vrc; }
+    return ss_git_sync(sys, sdir, ts_utc, ts_hst);
+}

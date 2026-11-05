@@ -1,0 +1,198 @@
+// # Lint OO Size - Pure .oo Size + Mixed-Domain Lint Probe
+//
+// Logline: Enforces the canonical Page Rule (OO_MAX_LINES=256, OO_MAX_FNS=8, OO_MAX_FN=40, OO_MAX_DIR=8) across oodac, oodar, std, and openOODA in pure .oo.
+//
+// Setup: Uses FsReadCap and EnvCap. Zero Python or bash dependencies.
+//
+// Beats:
+//   1. Read threshold and root overrides from OO_MAX_* and OO_LINT_ROOTS.
+//   2. Walk target roots, skipping .git, fixtures, corpus, and boundary_257_lines.oo.
+//   3. Scan every .oo file and count BIGFILE, MANYFN, LONGFN, DENSE, and MIX signals.
+//   4. Sort flagged (or --all) rows worst-first and exit 1 on any size violation.
+
+import "std/core/text/num_buffer.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "text/lines.oo";
+import "ci/lint/lint_oo_size_scan.oo";
+
+fn lint_env_int(env: &EnvCap, key: String, dflt: Int) -> Int {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() && text_trim(r.val) != "" {
+        let p: Result[Int, String] = parse_int(text_trim(r.val));
+        if p.is_ok() && p.val > 0 { return p.val; }
+    }
+    return dflt;
+}
+
+fn lint_split_comma(s: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut cur: String = "";
+    let n: Int = chars_len(s);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        if c == "," {
+            if text_trim(cur) != "" { out = list_push(out, text_trim(cur)); }
+            cur = "";
+        } else { cur = cur + c; }
+        i = i + 1;
+    }
+    if text_trim(cur) != "" { out = list_push(out, text_trim(cur)); }
+    return out;
+}
+
+fn lint_sort_strings(xs: List[String]) -> List[String] {
+    let mut arr: List[String] = xs;
+    let n: Int = list_len(arr);
+    let mut i: Int = 0;
+    while i < n {
+        let mut min_idx: Int = i;
+        let mut j: Int = i + 1;
+        while j < n {
+            if lint_str_lt(list_get(arr, j), list_get(arr, min_idx)) { min_idx = j; }
+            j = j + 1;
+        }
+        if min_idx != i {
+            let tmp: String = list_get(arr, i);
+            let mv: String = list_get(arr, min_idx);
+            let mut next: List[String] = list_new();
+            let mut k: Int = 0;
+            while k < n {
+                if k == i { next = list_push(next, mv); }
+                else if k == min_idx { next = list_push(next, tmp); }
+                else { next = list_push(next, list_get(arr, k)); }
+                k = k + 1;
+            }
+            arr = next;
+        }
+        i = i + 1;
+    }
+    return arr;
+}
+
+fn lint_collect_root(fs_r: &FsReadCap, base: String, max_d: Int) -> List[String] {
+    let mut files: List[String] = list_new();
+    let mut dense: String = "";
+    if !path_exists(fs_r, base) { return list_push(files, dense); }
+    if !fs_is_dir(fs_r, base) {
+        if str_ends_with(base, ".oo") && !str_ends_with(base, "/boundary_257_lines.oo") {
+            files = list_push(files, base);
+        }
+        return list_push(files, dense);
+    }
+    let walked: List[String] = fs_walk(fs_r, base);
+    let mut i: Int = 0;
+    while i < list_len(walked) {
+        let p: String = list_get(walked, i);
+        i = i + 1;
+        if str_contains(p, "/.git/") || str_ends_with(p, "/.git")
+            || str_contains(p, "/.ooda-cache/") || str_ends_with(p, "/.ooda-cache")
+            || str_contains(p, "/fixtures/") || str_ends_with(p, "/fixtures")
+            || str_contains(p, "/corpus/") || str_ends_with(p, "/corpus") {
+            continue;
+        }
+        if fs_is_dir(fs_r, p) {
+            let entries: List[String] = fs_read_dir(fs_r, p);
+            let mut cnt: Int = 0;
+            let mut j: Int = 0;
+            while j < list_len(entries) {
+                let fnm: String = list_get(entries, j);
+                j = j + 1;
+                if str_ends_with(fnm, ".oo") && fnm != "boundary_257_lines.oo" { cnt = cnt + 1; }
+            }
+            if cnt > max_d { dense = dense + "|" + p + "|"; }
+        } else if str_ends_with(p, ".oo") && !str_ends_with(p, "/boundary_257_lines.oo") {
+            files = list_push(files, p);
+        }
+    }
+    return list_push(files, dense);
+}
+
+fn lint_dirname(path: String) -> String {
+    let mut last_slash: Int = -1;
+    let n: Int = chars_len(path);
+    let mut i: Int = 0;
+    while i < n {
+        if char_at(path, i) == "/" { last_slash = i; }
+        i = i + 1;
+    }
+    if last_slash <= 0 { return "."; }
+    return str_slice(path, 0, last_slash);
+}
+
+fn lint_gather_all(fs_r: &FsReadCap, poly: String, roots: List[String], max_d: Int) -> List[String] {
+    let mut files: List[String] = list_new();
+    let mut dense_str: String = "";
+    let mut r_idx: Int = 0;
+    while r_idx < list_len(roots) {
+        let rt: String = list_get(roots, r_idx);
+        let b0: String = if str_starts_with(rt, "/") { rt } else { poly + "/" + rt };
+        let base: String = if path_exists(fs_r, b0) { b0 } else if path_exists(fs_r, poly + "-core/" + rt) { poly + "-core/" + rt } else { b0 };
+        let sub_files: List[String] = lint_collect_root(fs_r, base, max_d);
+        let n_sub: Int = list_len(sub_files);
+        if n_sub > 0 {
+            dense_str = dense_str + list_get(sub_files, n_sub - 1);
+            let mut s_i: Int = 0;
+            while s_i + 1 < n_sub {
+                files = list_push(files, list_get(sub_files, s_i));
+                s_i = s_i + 1;
+            }
+        }
+        r_idx = r_idx + 1;
+    }
+    let sorted: List[String] = lint_sort_strings(files);
+    return list_push(sorted, dense_str);
+}
+
+fn lint_scan_all_and_print(fs_r: &FsReadCap, poly: String, max_l: Int, max_fns: Int, max_fn: Int, max_d: Int, flagged_only: Bool, sorted_files: List[String], dense_str: String) -> Int {
+    let n_files: Int = list_len(sorted_files) - 1;
+    let mut rows: List[String] = list_new();
+    let mut c_big: Int = 0; let mut c_many: Int = 0; let mut c_long: Int = 0; let mut c_dense: Int = 0; let mut c_mix: Int = 0; let mut n_viol: Int = 0;
+    let mut f_idx: Int = 0;
+    while f_idx < n_files {
+        let path: String = list_get(sorted_files, f_idx);
+        f_idx = f_idx + 1;
+        let fr: Result[String, String] = fs_read_file(fs_r, path);
+        if fr.is_err() { continue; }
+        let rel: String = if str_starts_with(path, poly + "/") { str_slice(path, chars_len(poly) + 1, chars_len(path)) } else if str_starts_with(path, poly + "-core/") { str_slice(path, chars_len(poly) + 6, chars_len(path)) } else { path };
+        let is_d: Bool = str_contains(dense_str, "|" + lint_dirname(path) + "|");
+        let rec: String = lint_scan_content(fr.val, rel, max_l, max_fns, max_fn, is_d);
+        let flg: String = lint_extract_flag(rec);
+        if str_contains(flg, "BIGFILE") { c_big = c_big + 1; }
+        if str_contains(flg, "MANYFN") { c_many = c_many + 1; }
+        if str_contains(flg, "LONGFN") { c_long = c_long + 1; }
+        if str_contains(flg, "DENSE") { c_dense = c_dense + 1; }
+        if str_contains(flg, "MIX") { c_mix = c_mix + 1; }
+        if str_contains(flg, "BIGFILE") || str_contains(flg, "MANYFN") || str_contains(flg, "LONGFN") || str_contains(flg, "DENSE") { n_viol = n_viol + 1; }
+        if flagged_only && flg == "-" { continue; }
+        rows = list_push(rows, rec);
+    }
+    let sorted_rows: List[String] = lint_sort_strings(rows);
+    return lint_emit_report(poly, max_l, max_fns, max_fn, max_d, n_files, sorted_rows, c_big, c_many, c_long, c_dense, c_mix, n_viol);
+}
+
+pub fn main(_sys: &ProcessCap, fs_r: &FsReadCap, _fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let pr: Result[String, String] = env_get(env, "OODA_POLYROOT");
+    let poly: String = if pr.is_ok() && text_trim(pr.val) != "" { text_trim(pr.val) } else { "/Projects/openOODA" };
+    let max_l: Int = lint_env_int(env, "OO_MAX_LINES", 256);
+    let max_fns: Int = lint_env_int(env, "OO_MAX_FNS", 8);
+    let max_fn: Int = lint_env_int(env, "OO_MAX_FN", 40);
+    let max_d: Int = lint_env_int(env, "OO_MAX_DIR", 8);
+    let mut flagged_only: Bool = true;
+    let mut arg_roots: List[String] = list_new();
+    let mut ai: Int = 0;
+    while ai < list_len(args) {
+        let a: String = list_get(args, ai);
+        ai = ai + 1;
+        if a == "--all" { flagged_only = false; }
+        else if !str_starts_with(a, "--") && text_trim(a) != "" { arg_roots = list_push(arg_roots, text_trim(a)); }
+    }
+    let rr: Result[String, String] = env_get(env, "OO_LINT_ROOTS");
+    let rstr: String = if rr.is_ok() && text_trim(rr.val) != "" { text_trim(rr.val) } else { "oodac,oodar,std,openOODA" };
+    let roots: List[String] = if list_len(arg_roots) > 0 { arg_roots } else { lint_split_comma(rstr) };
+    let gathered: List[String] = lint_gather_all(fs_r, poly, roots, max_d);
+    let dense_str: String = list_get(gathered, list_len(gathered) - 1);
+    return lint_scan_all_and_print(fs_r, poly, max_l, max_fns, max_fn, max_d, flagged_only, gathered, dense_str);
+}
