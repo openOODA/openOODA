@@ -1,0 +1,90 @@
+// # Lint Roots - The Trees The Size Lint Walks
+//
+// Logline: Resolves the roots the size lint walks from the arguments, the environment, and the default set.
+//
+// Setup: Uses FsReadCap and EnvCap.
+//
+// Beats:
+//   1. Take the roots from the command line arguments.
+//   2. Take them from OO_LINT_ROOTS when the arguments name none.
+//   3. Fall back to the default roots of the fleet when neither names one.
+//
+// The roots are the trees the lint walks. A root that is a relative name is
+// read under the polyroot, and a root that names a repository of the fleet is
+// read under the core tree of the polyroot. The count of the readable roots
+// tells the caller that the lint covers something and that the walk is not
+// empty by accident.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "text/lines.oo";
+
+// Split a comma separated list into its parts. An empty part is dropped, so a
+// trailing comma names no root.
+pub fn lint_split_comma(s: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut cur: String = "";
+    let mut i: Int = 0;
+    while i < chars_len(s) {
+        let c: String = char_at(s, i);
+        if c == "," {
+            if text_trim(cur) != "" { out = list_push(out, text_trim(cur)); }
+            cur = "";
+        } else { cur = cur + c; }
+        i = i + 1;
+    }
+    if text_trim(cur) != "" { out = list_push(out, text_trim(cur)); }
+    return out;
+}
+
+// Report whether a root can be read. A relative name is read under the
+// polyroot, and a name of a repository is read under the core tree.
+pub fn lint_root_exists(fs_r: &FsReadCap, poly: String, root: String) -> Bool {
+    let b0: String = if str_starts_with(root, "/") { root } else { poly + "/" + root };
+    if path_exists(fs_r, b0) { return true; }
+    if !str_starts_with(root, "/") && path_exists(fs_r, poly + "-core/" + root) { return true; }
+    return false;
+}
+
+// The roots the lint walks. The arguments win over the environment, and the
+// environment wins over the default set of the fleet. When no default root
+// can be read, the polyroot itself is the root.
+pub fn lint_root_list(fs_r: &FsReadCap, env: &EnvCap, poly: String, args: List[String]) -> List[String] {
+    let mut roots: List[String] = list_new();
+    let mut ai: Int = 0;
+    while ai < list_len(args) {
+        let a: String = list_get(args, ai);
+        ai = ai + 1;
+        if !str_starts_with(a, "--") && text_trim(a) != "" { roots = list_push(roots, text_trim(a)); }
+    }
+    if list_len(roots) == 0 {
+        let rr: Result[String, String] = env_get(env, "OO_LINT_ROOTS");
+        if rr.is_ok() && text_trim(rr.val) != "" { roots = lint_split_comma(text_trim(rr.val)); }
+    }
+    if list_len(roots) == 0 {
+        let dfl: List[String] = lint_split_comma("oodac,oodar,std,openOODA");
+        let mut any: Bool = false;
+        let mut di: Int = 0;
+        while di < list_len(dfl) {
+            let rt: String = list_get(dfl, di);
+            di = di + 1;
+            if lint_root_exists(fs_r, poly, rt) { any = true; }
+        }
+        if any { roots = dfl; } else { roots = list_new(); roots = list_push(roots, poly); }
+    }
+    return roots;
+}
+
+// The count of the roots that can be read. Zero means the lint would walk
+// nothing, and the caller must fail rather than report a clean tree.
+pub fn lint_root_count(fs_r: &FsReadCap, poly: String, roots: List[String]) -> Int {
+    let mut n: Int = 0;
+    let mut ri: Int = 0;
+    while ri < list_len(roots) {
+        let rt: String = list_get(roots, ri);
+        ri = ri + 1;
+        if lint_root_exists(fs_r, poly, rt) { n = n + 1; }
+    }
+    return n;
+}
