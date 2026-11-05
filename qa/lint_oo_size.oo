@@ -191,7 +191,23 @@ pub fn main(_sys: &ProcessCap, fs_r: &FsReadCap, _fs_w: &FsWriteCap, env: &EnvCa
     }
     let rr: Result[String, String] = env_get(env, "OO_LINT_ROOTS");
     let rstr: String = if rr.is_ok() && text_trim(rr.val) != "" { text_trim(rr.val) } else { "oodac,oodar,std,openOODA" };
-    let roots: List[String] = if list_len(arg_roots) > 0 { arg_roots } else { lint_split_comma(rstr) };
+    let mut roots: List[String] = if list_len(arg_roots) > 0 { arg_roots } else { lint_split_comma(rstr) };
+    let mut any_root: Bool = false;
+    let mut ri: Int = 0;
+    while ri < list_len(roots) {
+        let rt0: String = list_get(roots, ri);
+        let rb: String = if str_starts_with(rt0, "/") { rt0 } else { poly + "/" + rt0 };
+        if path_exists(fs_r, rb) || (!str_starts_with(rt0, "/") && path_exists(fs_r, poly + "-core/" + rt0)) { any_root = true; }
+        ri = ri + 1;
+    }
+    if !any_root {
+        if list_len(arg_roots) > 0 {
+            println("ERR\tlint-oo-size\tno lint root is readable under " + poly + "; set OODA_FS_READDIR to cover the target tree or run with OODA_NO_JAIL=1");
+            return 2;
+        }
+        roots = list_new();
+        roots = list_push(roots, poly);
+    }
     let gathered: List[String] = lint_gather_all(fs_r, poly, roots, max_d);
     let dense_str: String = list_get(gathered, list_len(gathered) - 1);
     return lint_scan_all_and_print(fs_r, poly, max_l, max_fns, max_fn, max_d, flagged_only, gathered, dense_str);
