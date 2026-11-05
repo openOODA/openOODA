@@ -66,9 +66,11 @@ pub fn lint_fn_name(line: String) -> String {
 
 pub fn lint_fn_end(lines: List[String], start_idx: Int, nlines: Int) -> Int {
     let mut depth: Int = 0; let mut begun: Bool = false; let mut in_blk: Bool = false;
-    let mut i: Int = start_idx;
+    let mut sloc: Int = 0; let mut i: Int = start_idx;
     while i < nlines {
         let ln: String = list_get(lines, i);
+        let tr: String = text_trim(ln);
+        if tr != "" && !str_starts_with(tr, "//") && !in_blk { sloc = sloc + 1; }
         let blen: Int = bytes_len(ln);
         let mut j: Int = 0; let mut in_str: Bool = false;
         while j < blen {
@@ -87,10 +89,10 @@ pub fn lint_fn_end(lines: List[String], start_idx: Int, nlines: Int) -> Int {
             }
             j = j + 1;
         }
-        if begun && depth <= 0 { return i; }
+        if begun && depth <= 0 { return sloc; }
         i = i + 1;
     }
-    return nlines - 1;
+    return sloc;
 }
 
 pub fn lint_domains(low: String) -> String {
@@ -126,7 +128,7 @@ pub fn lint_scan_content(raw: String, rel: String, max_l: Int, max_fns: Int, max
         let nm: String = lint_fn_name(list_get(all_lines, i));
         if nm != "" {
             nfns = nfns + 1;
-            let flen: Int = lint_fn_end(all_lines, i, nlines) - i + 1;
+            let flen: Int = lint_fn_end(all_lines, i, nlines);
             if flen > longest { longest = flen; lname = nm; }
         }
         i = i + 1;

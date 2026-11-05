@@ -81,15 +81,21 @@ The 25 laws below do not change. They apply across all repository directories.
   Follow the adversarial verification protocols in practices/ooda-workflow.oot.
   Verified on-disk features are recorded by per-repo shipped proof scripts; each repo records its own.
 
-### 1.8 Code Quality & Line Limits
-  Every file must contain a maximum of 256 lines. Split large files along domain seams.
+### 1.8 Code Quality & Power-of-2 Shape Ladder (`1 / 2 / 4 / 8 / 16 / 32 / 64 / 128 / 256`)
+  Every `.oo` and `.oot` file obeys the unbroken Power-of-2 Shape Ladder (`1..256`). Split large files along semantic domain seams (never generic `*_part2.oo` / `*_ext.oo` / `helpers2.oo` fragments):
+    - `1` (`2^0`): Link count == 1 (Rule 1.25: zero symlinks/hardlinks) and at most 1 statement per line (no horizontal `a(); b();` packing).
+    - `2` (`2^1`): At least 2 test axes per repo (1 Real Functional I/O Test + 1 Negative-Trust Refusal Test) and 2-Axis Code Review (Standards + Spec).
+    - `4` (`2^2`): At most 4 levels of block nesting depth inside a function (use early returns/guard clauses).
+    - `8` (`2^3`): At most 8 pages/directory (`DENSE`), at most 8 functions/page (`MANYFN`), at most 8 parameters/function.
+    - `16` (`2^4`): At least 16 lines per `.oo` file (zero empty stub files).
+    - `32` (`2^5`): 32 explicit capabilities (`0..31`), at most 32 characters per identifier/filename, and target <= 32 `.oo` pages per standalone repo.
+    - `64` (`2^6`): At most 64 lines per function (`LONGFN`, comment/blank lines excluded so comments are never penalized).
+    - `128` (`2^7`): At most 128 characters per line.
+    - `256` (`2^8`): At most 256 lines per file (`BIGFILE` = 1 Page).
   Free all allocated memory. Use linear arenas with bulk resets for temporary allocations.
   Delete debug files, obsolete code, and temporary artifacts when work is complete.
   Zero intermediate artifacts (*.tmp.c, *.protos.c, *.tu.c, *.bin, *.txt) permitted in openOODA-core/std/.
-  Ensure that implementation behavior matches specification documentation.
-  Shape law: at most 8 pages/directory, at most 8 functions/page, at most 40 lines/function.
-  Resource limits: at most 64 MB RSS, at most 3.0s CPU per checked page. `qa/lint_oo_size.sh`
-  fails closed on new violations; `audit/oo_size_2026-09-23.oot` grandfathers existing inventory.
+  Resource limits: at most 64 MB RSS, at most 3.0s CPU per checked page. `/home/ubermetroid/.local/bin/lint-oo-size` (`qa/lint_oo_size.oo`) fails closed on violations.
 
 ### 1.9 Incremental Modifications
   Make small, focused modifications. Small changes are easier to test and verify.
@@ -130,39 +136,16 @@ The 25 laws below do not change. They apply across all repository directories.
   Select the faster and simpler implementation. Delete the unused implementation.
 
 ### 1.13 Formal RFC Template Compliance
-  All RFC proposals in `rfcs/` must adhere to `rfcs/0000-template.oot`.
-  Required sections: RFC ID, Title, Author, Status, Summary, Motivation, Design, Security, and Testing.
-  Implemented RFCs must contain concrete adversarial test suites.
-  When writing networking code, adhere strictly to published IETF RFC specifications.
-  Record the relevant RFC number in the source file header.
+  All RFC proposals in `rfcs/` must adhere to `rfcs/0000-template.oot` (RFC ID, Title, Author, Status, Summary, Motivation, Design, Security, Testing).
+  Implemented RFCs must contain concrete adversarial test suites. Adhere strictly to published IETF RFCs and record the RFC number in the source header.
 
 ### 1.14 Pure .oo/.oot File Laws, N-Binary & Clean Workspaces
-  All source code, tools, proofs, fixers, and test harnesses must use `.oo` files.
-  All process boards, research papers, RFCs, and specifications must use `.oot` files.
-  Strictly Prohibited:
-    - Never create `.py`, `.ts`, `.rb`, or `.pl` files across any repository.
-    - Prohibited: `.js` files, except client-side documentation in `website/js/`.
-    - Prohibited: `.md` files, except `AGENTS.md`, `README.md`, `.github/`, and `install/docs/`.
-  Permitted `.sh` carve-outs (RULES §1.14 amendment 2026-09-10):
-    User-facing host scripts: `bootstrap/oodac_pure_build` + `install.sh`.
-    Mechanics-distinct: `*/profile.d.sh`, `tests/test_*.sh` and
-    `tests/*_inner.sh`, `qa/*.sh` (std/oodar), `scripts/repro_*.sh` and
-    `scripts/double_run.sh`, `bootstrap/corpus/*/diffrun.sh`. Any other
-    `.sh` is a governance violation; add new categories by RFC, not analogy.
-  N-Binary Architecture: The compiler (`oodac`) is decoupled from all workflow drivers. Multiple driver binaries (`cli`, `ooda`, `opm`, `lsp`, `mcp`, `tui`) coexist; each owns a single domain and may call into the others via `process_exec` with explicit capability grants. The legacy `ooda` binary is the back-compat router that forwards to `cli`, `opm`, `lsp`, `mcp`, `tui`.
-  C/H Substrate Isolation: All low-level C shims (`oodar.c`, `oodar.h`, `types.h`, plus the 100 .c files in the 6 per-domain subdirs) strictly confined to the oodar/ repo. Zero C header leaks into openOODA-core/std/. The oodar/ public ABI is the set of oo_* symbols exported by the umbrella TU.
-  Clean Workspaces: Zero unmanaged/unheaded `.oo` files in roots; zero struct trailing commas.
-  Polyrepo directory naming responsibilities (each repo owns its own subtree):
-    `oodac/*.oo`         — Compiler implementation modules (oodac/ repo).
-    `oodar/*`            — C shims and Landlock sandbox (oodar/ repo).
-    `cli/*.oo`           — Language CLI driver (build, run, test, fmt, install,
-                            update, init, qa, context, fix; cli/ repo).
-    `ooda/*.oo`          — Back-compat router that forwards to cli, opm, lsp, mcp, tui
-                            (ooda/ repo). Owns `spawn.oo` and `find_compiler.oo`.
-    `openOODA-core/std/*.oo`  — Standard library modules, 8 functional domains (std/ repo).
-    `cli/`, `ooda/`, `lsp/`, `mcp/`, `opm/`, `tui/` — Operational drivers,
-                            protocol servers, and diagnostic surface (own repos).
-  Every `.oo` file must contain a 4-element Academy header and contain <= 256 lines.
+  All source code, tools, proofs, fixers, and test harnesses must use `.oo` files. All process boards, research papers, RFCs, and specifications must use `.oot` files.
+  Strictly Prohibited: `.py`, `.ts`, `.rb`, or `.pl` files across any repository; `.js` except `website/js/`; `.md` except `AGENTS.md`, `README.md`, `.github/`, `install/docs/`.
+  Permitted `.sh` carve-outs (RULES §1.14 amendment 2026-09-10): `bootstrap/oodac_pure_build`, `install.sh`, `*/profile.d.sh`, `tests/test_*.sh`, `tests/*_inner.sh`, `qa/*.sh`, `scripts/repro_*.sh`, `scripts/double_run.sh`, `bootstrap/corpus/*/diffrun.sh`. Any other `.sh` is a governance violation.
+  N-Binary Architecture: The compiler (`oodac`) is decoupled from workflow drivers (`cli`, `ooda`, `opm`, `lsp`, `mcp`, `tui`).
+  C/H Substrate Isolation: All low-level C shims (`oodar.c`, `oodar.h`, `types.h`, and per-domain `.c` files) are strictly confined to `oodar/`. Zero C header leaks into `openOODA-core/std/`.
+  Clean Workspaces: Zero unmanaged/unheaded `.oo` files in roots; zero struct trailing commas. Every `.oo` file must contain a 4-element Academy header and `<= 256` lines.
 
 ### 1.15 Automated Enforcement
   Each tactical/operational repo owns its own governance linters and tests. The
