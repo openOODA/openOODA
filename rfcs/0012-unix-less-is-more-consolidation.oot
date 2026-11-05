@@ -1,22 +1,26 @@
-# RFC 0012: Unix Less-Is-More Consolidation and Multi-Call Symlink Dispatch
+# RFC 0012: Unix Less-Is-More Consolidation and Multi-Call Persona Dispatch
 File: openOODA/rfcs/0012-unix-less-is-more-consolidation.oot
 
 * **RFC ID**: 0012
-* **Title**: Unix Less-Is-More Consolidation and Multi-Call Symlink Dispatch
+* **Title**: Unix Less-Is-More Consolidation and Multi-Call Persona Dispatch
 * **Author**: openOODA Core Architecture Team
 * **Status**: Accepted
 * **Type**: Standards Track / Architecture
 * **Decision Driver**: Maintaining 377 separate product repositories across 9
   organizations creates maintenance drag and 1,079 duplicated harness files.
-  First-principles Unix composition and multi-call `argv[0]` symlink dispatch
+  First-principles Unix composition and explicit multi-call persona dispatch
   allow 248 redundant utility and daemon repositories to be absorbed into 129
   canonical binaries while preserving 100% drop-in CLI compatibility.
-* **Supersedes**: None
+* **Supersedes**: Section 2.2 of this RFC as originally accepted (the multi-call
+  symlink dispatch contract). That contract is replaced by the Zero Symlinks and
+  Hardlinks Law (`rules.oot` section 1.25) and by the executive Zero Symlinks
+  and Hardlinks Directive (`ZERO_SYMLINKS_DIRECTIVE.md`, 2026-11-04).
 * **Related**: RFC 0001 (capability security), RFC 0003 (file format),
   RFC 0004 (engineering model), RFC 0010 (tools fleet governance),
   RFC 0011 (tools fleet validation), northstar.oot
 * **Target Release**: v2.12.0
 * **Created**: 2026-11-04
+* **Amended**: 2026-11-04
 
 ---
 
@@ -37,14 +41,24 @@ duplication:
    `fs/fsprobe.oo`, `fs/record.oo`, `core/options.oo`) are copied across the
    fleet instead of being imported from `openOODA-core/std`.
 
-In classic Unix systems (BusyBox, Toybox, coreutils, zstd/xz/gzip symlinks), a
-single verified binary dispatches its sub-persona from `argv[0]` (the invoked
-program basename). Previously, `openOODA-core/oodar` exposed `oo_sys_args(cap)`
-starting at `argv[1]`, omitting `argv[0]`.
+In classic Unix systems (BusyBox, Toybox, coreutils) a single verified binary
+serves several personalities. That model is adopted here, with one deliberate
+difference: a persona is a **token**, never a file. The fleet installs one real
+ELF per consolidated binary and selects the persona with an explicit CLI
+subcommand or flag. No symlink or hardlink is created for any persona name, in
+any repository, at any stage of the build, the test, or the installation.
+
+Previously, `openOODA-core/oodar` exposed `oo_sys_args(cap)` starting at
+`argv[1]`, omitting `argv[0]`.
 
 ## 2. Specification
 
-### 2.1 Capability-Gated `oo_sys_argv0` Runtime and Compiler Intrinsics
+### 2.1 Capability-Gated Invocation-Name Resolution (Fallback Only)
+
+The runtime intrinsics below are retained, because a consolidated binary still
+needs to know the name it was invoked under. They are a **fallback** resolution
+path, never the primary persona selector and never a source of installed
+aliases.
 
 1. **L0.1 Runtime (`openOODA-core/oodar`)**:
    - `OoStr oo_sys_argv0(long long cap)` requires `ProcessCap` (`CAP_PROCESS`,
@@ -64,23 +78,38 @@ starting at `argv[1]`, omitting `argv[0]`.
    - `std/fs/process/process.oo` exposes `pub fn sys_argv0(p: &ProcessCap) -> String`
      and `pub fn process_argv0(p: &ProcessCap) -> String`.
 
-### 2.2 Multi-Call Symlink Dispatch Contract
+### 2.2 Multi-Call Persona Dispatch Contract
 
-1. Any consolidated multi-call binary reads `let prog: String = sys_argv0(sys);`
-   at startup under `&ProcessCap`.
-2. When invoked through an alias symlink in `/opt/ooda/bin/` (or with an
-   explicit subcommand matching the alias), the binary selects the exact CLI
-   flag table, output format, and exit-code contract of the aliased utility:
-   - **HTTP/Transfer (`oocurl`)**: dispatches `oocurl`, `curl`, `oowget`,
-     `wget`, `oowget2`, `wget2`, `oofetch`.
-   - **Diff/Comparison (`oodiff`)**: dispatches `oodiff`, `diff`, `oosdiff`,
+A persona is a named mode of a consolidated binary. It is selected by a token
+on the command line. It is never a file on disk.
+
+1. **Selection precedence** (exactly one persona per invocation; the first
+   match wins, the selector is consumed, and the persona CLI receives only its
+   own arguments):
+   1. The explicit selector flag `--persona <name>` or `--mode <name>`.
+   2. A leading persona subcommand token (for example `oocurl wget URL`).
+   3. The invoked basename from `sys_argv0`, used as a fallback only.
+   4. The default persona of the binary.
+2. **Flag surface**: every consolidated multi-call binary accepts
+   `--persona <name>`, `--mode <name>` (an accepted synonym of `--persona`),
+   and `--list-personas` (with `--personas` accepted as a synonym) which
+   prints every persona that binary serves and exits.
+3. **Fail-closed selector handling**:
+   - An unknown persona name is refused with exit code 2.
+   - A repeated selector is refused with exit code 2.
+   - A selector with no name is refused with exit code 2.
+   - A refused selector never falls through to the default persona.
+4. **Persona tables** (persona names, not installed aliases):
+   - **HTTP/Transfer (`oocurl`)**: serves `oocurl`, `curl`, `oowget`, `wget`,
+     `oowget2`, `wget2`, `oofetch`.
+   - **Diff/Comparison (`oodiff`)**: serves `oodiff`, `diff`, `oosdiff`,
      `sdiff`, `oowdiff`, `wdiff`, `oocmp`, `cmp`, `oocomm`, `comm`.
-   - **Cryptographic Digests (`oob3sum`)**: dispatches `oob3sum`, `b3sum`,
+   - **Cryptographic Digests (`oob3sum`)**: serves `oob3sum`, `b3sum`,
      `oosha256`, `sha256sum`, `oomd5`, `md5sum`, `oocksum`, `cksum`, `oohash`.
    - **Archive/Compression (`ootar`, `oozstd`, `oogzip`, `ooxz`, `oozip`)**:
-     dispatches compress, decompress (`gunzip`, `unxz`, `zstdcat`, `unzip`), and
-     stream cat modes from `argv[0]`.
-   - **Shell Builtins (`oosh`)**: dispatches `oosh`, `sh`, `oobash`, `bash`,
+     serves the compress, decompress (`gunzip`, `unxz`, `zstdcat`, `unzip`),
+     and stream cat personas.
+   - **Shell Builtins (`oosh`)**: serves `oosh`, `sh`, `oobash`, `bash`,
      `ootrue`, `true`, `oofalse`, `false`, `ooyes`, `yes`, `oowhich`, `which`.
    - **Cloud Storage & Control Plane (`oostore`, `oomesh`, `oodeploy`,
      `oogateway`, `ooidentity`, `ootelemetry`, `oobilling`, `oodb-dist`)**:
@@ -88,12 +117,23 @@ starting at `argv[1]`, omitting `argv[0]`.
      engines (`oostore` absorbs `oostore-cas` and `ooregistry-cloud`; `oomesh`
      absorbs `oodns-cloud` and `oorelay`; `oodeploy` absorbs `oobuild-fleet`,
      `ooinfer-grid`, and `oosched-cloud`; `oogateway` absorbs `oocdn`).
+5. **Zero-link law for personas**:
+   - No `ln -s` and no `ln` may create a persona alias, in `bin/`, in `dist/`,
+     in `.ooda-cache/`, in `~/.local/bin/`, in `~/.openooda/bin/`, in a
+     Makefile recipe, or anywhere else in a repository tree.
+   - Every executable in `bin/` or `dist/` is a real standalone compiled ELF
+     binary: not a symlink (`! -L`) and a link count of exactly 1.
+   - One consolidated binary is installed under its canonical name only. The
+     persona names of section 2.2 item 4 are accepted as tokens by that binary
+     and are not installed as files.
+   - A build recipe that would install a persona as a file is a governance
+     failure and must fail the gate.
 
 ### 2.3 9-Organization Consolidation Target (377 -> 129 Canonical Repos)
 
 Across all 9 organizations, the consolidation blueprint reduces active product
 repositories from 377 to 129 canonical repositories (`65.8%` reduction) while
-retaining 100% capability coverage and CLI symlink compatibility:
+retaining 100% capability coverage and CLI persona compatibility:
 - `@openOODA`: 4 -> 4 (unchanged governance, website, status, install).
 - `@openOODA-core` (L0): 11 -> 11 (unchanged compiler, runtime, std, toolchain).
 - `@openOODA-kernel` (L1): 16 -> 6 (`ooboot`, `oohal`, `ookernel`, `oodrv-storage`, `oodrv-io`, `oodrv-virt`).
@@ -102,7 +142,7 @@ retaining 100% capability coverage and CLI symlink compatibility:
 - `@openOODA-DE` (L4): 20 -> 9 (`oocomp`, `oopanel`, `ooportal`, `ooterm`, `oofiles`, `oosettings`, `oolock`, `oobazaar`, `ooagent-hud`).
 - `@openOODA-apps` (L5): 17 -> 11 (`oobrowser`, `oostudio`, `oooffice`, `oonotes`, `oocanvas`, `oomedia`, `oodaw`, `oopdf`, `oomail`, `oopass`, `oovm-ui`).
 - `@openOODA-cloud` (L6): 18 -> 8 (`oomesh`, `oostore`, `oodeploy`, `oogateway`, `ooidentity`, `oodb-dist`, `ootelemetry`, `oobilling`).
-- `@openOODA-agents` (L7): 16 -> 8 (`oooda-engine`, `ooherdr`, `ooquota`, `oofalsify`, `ooconsensus`, `oocoder`, `oomemory`, `oogovern`).
+- `@openOODA-agents` (L7): 16 -> 8 (`oooda-engine`, `ooherdr`, `ooquota`, `oofalse`, `ooconsensus`, `oocoder`, `oomemory`, `oogovern`).
 
 ## 3. Security
 
@@ -112,14 +152,33 @@ program without `ProcessCap` cannot inspect its invocation vector and receives
 `oodar` before returning the basename so callers match against simple command
 names without directory traversal ambiguity.
 
+Because the invocation name is a fallback rather than the selector, a caller
+that needs a guaranteed persona must pass `--persona` or a leading persona
+subcommand. A caller that trusts only the invocation name inherits whatever
+name the process was started under.
+
+The Zero Symlinks and Hardlinks Law (`rules.oot` section 1.25) holds for the
+consolidated binaries: an installed persona is a token, and the installed file
+is always the single real ELF of its canonical binary. Code sharing across
+repositories happens at compile time through `import "std/..."` from
+`openOODA-core/std`, never through filesystem links.
+
 ## 4. Testing
 
 1. `oodar/qa/tests_challenger_sys.c` verifies both the `cap == 0` fail-closed
    path and the `cap != 0` basename extraction path.
 2. `std/qa/probe_cap_process.oo` verifies `sys_argv0(p)` and `process_argv0(p)`
    through the self-hosted `oodac` compiler.
-3. Every multi-call binary must pass RFC 0011 parity tests under each of its
-   aliased `argv[0]` symlinks before the absorbed repository is archived.
+3. Every multi-call binary must pass RFC 0011 parity tests for each of its
+   personas, invoked by the explicit `--persona` selector and by the leading
+   persona subcommand, before the absorbed repository is archived.
+4. Every consolidated repository must run a link-law gate that fails closed
+   when the repository tree, `bin/`, `dist/`, or `.ooda-cache/` holds a
+   symlink, a file with a link count above 1, or a Makefile recipe that
+   creates a link. The gate must not match its own source text.
+5. A consolidated binary must answer `--list-personas` with the full persona
+   table, and must refuse an unknown persona, a repeated selector, and a
+   selector with no name, each with exit code 2.
 
 ## 5. Rollout
 
@@ -127,6 +186,9 @@ names without directory traversal ambiguity.
    `oodar` (`v4.0.90`), `oodac` (`v0.11.63`), and `std` (`v1.0.86`); complete
    all 18 `openOODA-cloud` capability-backed manifests (`377/377 = 100.0%`
    USABLE across all 9 organizations); purge all `.ooda-cache/` build residue.
-2. **Phase 2 (Multi-Call Dispatch & Symlink Migration)**: Add `sys_argv0(sys)`
-   dispatch tables to the 64 canonical `openOODA-tools` binaries and 8 canonical
-   `openOODA-cloud` engines, verify symlink parity, and archive absorbed repos.
+2. **Phase 2 (Multi-Call Persona Dispatch & Link Removal)**: Add the
+   `--persona` / `--mode` selector tables and the leading persona subcommand
+   tables to the 64 canonical `openOODA-tools` binaries and 8 canonical
+   `openOODA-cloud` engines, verify persona parity, remove every persona
+   symlink and the Makefile recipes that create them, land the link-law gate
+   in each consolidated repository, and archive absorbed repos.
