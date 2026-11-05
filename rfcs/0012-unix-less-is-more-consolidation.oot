@@ -20,7 +20,7 @@ File: openOODA/rfcs/0012-unix-less-is-more-consolidation.oot
   RFC 0011 (tools fleet validation), northstar.oot
 * **Target Release**: v2.12.0
 * **Created**: 2026-11-04
-* **Amended**: 2026-11-04
+* **Amended**: 2026-11-05 (Naming & Persona Ownership Adjudication)
 
 ---
 
@@ -28,15 +28,15 @@ File: openOODA/rfcs/0012-unix-less-is-more-consolidation.oot
 
 Across the 9 openOODA organizations (`@openOODA` umbrella plus L0 through L7),
 377 product repositories were built to prove 100% capability-sandboxed coverage
-from bare-metal UEFI boot (`ooboot`) to autonomous OODA loops (`oooda-engine`).
+from bare-metal UEFI boot (`ooboot`) to autonomous OODA loops (`ooooda`).
 A line-level audit of all 377 repositories identified two structural sources of
 duplication:
 1. **Multi-Binary Proliferation**: Separate repositories exist for tools that
    share the same parser, codec, or protocol engine (for example, `oowget` and
    `oowget2` alongside `oocurl`; `oosdiff`, `oowdiff`, and `oocmp` alongside
-   `oodiff`; `oosha256` and `oomd5` alongside `oob3sum`; `oobash`, `ootrue`,
-   `oofalse`, and `ooyes` alongside `oosh`; `oostore-cas` and `ooregistry-cloud`
-   alongside `oostore`).
+   `oodiff`; `oosha256`, `oosha512`, `oomd5`, and `oob3sum` alongside `oohash`;
+   `oobash`, `ootrue`, `oofalse`, and `ooyes` alongside `oosh`; `oostore-cas`
+   and `ooregistry-cloud` alongside `oostore`).
 2. **Duplicated Harness Boilerplate**: 1,079 tiny `.oo` wrapper pages (`cli.oo`,
    `fs/fsprobe.oo`, `fs/record.oo`, `core/options.oo`) are copied across the
    fleet instead of being imported from `openOODA-core/std`.
@@ -104,11 +104,16 @@ on the command line. It is never a file on disk.
      `oowget2`, `wget2`, `oofetch`.
    - **Diff/Comparison (`oodiff`)**: serves `oodiff`, `diff`, `oosdiff`,
      `sdiff`, `oowdiff`, `wdiff`, `oocmp`, `cmp`, `oocomm`, `comm`.
-   - **Cryptographic Digests (`oob3sum`)**: serves `oob3sum`, `b3sum`,
-     `oosha256`, `sha256sum`, `oomd5`, `md5sum`, `oocksum`, `cksum`, `oohash`.
-   - **Archive/Compression (`ootar`, `oozstd`, `oogzip`, `ooxz`, `oozip`)**:
-     serves the compress, decompress (`gunzip`, `unxz`, `zstdcat`, `unzip`),
-     and stream cat personas.
+   - **Cryptographic Digests (`oohash`)**: serves `oohash`, `hash`, `oob3sum`,
+     `b3sum`, `oosha256`, `sha256sum`, `oosha512`, `sha512sum`, `oomd5`,
+     `md5sum`, `oocksum`, `cksum`, `oocrc32`, `crc32`.
+   - **Encoding & Codecs (`oocodec`, renamed from `oobase64`)**: serves
+     `oocodec`, `oobase64`, `base64`, `oobase32`, `base32`, `oobase58`,
+     `base58`, `oohex`, `hex`, `ooxxd`, `xxd`.
+   - **Archive/Compression (`ooarchive`)**: serves `ooarchive`, `ootar`, `tar`,
+     `oozstd`, `zstd`, `zstdcat`, `oogzip`, `gzip`, `gunzip`, `ooxz`, `xz`,
+     `unxz`, `oobzip2`, `bzip2`, `bunzip2`, `oo7z`, `7z`, `oozip`, `zip`,
+     `oounzip`, `unzip`, `oocpio`, `cpio`.
    - **Shell Builtins (`oosh`)**: serves `oosh`, `sh`, `oobash`, `bash`,
      `ootrue`, `true`, `oofalse`, `false`, `ooyes`, `yes`, `oowhich`, `which`.
    - **Cloud Storage & Control Plane (`oostore`, `oomesh`, `oodeploy`,
@@ -116,7 +121,14 @@ on the command line. It is never a file on disk.
      consolidates the 18 `openOODA-cloud` services into 8 canonical distributed
      engines (`oostore` absorbs `oostore-cas` and `ooregistry-cloud`; `oomesh`
      absorbs `oodns-cloud` and `oorelay`; `oodeploy` absorbs `oobuild-fleet`,
-     `ooinfer-grid`, and `oosched-cloud`; `oogateway` absorbs `oocdn`).
+     `ooinfer-grid`, and `oosched-cloud`; `oogateway` absorbs `oocdn`;
+     `ooidentity` absorbs `ooconsent`; `oodb-dist` absorbs `ooqueue`).
+   - **Canonical Persona Ownership Registry**: `openOODA/persona-ownership.oot`
+     is the normative Single Source of Truth (SSoT) mapping every persona token
+     to exactly one canonical host binary across L1-L7. No persona token may be
+     registered in more than one host binary, and no absorbed persona token may
+     be published as a standalone package in `catalog/index`.
+
 5. **Zero-link law for personas**:
    - No `ln -s` and no `ln` may create a persona alias, in `bin/`, in `dist/`,
      in `.ooda-cache/`, in `~/.local/bin/`, in `~/.openooda/bin/`, in a
@@ -134,15 +146,15 @@ on the command line. It is never a file on disk.
 Across all 9 organizations, the consolidation blueprint reduces active product
 repositories from 377 to 129 canonical repositories (`65.8%` reduction) while
 retaining 100% capability coverage and CLI persona compatibility:
-- `@openOODA`: 4 -> 4 (unchanged governance, website, status, install).
-- `@openOODA-core` (L0): 11 -> 11 (unchanged compiler, runtime, std, toolchain).
-- `@openOODA-kernel` (L1): 16 -> 6 (`ooboot`, `oohal`, `ookernel`, `oodrv-storage`, `oodrv-io`, `oodrv-virt`).
-- `@openOODA-OS` (L2): 18 -> 8 (`ooinit`, `oovfs`, `oonetd`, `oosysbus`, `ooauthd`, `oohealthd`, `ooimage`, `ooaid`).
-- `@openOODA-tools` (L3): 257 -> 64 canonical multi-call utilities.
-- `@openOODA-DE` (L4): 20 -> 9 (`oocomp`, `oopanel`, `ooportal`, `ooterm`, `oofiles`, `oosettings`, `oolock`, `oobazaar`, `ooagent-hud`).
-- `@openOODA-apps` (L5): 17 -> 11 (`oobrowser`, `oostudio`, `oooffice`, `oonotes`, `oocanvas`, `oomedia`, `oodaw`, `oopdf`, `oomail`, `oopass`, `oovm-ui`).
-- `@openOODA-cloud` (L6): 18 -> 8 (`oomesh`, `oostore`, `oodeploy`, `oogateway`, `ooidentity`, `oodb-dist`, `ootelemetry`, `oobilling`).
-- `@openOODA-agents` (L7): 16 -> 8 (`oooda-engine`, `ooherdr`, `ooquota`, `oofalse`, `ooconsensus`, `oocoder`, `oomemory`, `oogovern`).
+- `@openOODA`: 5 -> 5 (governance `openOODA`, `website`, `status`, `install`, `catalog`).
+- `@openOODA-core` (L0): 11 -> 12 (`oodac`, `oodar`, `std`, `std-hw`, `cli` [absorbs `ooda`], `opm`, `tui`, `ooda-mcp` [`mcp`], `ooda-lsp` [`lsp`], plus support repos).
+- `@openOODA-kernel` (L1): 16 -> 6 (`ooboot` [from `ookernel-boot`], `oohal` [from `ookernel-hal-x86`, absorbs `arm64`/`riscv`], `ookernel` [from `ookernel-sched`, absorbs `mm`/`ipc`/`ob`/`iommu`/`unikernel`], `oodrv-storage` [from `oodrv-nvme`], `oodrv-io` [from `oodrv-net`, absorbs `usb-hid`/`display-gop`/`pci`], `oodrv-virt` [from `oodrv-virtio`]).
+- `@openOODA-OS` (L2): 18 -> 8 (`ooinit` [absorbs `oosvc-mgr`], `oovfs` [absorbs `oofs-ext4`/`oofs-tmp`], `oonetd` [absorbs `oodnsd`], `oosysbus` [absorbs `oopowerd`/`oologd`/`ooaudiod`], `ooauthd` [from `oosession`, absorbs `oopolicyd`/`oosandbox`], `oohealthd`, `oocontainer` [from `ooimage`, absorbs `oorealm`/`ooupdate`], `ooaid` [absorbs `oollama`]).
+- `@openOODA-tools` (L3): 257 -> 64 canonical multi-call utilities (including `oohash` as single digest host, `oocodec` from `oobase64`, `ooarchive`, `ootheme` from `oote`, `ootext`, `oosqlite` from `oosqllite`).
+- `@openOODA-DE` (L4): 20 -> 8 (`oocomp` [absorbs `oowm`/`oowall`/`oolock`], `oopanel` [absorbs `oolaunch`/`ooshelf`/`ootoast`/`ootaskmgr`/`oocockpit`], `ooportal` [absorbs `ooclip`/`ooshot`], `ooterm`, `oofiles` [absorbs `ooview`/`ooedit`], `oosettings`, `oobazaar`, `ooagent-hud`).
+- `@openOODA-apps` (L5): 18 -> 10 (`oobrowser`, `oostudio` [absorbs `oogit-ui`], `oooffice` [from `oodocs`, absorbs `oosheet`/`oodeck`/`oonotes`/`oopdf`], `oocanvas` [absorbs `oopaint`], `oomedia`, `ooflash` [standalone bootable USB/ISO image flasher], `oodaw`, `oochat` [absorbs `oomail`], `oopass`, `oohostmon` [from `oovm-ui`]).
+- `@openOODA-cloud` (L6): 18 -> 8 (`oomesh` [absorbs `oodns-cloud`/`oorelay`], `oostore` [absorbs `oostore-cas`/`ooregistry-cloud`], `oodeploy` [absorbs `oobuild-fleet`/`ooinfer-grid`/`oosched-cloud`], `oogateway` [absorbs `oocdn`], `ooidentity` [absorbs `ooconsent`], `oodb-dist` [absorbs `ooqueue`], `ootelemetry`, `oobilling`).
+- `@openOODA-agents` (L7): 16 -> 8 (`ooooda` [from `oooda-engine`, absorbs `ooplanner`], `ooherdr` [absorbs `oorouter`], `ooquota`, `oofalsify` [absorbs `ooredteam`], `ooconsensus` [absorbs `ooeval`/`ooevolve`], `oocoder` [absorbs `ooreviewer`], `oomemory`, `oogovern` [absorbs `ooarchitect`/`oorelease`]).
 
 ## 3. Security
 
