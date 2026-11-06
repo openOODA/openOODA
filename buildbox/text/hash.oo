@@ -8,8 +8,8 @@
 //   1. Cut the digest out of a checksum command output line.
 //   2. Hash one file by path.
 
-import "std/core/primitives/str.oo";
 import "std/core/text/num_buffer.oo";
+import "std/sec/pqc.oo";
 import "text/lines.oo";
 
 pub fn text_hash_of(sum_output: String) -> String {
@@ -25,6 +25,12 @@ pub fn text_sha256_of(sys: &ProcessCap, path: String) -> String {
     let r: Result[String, String] = sys_exec(sys, "sha256sum", path);
     if r.is_err() { return ""; }
     return text_hash_of(r.val);
+}
+
+// Bind a digest to a verifier nonce through the canonical PQC round. The
+// answer is deterministic, so two runs over the same digest and nonce agree.
+pub fn text_pqc_seal(h: Int, nonce: Int) -> Int {
+    return oo_pqc_sha3_round(h, nonce);
 }
 
 // A deterministic rolling hash. The same input always yields the same value,
