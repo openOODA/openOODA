@@ -1,16 +1,18 @@
 // # ooboot UEFI loader - milestone-2 entry
 //
-// Logline: Real efi_main in .oo: serial marker, embedded-ELF parse, PT_LOAD copy, entry jump.
+// Logline: Real efi_main in .oo: serial marker, KERNEL.ELF read, ELF parse, PT_LOAD copy, entry jump.
 // Setup: Compiled via emit-llvm --target x86_64-windows; efi_bridge.c supplies
-//   the oo_efi_* port I/O, raw loads, memcpy/memset, kernel blob bounds, and jump.
+//   the oo_efi_* port I/O, raw loads, memcpy/memset, UEFI fs read, and jump.
 //   Bridge fns are declared bodyless void; results flow back via &mut out params.
 // Beats:
 //   1. Emit OOEFI from the UEFI entry itself.
-//   2. Validate the embedded kernel ELF header and program headers.
-//   3. Copy PT_LOAD segments, zero BSS tails, emit OOLOAD.
-//   4. Jump to the kernel entry; fail-closed return on any bad field.
+//   2. Hand img/st to the bridge: read KERNEL.ELF off the ESP via UEFI protocols.
+//   3. Validate the kernel ELF header and program headers.
+//   4. Copy PT_LOAD segments, zero BSS tails, emit OOLOAD.
+//   5. Jump to the kernel entry; fail-closed return on any bad field.
 
 pub fn oo_efi_putb(c: Int);
+pub fn oo_efi_init(img: Int, st: Int);
 pub fn oo_efi_ld16(a: Int, out: &mut Int);
 pub fn oo_efi_ld32(a: Int, out: &mut Int);
 pub fn oo_efi_ld64(a: Int, out: &mut Int);
@@ -72,6 +74,7 @@ fn ooboot_load_phdr(ksrc: Int, phoff: Int, i: Int) {
 fn ooboot_load() -> Int {
     let mut ksrc: Int = 0;
     oo_efi_kernel_start(&mut ksrc);
+    if ksrc <= 0 { return 1; }
     if ooboot_ld32(ksrc) != 1179403647 { return 1; }
     if ooboot_ld16(ksrc + 18) != 62 { return 1; }
     let entry: Int = ooboot_ld64(ksrc + 24);
@@ -93,5 +96,6 @@ fn ooboot_load() -> Int {
 
 export fn efi_main(img: Int, st: Int) -> Int {
     ooboot_tag5(79, 79, 69, 70, 73);
+    oo_efi_init(img, st);
     return ooboot_load();
 }
