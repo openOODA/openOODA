@@ -1,0 +1,66 @@
+// # Fleet Lock - Single-Instance Admission For The Tick (RFC 0013)
+//
+// Logline: Admit exactly one tick at a time via an atomic-create lock file with a two-tick staleness expiry.
+//
+// Setup: &FsWriteCap creates and removes the lock file; &FsReadCap checks and reads it; &ProcessCap reads the wall clock via `date +%s`. Cadence contract: the external scheduler (cron/systemd timer/herdr) invokes the binary once per 600s window — this page only prevents overlap, it never sleeps.
+//
+// Beats:
+//   1. lock_take: absent file -> TICK_LOCK took; a file younger than 1200s -> TICK_LOCK held; older or unreadable -> steal or admit with a clock_err line.
+//   2. lock_ok: took, stole, and clock_err admit the run; held and lock errors refuse it.
+//   3. lock_release removes the file; a removal failure reports TICK_UNLOCK_ERR.
+
+import "fleettick/btext.oo";
+import "std/fs/os/fs.oo";
+import "std/core/primitives/str.oo";
+
+// The epoch written into the lock file, or -1 when absent/garbage.
+pub fn lock_parse(text: String) -> Int {
+    return bt_uint_at(text, 0);
+}
+
+// True while the stamped epoch is within the staleness window: a lock is
+// stale — stealable — only when its age exceeds two tick intervals.
+pub fn lock_fresh(created: Int, now: Int, stale_after: Int) -> Bool {
+    if created < 0 || now < 0 { return false; }
+    return (now - created) <= stale_after;
+}
+
+// Wall clock via `date +%s`; -1 when the exec or the parse fails.
+pub fn lock_now(p: &ProcessCap) -> Int {
+    let r: Result[String, String] = sys_exec(p, "date", "+%s");
+    return match r { Ok(t) => bt_uint_at(t, 0), Err(_) => -1 };
+}
+
+// True when the verdict admits the run: took, stole, and clock_err run;
+// held and any lock write/read error refuse.
+pub fn lock_ok(verdict: String) -> Bool {
+    if starts_with(verdict, "TICK_LOCK took") { return true; }
+    if starts_with(verdict, "TICK_LOCK stole") { return true; }
+    return starts_with(verdict, "TICK_LOCK clock_err");
+}
+
+// Admit or refuse this instance. Refusals are reported, never silent.
+pub fn lock_take(fw: &FsWriteCap, fr: &FsReadCap, path: String, now: Int) -> String {
+    if now < 0 { return "TICK_LOCK clock_err"; }
+    if fs_path_exists(fr, path) {
+        let rd: Result[String, String] = fs_read_file(fr, path);
+        match rd {
+            Ok(t) => { let c: Int = lock_parse(t);
+                if lock_fresh(c, now, 1200) { return "TICK_LOCK held age=" + (now - c).to_string(); }
+                let w2: Result[Void, String] = fs_write_file(fw, path, now.to_string() + "\n");
+                return match w2 { Ok(_) => "TICK_LOCK stole age=" + (now - c).to_string(),
+                    Err(e) => "TICK_LOCK_ERR " + e };
+            },
+            Err(_) => { return "TICK_LOCK clock_err"; },
+        }
+    }
+    let wr: Result[Void, String] = fs_write_file(fw, path, now.to_string() + "\n");
+    return match wr { Ok(_) => "TICK_LOCK took", Err(e) => "TICK_LOCK_ERR " + e };
+}
+
+// Remove the lock; a held-by-other-instance file is never touched because
+// only an admitted run reaches this call.
+pub fn lock_release(fw: &FsWriteCap, path: String) -> String {
+    let rm: Result[Void, String] = fs_remove_file(fw, path);
+    return match rm { Ok(_) => "TICK_UNLOCK", Err(e) => "TICK_UNLOCK_ERR " + e };
+}

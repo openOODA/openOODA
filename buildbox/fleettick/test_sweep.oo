@@ -13,6 +13,7 @@
 //   6. Host health and forge probe: config/df/meminfo/ls-remote parsing and the threshold/drift classifiers.
 //   7. Snapshot and alerts: pack format, breach classification, and live spool write/clear.
 //   8. Reconcile: rev-list count classification, forge gate logic, GATE-SKIP and LOCKED-SKIP.
+//   9. Lock: epoch parse, staleness window, admission verdicts, and the take/hold/steal/release lifecycle.
 
 import "fleettick/sweep.oo";
 import "fleettick/meter.oo";
@@ -22,6 +23,7 @@ import "fleettick/probe/forge.oo";
 import "fleettick/recon/recon.oo";
 import "fleettick/out/snap.oo";
 import "fleettick/out/alert.oo";
+import "fleettick/loop/lock.oo";
 import "std/fs/os/fs.oo";
 
 fn ts_expect(name: String, got: String, want: String) -> Int {
@@ -81,10 +83,9 @@ fn ts_sweep_checks(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap) -> Int {
     let _gf: Result[Void, String] = fs_write_file(fw, "/tmp/fleettick-fix/wt-repo/.git", "gitdir: /nonexistent-gitdir\n");
     let frepos: List[String] = ts_copy(sweep_repos(fr, "/tmp/fleettick-fix"));
     let frep: List[String] = ts_copy(sweep_report(fr, p, "/tmp/fleettick-fix"));
-    fails = fails + ts_expect_has("fixture_err_detected", frepos, "/tmp/fleettick-fix/err-repo");
-    fails = fails + ts_expect_has("fixture_gitfile_detected", frepos, "/tmp/fleettick-fix/wt-repo");
-    fails = fails + ts_expect_has("fixture_err_classified", frep, "ERR /tmp/fleettick-fix/err-repo");
-    fails = fails + ts_expect_has("fixture_gitfile_classified", frep, "ERR /tmp/fleettick-fix/wt-repo");
+    fails = fails + ts_expect_has("fixture_err_detected", frepos, "/tmp/fleettick-fix/err-repo")
+        + ts_expect_has("fixture_gitfile_detected", frepos, "/tmp/fleettick-fix/wt-repo");
+    fails = fails + ts_expect_has("fixture_err_classified", frep, "ERR /tmp/fleettick-fix/err-repo") + ts_expect_has("fixture_gitfile_classified", frep, "ERR /tmp/fleettick-fix/wt-repo");
     let alines: List[String] = list_push(list_push(list_new(), "HEALTH proc herdr DOWN"), "CLEAN /a");
     fails = fails + ts_expect("snap_line", snap_write(fw, "/tmp/fleettick-state.txt", alines), "SNAP /tmp/fleettick-state.txt lines=2");
     let ae1: List[String] = ts_copy(alert_emit(fw, fr, "/tmp/fleettick-alerts", alines));
@@ -93,6 +94,11 @@ fn ts_sweep_checks(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap) -> Int {
     let ae2: List[String] = ts_copy(alert_emit(fw, fr, "/tmp/fleettick-alerts", list_push(list_new(), "CLEAN /a")));
     fails = fails + ts_expect_has("alert_cleared_line", ae2, "ALERT_CLEAR ALERT-down-0.txt");
     fails = fails + ts_expect_bool("alert_file_cleared", fs_path_exists(fr, "/tmp/fleettick-alerts/ALERT-down-0.txt"), false);
+    let lp: String = "/tmp/fleettick-lock";
+    let _rm: Result[Void, String] = fs_remove_file(fw, lp);
+    fails = fails + ts_expect("lock_seq", lock_take(fw, fr, lp, 1000) + "|" + lock_take(fw, fr, lp, 1100)
+        + "|" + lock_take(fw, fr, lp, 2300) + "|" + lock_release(fw, lp) + "|" + lock_take(fw, fr, lp, 2400),
+        "TICK_LOCK took|TICK_LOCK held age=100|TICK_LOCK stole age=1300|TICK_UNLOCK|TICK_LOCK took");
     return fails;
 }
 
@@ -168,12 +174,17 @@ fn ts_agent_checks(p: &ProcessCap) -> Int {
     fails = fails + ts_expect_has("recon_gate_skip", skip, "RECON /tmp/fleettick-fix/err-repo GATE-SKIP");
     let lskip: List[String] = ts_copy(recon_report(p, list_push(list_new(), "/Projects/openOODA-core/std"), true));
     fails = fails + ts_expect_has("recon_locked_skip", lskip, "RECON /Projects/openOODA-core/std LOCKED-SKIP");
+    fails = fails + ts_expect("lock_parse", lock_parse("1700000000\n").to_string(), "1700000000")
+        + ts_expect("lock_parse_bad", lock_parse("garbage").to_string(), "-1")
+        + ts_expect_bool("lock_fresh_yes", lock_fresh(1000, 1500, 1200), true)
+        + ts_expect_bool("lock_fresh_stale", lock_fresh(1000, 2300, 1200), false)
+        + ts_expect_bool("lock_ok_held", lock_ok("TICK_LOCK held age=4"), false);
     return fails;
 }
 
 pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, _args: List[String]) -> Int {
     let fails: Int = ts_sweep_checks(p, fr, fw) + ts_meter_checks() + ts_agent_checks(p);
     if fails > 0 { println("FAIL\ttest_sweep\t" + fails.to_string() + " check(s) failed"); return 1; }
-    println("Ran 81 checks in pure .oo — OK");
+    println("Ran 87 checks in pure .oo — OK");
     return 0;
 }

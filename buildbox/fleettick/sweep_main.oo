@@ -5,11 +5,9 @@
 // Setup: &FsReadCap reads repos, the quota ledger, the health config, /proc/meminfo and the spool dir; &ProcessCap runs git (incl. fetch/pull --ff-only behind the forge gate), herdr, df, pgrep; &EnvCap reads OODA_FLEET_HOME / OODA_FLEET_XDG; &FsWriteCap writes the state file and the alert spool.
 //
 // Beats:
-//   1. Sweep the repos under the root and print the verdict lines plus the tally.
-//   2. Read .fleet-quota-ledger.json for ledger QUOTA lines, then meter each agent pane's visible text into live QUOTA lines.
-//   3. Snapshot the local herdr agent list and print the per-workspace report; run host health and the github forge probe.
-//   4. Reconcile: the forge gate admits or skips the sequential fetch/classify/pull walk per repo.
-//   5. Pack every verdict into .fleet-state.txt, then spool one ALERT file per breached condition and clear recovered ones.
+//   1. Admit this instance via the atomic lock or print TICK SKIP and stop.
+//   2. Run every section in fixed order: repos, quota, workspaces, health, forge, reconcile.
+//   3. Pack every verdict into .fleet-state.txt, spool one ALERT file per breached condition, then release the lock.
 
 import "fleettick/sweep.oo";
 import "fleettick/meter.oo";
@@ -19,6 +17,7 @@ import "fleettick/probe/forge.oo";
 import "fleettick/recon/recon.oo";
 import "fleettick/out/snap.oo";
 import "fleettick/out/alert.oo";
+import "fleettick/loop/lock.oo";
 import "std/fs/os/fs.oo";
 import "std/fs/process/env.oo";
 
@@ -36,10 +35,8 @@ fn sm_emit(all: List[String], lines: List[String]) -> List[String] {
     return acc;
 }
 
-pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
-    let root: String = if list_len(args) > 0 && list_get(args, 0) != "" { list_get(args, 0) } else { "/Projects" };
-    let home: String = match env_get(env, "OODA_FLEET_HOME") { Ok(s) => s, Err(_) => "" };
-    let xdg: String = match env_get(env, "OODA_FLEET_XDG") { Ok(s) => s, Err(_) => "" };
+// Every section in fixed order; the returned list is the state doc.
+fn sm_sections(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, root: String, home: String, xdg: String) -> List[String] {
     let al: Result[String, String] = agents_fetch(p, home, xdg);
     let atext: String = match al { Ok(v) => v, Err(_) => "" };
     let mut all: List[String] = list_new();
@@ -72,5 +69,21 @@ pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args:
     println(snap_write(fw, "/Projects/openOODA/.fleet-state.txt", all));
     println("-- alerts");
     sm_print(alert_emit(fw, fr, "/Projects/openOODA/.fleet-alerts", all));
+    return all;
+}
+
+// Single-run tick: the external scheduler calls this every 600s; the lock
+// refuses a second in-flight instance. Exit 0 on a refused run — a skip is
+// cadence behavior, not a failure.
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let root: String = if list_len(args) > 0 && list_get(args, 0) != "" { list_get(args, 0) } else { "/Projects" };
+    let home: String = match env_get(env, "OODA_FLEET_HOME") { Ok(s) => s, Err(_) => "" };
+    let xdg: String = match env_get(env, "OODA_FLEET_XDG") { Ok(s) => s, Err(_) => "" };
+    let lv: String = lock_take(fw, fr, "/Projects/openOODA/.fleet-tick/lock", lock_now(p));
+    println(lv);
+    if !lock_ok(lv) { println("TICK SKIP"); return 0; }
+    let _done: List[String] = sm_sections(p, fr, fw, root, home, xdg);
+    println(lock_release(fw, "/Projects/openOODA/.fleet-tick/lock"));
+    println("TICK done");
     return 0;
 }
