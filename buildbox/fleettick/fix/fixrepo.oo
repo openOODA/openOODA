@@ -1,0 +1,79 @@
+// # Recon Fixture Repos - Hermetic Git Pairs For Live-Path Coverage
+//
+// Logline: Build throwaway repositories under /tmp that drive every live reconcile verdict — fetch errors, detached heads, missing tracking, divergence, dirt, ref locks, ahead, and the ff-only pull — without network or a dirty fleet.
+//
+// Setup: &ProcessCap runs argv git init/clone/commit/push/pull/checkout/remote — never a shell. &FsWriteCap writes file contents and a stale ref lock. A bare sibling remote.git plays the github remote; clones use -o github so recon's hardcoded remote name resolves.
+//
+// Beats:
+//   1. fx_seed: bare remote.git plus a seed clone push the base commit.
+//   2. Eight clones fan out; the seed pushes a second commit so every fixture is BEHIND by one.
+//   3. fx_mutate picks each repo's verdict: nothing -> PULLED, dirt -> DIRTY-SKIP, local commit -> DIVERGED, --detach -> DETACHED, new branch -> NO-TRACK, dead url -> FETCH_ERR, ref lock -> PULL_ERR, pull+commit -> AHEAD.
+
+import "std/fs/os/fs.oo";
+
+fn fx_ok(r: Result[String, String]) -> Bool {
+    return match r { Ok(_) => true, Err(_) => false };
+}
+
+// One commit with a pinned identity — the sys_exec child env may lack HOME.
+fn fx_commit(p: &ProcessCap, dir: String, msg: String) -> Bool {
+    if !fx_ok(sys_exec(p, "git", "-C", dir, "add", "-A")) { return false; }
+    return fx_ok(sys_exec(p, "git", "-C", dir, "-c", "user.email=fx@test",
+        "-c", "user.name=fx", "commit", "-m", msg));
+}
+
+fn fx_clone(p: &ProcessCap, remote: String, dir: String) -> Bool {
+    return fx_ok(sys_exec(p, "git", "clone", "-o", "github", remote, dir));
+}
+
+// Bare remote plus the seed clone's first commit and push.
+fn fx_seed(p: &ProcessCap, fw: &FsWriteCap, root: String, seed: String) -> Bool {
+    if !fx_ok(sys_exec(p, "git", "init", "--bare", "-b", "master", root + "/remote.git")) { return false; }
+    if !fx_clone(p, root + "/remote.git", seed) { return false; }
+    match fs_write_file(fw, seed + "/f.txt", "base\n") { Ok(_) => { }, Err(_) => { return false; } }
+    if !fx_commit(p, seed, "base") { return false; }
+    return fx_ok(sys_exec(p, "git", "-C", seed, "push", "github", "master"));
+}
+
+// Clones already hold commit1; push commit2 then pick each repo's verdict.
+fn fx_mutate(p: &ProcessCap, fw: &FsWriteCap, root: String, seed: String) -> Bool {
+    match fs_write_file(fw, seed + "/f.txt", "next\n") { Ok(_) => { }, Err(_) => { return false; } }
+    if !fx_commit(p, seed, "next") || !fx_ok(sys_exec(p, "git", "-C", seed, "push", "github", "master")) { return false; }
+    if !fx_ok(sys_exec(p, "git", "-C", root + "/fx-ahead", "pull", "--ff-only")) { return false; }
+    match fs_write_file(fw, root + "/fx-ahead/f.txt", "ahead\n") { Ok(_) => { }, Err(_) => { return false; } }
+    if !fx_commit(p, root + "/fx-ahead", "local") { return false; }
+    match fs_write_file(fw, root + "/fx-diverged/f.txt", "div\n") { Ok(_) => { }, Err(_) => { return false; } }
+    if !fx_commit(p, root + "/fx-diverged", "local") { return false; }
+    match fs_write_file(fw, root + "/fx-dirty/f.txt", "dirty\n") { Ok(_) => { }, Err(_) => { return false; } }
+    if !fx_ok(sys_exec(p, "git", "-C", root + "/fx-detached", "checkout", "--detach", "HEAD")) { return false; }
+    if !fx_ok(sys_exec(p, "git", "-C", root + "/fx-notrack", "checkout", "-b", "feat")) { return false; }
+    if !fx_ok(sys_exec(p, "git", "-C", root + "/fx-fetcherr", "remote", "set-url", "github", "/nonexistent-zzz")) { return false; }
+    match fs_write_file(fw, root + "/fx-pullerr/.git/refs/heads/master.lock", "") { Ok(_) => { }, Err(_) => { return false; } }
+    return true;
+}
+
+pub fn fx_repos(root: String) -> List[String] {
+    let mut out: List[String] = list_push(list_new(), root + "/fx-pull");
+    out = list_push(out, root + "/fx-dirty");
+    out = list_push(out, root + "/fx-diverged");
+    out = list_push(out, root + "/fx-detached");
+    out = list_push(out, root + "/fx-notrack");
+    out = list_push(out, root + "/fx-fetcherr");
+    out = list_push(out, root + "/fx-pullerr");
+    return list_push(out, root + "/fx-ahead");
+}
+
+// Clean slate -> seed -> eight clones -> mutate. Idempotent across runs.
+pub fn fx_build(p: &ProcessCap, fw: &FsWriteCap, root: String, seed: String) -> String {
+    let _r1: Result[String, String] = sys_exec(p, "rm", "-rf", root);
+    let _r2: Result[String, String] = sys_exec(p, "rm", "-rf", seed);
+    if !fx_seed(p, fw, root, seed) { return "ERR seed"; }
+    let repos: List[String] = fx_repos(root);
+    let mut i: Int = 0;
+    while i < 8 {
+        if !fx_clone(p, root + "/remote.git", list_get(repos, i)) { return "ERR clone"; }
+        i = i + 1;
+    }
+    if !fx_mutate(p, fw, root, seed) { return "ERR mutate"; }
+    return "OK";
+}

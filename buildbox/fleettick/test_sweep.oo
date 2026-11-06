@@ -1,8 +1,8 @@
 // # Test Fleet Sweep - Pure-Function Checks For The Read-Only Sweep
 //
-// Logline: Prove the tick's pure classifiers, repository detector, and file emitters against fixed inputs, /tmp fixtures, and a live spool dir.
+// Logline: Prove the tick's pure classifiers, repository detector, file emitters, and live reconcile paths against fixed inputs, /tmp fixtures, and a live spool dir.
 //
-// Setup: FsReadCap for the live detection checks; FsWriteCap + ProcessCap for the /tmp fixtures that prove ERR, .git-file detection, snapshot writes, and alert spool reconcile; every other check is a pure string function over fixed text.
+// Setup: FsReadCap for the live detection checks; FsWriteCap + ProcessCap for the /tmp fixtures that prove ERR, .git-file detection, snapshot writes, alert spool reconcile, and the eight-verdict fixture fleet; every other check is a pure string function over fixed text.
 //
 // Beats:
 //   1. Porcelain classification: empty and whitespace-only text mean CLEAN, any marker means DIRTY.
@@ -14,6 +14,9 @@
 //   7. Snapshot and alerts: pack format, breach classification, and live spool write/clear.
 //   8. Reconcile: rev-list count classification, forge gate logic, GATE-SKIP and LOCKED-SKIP.
 //   9. Lock: epoch parse, staleness window, admission verdicts, and the take/hold/steal/release lifecycle.
+//   10. Fixture fleet: eight /tmp git repos drive PULLED, DIRTY-SKIP, DIVERGED, DETACHED, NO-TRACK,
+//       FETCH_ERR, PULL_ERR and AHEAD through real fetch/pull; a CUTOFF breach spools and clears;
+//       a stale lock from a crashed tick is stolen.
 
 import "fleettick/sweep.oo";
 import "fleettick/meter.oo";
@@ -24,6 +27,7 @@ import "fleettick/recon/recon.oo";
 import "fleettick/out/snap.oo";
 import "fleettick/out/alert.oo";
 import "fleettick/loop/lock.oo";
+import "fleettick/fix/fixcheck.oo";
 import "std/fs/os/fs.oo";
 
 fn ts_expect(name: String, got: String, want: String) -> Int {
@@ -183,8 +187,8 @@ fn ts_agent_checks(p: &ProcessCap) -> Int {
 }
 
 pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, _args: List[String]) -> Int {
-    let fails: Int = ts_sweep_checks(p, fr, fw) + ts_meter_checks() + ts_agent_checks(p);
+    let fails: Int = ts_sweep_checks(p, fr, fw) + ts_meter_checks() + ts_agent_checks(p) + fx_checks(p, fr, fw);
     if fails > 0 { println("FAIL\ttest_sweep\t" + fails.to_string() + " check(s) failed"); return 1; }
-    println("Ran 87 checks in pure .oo — OK");
+    println("Ran 104 checks in pure .oo — OK");
     return 0;
 }
