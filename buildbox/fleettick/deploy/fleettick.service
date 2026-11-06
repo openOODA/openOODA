@@ -1,0 +1,29 @@
+# fleettick.service — one RFC-0013 fleet tick per invocation.
+# Single-run unit: cadence comes from fleettick.timer, NOT a loop here.
+# Install: cp to ~/.config/systemd/user/ then systemctl --user daemon-reload.
+# Binary: build buildbox/fleettick/sweep_main.oo with oodac.real, install
+#         to ~/.local/bin/fleettick (see docs/fleettick-runbook.oot).
+[Unit]
+Description=openOODA fleettick — fleet automation tick (RFC-0013)
+After=default.target
+
+[Service]
+Type=oneshot
+# Arg 1: fleet root swept for repos.
+ExecStart=%h/.local/bin/fleettick /Projects/openOODA
+# Gate env — runtime contract per oodac/docs/runtime-env.oot. These are
+# read by the oodar substrate at exec time; they CANNOT be baked into
+# the binary at build time. OODA_NO_JAIL permits /Projects + herdr
+# socket access; OODA_FLEET_HOME/XDG locate the herdr socket and the
+# $HOME/.local/bin/herdr binary.
+Environment=OODA_NO_JAIL=1
+Environment=OO_LIST_AMBIENT_QUOTA=8589934592
+Environment=OODA_FLEET_HOME=%h
+Environment=OODA_FLEET_XDG=/run/user/%U
+# TICK SKIP (lock held by a still-running tick) exits 0 — treated as a
+# normal oneshot success, never a failure.
+SuccessExitStatus=0
+# Writes land only under <root>/.fleet-* (state, spool, lock dir) and
+# the git fetch/pull writes reconcile performs on github. Uncomment if
+# your distro supports it and the paths above are inside %h:
+# ReadWritePaths=/Projects/openOODA/.fleet-state.txt /Projects/openOODA/.fleet-alerts /Projects/openOODA/.fleet-tick /Projects/openOODA

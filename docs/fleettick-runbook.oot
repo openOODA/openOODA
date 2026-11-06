@@ -1,0 +1,103 @@
+# Fleettick operator runbook — 600s fleet automation (RFC-0013)
+
+File: openOODA/docs/fleettick-runbook.oot
+
+The fleettick binary performs ONE tick and exits. Cadence is supplied by
+an external scheduler — a systemd user timer (preferred) or cron. There
+is no in-process loop and no daemon. Overlap safety is a timestamp lock
+at `.fleet-tick/lock`; a fresh lock makes a second invocation print
+`TICK SKIP` and exit 0.
+
+## 1. Build and install the binary
+
+From the repo root, with the gate env exported (see
+oodac/docs/runtime-env.oot — the env is a runtime contract):
+
+  oodac.real build -o /tmp/fleettick buildbox/fleettick/sweep_main.oo
+  install -m 0755 /tmp/fleettick "$HOME/.local/bin/fleettick"
+
+Smoke it once by hand before scheduling:
+
+  OODA_NO_JAIL=1 OO_LIST_AMBIENT_QUOTA=8589934592 \
+  OODA_FLEET_HOME="$HOME" OODA_FLEET_XDG="$XDG_RUNTIME_DIR" \
+  "$HOME/.local/bin/fleettick" /Projects/openOODA
+
+Expect `TICK_LOCK took`, all 9 sections, `TICK done`, exit 0.
+
+## 2. Start / stop (systemd user timer — preferred)
+
+Units ship inert under `buildbox/fleettick/deploy/`. Install:
+
+  install -D -m 0644 buildbox/fleettick/deploy/fleettick.service \
+    "$HOME/.config/systemd/user/fleettick.service"
+  install -D -m 0644 buildbox/fleettick/deploy/fleettick.timer \
+    "$HOME/.config/systemd/user/fleettick.timer"
+  systemctl --user daemon-reload
+
+Enable (operator action — units are shipped disabled):
+
+  systemctl --user enable --now fleettick.timer
+  systemctl --user list-timers fleettick.timer   # confirm NEXT ~600s
+
+Stop the cadence, keep the unit:
+
+  systemctl --user stop fleettick.timer          # timer off, state kept
+  systemctl --user disable fleettick.timer       # no restart at login
+
+Run one extra tick by hand (safe — lock arbitrates):
+
+  systemctl --user start fleettick.service
+
+## 3. Start / stop (cron — fallback)
+
+Append `buildbox/fleettick/deploy/fleettick.cron` to `crontab -e`.
+Stop: remove the line. The fragment derives OODA_FLEET_XDG itself —
+cron supplies no XDG_RUNTIME_DIR.
+
+## 4. Read state
+
+  cat /Projects/openOODA/.fleet-state.txt    # last tick's full verdicts
+  ls  /Projects/openOODA/.fleet-alerts/      # one file per live breach
+  journalctl --user -u fleettick.service --since "1 hour ago"
+  tail  "$HOME/.local/state/fleettick.log"   # cron path
+
+Healthy sign-off line pattern: `TICK_LOCK took` … `TICK_UNLOCK`,
+`TICK done`, `alerts=0`. `TICK_LOCK held age=N` + `TICK SKIP` means a
+previous tick was still running — normal, not a failure.
+
+Alert kinds in the spool: ALERT-cutoff|drift|down|blocked|warn|err-*.
+They auto-clear when the condition recovers (ALERT_CLEAR in the log).
+
+## 5. Recover the lock
+
+Lock file: `/Projects/openOODA/.fleet-tick/lock` (one timestamp line).
+
+- Fresh (<1200 s): a tick is running or just finished — do nothing.
+- Stale (>1200 s): the next tick steals it automatically
+  (`TICK_LOCK stole age=N`). No manual action needed.
+- Manual force (only if you must run NOW and the holder is dead):
+
+      rm /Projects/openOODA/.fleet-tick/lock
+
+- A crashed tick leaves the lock; the stale-steal path covers it on
+  the next scheduled run — worst case one skipped cadence.
+- If `TICK_LOCK_ERR` or `TICK_UNLOCK_ERR` appears, check filesystem
+  writable perms on `.fleet-tick/` and free space on that volume.
+
+## 6. Failure modes → meaning
+
+| Line | Meaning | Action |
+|------|---------|--------|
+| `FORGE_ERR …` | github ls-remote failed | check network; gate closes, all repos GATE-SKIP — safe |
+| `HEALTH proc herdr DOWN` | herdr not running | restart herdr; tick continues |
+| `RECON … DIRTY-SKIP` | repo has uncommitted work | expected; reconcile won't touch it |
+| `RECON … DIVERGED` | local/remote both moved | manual merge — tick never forces |
+| `AGENTS_ERR` | herdr socket unreachable | check OODA_FLEET_HOME/XDG env |
+| `QUOTA <a> CUTOFF` | agent ≥95% used | pace work off that agent |
+
+## 7. Known limits (from soak 2026-11-06)
+
+- Pane-quota `UNKNOWN` is normal when no usage footer is visible.
+- `PULLED`/`DIVERGED`/`PULL_ERR` not yet exercised live (all repos SYNC).
+- A real alert firing has not been observed in soak — spool logic is
+  unit-tested but watch the first genuine breach.
