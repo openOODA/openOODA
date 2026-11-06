@@ -5,7 +5,7 @@
 // Setup: FsReadCap for the directory walk; ProcessCap for read-only git argv run with GIT_OPTIONAL_LOCKS=0. No writes, no network, no pushes, no index refresh.
 //
 // Beats:
-//   1. Enumerate git working trees up to two levels below the root.
+//   1. Enumerate git working trees up to two levels below the root; .git as a file (worktrees, submodules) counts too.
 //   2. Skip repositories locked to other servers, then read porcelain state.
 //   3. Emit one LOCKED/DIRTY/CLEAN/ERR line per repository plus a summary.
 
@@ -38,19 +38,23 @@ fn sweep_child_dirs(fr: &FsReadCap, dir: String) -> List[String] {
     return out;
 }
 
-// Every git working tree up to two levels below the root.
+// Every git working tree up to two levels below the root. fs_path_exists
+// admits .git as a directory and as a file, so worktrees and submodules
+// that carry a gitfile instead of a directory are still detected.
 pub fn sweep_repos(fr: &FsReadCap, root: String) -> List[String] {
     let mut out: List[String] = list_new();
     let top: List[String] = sweep_child_dirs(fr, root);
+    let tn: Int = list_len(top);
     let mut i: Int = 0;
-    while i < list_len(top) {
+    while i < tn {
         let a: String = list_get(top, i);
-        if fs_is_dir(fr, a + "/.git") { out = list_push(out, a); }
+        if fs_path_exists(fr, a + "/.git") { out = list_push(out, a); }
         let mid: List[String] = sweep_child_dirs(fr, a);
+        let mn: Int = list_len(mid);
         let mut j: Int = 0;
-        while j < list_len(mid) {
+        while j < mn {
             let b: String = list_get(mid, j);
-            if fs_is_dir(fr, b + "/.git") { out = list_push(out, b); }
+            if fs_path_exists(fr, b + "/.git") { out = list_push(out, b); }
             j = j + 1;
         }
         i = i + 1;

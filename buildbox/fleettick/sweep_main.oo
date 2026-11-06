@@ -6,7 +6,7 @@
 //
 // Beats:
 //   1. Sweep the repos under the root and print the verdict lines plus the tally.
-//   2. Read .fleet-quota-ledger.json and print one QUOTA verdict per metered agent.
+//   2. Read .fleet-quota-ledger.json for ledger QUOTA lines, then meter each agent pane's visible text into live QUOTA lines.
 //   3. Snapshot the local herdr agent list and print the per-workspace report.
 
 import "fleettick/sweep.oo";
@@ -22,6 +22,10 @@ fn sm_print(lines: List[String]) {
 
 pub fn main(p: &ProcessCap, fr: &FsReadCap, _fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
     let root: String = if list_len(args) > 0 && list_get(args, 0) != "" { list_get(args, 0) } else { "/Projects" };
+    let home: String = match env_get(env, "OODA_FLEET_HOME") { Ok(s) => s, Err(_) => "" };
+    let xdg: String = match env_get(env, "OODA_FLEET_XDG") { Ok(s) => s, Err(_) => "" };
+    let al: Result[String, String] = agents_fetch(p, home, xdg);
+    let atext: String = match al { Ok(v) => v, Err(_) => "" };
     println("-- repos");
     let lines: List[String] = sweep_report(fr, p, root);
     sm_print(lines);
@@ -32,10 +36,8 @@ pub fn main(p: &ProcessCap, fr: &FsReadCap, _fw: &FsWriteCap, env: &EnvCap, args
         Ok(doc) => sm_print(meter_report(doc)),
         Err(e) => println("QUOTA none (ledger unreadable): " + e)
     }
+    if atext == "" { println("QUOTA panes UNREADABLE"); } else { sm_print(agents_pane_quota(p, home, xdg, atext)); }
     println("-- workspaces");
-    let home: String = match env_get(env, "OODA_FLEET_HOME") { Ok(s) => s, Err(_) => "" };
-    let xdg: String = match env_get(env, "OODA_FLEET_XDG") { Ok(s) => s, Err(_) => "" };
-    let al: Result[String, String] = agents_fetch(p, home, xdg);
-    if al.is_err() { println("AGENTS_ERR herdr unreadable"); } else { sm_print(agents_report(al.val)); }
+    if atext == "" { println("AGENTS_ERR herdr unreadable"); } else { sm_print(agents_report(atext)); }
     return 0;
 }

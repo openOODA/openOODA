@@ -1,15 +1,17 @@
 // # Fleet Agents - Herdr Socket Sweep And Idle-Workspace Report (RFC 0013)
 //
-// Logline: Turn one read-only `herdr agent list` snapshot into a per-workspace idle/active/blocked report.
+// Logline: Turn read-only herdr snapshots into a per-workspace idle report and a per-pane live quota report.
 //
-// Setup: The parsers need no capability; agents_fetch needs &ProcessCap and runs herdr under a cleaned environment (HOME, XDG_RUNTIME_DIR).
+// Setup: The parsers need no capability; agents_fetch and agents_pane_read need &ProcessCap and run herdr under a cleaned environment (HOME, XDG_RUNTIME_DIR).
 //
 // Beats:
 //   1. Collect pane_id, agent_status and workspace_id values in document order.
 //   2. Align them into one "ws|pane|status" triple per agent object.
 //   3. Roll the triples up per workspace: BLOCKED beats ACTIVE beats IDLE; seal the report with a sha3 round.
+//   4. Read each agent pane's visible text and meter it into a live QUOTA line per pane.
 
 import "fleettick/btext.oo";
+import "fleettick/meter.oo";
 import "std/core/primitives/str.oo";
 import "std/sec/pqc.oo";
 
@@ -123,4 +125,39 @@ pub fn agents_report(text: String) -> List[String] {
 pub fn agents_fetch(p: &ProcessCap, home: String, xdg: String) -> Result[String, String] {
     let bin: String = if home != "" { home + "/.local/bin/herdr" } else { "herdr" };
     return sys_exec(p, "env", "HOME=" + home, "XDG_RUNTIME_DIR=" + xdg, bin, "agent", "list");
+}
+
+// The visible terminal text of one pane through the same pinned herdr argv.
+// Read-only: --source visible never touches the pane's scrollback file.
+fn agents_pane_read(p: &ProcessCap, home: String, xdg: String, pane: String) -> Result[String, String] {
+    let bin: String = if home != "" { home + "/.local/bin/herdr" } else { "herdr" };
+    return sys_exec(p, "env", "HOME=" + home, "XDG_RUNTIME_DIR=" + xdg,
+        bin, "pane", "read", pane, "--source", "visible");
+}
+
+// One live QUOTA verdict line per agent pane, metered from the pane's own
+// visible text. An unreadable pane reports UNREADABLE instead of vanishing.
+pub fn agents_pane_quota(p: &ProcessCap, home: String, xdg: String, text: String) -> List[String] {
+    let panes: List[String] = agents_panes(text);
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(panes) {
+        let pane: String = list_get(str_split(list_get(panes, i), "|"), 1);
+        if pane == "" {
+            out = list_push(out, "QUOTA ? UNREADABLE");
+        } else {
+            let rd: Result[String, String] = agents_pane_read(p, home, xdg, pane);
+            match rd {
+                Ok(v) => {
+                    let u: Int = meter_used(v);
+                    let r: Int = meter_remaining(v);
+                    out = list_push(out, "QUOTA " + pane + " " + meter_classify(u, r)
+                        + " used=" + u.to_string() + " rem=" + r.to_string());
+                },
+                Err(_) => { out = list_push(out, "QUOTA " + pane + " UNREADABLE"); },
+            }
+        }
+        i = i + 1;
+    }
+    return out;
 }
