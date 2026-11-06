@@ -1,0 +1,112 @@
+# KONSOLIDIERUNG — L1 Kernel Consolidation Plan (16 -> 6)
+
+Status: **draft for manager approval.** No repos created, no code moved, no
+source touched. Prepared from live inventory of `/Projects/openOODA-kernel/`
+plus `persona-ownership.oot` §2 and `northstar.oot` L1.
+
+## 1. Northstar Target Map
+
+Per `northstar.oot` L1 and `persona-ownership.oot` §2 — six canonical hosts,
+each a rename of one source repo plus vendored absorbed siblings:
+
+| Canonical (new) | Rename source | Absorbed siblings | Domain |
+|---|---|---|---|
+| `ooboot` | ookernel-boot | — | UEFI boot |
+| `oohal` | ookernel-hal-x86 | ookernel-hal-arm64, ookernel-hal-riscv | x86_64/aarch64/riscv64 HAL |
+| `ookernel` | ookernel-sched | ookernel-mm, ookernel-ipc, ookernel-ob, ookernel-iommu, ookernel-unikernel | NT Ob + seL4 CSpace microkernel |
+| `oodrv-storage` | oodrv-nvme | — | Ring-3 storage driver |
+| `oodrv-io` | oodrv-net | oodrv-usb-hid, oodrv-display-gop, oodrv-pci | Ring-3 I/O drivers |
+| `oodrv-virt` | oodrv-virtio | — | Ring-3 virtio driver |
+
+## 2. Source Inventory (all on `master`, github remotes exist, clean)
+
+| Source | Ver | .oo pages | tests/ | persona/ | Notes |
+|---|---|---|---|---|---|
+| ookernel-boot | 0.6.0 | 16 | 1 | 0 | smallest rename source |
+| ookernel-hal-x86 | 0.6.0 | 22 | 1 | 0 | already carries `arm64/`+`riscv/` dirs — partial pre-vendor |
+| ookernel-hal-arm64 | 0.5.0 | 23 | 4 | 0 | absorbs into oohal |
+| ookernel-hal-riscv | 0.5.0 | 22 | 4 | 0 | absorbs into oohal |
+| ookernel-sched | 0.6.0 | 24 | 1 | 0 | biggest rename source; rich domain dirs (cspace, epoch, mm, pclass, rtos, sched, unikernel, vdsched) |
+| ookernel-mm | 0.6.0 | 33 | 4 | 5 | **has persona layer**; registry already hosts `ookernel-iommu`,`ookernel-mmu` |
+| ookernel-ipc | 0.5.0 | 24 | 3 | 0 | |
+| ookernel-ob | 0.5.0 | 25 | 3 | 0 | |
+| ookernel-iommu | 0.5.0 | 22 | 3 | 0 | already a persona inside ookernel-mm's registry — collision to resolve |
+| ookernel-unikernel | 0.5.0 | 22 | 4 | 0 | |
+| oodrv-nvme | 0.6.0 | 15 | 1 | 0 | |
+| oodrv-net | 0.6.0 | 17 | 1 | 0 | |
+| oodrv-usb-hid | 0.5.0 | 21 | 4 | 0 | |
+| oodrv-display-gop | 0.6.0 | 27 | 5 | 5 | **has persona layer** |
+| oodrv-pci | 0.6.0 | 27 | 4 | 5 | **has persona layer** |
+| oodrv-virtio | 0.6.0 | 13 | 1 | 0 | smallest source |
+
+Facts: zero kernel entries in `openOODA/catalog/index` (no double-ship
+withdrawal needed). None of the 6 canonical repos exist on github or locally —
+this lane *creates* repos, unlike L7 which reused them.
+
+## 3. Consolidation Waves (approval-gated, executed one per sign-off)
+
+**W1 — Single-renames (3 hosts, no absorbs). Lowest risk; establishes the
+host-template (persona layer, gates, ci-neutered workflow, `ooda` canonical).**
+`ooboot`←boot, `oodrv-storage`←nvme, `oodrv-virt`←virtio.
+Steps per host: create github repo `openOODA-kernel/<canon>`; copy source tree
+onto fresh `ooda` branch; rename binary+prefix fns; add `persona/` 4-page layer
+(L7 pattern: meta/dispatch/run/anchor + `--persona`/`--list-personas`/fail-closed);
+registry = canonical + legacy source tokens; bump to canonical version;
+`make verify test` x2 + probes; push `ooda`.
+
+**W2 — `oohal` (1 rename + 2 absorbs, arch fan-out).**
+hal-x86 already vendors `arm64/`+`riscv/` dirs — decide whether standalone
+hal-arm64/hal-riscv pages merge into those dirs or become persona subtrees.
+Registry: `oohal,x86,arm64,riscv` + legacy `ookernel-hal-*` tokens.
+
+**W3 — `oodrv-io` (1 rename + 3 absorbs, mixed persona maturity).**
+display-gop + pci already carry persona registries — merge their registries
+into the host's (collision check: no token may be claimed twice per
+`persona-ownership.oot` §1). Registry: `oodrv-io,net,usb-hid,display-gop,pci`
++ legacy tokens.
+
+**W4 — `ookernel` (1 rename + 5 absorbs — biggest, riskiest).**
+mm's existing registry claims `ookernel-iommu`+`ookernel-mmu`; iommu is also
+a standalone sibling — resolve the dual-claim before vendoring (SSoT says
+ookernel owns iommu). Registry: `ookernel,sched,mm,ipc,ob,iommu,unikernel`
++ legacy tokens.
+
+## 4. Gates (per host, per wave)
+
+- `make verify test` x2 green + byte-identical double-run (house standard).
+- Persona contract matrix (L7-proven): `--persona <id>`, `--persona=<id>`,
+  leading operand, `--list-personas`, fail-closed unknown persona.
+- Page Rule 16-256 / density <=8 / Academy headers / link-law zero links.
+- ci.yml created `workflow_dispatch`-only from day one (if workflows exist).
+- Push `ooda` branch only; no tags ever.
+- Source repos stay untouched until a separate manager-gated retirement round
+  (mirrors L7 retirement prep — no deletes/archives here).
+
+## 5. Risks & Open Questions
+
+1. **Dual persona claims** — ookernel-mm's registry already claims
+   `ookernel-iommu` while iommu is a standalone sibling (W4 blocker: merge
+   mm's registry into ookernel's, don't carry a second iommu claim).
+   Same check for display-gop/pci registries in W3.
+2. **ooboot/ISO coupling** — `wip/ringmaster-ringmaster-wC` on openOODA has
+   ISO milestone work referencing an `ooboot` efi_main; w4 owns the ISO lane.
+   Flag: creating `ooboot` repo must not collide with in-flight ISO commits —
+   coordinate before W1's ooboot host lands.
+3. **Absorption semantics** — kernel binaries are userspace tools/analyzers
+   over kernel-domain pages (e.g., sched's `inspect /proc/version` probe),
+   not bootable images; absorption = vendored domain dirs + persona routing,
+   same shape as L7 but the build product differs.
+4. **Version unification** — sources mix 0.5.0/0.6.0; canonical hosts should
+   pick one scheme (propose 0.6.0 lineage continuation for rename sources,
+   +0.0.1 bump on first consolidation commit).
+5. **Tests are thin** (1-5 files/repo) — persona asserts must be added at
+   conversion time as in L7 (~14 asserts/host).
+6. **`ookernel-mmu` alias** — mm's registry carries an `mmu` alias not in the
+   SSoT token list; confirm it folds into `ookernel-mm` persona or needs an
+   SSoT row addition.
+
+## 6. Approval Gate
+
+No moves without explicit approval. Recommended first order: **W1** (three
+single-renames, template-establishing). On approval: create repos, execute
+W1, report probes; waves W2-W4 each await their own go.
