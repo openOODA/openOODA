@@ -1,0 +1,65 @@
+// # Test Drift - Pure Parser And Verdict Checks Plus Optional Live Repo Probe
+//
+// Logline: Prove the ls-remote parser and left-right verdict classifier on fixed inputs, then optionally emit real DRIFT lines when repo paths are passed.
+//
+// Setup: no capabilities needed for the pure checks; &ProcessCap feeds drift_report when argv lists repository paths.
+//
+// Beats:
+//   1. drift_tip — sha extraction, branch absence, last-line edge.
+//   2. drift_class — SYNC/FF-ABLE/BEHIND/DIVERGED/ERR verdicts.
+//   3. Optional live drift_report against real repo paths.
+
+import "drift/drift.oo";
+
+fn td_expect(name: String, got: String, want: String) -> Int {
+    if got == want { println("PASS\t" + name); return 0; }
+    println("FAIL\t" + name + "\twant=" + want + "\tgot=" + got);
+    return 1;
+}
+
+fn td_ls() -> String {
+    return "aaaabbbb0000\trefs/heads/ooda\n"
+        + "ccccdddd1111\trefs/heads/master\n"
+        + "eeeeffff2222\trefs/heads/main";
+}
+
+fn td_tip() -> Int {
+    let ls: String = td_ls();
+    let mut f: Int = 0;
+    f = f + td_expect("tip ooda", drift_tip(ls, "ooda"), "aaaabbbb0000");
+    f = f + td_expect("tip master", drift_tip(ls, "master"), "ccccdddd1111");
+    f = f + td_expect("tip main", drift_tip(ls, "main"), "eeeeffff2222");
+    f = f + td_expect("tip absent", drift_tip(ls, "dev"), "");
+    f = f + td_expect("tip empty", drift_tip("", "ooda"), "");
+    f = f + td_expect("tip prefix-safe", drift_tip(ls, "ma"), "");
+    let tail: String = ls + "\nffff00001111\trefs/heads/wip";
+    f = f + td_expect("tip last-line", drift_tip(tail, "wip"), "ffff00001111");
+    return f;
+}
+
+fn td_class() -> Int {
+    let mut f: Int = 0;
+    f = f + td_expect("class sync", drift_class("0\t0"), "SYNC");
+    f = f + td_expect("class ff", drift_class("5\t0"), "FF-ABLE");
+    f = f + td_expect("class behind", drift_class("0\t3"), "BEHIND");
+    f = f + td_expect("class diverged", drift_class("18\t2"), "DIVERGED");
+    f = f + td_expect("class err", drift_class("ERR"), "ERR");
+    f = f + td_expect("class empty", drift_class(""), "ERR");
+    f = f + td_expect("class garbage", drift_class("x\ty"), "ERR");
+    return f;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let fails: Int = td_tip() + td_class();
+    if list_len(args) > 0 {
+        let mut repos: List[String] = list_new();
+        let mut i: Int = 0;
+        while i < list_len(args) { repos = list_push(repos, list_get(args, i)); i = i + 1; }
+        let rl: List[String] = drift_report(p, repos);
+        i = 0;
+        while i < list_len(rl) { println("LIVE\t" + list_get(rl, i)); i = i + 1; }
+    }
+    if fails > 0 { println("FAIL\ttest_drift\t" + fails.to_string() + " check(s) failed"); return 1; }
+    println("test_drift OK");
+    return 0;
+}

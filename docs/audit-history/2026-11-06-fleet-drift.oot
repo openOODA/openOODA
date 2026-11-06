@@ -1,0 +1,64 @@
+// # 2026-11-06 Fleet Drift Audit — ooda vs master/main (First Report)
+//
+// Logline: First output of buildbox/drift — a read-only audit of the
+//          nine umbrella checkouts comparing live github tips of the
+//          ooda integration branch against legacy master/main refs,
+//          with ancestry verdicts from remote-tracking objects.
+//
+// Setup:   Binary /tmp/drift_main built from buildbox/drift/drift_main.oo
+//          via oodac.real. Runtime env: OODA_NO_JAIL=1,
+//          OO_LIST_AMBIENT_QUOTA=8589934592 (unjailed children so ssh
+//          can reach ~/.ssh for ls-remote). No fetch, no mutation:
+//          ancestry uses refs/remotes/github/* objects only; a stale
+//          tracking ref would be flagged, never refreshed. None found.
+//
+// Beats:
+//   1. Method.
+//   2. Per-repo table.
+//   3. The one DIVERGED case analyzed.
+//   4. Reconcile proposals (manager executes all pushes).
+
+== 1. Method ==
+
+Per repo: `git ls-remote github refs/heads/ooda refs/heads/master
+refs/heads/main` for live tips, then `git rev-list --left-right
+--count refs/remotes/github/ooda...refs/remotes/github/<legacy>` for
+ancestry. Verdicts: SYNC (0,0) / FF-ABLE (ooda ahead only) /
+BEHIND (legacy ahead only) / DIVERGED (both) / UNFETCHED / ERR.
+
+== 2. Per-repo table ==
+
+repo        ooda tip     master tip   verdict          main tip     verdict
+.github     4a2185137dd5 7fb1090bac05 FF-ABLE +1       7fb1090bac05 FF-ABLE +1
+catalog     326afbb80544 7b76b73c02fc FF-ABLE +1       7b76b73c02fc FF-ABLE +1
+install     344bbd65966f be5040242742 FF-ABLE +2       be5040242742 FF-ABLE +2
+openOODA    247df56243c6 53491587a3e7 DIVERGED +18/-2  8de018a90884 FF-ABLE +63
+status      b198af752623 a5d4ec4a28f3 FF-ABLE +48      b198af752623 SYNC
+website     ece060a78c88 f9a4e96e1da4 FF-ABLE +6       ba5c4c1891c0 FF-ABLE +7
+oodac       cd3ed0d118ab 291000120318 FF-ABLE +13      36e6128eff81 FF-ABLE +47
+std         48496aa2e7e8 48496aa2e7e8 SYNC             eb4e9881e59b FF-ABLE +12
+oohat       898c85d178c8 (no master ref)              2abbdfb92c0a FF-ABLE +2
+
+== 3. The DIVERGED case — openOODA master ==
+
+master holds exactly two commits ooda lacks: 04414c6 (iso milestone-2)
+and 5349158 (iso ELF loader) — the ORIGINAL iso-lane SHAs. ooda carries
+the same content re-committed as ddc9a24/fae2fe6 (landed via the iso
+owner's own push during the wip rebase). Proof of content equivalence:
+`git diff refs/remotes/github/master refs/remotes/github/ooda -- iso/`
+is empty. The remaining tree difference is ooda's 18 ahead commits, so
+the divergence is SHA-identity only — master loses nothing by being
+reset to ooda.
+
+== 4. Reconcile proposals (proposal-only; manager executes) ==
+
+- openOODA master: force-push ooda tip onto master
+  (`git push github +ooda:master`). The 2 orphan SHAs carry no unique
+  content; a merge would preserve redundant history.
+- All other rows: plain fast-forward `git push github ooda:master`
+  and/or `ooda:main` — 15 FF-able refs across 8 repos.
+- std master + status main already SYNC; no action needed.
+- Stale tracking refs (stale=1): none observed this run.
+
+Raw tool output is deterministic given remote state; rerun the binary
+to refresh. drift=9 repos audited.

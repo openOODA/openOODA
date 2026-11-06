@@ -1,0 +1,130 @@
+// # Fleet Drift Audit - ooda-vs-master/main Branch Divergence Reporter (read-only)
+//
+// Logline: For each fleet checkout, read the live github tips for ooda/master/main via ls-remote and classify ancestry with rev-list --left-right --count on the remote-tracking refs — no fetch, no mutation.
+//
+// Setup: &ProcessCap runs argv git ls-remote/rev-parse/rev-list only. Ancestry uses local remote-tracking objects: a missing tracking ref or a live tip that outruns it is reported, never fetched.
+//
+// Beats:
+//   1. drift_umbrellas — the nine fleet umbrella checkouts.
+//   2. drift_parse/drift_tip — ls-remote lines into ooda/master/main sha triples.
+//   3. drift_counts/drift_class — left-right counts into SYNC/FF-ABLE/BEHIND/DIVERGED/UNFETCHED verdicts.
+//   4. drift_repo/drift_report — DRIFT lines per repo per legacy ref plus the drift= rollup.
+
+import "fleettick/btext.oo";
+
+// The nine umbrella checkouts: six swept under /Projects/openOODA plus the
+// toolchain (oodac, std) and agent (oohat) lanes.
+pub fn drift_umbrellas() -> List[String] {
+    let mut r: List[String] = list_new();
+    r = list_push(r, "/Projects/openOODA/.github");
+    r = list_push(r, "/Projects/openOODA/catalog");
+    r = list_push(r, "/Projects/openOODA/install");
+    r = list_push(r, "/Projects/openOODA/openOODA");
+    r = list_push(r, "/Projects/openOODA/status");
+    r = list_push(r, "/Projects/openOODA/website");
+    r = list_push(r, "/Projects/openOODA-core/oodac");
+    r = list_push(r, "/Projects/openOODA-core/std");
+    r = list_push(r, "/Projects/openOODA-agents/oohat");
+    return r;
+}
+
+// The sha pinned to refs/heads/<name> in ls-remote output, "" when absent.
+pub fn drift_tip(text: String, name: String) -> String {
+    let mut pos: Int = 0;
+    while pos < bytes_len(text) {
+        let nl: Int = bt_idx_from(text, "\n", pos);
+        let stop: Int = if nl < 0 { bytes_len(text) } else { nl };
+        let line: String = bt_slice(text, pos, stop);
+        let t: Int = bt_idx_from(line, "\t", 0);
+        if t > 0 && bt_slice(line, t + 1, bytes_len(line)) == "refs/heads/" + name {
+            return bt_slice(line, 0, 12);
+        }
+        pos = stop + 1;
+    }
+    return "";
+}
+
+// left-right counts of A...B into "L R" or "ERR" on a failed argv.
+fn drift_counts(p: &ProcessCap, repo: String, a: String, b: String) -> String {
+    let r: Result[String, String] = sys_exec(p, "git", "-C", repo, "rev-list",
+        "--left-right", "--count", a + "..." + b);
+    let mut t: String = "ERR";
+    match r {
+        Ok(v) => { t = v; },
+        Err(_) => { return "ERR"; },
+    }
+    return t;
+}
+
+// The ooda-vs-legacy verdict of a left-right count line: ooda-ahead counts
+// as FF-ABLE (legacy can fast-forward), legacy-only counts as BEHIND.
+pub fn drift_class(counts: String) -> String {
+    let t: Int = bt_idx_from(counts, "\t", 0);
+    if t < 0 { return "ERR"; }
+    let l: Int = bt_uint_at(counts, 0);
+    let r: Int = bt_uint_at(counts, t + 1);
+    if l < 0 || r < 0 { return "ERR"; }
+    if l > 0 && r > 0 { return "DIVERGED"; }
+    if l > 0 { return "FF-ABLE"; }
+    if r > 0 { return "BEHIND"; }
+    return "SYNC";
+}
+
+// The DRIFT line for one legacy ref of one repo: live tip, ancestry verdict,
+// counts, and a stale flag when the tracking ref lags the live tip.
+fn drift_ref(p: &ProcessCap, repo: String, name: String, ls: String) -> String {
+    let tip: String = drift_tip(ls, name);
+    if tip == "" { return ""; }
+    let tr: Result[String, String] = sys_exec(p, "git", "-C", repo, "rev-parse",
+        "refs/remotes/github/" + name);
+    let mut track: String = "";
+    match tr {
+        Ok(v) => { track = v; },
+        Err(_) => { return "DRIFT " + repo + " " + name + "=" + tip + " UNFETCHED"; },
+    }
+    let counts: String = drift_counts(p, repo, "refs/remotes/github/ooda",
+        "refs/remotes/github/" + name);
+    let verdict: String = drift_class(counts);
+    let mut suffix: String = "counts=-";
+    let t: Int = bt_idx_from(counts, "\t", 0);
+    if t >= 0 {
+        suffix = "ahead=" + bt_uint_at(counts, 0).to_string()
+            + " behind=" + bt_uint_at(counts, t + 1).to_string();
+    }
+    let mut stale: String = "";
+    if bytes_len(track) >= 12 && bt_slice(track, 0, 12) != tip { stale = " stale=1"; }
+    return "DRIFT " + repo + " " + name + "=" + tip + " " + verdict + " " + suffix + stale;
+}
+
+// All DRIFT lines for one repo: ooda tip plus a line per live legacy ref.
+fn drift_repo(p: &ProcessCap, repo: String) -> List[String] {
+    let ls: Result[String, String] = sys_exec(p, "git", "-C", repo, "ls-remote",
+        "github", "refs/heads/ooda", "refs/heads/master", "refs/heads/main");
+    let mut text: String = "";
+    match ls {
+        Ok(v) => { text = v; },
+        Err(_) => { return list_push(list_new(), "DRIFT " + repo + " REMOTE-ERR"); },
+    }
+    let otip: String = drift_tip(text, "ooda");
+    let mut out: List[String] = list_new();
+    if otip == "" { return list_push(out, "DRIFT " + repo + " NO-OODA"); }
+    out = list_push(out, "DRIFT " + repo + " ooda=" + otip);
+    let m: String = drift_ref(p, repo, "master", text);
+    if m != "" { out = list_push(out, m); }
+    let n: String = drift_ref(p, repo, "main", text);
+    if n != "" { out = list_push(out, n); }
+    return out;
+}
+
+// DRIFT lines for every repo plus the verdict rollup.
+pub fn drift_report(p: &ProcessCap, repos: List[String]) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        let rl: List[String] = drift_repo(p, list_get(repos, i));
+        let mut j: Int = 0;
+        while j < list_len(rl) { out = list_push(out, list_get(rl, j)); j = j + 1; }
+        i = i + 1;
+    }
+    return list_push(out, "drift=" + i.to_string());
+}

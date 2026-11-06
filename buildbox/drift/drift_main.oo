@@ -1,0 +1,37 @@
+// # Fleet Drift Audit Driver - ooda-vs-master/main Divergence Report (read-only)
+//
+// Logline: Emit DRIFT lines for the nine umbrella checkouts (or argv repo paths) using the drift page — github ls-remote tips plus tracking-ref ancestry, never a fetch or mutation.
+//
+// Setup: &ProcessCap runs argv git only; &FsReadCap reads an optional repo list file. Run under the gate env (OODA_NO_JAIL=1) so the jailed git children can reach ssh.
+//
+// Beats:
+//   1. Resolve the repo list — argv file/inline paths, else the nine umbrellas.
+//   2. drift_report — DRIFT lines per repo per legacy ref plus the drift= rollup.
+
+import "drift/drift.oo";
+import "fleettick/btext.oo";
+import "std/fs/os/fs.oo";
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let mut repos: List[String] = drift_umbrellas();
+    if list_len(args) > 0 && list_get(args, 0) != "" {
+        let f: Result[String, String] = fs_read_file(fr, list_get(args, 0));
+        let mut text: String = "";
+        match f {
+            Ok(v) => { text = v; },
+            Err(_) => { text = list_get(args, 0); },
+        }
+        repos = list_new();
+        let mut pos: Int = 0;
+        while pos < bytes_len(text) {
+            let nl: Int = bt_idx_from(text, "\n", pos);
+            let stop: Int = if nl < 0 { bytes_len(text) } else { nl };
+            if stop > pos { repos = list_push(repos, bt_slice(text, pos, stop)); }
+            pos = stop + 1;
+        }
+    }
+    let lines: List[String] = drift_report(p, repos);
+    let mut i: Int = 0;
+    while i < list_len(lines) { println(list_get(lines, i)); i = i + 1; }
+    return 0;
+}
