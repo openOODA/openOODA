@@ -1,0 +1,52 @@
+// # wip/ringmaster-ringmaster-wC -> github/ooda Merge Proposal
+//
+// Logline: Branch inventory, contents, proposed merge order, and
+//          expected conflicts for the wC pane's wip branches across
+//          five openOODA repos. Proposal only — no merges performed.
+//
+// Setup:   All branches pushed to github remotes only. Canonical
+//          target is github/ooda in each repo. Verified 2026-11-06
+//          via merge-base ancestry + merge-tree conflict probe.
+//
+// Beats:
+//   1. Branch inventory and per-repo deltas.
+//   2. Merge order (leaf repos first, umbrella last).
+//   3. Conflict and gate expectations per repo.
+
+## 1. Branch inventory
+
+All five repos carry `wip/ringmaster-ringmaster-wC` on github.
+
+| Repo | Commits ahead of github/ooda | Owner | Delta |
+|---|---|---|---|
+| openOODA/website | 3 | wC | `eeed560` quota board + `.oo` refresh driver; `c810fba` freshness sync (383/392 counts, layer versions); `d6ec289` daily quota snapshots + 7-day trend. v1.3.45->47 |
+| openOODA/install | 1 | wC | `b1eae54` umbrella-release URL fix, packaging sync 0.2.6, Apache-2.0 license correction. v0.2.7 |
+| openOODA/catalog | 1 | wC | `cb4490b` 70 persona double-ship withdrawals per persona-ownership.oot #3, index 238->168, index.sig re-signed, index.html rebuilt. v0.2.5 |
+| openOODA-core/oodac | 1 | wC (docs exception) | `1d9e144` runtime-env.oot — gate env is an exec-time contract. Docs-only, off-limits-repo exception, +34 lines |
+| openOODA/openOODA | 3 | mixed | `565cb8b` wC audits/ cleanup (machinery retired, 8 docs dispositioned); `5349158` + `04414c6` FOREIGN iso lane (ELF loader, efi_main ooboot) — not wC work, owner sign-off required |
+
+## 2. Proposed merge order
+
+1. website — leaf repo, self-contained status page + JS.
+2. install — leaf repo, installer URL/package fixes.
+3. catalog — leaf repo, public index rewrite; schedule the
+   index.minisig re-sign (manager-held secret) with the merge.
+4. oodac — diverged but zero path overlap; merge commit or rebase
+   wip onto ooda tip first. Docs-only; still the off-limits repo.
+5. openOODA LAST — contains foreign iso commits and has a dirty
+   working tree (see below); merge only after owner confirms the
+   two iso commits ride along.
+
+## 3. Conflicts and gates expected
+
+| Repo | Ancestry | Path conflicts | Gates |
+|---|---|---|---|
+| website | FF-mergeable | 0 (ooda-side touched none of the 11 changed paths) | node tests 6/6, lint-oo-size 0, bit-identical quota_refresh build |
+| install | FF-mergeable | 0 | OPENOODA_DRY_RUN clean, tests/test_install.sh PASS |
+| catalog | FF-mergeable | 0 | cli qa ALL SUITES PASSED; index.minisig re-sign post-merge (secret is manager-side) |
+| oodac | diverged (ooda +12 files: cli/, emit/llvm/, corpus, tests) | 0 — merge-tree clean, docs/ untouched on both sides | docs-only diff; no build impact |
+| openOODA | FF-mergeable | 0 path conflicts | two gates: (a) 04414c6+5349158 are iso-lane commits requiring owner sign-off; (b) working tree dirty — scripts/autosnap.sh + scripts/fleet-tick.sh modified, scripts/fleet/ untracked — resolve/stash before merge |
+
+Post-merge follow-ups: catalog index.minisig re-sign; 50 absent
+canonical hosts + payload republish are release decisions;
+openOODA scripts/* WIP stays uncommitted regardless.
