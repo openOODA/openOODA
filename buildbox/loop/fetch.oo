@@ -29,7 +29,15 @@ pub fn loop_fetch_clone(sys: &ProcessCap, url: String, branch: String, dir: Stri
     return code == 0;
 }
 
-pub fn loop_fetch_update(sys: &ProcessCap, dir: String, branch: String) -> Bool {
+pub fn loop_fetch_update(sys: &ProcessCap, dir: String, url: String, branch: String) -> Bool {
+    let sargv: List[String] = list_new();
+    let mut s: List[String] = list_push(sargv, "-C");
+    s = list_push(s, dir);
+    s = list_push(s, "remote");
+    s = list_push(s, "set-url");
+    s = list_push(s, "origin");
+    s = list_push(s, url);
+    let _sr: Result[Int, String] = sys_exec_wait(sys, "git", s);
     let fargv: List[String] = list_new();
     let mut f: List[String] = list_push(fargv, "-C");
     f = list_push(f, dir);
@@ -57,10 +65,11 @@ pub fn loop_fetch_update(sys: &ProcessCap, dir: String, branch: String) -> Bool 
 // Fetch or clone one repo at the branch the remote reports. The branch is
 // never hardcoded, so one fleet can serve main branches and another master.
 pub fn loop_fetch_repo(sys: &ProcessCap, fs_r: &FsReadCap, base: String, org: String, name: String, branch: String, dir: String) -> Bool {
+    let url: String = fleet_remote_url(base, org, name);
     if !path_exists(fs_r, dir) {
-        return loop_fetch_clone(sys, fleet_remote_url(base, org, name), branch, dir);
+        return loop_fetch_clone(sys, url, branch, dir);
     }
-    return loop_fetch_update(sys, dir, branch);
+    return loop_fetch_update(sys, dir, url, branch);
 }
 
 // Resolve the default branch of one repo from the remote.
