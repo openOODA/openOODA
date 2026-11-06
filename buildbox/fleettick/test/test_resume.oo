@@ -1,0 +1,68 @@
+// # Test Resume Probe - Pure Gate Checks Plus Alert Kinds And Fail-Closed Paths
+//
+// Logline: Prove the rate-limit marker, reset-clock parser, and past-gate on fixed inputs, then exercise unreadable-pane and empty-feed verdicts and the alert kind map.
+//
+// Setup: no capabilities needed for the pure checks; &ProcessCap feeds the unreadable-pane path (pane 'nopane' can never exist, so the read fails closed every run).
+//
+// Beats:
+//   1. rs_limited — the marker string only.
+//   2. rs_reset — 'at HH:MM UTC' extraction, malformed shapes yield "".
+//   3. rs_past — strict lexicographic gate on zero-padded clocks.
+//   4. Verdicts — UNREADABLE pane, RESUME_ERR feed, alert_of kind map.
+
+import "fleettick/resume/resume.oo";
+import "fleettick/agents.oo";
+import "fleettick/out/alert.oo";
+
+fn tr_expect(name: String, got: String, want: String) -> Int {
+    if got == want { println("PASS\t" + name); return 0; }
+    println("FAIL\t" + name + "\twant=" + want + "\tgot=" + got);
+    return 1;
+}
+
+fn tr_parse() -> Int {
+    let m: String = "Reached free model rate limit. Try again at 14:32 UTC.";
+    let mut f: Int = 0;
+    f = f + tr_expect("limited yes", rs_limited(m).to_string(), "1");
+    f = f + tr_expect("limited no", rs_limited("all quiet on pane").to_string(), "0");
+    f = f + tr_expect("reset basic", rs_reset(m), "14:32");
+    f = f + tr_expect("reset zero-pad", rs_reset("limited at 03:05 UTC ok"), "03:05");
+    f = f + tr_expect("reset absent", rs_reset(m + " trailing"), "14:32");
+    f = f + tr_expect("reset none", rs_reset("rate limited, no clock"), "");
+    f = f + tr_expect("reset short-digit", rs_reset("back at 9:15 UTC"), "");
+    f = f + tr_expect("reset no-at", rs_reset("resets 14:32 UTC soon"), "");
+    return f;
+}
+
+fn tr_gate() -> Int {
+    let mut f: Int = 0;
+    f = f + tr_expect("past yes", rs_past("14:33", "14:32").to_string(), "1");
+    f = f + tr_expect("past equal", rs_past("14:32", "14:32").to_string(), "0");
+    f = f + tr_expect("past before", rs_past("09:00", "14:32").to_string(), "0");
+    f = f + tr_expect("past len", rs_past("4:33", "14:32").to_string(), "0");
+    return f;
+}
+
+fn tr_alerts() -> Int {
+    let mut f: Int = 0;
+    f = f + tr_expect("kind awaiting", alert_of("RESUME w1:p1 AWAITING reset=14:32"), "ratelimit");
+    f = f + tr_expect("kind resume-fail", alert_of("RESUME w1:p1 FAIL reset=14:32"), "resume-fail");
+    f = f + tr_expect("kind snap-fail", alert_of("ASNAP ax FAIL push"), "fail");
+    f = f + tr_expect("kind resumed-pass", alert_of("RESUME w1:p1 RESUMED reset=14:32"), "");
+    return f;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let mut fails: Int = tr_parse() + tr_gate() + tr_alerts();
+    let rd: Result[String, String] = agents_pane_read(p, "", "/tmp/no-such-xdg", "nopane");
+    if rd.is_err() {
+        println("PASS\tunreadable pane");
+    } else {
+        println("FAIL\tunreadable pane"); fails = fails + 1;
+    }
+    let el: List[String] = resume_report(p, "", "/tmp/no-such-xdg", "");
+    fails = fails + tr_expect("empty feed", list_get(el, 0), "RESUME_ERR herdr unreadable");
+    if fails > 0 { println("FAIL\ttest_resume\t" + fails.to_string() + " check(s) failed"); return 1; }
+    println("test_resume OK");
+    return 0;
+}

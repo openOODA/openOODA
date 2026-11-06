@@ -6,7 +6,7 @@
 //
 // Beats:
 //   1. Admit this instance via the atomic lock or print TICK SKIP and stop.
-//   2. Run every section in fixed order: repos, quota, workspaces, health, forge, reconcile, naming, autosnap.
+//   2. Run every section in fixed order: repos, quota, workspaces, resume, health, forge, reconcile, naming, autosnap.
 //   3. Pack every verdict into .fleet-state.txt, spool one ALERT file per breached condition, then release the lock.
 
 import "fleettick/sweep.oo";
@@ -15,6 +15,7 @@ import "fleettick/agents.oo";
 import "fleettick/probe/host.oo";
 import "fleettick/probe/forge.oo";
 import "fleettick/probe/naming.oo";
+import "fleettick/resume/resume.oo";
 import "fleettick/autosnap.oo";
 import "fleettick/recon/recon.oo";
 import "fleettick/out/snap.oo";
@@ -60,6 +61,8 @@ fn sm_sections(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, root: String, ho
     println("-- workspaces");
     let wl: List[String] = if atext == "" { list_push(list_new(), "AGENTS_ERR herdr unreadable") } else { agents_report(atext) };
     all = sm_emit(all, wl);
+    println("-- resume");
+    all = sm_emit(all, resume_report(p, home, xdg, atext));
     println("-- health");
     all = sm_emit(all, host_report(p, fr, "/Projects/openOODA/.fleet-health.conf"));
     println("-- forge");

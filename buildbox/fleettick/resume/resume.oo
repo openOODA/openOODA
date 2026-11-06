@@ -1,0 +1,135 @@
+// # Fleet Resume - Rate-Limited Pane Detection And Gated Resume (RFC 0013 s2.6)
+//
+// Logline: Scan each pane's visible text for the free-model rate-limit notice, and once its at HH:MM UTC reset has passed send one continue-text plus Enter to resume the pane.
+//
+// Setup: &ProcessCap only — argv herdr pane read/send-text/send-keys, date -u, sleep 0.3. Local invocations only; no --machine/--remote. agents_pane_read supplies the read path; the pane set comes from the same herdr agent list text the workspaces section already fetched.
+//
+// Beats:
+//   1. rs_limited finds the 'Reached free model rate limit' marker in pane text.
+//   2. rs_reset extracts the HH:MM inside 'at HH:MM UTC' — first pattern match wins, "" when absent.
+//   3. rs_past byte-compares now vs reset — lexicographic equals chronological on zero-padded clocks.
+//   4. rs_send pipes continue-text then Enter 0.3s later; rs_pane/rs_report emit RESUME lines + resume= rollup.
+
+import "fleettick/btext.oo";
+import "fleettick/agents.oo";
+import "std/core/primitives/str.oo";
+
+// True when the pane's visible text carries the free-model rate-limit notice.
+pub fn rs_limited(text: String) -> Bool {
+    return str_contains(text, "Reached free model rate limit");
+}
+
+// True when the five bytes at pos form HH:MM (digit digit colon digit digit).
+fn rs_hhmm(text: String, pos: Int) -> Bool {
+    if pos < 0 || pos + 5 > bytes_len(text) { return false; }
+    let d0: Int = byte_at(text, pos);
+    let d1: Int = byte_at(text, pos + 1);
+    let cc: Int = byte_at(text, pos + 2);
+    let d3: Int = byte_at(text, pos + 3);
+    let d4: Int = byte_at(text, pos + 4);
+    return d0 >= 48 && d0 <= 57 && d1 >= 48 && d1 <= 57 && cc == 58
+        && d3 >= 48 && d3 <= 57 && d4 >= 48 && d4 <= 57;
+}
+
+// The HH:MM inside the first 'at HH:MM UTC' pattern, "" when absent.
+pub fn rs_reset(text: String) -> String {
+    let mut pos: Int = 0;
+    while pos < bytes_len(text) {
+        let t: Int = bt_idx_from(text, " UTC", pos);
+        if t < 0 { return ""; }
+        if t >= 8 && bt_slice(text, t - 8, t - 5) == "at " && rs_hhmm(text, t - 5) {
+            return bt_slice(text, t - 5, t);
+        }
+        pos = t + 1;
+    }
+    return "";
+}
+
+// Current HH:MM in UTC for the reset gate; "00:00" when date fails closed.
+fn rs_now(p: &ProcessCap) -> String {
+    let d: Result[String, String] = sys_exec(p, "date", "-u", "+%H:%M");
+    let mut s: String = "00:00";
+    match d {
+        Ok(v) => { s = v; },
+        Err(_) => { return s; },
+    }
+    while bytes_len(s) > 0 && byte_at(s, bytes_len(s) - 1) < 33 {
+        s = bt_slice(s, 0, bytes_len(s) - 1);
+    }
+    return s;
+}
+
+// True when now is strictly past reset — lexicographic on zero-padded HH:MM.
+pub fn rs_past(now: String, reset: String) -> Bool {
+    if bytes_len(now) != 5 || bytes_len(reset) != 5 { return false; }
+    let mut i: Int = 0;
+    while i < 5 {
+        let a: Int = byte_at(now, i);
+        let b: Int = byte_at(reset, i);
+        if a != b { return a > b; }
+        i = i + 1;
+    }
+    return false;
+}
+
+// One resume pipe: continue-text, 0.3s settle, Enter. False on any failed argv.
+fn rs_send(p: &ProcessCap, home: String, xdg: String, pane: String) -> Bool {
+    let bin: String = if home != "" { home + "/.local/bin/herdr" } else { "herdr" };
+    let t1: Result[String, String] = sys_exec(p, "env", "HOME=" + home,
+        "XDG_RUNTIME_DIR=" + xdg, bin, "pane", "send-text", pane,
+        "continue your current task; follow the git safety rule");
+    if t1.is_err() { return false; }
+    let sp: Result[String, String] = sys_exec(p, "sleep", "0.3");
+    if sp.is_err() { return false; }
+    let t2: Result[String, String] = sys_exec(p, "env", "HOME=" + home,
+        "XDG_RUNTIME_DIR=" + xdg, bin, "pane", "send-keys", pane, "Enter");
+    return t2.is_ok();
+}
+
+// The RESUME verdict for one pane: "" when not limited, else AWAITING /
+// RESUMED / FAIL with the reset clock; UNREADABLE when the pane cannot be read.
+fn rs_pane(p: &ProcessCap, home: String, xdg: String, pane: String, now: String) -> String {
+    let rd: Result[String, String] = agents_pane_read(p, home, xdg, pane);
+    let mut txt: String = "";
+    match rd {
+        Ok(v) => { txt = v; },
+        Err(_) => { return "RESUME " + pane + " UNREADABLE"; },
+    }
+    if !rs_limited(txt) { return ""; }
+    let reset: String = rs_reset(txt);
+    if reset != "" && rs_past(now, reset) {
+        if rs_send(p, home, xdg, pane) { return "RESUME " + pane + " RESUMED reset=" + reset; }
+        return "RESUME " + pane + " FAIL reset=" + reset;
+    }
+    let tag: String = if reset == "" { "?" } else { reset };
+    return "RESUME " + pane + " AWAITING reset=" + tag;
+}
+
+// RESUME lines for every pane in the agent list plus the resume= rollup;
+// RESUME_ERR when the herdr socket was unreadable upstream.
+pub fn resume_report(p: &ProcessCap, home: String, xdg: String, text: String) -> List[String] {
+    if text == "" { return list_push(list_new(), "RESUME_ERR herdr unreadable"); }
+    let panes: List[String] = agents_panes(text);
+    let now: String = rs_now(p);
+    let mut out: List[String] = list_new();
+    let mut resd: Int = 0;
+    let mut waitn: Int = 0;
+    let mut failed: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(panes) {
+        let pane: String = list_get(str_split(list_get(panes, i), "|"), 1);
+        if pane != "" {
+            let line: String = rs_pane(p, home, xdg, pane, now);
+            if line != "" {
+                out = list_push(out, line);
+                if str_contains(line, " AWAITING") { waitn = waitn + 1; }
+                if str_contains(line, " RESUMED") { resd = resd + 1; }
+                if str_contains(line, " FAIL") { failed = failed + 1; }
+            }
+        }
+        i = i + 1;
+    }
+    return list_push(out, "resume=" + (resd + waitn + failed).to_string()
+        + " resumed=" + resd.to_string() + " awaiting=" + waitn.to_string()
+        + " fail=" + failed.to_string());
+}
