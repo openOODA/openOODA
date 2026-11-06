@@ -1,0 +1,106 @@
+// # Fleet Sweep - Read-Only Repository State Sweep (RFC 0013)
+//
+// Logline: Enumerate repositories under a root and report each one's lock status and clean/dirty state without mutating the host.
+//
+// Setup: FsReadCap for the directory walk; ProcessCap for read-only git argv run with GIT_OPTIONAL_LOCKS=0. No writes, no network, no pushes, no index refresh.
+//
+// Beats:
+//   1. Enumerate git working trees up to two levels below the root.
+//   2. Skip repositories locked to other servers, then read porcelain state.
+//   3. Emit one LOCKED/DIRTY/CLEAN/ERR line per repository plus a summary.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+
+// A repository another server owns. The lock list mirrors the fleet rule.
+pub fn sweep_locked(path: String) -> Bool {
+    if ends_with(path, "/openOODA-core/std") || ends_with(path, "/openOODA-core/oodar") { return true; }
+    return ends_with(path, "/openOODA-core/oodac") || ends_with(path, "/openOODA-agents/oohat");
+}
+
+// CLEAN when the porcelain text carries no entry, DIRTY otherwise.
+pub fn sweep_classify(porcelain: String) -> String {
+    if str_len(str_replace(str_replace(porcelain, " ", ""), "\n", "")) == 0 { return "CLEAN"; }
+    return "DIRTY";
+}
+
+// Child directories of one directory, .git internals excluded.
+fn sweep_child_dirs(fr: &FsReadCap, dir: String) -> List[String] {
+    let names: List[String] = fs_read_dir(fr, dir);
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(names) {
+        let n: String = list_get(names, i);
+        let path: String = dir + "/" + n;
+        if n != ".git" && fs_is_dir(fr, path) { out = list_push(out, path); }
+        i = i + 1;
+    }
+    return out;
+}
+
+// Every git working tree up to two levels below the root.
+pub fn sweep_repos(fr: &FsReadCap, root: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let top: List[String] = sweep_child_dirs(fr, root);
+    let mut i: Int = 0;
+    while i < list_len(top) {
+        let a: String = list_get(top, i);
+        if fs_is_dir(fr, a + "/.git") { out = list_push(out, a); }
+        let mid: List[String] = sweep_child_dirs(fr, a);
+        let mut j: Int = 0;
+        while j < list_len(mid) {
+            let b: String = list_get(mid, j);
+            if fs_is_dir(fr, b + "/.git") { out = list_push(out, b); }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+// The porcelain state of one repository, read with optional locks off so
+// git cannot refresh the index. ERR marks a repository git could not read.
+fn sweep_dirty(p: &ProcessCap, repo: String) -> String {
+    let r: Result[String, String] = sys_exec(p, "/usr/bin/env", "GIT_OPTIONAL_LOCKS=0", "git", "-C", repo, "status", "--porcelain");
+    if r.is_err() { return "ERR"; }
+    return sweep_classify(r.val);
+}
+
+// One verdict line per repository under the root.
+pub fn sweep_report(fr: &FsReadCap, p: &ProcessCap, root: String) -> List[String] {
+    let repos: List[String] = sweep_repos(fr, root);
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        let repo: String = list_get(repos, i);
+        let cls: String = if sweep_locked(repo) { "LOCKED" } else { sweep_dirty(p, repo) };
+        out = list_push(out, cls + " " + repo);
+        i = i + 1;
+    }
+    return out;
+}
+
+// The one-line tally of a report: repos=N dirty=D clean=C err=E locked=L.
+pub fn sweep_summary(lines: List[String]) -> String {
+    let mut dirty: Int = 0; let mut clean: Int = 0; let mut err: Int = 0; let mut locked: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let l: String = list_get(lines, i);
+        if starts_with(l, "DIRTY ") { dirty = dirty + 1; }
+        else if starts_with(l, "CLEAN ") { clean = clean + 1; }
+        else if starts_with(l, "ERR ") { err = err + 1; }
+        else if starts_with(l, "LOCKED ") { locked = locked + 1; }
+        i = i + 1;
+    }
+    return "repos=" + list_len(lines).to_string() + " dirty=" + dirty.to_string() + " clean=" + clean.to_string() + " err=" + err.to_string() + " locked=" + locked.to_string();
+}
+
+// Sweep one root and print the report plus its tally. Read-only: the
+// answer is always 0 because this tick only observes the host state.
+pub fn sweep_run(p: &ProcessCap, fr: &FsReadCap, root: String) -> Int {
+    let lines: List[String] = sweep_report(fr, p, root);
+    let mut i: Int = 0;
+    while i < list_len(lines) { println(list_get(lines, i)); i = i + 1; }
+    println(sweep_summary(lines));
+    return 0;
+}

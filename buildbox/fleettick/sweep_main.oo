@@ -1,0 +1,16 @@
+// # Fleet Sweep Main - Read-Only Sweep Entrypoint
+//
+// Logline: Resolves the sweep root from argv and delegates to sweep_run so sweep.oo stays importable without a duplicate main symbol.
+//
+// Setup: ProcessCap for read-only git argv; FsReadCap for the directory walk. The root defaults to /Projects.
+//
+// Beats:
+//   1. Take the root from argv[0] when present, else /Projects.
+//   2. Delegate to sweep_run; the binary always observes and never mutates.
+
+import "fleettick/sweep.oo";
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, _fw: &FsWriteCap, _env: &EnvCap, args: List[String]) -> Int {
+    let root: String = if list_len(args) > 0 && list_get(args, 0) != "" { list_get(args, 0) } else { "/Projects" };
+    return sweep_run(p, fr, root);
+}

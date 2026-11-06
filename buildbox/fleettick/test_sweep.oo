@@ -1,0 +1,56 @@
+// # Test Fleet Sweep - Pure-Function Checks For The Read-Only Sweep
+//
+// Logline: Prove the sweep's pure classifiers and its repository detector against fixed inputs and one known repository.
+//
+// Setup: FsReadCap for the live .git-detection and enumeration checks only; every other check is a pure string function over fixed text.
+//
+// Beats:
+//   1. Porcelain classification: empty and whitespace-only text mean CLEAN, any marker means DIRTY.
+//   2. Lock list: the four off-limits repository paths are LOCKED, neighbours are not.
+//   3. Enumeration: a known space root yields its known repository; a file root yields none.
+
+import "fleettick/sweep.oo";
+
+fn ts_expect(name: String, got: String, want: String) -> Int {
+    if got == want { println("PASS\t" + name); return 0; }
+    println("FAIL\t" + name + "\twant=" + want + "\tgot=" + got);
+    return 1;
+}
+
+fn ts_expect_bool(name: String, got: Bool, want: Bool) -> Int {
+    if got == want { println("PASS\t" + name); return 0; }
+    let ws: String = if want { "true" } else { "false" };
+    let gs: String = if got { "true" } else { "false" };
+    println("FAIL\t" + name + "\twant=" + ws + "\tgot=" + gs);
+    return 1;
+}
+
+fn ts_expect_has(name: String, hay: List[String], needle: String) -> Int {
+    let mut i: Int = 0;
+    while i < list_len(hay) {
+        if list_get(hay, i) == needle { println("PASS\t" + name); return 0; }
+        i = i + 1;
+    }
+    println("FAIL\t" + name + "\tmissing=" + needle);
+    return 1;
+}
+
+pub fn main(_p: &ProcessCap, fr: &FsReadCap, _fw: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
+    let mut fails: Int = 0;
+    fails = fails + ts_expect("porcelain_empty_is_clean", sweep_classify(""), "CLEAN");
+    fails = fails + ts_expect("porcelain_blank_is_clean", sweep_classify("\n"), "CLEAN");
+    fails = fails + ts_expect("porcelain_modified_is_dirty", sweep_classify(" M install.sh\n"), "DIRTY");
+    fails = fails + ts_expect("porcelain_untracked_is_dirty", sweep_classify("?? new.oo\n"), "DIRTY");
+    fails = fails + ts_expect_bool("locked_std", sweep_locked("/Projects/openOODA-core/std"), true);
+    fails = fails + ts_expect_bool("locked_oodar", sweep_locked("/Projects/openOODA-core/oodar"), true);
+    fails = fails + ts_expect_bool("locked_oohat", sweep_locked("/Projects/openOODA-agents/oohat"), true);
+    fails = fails + ts_expect_bool("unlocked_install", sweep_locked("/Projects/openOODA/install"), false);
+    fails = fails + ts_expect_bool("unlocked_sibling", sweep_locked("/Projects/openOODA-core/stdc"), false);
+    fails = fails + ts_expect("summary_counts", sweep_summary(list_push(list_push(list_push(list_push(list_new(), "DIRTY /a"), "CLEAN /b"), "ERR /c"), "LOCKED /d")), "repos=4 dirty=1 clean=1 err=1 locked=1");
+    let repos: List[String] = sweep_repos(fr, "/Projects/openOODA");
+    fails = fails + ts_expect_has("enum_finds_governance_repo", repos, "/Projects/openOODA/openOODA");
+    fails = fails + ts_expect("enum_file_root_empty", list_len(sweep_repos(fr, "/Projects/openOODA/openOODA/VERSION")).to_string(), "0");
+    if fails > 0 { println("FAIL\ttest_sweep\t" + fails.to_string() + " check(s) failed"); return 1; }
+    println("Ran 12 checks in pure .oo — OK");
+    return 0;
+}
