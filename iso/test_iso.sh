@@ -1,5 +1,5 @@
 #!/bin/bash
-# ISO milestone-1 gate: OVMF boots the ISO, serial markers assert the chain
+# ISO milestone-2 gate: OVMF boots the ISO, serial markers assert the chain
 # OVMF -> BOOTX64.EFI (OOEFI) -> ELF load (OOLOAD) -> _start (OOBM1)
 # -> main -> OOMAIN-OK. Plus negative (corrupt ESP) and determinism checks.
 set -uo pipefail
@@ -24,7 +24,7 @@ expect_marker() {  # $1=log $2=marker
     grep -q "$2" "$1" || { echo "FAIL: missing marker $2"; cat "$1"; exit 1; }
 }
 
-echo "=== ISO milestone-1 boot gate ==="
+echo "=== ISO milestone-2 boot gate ==="
 [ -f "$ISO" ] || { echo "FAIL: no ISO at $ISO (run build_iso.sh)"; exit 1; }
 [ -f "$OVMF" ] || { echo "FAIL: no OVMF at $OVMF"; exit 1; }
 

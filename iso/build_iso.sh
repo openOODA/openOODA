@@ -1,11 +1,18 @@
 #!/bin/bash
-# ISO milestone-1 assembly: payload ELF + UEFI stub + ESP + ISO9660.
+# ISO milestone-2 assembly: payload ELF + .oo ooboot UEFI app + ESP + ISO9660.
 # Deterministic: SOURCE_DATE_EPOCH pinned, sorted copy order, fixed volume id.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BLD="$HERE/build"
-OODAC="${OODAC_BIN:-/Projects/openOODA-core/oodac/bin/oodac.real}"
+OOROOT="/Projects/openOODA-core/oodac"
+if [[ -z "${OODAC_BIN:-}" ]]; then
+    for c in "$OOROOT/bin/oodac.real.new" "$OOROOT/bin/oodac.merged" \
+             "$OOROOT/bin/oodac.real" "$OOROOT/bin/oodac"; do
+        [[ -x "$c" ]] && OODAC_BIN="$c" && break
+    done
+fi
+OODAC="$OODAC_BIN"
 NOSTD_A="${OODA_NOSTD_A:-/Projects/openOODA-core/oodar/scripts/lib/liboodar-nostd.a}"
 OODAR_ROOT="${OODA_OODAR_ROOT:-/Projects/openOODA-core/oodar}"
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-946684800}"
@@ -26,12 +33,21 @@ clang --no-default-config --target=x86_64-unknown-none -fuse-ld=lld -static \
     -Wl,--build-id=none -Wl,--gc-sections -Wl,-z,noseparate-code \
     -Wl,-Ttext=0x1000000 -Wl,--strip-all -o "$BLD/payload.elf"
 
-echo "[2/4] UEFI stub: pe32+ efi_application"
+echo "[2/4] ooboot: .oo efi_main + bridge + embedded kernel -> pe32+"
+"$OODAC" check "$HERE/boot/ooboot_main.oo" >/dev/null
+"$OODAC" emit-llvm --target x86_64-windows "$HERE/boot/ooboot_main.oo" > "$BLD/ooboot.ll"
 clang --no-default-config --target=x86_64-unknown-windows -ffreestanding \
     -fno-stack-protector -fno-builtin -Os -g0 -fno-ident -nostdlib \
+    -Wno-override-module -c "$BLD/ooboot.ll" -o "$BLD/ooboot.o"
+clang --no-default-config --target=x86_64-unknown-windows -ffreestanding \
+    -fno-stack-protector -fno-builtin -Os -g0 -fno-ident -nostdlib \
+    -c "$HERE/boot/efi_bridge.c" -o "$BLD/efi_bridge.o"
+clang --no-default-config --target=x86_64-unknown-windows -ffreestanding \
+    -c "$HERE/efi/kernel.S" -o "$BLD/kernel_blob.o"
+clang --no-default-config --target=x86_64-unknown-windows -nostdlib \
     -fuse-ld=lld -Wl,-entry:efi_main -Wl,-subsystem:efi_application \
     -Wl,/debug:none -Wl,/timestamp:0 \
-    "$HERE/efi/efi_stub.c" "$HERE/efi/kernel.S" -o "$BLD/BOOTX64.EFI"
+    "$BLD/ooboot.o" "$BLD/efi_bridge.o" "$BLD/kernel_blob.o" -o "$BLD/BOOTX64.EFI"
 
 echo "[3/4] ESP image + ISO9660 (eltorito, no-emulation)"
 rm -f "$BLD/esp.img" "$BLD/ooda.iso"
@@ -46,7 +62,7 @@ rm -f "$BLD/efiroot/esp.img"
 cp "$BLD/esp.img" "$BLD/efiroot/esp.img"
 find "$BLD/efiroot" -exec touch -d "@$SOURCE_DATE_EPOCH" {} +
 xorriso -as mkisofs -o "$BLD/ooda.iso" -R -J -V OODAISO \
-    -A "openOODA milestone-1" \
+    -A "openOODA milestone-2" \
     -eltorito-alt-boot -e /esp.img -no-emul-boot \
     "$BLD/efiroot" 2>/dev/null
 

@@ -1,0 +1,97 @@
+// # ooboot UEFI loader - milestone-2 entry
+//
+// Logline: Real efi_main in .oo: serial marker, embedded-ELF parse, PT_LOAD copy, entry jump.
+// Setup: Compiled via emit-llvm --target x86_64-windows; efi_bridge.c supplies
+//   the oo_efi_* port I/O, raw loads, memcpy/memset, kernel blob bounds, and jump.
+//   Bridge fns are declared bodyless void; results flow back via &mut out params.
+// Beats:
+//   1. Emit OOEFI from the UEFI entry itself.
+//   2. Validate the embedded kernel ELF header and program headers.
+//   3. Copy PT_LOAD segments, zero BSS tails, emit OOLOAD.
+//   4. Jump to the kernel entry; fail-closed return on any bad field.
+
+pub fn oo_efi_putb(c: Int);
+pub fn oo_efi_ld16(a: Int, out: &mut Int);
+pub fn oo_efi_ld32(a: Int, out: &mut Int);
+pub fn oo_efi_ld64(a: Int, out: &mut Int);
+pub fn oo_efi_memcpy(d: Int, s: Int, n: Int);
+pub fn oo_efi_memset(d: Int, v: Int, n: Int);
+pub fn oo_efi_kernel_start(out: &mut Int);
+pub fn oo_efi_jump(e: Int);
+
+fn ooboot_tag5(a: Int, b: Int, c: Int, d: Int, e: Int) {
+    oo_efi_putb(a);
+    oo_efi_putb(b);
+    oo_efi_putb(c);
+    oo_efi_putb(d);
+    oo_efi_putb(e);
+    oo_efi_putb(10);
+}
+
+fn ooboot_tag6(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int) {
+    oo_efi_putb(a);
+    oo_efi_putb(b);
+    oo_efi_putb(c);
+    oo_efi_putb(d);
+    oo_efi_putb(e);
+    oo_efi_putb(f);
+    oo_efi_putb(10);
+}
+
+fn ooboot_ld16(a: Int) -> Int {
+    let mut v: Int = 0;
+    oo_efi_ld16(a, &mut v);
+    return v;
+}
+
+fn ooboot_ld32(a: Int) -> Int {
+    let mut v: Int = 0;
+    oo_efi_ld32(a, &mut v);
+    return v;
+}
+
+fn ooboot_ld64(a: Int) -> Int {
+    let mut v: Int = 0;
+    oo_efi_ld64(a, &mut v);
+    return v;
+}
+
+fn ooboot_load_phdr(ksrc: Int, phoff: Int, i: Int) {
+    let ph: Int = ksrc + phoff + i * 56;
+    if ooboot_ld32(ph) != 1 { return; }
+    let p_offset: Int = ooboot_ld64(ph + 8);
+    let p_vaddr: Int = ooboot_ld64(ph + 16);
+    let p_filesz: Int = ooboot_ld64(ph + 32);
+    let p_memsz: Int = ooboot_ld64(ph + 40);
+    oo_efi_memcpy(p_vaddr, ksrc + p_offset, p_filesz);
+    if p_memsz > p_filesz {
+        oo_efi_memset(p_vaddr + p_filesz, 0, p_memsz - p_filesz);
+    }
+}
+
+fn ooboot_load() -> Int {
+    let mut ksrc: Int = 0;
+    oo_efi_kernel_start(&mut ksrc);
+    if ooboot_ld32(ksrc) != 1179403647 { return 1; }
+    if ooboot_ld16(ksrc + 18) != 62 { return 1; }
+    let entry: Int = ooboot_ld64(ksrc + 24);
+    let phoff: Int = ooboot_ld64(ksrc + 32);
+    let phentsize: Int = ooboot_ld16(ksrc + 54);
+    let phnum: Int = ooboot_ld16(ksrc + 56);
+    if phentsize != 56 { return 1; }
+    if phnum <= 0 || phnum > 32 { return 1; }
+    if entry <= 0 { return 1; }
+    let mut i: Int = 0;
+    while i < phnum {
+        ooboot_load_phdr(ksrc, phoff, i);
+        i = i + 1;
+    }
+    ooboot_tag6(79, 79, 76, 79, 65, 68);
+    oo_efi_jump(entry);
+    return 1;
+}
+
+export fn efi_main(img: Int, st: Int) -> Int {
+    ooboot_tag5(79, 79, 69, 70, 73);
+    return ooboot_load();
+}
