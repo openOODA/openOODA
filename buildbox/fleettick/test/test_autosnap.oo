@@ -1,0 +1,63 @@
+// # Test Fleet Autosnap - Hermetic Fixture Drives The Snapshot Pipeline
+//
+// Logline: Prove the autosnap verdicts end-to-end against a fixture repo and bare remote: first push SNAPs, rerun is same, mutation re-SNAPs, clean is silent, no-remote is NOREM, locked path is LOCKED-SKIP, closed gate short-circuits.
+//
+// Setup: &ProcessCap builds the git fixture via argv; &FsWriteCap writes the dirty file + private index under OODA_FS_WRITEDIR; &FsReadCap feeds the index copy. Live-push path runs against the bare file remote.
+//
+// Beats:
+//   1. Fixture — bare remote + dirty work repo, remote named forgejo.
+//   2. SNAP -> same -> re-SNAP -> clean-silent -> NOREM -> LOCKED-SKIP.
+//   3. autosnap_report rollup + GATE-SKIP line.
+
+import "fleettick/autosnap.oo";
+import "std/fs/os/fs.oo";
+
+fn ta_expect(name: String, got: String, want: String) -> Int {
+    if got == want { println("PASS\t" + name); return 0; }
+    println("FAIL\t" + name + "\twant=" + want + "\tgot=" + got);
+    return 1;
+}
+
+// Bare remote + one-commit work repo with a dirty file; remote name forgejo.
+fn ta_fixture(p: &ProcessCap, fw: &FsWriteCap) -> Int {
+    let mut f: Int = 0;
+    let _a: Result[String, String] = sys_exec(p, "rm", "-rf", "/tmp/ax", "/tmp/ax-remote.git", "/tmp/ax2");
+    let _b: Result[String, String] = sys_exec(p, "git", "init", "-q", "--bare", "/tmp/ax-remote.git");
+    let _c: Result[String, String] = sys_exec(p, "git", "init", "-q", "/tmp/ax");
+    let _d: Result[String, String] = sys_exec(p, "git", "-C", "/tmp/ax", "remote", "add", "forgejo", "/tmp/ax-remote.git");
+    let w: Result[Void, String] = fs_write_file(fw, "/tmp/ax/seed.txt", "seed\n");
+    let _e: Result[String, String] = sys_exec(p, "git", "-C", "/tmp/ax", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A");
+    let _g: Result[String, String] = sys_exec(p, "git", "-C", "/tmp/ax", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "seed");
+    if w.is_err() { f = f + 1; }
+    return f;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, _args: List[String]) -> Int {
+    let mut f: Int = ta_fixture(p, fw);
+    let w2: Result[Void, String] = fs_write_file(fw, "/tmp/ax/dirty.txt", "dirty\n");
+    if w2.is_err() { f = f + 1; }
+    let l1: String = as_repo(p, fr, fw, "/tmp", "testhost", "/tmp/ax", "/tmp/ax-index");
+    f = f + ta_expect("snap-first", if bt_idx_from(l1, "ASNAP ax SNAP refs/heads/wip/autosnap-testhost ", 0) >= 0 { "SNAP" } else { l1 }, "SNAP");
+    let ls: Result[String, String] = sys_exec(p, "git", "-C", "/tmp/ax", "ls-remote", "forgejo", "refs/heads/wip/autosnap-testhost");
+    let lsv: String = match ls { Ok(v) => v, Err(_) => "" };
+    f = f + ta_expect("ref-live", if ls.is_ok() && bt_idx_from(lsv, "autosnap-testhost", 0) >= 0 { "YES" } else { "NO" }, "YES");
+    f = f + ta_expect("snap-same", as_repo(p, fr, fw, "/tmp", "testhost", "/tmp/ax", "/tmp/ax-index"), "ASNAP ax same");
+    let w3: Result[Void, String] = fs_write_file(fw, "/tmp/ax/dirty.txt", "dirty2\n");
+    if w3.is_err() { f = f + 1; }
+    let l3: String = as_repo(p, fr, fw, "/tmp", "testhost", "/tmp/ax", "/tmp/ax-index");
+    f = f + ta_expect("snap-again", if bt_idx_from(l3, " SNAP ", 0) >= 0 { "SNAP" } else { l3 }, "SNAP");
+    let _i: Result[String, String] = sys_exec(p, "git", "init", "-q", "/tmp/ax2");
+    let w4: Result[Void, String] = fs_write_file(fw, "/tmp/ax2/dirty.txt", "x\n");
+    if w4.is_err() { f = f + 1; }
+    let _j: Result[String, String] = sys_exec(p, "git", "init", "-q", "/tmp/ax3");
+    let _k: Result[String, String] = sys_exec(p, "git", "-C", "/tmp/ax3", "remote", "add", "forgejo", "/tmp/ax-remote.git");
+    let _l: Result[String, String] = sys_exec(p, "git", "-C", "/tmp/ax3", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "c", "--allow-empty");
+    f = f + ta_expect("clean-silent", as_repo(p, fr, fw, "/tmp", "testhost", "/tmp/ax3", "/tmp/ax-index"), "");
+    f = f + ta_expect("norem", as_repo(p, fr, fw, "/tmp", "testhost", "/tmp/ax2", "/tmp/ax-index"), "ASNAP ax2 NOREM");
+    f = f + ta_expect("locked", as_repo(p, fr, fw, "/tmp", "testhost", "/tmp/openOODA-core/std", "/tmp/ax-index"), "ASNAP std LOCKED-SKIP");
+    let gate: List[String] = autosnap_report(p, fr, fw, "/tmp", list_new(), false, "/tmp/ax-index");
+    f = f + ta_expect("gate-skip", if list_len(gate) > 0 { list_get(gate, 0) } else { "?" }, "autosnap=GATE-SKIP");
+    if f > 0 { println("FAIL\ttest_autosnap\t" + f.to_string()); return 1; }
+    println("test_autosnap OK");
+    return 0;
+}

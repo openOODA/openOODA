@@ -1,0 +1,118 @@
+// # Fleet Autosnap - Uncommitted-Work Snapshot Push (RFC 0013 section 2.5, absorbs autosnap.sh)
+//
+// Logline: For each dirty swept repo, commit the working tree into a private index copy and force-push the snapshot to refs/heads/wip/autosnap-<host> — working tree, real index, and HEAD untouched.
+//
+// Setup: &ProcessCap runs argv env/git only (never a shell); &FsReadCap reads the gitdir index; &FsWriteCap owns the private index path in the state dir. Runs only behind the section 2.3 forge gate.
+//
+// Beats:
+//   1. as_remote — forgejo -> origin -> github pick, no URL sniffing (the shell's 100.x/clownhouse literal is retired).
+//   2. as_tree — copy the gitdir index, GIT_INDEX_FILE add -A + write-tree under an env -i whitelist (HOME+PATH+GIT_INDEX_FILE; PATH rides along or env -i cannot find git).
+//   3. as_prev_tree — the remote tip's tree, "" when absent, "-" when the tip is not a local object.
+//   4. as_snap — commit-tree -p HEAD with the autosnap message.
+//   5. as_repo / autosnap_report — per-repo verdict lines plus the autosnap= rollup.
+
+import "fleettick/btext.oo";
+import "fleettick/sweep.oo";
+import "fleettick/probe/forge.oo";
+import "fleettick/probe/naming.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+
+// First usable remote in backup-lane order; "" when none exists.
+fn as_remote(p: &ProcessCap, repo: String) -> String {
+    let names: List[String] = list_push(list_push(list_push(list_new(), "forgejo"), "origin"), "github");
+    let mut i: Int = 0;
+    while i < list_len(names) {
+        let r: Result[String, String] = sys_exec(p, "git", "-C", repo, "remote", "get-url", list_get(names, i));
+        if r.is_ok() { return list_get(names, i); }
+        i = i + 1;
+    }
+    return "";
+}
+
+// Copy the resolved gitdir index to the private path, refresh it from the
+// working tree under the env whitelist, and return the tree sha ("" on fail).
+fn as_tree(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, home: String, repo: String, idx: String) -> String {
+    let gd: Result[String, String] = sys_exec(p, "git", "-C", repo, "rev-parse", "--git-dir");
+    let mut src: String = match gd { Ok(v) => forge_sha(v), Err(_) => "" };
+    if src == "" { return ""; }
+    if byte_at(src, 0) != 47 { src = repo + "/" + src; }
+    let cp: Result[Void, String] = fs_copy_file(fr, fw, src + "/index", idx);
+    if cp.is_err() { return ""; }
+    let add: Result[String, String] = sys_exec(p, "env", "-i", "HOME=" + home, "PATH=/usr/bin:/bin",
+        "GIT_INDEX_FILE=" + idx, "git", "-C", repo, "add", "-A");
+    let wt: Result[String, String] = sys_exec(p, "env", "-i", "HOME=" + home, "PATH=/usr/bin:/bin",
+        "GIT_INDEX_FILE=" + idx, "git", "-C", repo, "write-tree");
+    let _rm: Result[Void, String] = fs_remove_file(fw, idx);
+    if add.is_err() || wt.is_err() { return ""; }
+    let wtv: String = match wt { Ok(v) => v, Err(_) => "" };
+    return forge_sha(wtv);
+}
+
+// The remote snapshot tip's tree sha: "" absent, "-" not a local object.
+fn as_prev_tree(p: &ProcessCap, repo: String, rem: String, bref: String) -> String {
+    let lr: Result[String, String] = sys_exec(p, "git", "-C", repo, "ls-remote", rem, bref);
+    let refs: List[String] = match lr { Ok(t) => forge_parse(t), Err(_) => list_new() };
+    if list_len(refs) == 0 { return ""; }
+    let parts: List[String] = str_split(list_get(refs, 0), "|");
+    let rv: Result[String, String] = sys_exec(p, "git", "-C", repo, "rev-parse", "-q", "--verify",
+        list_get(parts, 1) + "^{tree}");
+    return match rv { Ok(v) => forge_sha(v), Err(_) => "-" };
+}
+
+// commit-tree the snapshot with the autosnap message; "" on failure.
+fn as_snap(p: &ProcessCap, home: String, repo: String, tree: String, host: String) -> String {
+    let dt: Result[String, String] = sys_exec(p, "date", "-Is");
+    let when: String = forge_sha(match dt { Ok(v) => v, Err(_) => "?" });
+    let ct: Result[String, String] = sys_exec(p, "env", "-i", "HOME=" + home, "PATH=/usr/bin:/bin",
+        "git", "-C", repo, "-c", "user.name=fleettick", "-c", "user.email=fleettick@localhost",
+        "commit-tree", tree, "-p", "HEAD", "-m", "autosnap " + host + " " + when);
+    return match ct { Ok(v) => forge_sha(v), Err(_) => "" };
+}
+
+// One repo's ASNAP line: SNAP / same / FAIL <stage> / NOREM / LOCKED-SKIP; "" when clean.
+fn as_repo(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, home: String, host: String, repo: String, idx: String) -> String {
+    let b: String = nm_base(repo);
+    if sweep_locked(repo) { return "ASNAP " + b + " LOCKED-SKIP"; }
+    let st: Result[String, String] = sys_exec(p, "env", "GIT_OPTIONAL_LOCKS=0", "git", "-C", repo, "status", "--porcelain");
+    if st.is_err() { return "ASNAP " + b + " FAIL status"; }
+    let porc: String = match st { Ok(v) => v, Err(_) => "" };
+    if sweep_classify(porc) == "CLEAN" { return ""; }
+    let rem: String = as_remote(p, repo);
+    if rem == "" { return "ASNAP " + b + " NOREM"; }
+    let tree: String = as_tree(p, fr, fw, home, repo, idx);
+    if tree == "" { return "ASNAP " + b + " FAIL index"; }
+    let bref: String = "refs/heads/wip/autosnap-" + host;
+    if as_prev_tree(p, repo, rem, bref) == tree { return "ASNAP " + b + " same"; }
+    let c: String = as_snap(p, home, repo, tree, host);
+    if c == "" { return "ASNAP " + b + " FAIL commit"; }
+    let ps: Result[String, String] = sys_exec(p, "git", "-C", repo, "push", "-q", rem, c + ":" + bref, "-f");
+    if ps.is_err() { return "ASNAP " + b + " FAIL push"; }
+    return "ASNAP " + b + " SNAP " + bref + " " + bt_slice(c, 0, 12);
+}
+
+// ASNAP lines for every dirty swept repo plus the autosnap= rollup.
+pub fn autosnap_report(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, home: String, repos: List[String], gate: Bool, idx: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    if !gate { return list_push(out, "autosnap=GATE-SKIP"); }
+    let host: String = nm_host(fr);
+    let mut snapped: Int = 0;
+    let mut same: Int = 0;
+    let mut fail: Int = 0;
+    let mut norem: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        let l: String = as_repo(p, fr, fw, home, host, list_get(repos, i), idx);
+        if l != "" {
+            if bt_idx_from(l, " SNAP ", 0) >= 0 { snapped = snapped + 1; }
+            if bt_idx_from(l, " same", 0) >= 0 { same = same + 1; }
+            if bt_idx_from(l, " FAIL", 0) >= 0 { fail = fail + 1; }
+            if bt_idx_from(l, " NOREM", 0) >= 0 { norem = norem + 1; }
+            out = list_push(out, l);
+        }
+        i = i + 1;
+    }
+    out = list_push(out, "autosnap=" + list_len(out).to_string() + " snap=" + snapped.to_string()
+        + " same=" + same.to_string() + " fail=" + fail.to_string() + " norem=" + norem.to_string());
+    return out;
+}

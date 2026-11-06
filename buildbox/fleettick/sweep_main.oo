@@ -6,7 +6,7 @@
 //
 // Beats:
 //   1. Admit this instance via the atomic lock or print TICK SKIP and stop.
-//   2. Run every section in fixed order: repos, quota, workspaces, health, forge, reconcile, naming.
+//   2. Run every section in fixed order: repos, quota, workspaces, health, forge, reconcile, naming, autosnap.
 //   3. Pack every verdict into .fleet-state.txt, spool one ALERT file per breached condition, then release the lock.
 
 import "fleettick/sweep.oo";
@@ -15,6 +15,7 @@ import "fleettick/agents.oo";
 import "fleettick/probe/host.oo";
 import "fleettick/probe/forge.oo";
 import "fleettick/probe/naming.oo";
+import "fleettick/autosnap.oo";
 import "fleettick/recon/recon.oo";
 import "fleettick/out/snap.oo";
 import "fleettick/out/alert.oo";
@@ -69,6 +70,8 @@ fn sm_sections(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, root: String, ho
     all = sm_emit(all, recon_report(p, repos, recon_gate(fl)));
     println("-- naming");
     all = sm_emit(all, naming_report(p, fr, repos));
+    println("-- autosnap");
+    all = sm_emit(all, autosnap_report(p, fr, fw, home, repos, recon_gate(fl), "/Projects/openOODA/.fleet-tick/autosnap-index"));
     println("-- snapshot");
     println(snap_write(fw, "/Projects/openOODA/.fleet-state.txt", all));
     println("-- alerts");
