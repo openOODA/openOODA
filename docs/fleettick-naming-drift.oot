@@ -1,0 +1,98 @@
+// # Fleettick Naming-Drift Check (Spec)
+//
+// Logline: Specify a read-only fleettick check that reports drift in
+//          the fleet's rolling "latest" wip pointers — the check wC
+//          proposed for the backlog in docs/latest-branch-naming.oot.
+//
+// Setup:   Accepted canonical form is wip/<host>-latest (manager,
+//          2026-11-06). Evidence base: 233 wip refs across 97 repos
+//          in the 2026-11-06 wip audit. This spec describes DETECTION
+//          AND REPORTING ONLY — no deletes, no repoints, no merges.
+//
+// Beats:
+//   1. What the check detects.
+//   2. How it classifies each ref family.
+//   3. What it emits into the tick report.
+//   4. The gated migration path it feeds — never executes.
+
+## 1. What the check detects
+
+Per tick, for every swept repo, enumerate refs/heads/wip/* on the
+canonical remote (github ls-remote — the fleet's GitHub-only policy
+applies) and classify against four buckets:
+
+  CANONICAL   wip/<host>-latest            — the accepted pointer
+  LEGACY      wip/head-latest              — retired role-named form
+              wip/spotlight-latest         — retired host-named form
+  BUG         wip/<host>-<host>-latest     — doubled-token template scar
+  SNAPSHOT    wip/<host>-snapshot-<ts>     — dated checkpoint family
+                                             (separate, valid, skipped)
+
+A repo is DRIFTED when any of these hold:
+
+  a) MISSING-CANONICAL — repo carries >=1 legacy/bug latest ref but
+     no wip/<host>-latest.
+  b) MULTI-LATEST      — repo carries >=2 distinct latest-pointer
+     refs (canonical or otherwise).
+  c) TIP-CONFLICT      — the latest pointers it carries resolve to
+     >=2 different commit tips. The audit proved these are parallel
+     generations, not aliases: all 22 triple-carriers held 3 distinct
+     tips.
+  d) DOUBLE-TOKEN      — any ref matches wip/<x>-<x>-latest (same
+     token twice). This is the writers' template bug
+     (wip/<ws>-$(hostname)-latest where ws==hostname), not a naming
+     choice.
+
+## 2. What the check does NOT flag
+
+  - Dated snapshots wip/<host>-snapshot-<yyyymmdd-hhmm>: checkpoints,
+    not pointers; different lifecycle; explicitly out of scope.
+  - Pane wips wip/<ws>-p<n>: active session branches, judged by the
+    merged-or-not sweep logic, not by this check.
+  - wip/autosnap-<host>: machine-state family, already canonical in
+    its own namespace.
+  - Refs present only on stale mirrors (origin/Forgejo): the check
+    reads github only; mirror divergence is a separate report row.
+
+## 3. Tick report emission
+
+One line per repo per finding, in the reconcile section's style:
+
+  NAMING <repo> MISSING-CANONICAL legacy=head-latest,spotlight-latest
+  NAMING <repo> TIP-CONFLICT refs=3 tips=a1b2c3,d4e5f6,789abc
+  NAMING <repo> DOUBLE-TOKEN ref=spotlight-spotlight-latest
+
+Plus a rollup line in the summary section:
+
+  naming=<repos-with-findings> missing=<n> conflict=<n> double=<n>
+
+Severity mapping (matches the fleetdash v2 sev ladder):
+  DOUBLE-TOKEN, TIP-CONFLICT  -> sev 2 (attention: split streams)
+  MISSING-CANONICAL           -> sev 1 (drift: convention not adopted)
+  MULTI-LATEST alone          -> sev 1
+  clean single canonical      -> sev 0
+
+The check is READ-ONLY: ls-remote + ref classification. It mutates
+nothing, spools no alerts of its own (findings ride the tick report),
+and fails closed: an unreachable remote yields NAMING <repo> REMOTE-ERR
+at sev 3 rather than a skipped repo.
+
+## 4. The gated migration it feeds (never executed by the check)
+
+The report exists to size and order a human-gated migration:
+
+  1. FIX WRITERS — correct the doubled-token template in whichever
+     tool emits wip/<host>-<host>-latest; repoint all latest-writers
+     to wip/<host>-latest.
+  2. VERIFY CONSUMERS — grep fleet tooling for hardcoded
+     head-latest / spotlight-latest reads before anything moves.
+  3. REPOINT — create/move wip/<host>-latest per repo, choosing the
+     tip by the TIP-CONFLICT report (the three streams are NOT
+     interchangeable — each picks its own newest generation).
+  4. HOLD — legacy and doubled refs stay in place, exactly like the
+     31 merged pane wips: manager declined deletion.
+  5. REMOVE — legacy refs only after explicit manager approval.
+
+The check's job is to make step 3's tip-selection auditable and to
+keep a running count of how much of the fleet still drifts after
+writers are fixed — a burndown metric, not a mutator.
