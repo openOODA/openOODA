@@ -1,0 +1,60 @@
+// # Test Naming Probe - Pure Classifier Checks Plus Optional Live Repo Probe
+//
+// Logline: Prove the latest-pointer classifiers on fixed ref inputs, then optionally emit real NAMING lines when a repo path is passed.
+//
+// Setup: no capabilities needed for the pure checks; &ProcessCap/&FsReadCap feed naming_report when args[0] is a repository path.
+//
+// Beats:
+//   1. nm_middle — only wip/*-latest refs yield a token.
+//   2. nm_classify — CANONICAL / LEGACY / DOUBLE-TOKEN verdicts.
+//   3. nm_csv — comma join behavior.
+//   4. Optional live naming_report against a real repo.
+
+import "fleettick/probe/naming.oo";
+
+fn tn_expect(name: String, got: String, want: String) -> Int {
+    if got == want { println("PASS\t" + name); return 0; }
+    println("FAIL\t" + name + "\twant=" + want + "\tgot=" + got);
+    return 1;
+}
+
+fn tn_middle() -> Int {
+    let mut f: Int = 0;
+    f = f + tn_expect("middle canon", nm_middle("refs/heads/wip/myhost-latest"), "myhost");
+    f = f + tn_expect("middle doubled", nm_middle("refs/heads/wip/spotlight-spotlight-latest"), "spotlight-spotlight");
+    f = f + tn_expect("middle legacy", nm_middle("refs/heads/wip/head-latest"), "head");
+    f = f + tn_expect("middle pane-wip", nm_middle("refs/heads/wip/ringmaster-ringmaster-wC"), "");
+    f = f + tn_expect("middle snapshot", nm_middle("refs/heads/wip/spotlight-snapshot-20261106-0341"), "");
+    f = f + tn_expect("middle autosnap", nm_middle("refs/heads/wip/autosnap-myhost"), "");
+    f = f + tn_expect("middle non-wip", nm_middle("refs/heads/ooda"), "");
+    return f;
+}
+
+fn tn_classify() -> Int {
+    let h: String = "testhost";
+    let mut f: Int = 0;
+    f = f + tn_expect("classify canon", nm_classify("testhost", h).to_string(), "1");
+    f = f + tn_expect("classify head", nm_classify("head", h).to_string(), "2");
+    f = f + tn_expect("classify foreign-host", nm_classify("spotlight", h).to_string(), "2");
+    f = f + tn_expect("classify doubled", nm_classify("spotlight-spotlight", h).to_string(), "3");
+    f = f + tn_expect("classify doubled-inner-dash", nm_classify("a-b-a-b", h).to_string(), "3");
+    f = f + tn_expect("classify near-doubled", nm_classify("ab-cd", h).to_string(), "2");
+    f = f + tn_expect("classify single", nm_classify("x", h).to_string(), "2");
+    f = f + tn_expect("csv empty", nm_csv("", "a"), "a");
+    f = f + tn_expect("csv join", nm_csv("a", "b"), "a,b");
+    f = f + tn_expect("seen hit", nm_seen(list_push(list_new(), "aaa"), "aaa").to_string(), "1");
+    f = f + tn_expect("seen miss", nm_seen(list_push(list_new(), "aaa"), "bbb").to_string(), "0");
+    return f;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let fails: Int = tn_middle() + tn_classify();
+    if list_len(args) > 0 && list_get(args, 0) != "" {
+        let rl: List[String] = naming_report(p, fr, list_push(list_new(), list_get(args, 0)));
+        let mut i: Int = 0;
+        while i < list_len(rl) { println("LIVE\t" + list_get(rl, i)); i = i + 1; }
+    }
+    if fails > 0 { println("FAIL\ttest_naming\t" + fails.to_string() + " check(s) failed"); return 1; }
+    println("test_naming OK");
+    return 0;
+}

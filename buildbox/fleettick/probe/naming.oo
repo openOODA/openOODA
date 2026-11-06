@@ -1,0 +1,144 @@
+// # Fleet Naming Probe - Rolling Latest-Pointer Drift Check (spec: docs/fleettick-naming-drift.oot)
+//
+// Logline: Classify every refs/heads/wip/*-latest ref on each swept repo's github remote and report pointer drift read-only.
+//
+// Setup: &ProcessCap runs argv git remote get-url + ls-remote; &FsReadCap reads /etc/hostname. Detection and reporting only — never deletes, repoints, or merges.
+//
+// Beats:
+//   1. nm_host — this host's name for the canonical wip/<host>-latest test.
+//   2. nm_middle — strip wip/ ... -latest to the token between.
+//   3. nm_classify — CANONICAL=1 / LEGACY=2 / DOUBLE-TOKEN=3.
+//   4. nm_repo — per-repo NAMING finding lines.
+//   5. naming_report — section lines plus the naming= rollup.
+
+import "fleettick/btext.oo";
+import "fleettick/probe/forge.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+
+// This host's name: /etc/hostname trimmed of trailing whitespace.
+pub fn nm_host(fr: &FsReadCap) -> String {
+    let rd: Result[String, String] = fs_read_file(fr, "/etc/hostname");
+    let mut h: String = match rd { Ok(v) => v, Err(_) => "" };
+    let mut n: Int = bytes_len(h);
+    while n > 0 && byte_at(h, n - 1) < 33 { h = bt_slice(h, 0, n - 1); n = n - 1; }
+    return h;
+}
+
+// The token between wip/ and -latest, or "" when the ref is not a
+// rolling latest pointer (pane wips, snapshots, autosnap all fall out).
+pub fn nm_middle(ref: String) -> String {
+    let pre: String = "refs/heads/wip/";
+    let n: Int = bytes_len(ref);
+    if n <= bytes_len(pre) + 7 { return ""; }
+    if bt_slice(ref, 0, bytes_len(pre)) != pre { return ""; }
+    if bt_slice(ref, n - 7, n) != "-latest" { return ""; }
+    return bt_slice(ref, bytes_len(pre), n - 7);
+}
+
+// CANONICAL=1 (mid == host), DOUBLE-TOKEN=3 (mid is <t>-<t>), LEGACY=2.
+pub fn nm_classify(mid: String, host: String) -> Int {
+    if mid == host { return 1; }
+    let n: Int = bytes_len(mid);
+    let k: Int = (n - 1) / 2;
+    if n % 2 == 1 && byte_at(mid, k) == 45 && bt_slice(mid, 0, k) == bt_slice(mid, k + 1, n) { return 3; }
+    return 2;
+}
+
+// Append s to csv (comma-separated), returning the joined string.
+fn nm_csv(csv: String, s: String) -> String {
+    if csv == "" { return s; }
+    return csv + "," + s;
+}
+
+// True when the 12-char sha already sits in the unique-tips list.
+fn nm_seen(tips: List[String], sha: String) -> Bool {
+    let mut i: Int = 0;
+    while i < list_len(tips) {
+        if list_get(tips, i) == sha { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+// One repo's NAMING lines: DOUBLE-TOKEN, TIP-CONFLICT, MULTI-LATEST,
+// MISSING-CANONICAL findings, or REMOTE-ERR when the probe fails.
+fn nm_repo(p: &ProcessCap, host: String, repo: String) -> List[String] {
+    let b: String = nm_base(repo);
+    let mut out: List[String] = list_new();
+    let ur: Result[String, String] = sys_exec(p, "git", "-C", repo, "remote", "get-url", "github");
+    let url: String = match ur { Ok(u) => forge_sha(u), Err(_) => "" };
+    if url == "" { return list_push(out, "NAMING " + b + " REMOTE-ERR no github remote"); }
+    let lr: Result[String, String] = sys_exec(p, "git", "ls-remote", url, "refs/heads/wip/*");
+    let mut refs: List[String] = list_new();
+    match lr { Ok(t) => { refs = forge_parse(t); } Err(_) => { return list_push(out, "NAMING " + b + " REMOTE-ERR ls-remote " + url); } }
+    let mut canon: Bool = false;
+    let mut nl: Int = 0;
+    let mut dbl: String = "";
+    let mut noncanon: String = "";
+    let mut tips: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(refs) {
+        let parts: List[String] = str_split(list_get(refs, i), "|");
+        let mid: String = nm_middle(list_get(parts, 0));
+        if mid != "" {
+            nl = nl + 1;
+            let cls: Int = nm_classify(mid, host);
+            let sha: String = bt_slice(list_get(parts, 1), 0, 12);
+            if !nm_seen(tips, sha) { tips = list_push(tips, sha); }
+            if cls == 1 { canon = true; } else { noncanon = nm_csv(noncanon, mid + "-latest"); }
+            if cls == 3 { dbl = nm_csv(dbl, mid + "-latest"); }
+        }
+        i = i + 1;
+    }
+    if dbl != "" { out = list_push(out, "NAMING " + b + " DOUBLE-TOKEN ref=" + dbl); }
+    if list_len(tips) > 1 {
+        let mut tc: String = "";
+        let mut j: Int = 0;
+        while j < list_len(tips) { tc = nm_csv(tc, list_get(tips, j)); j = j + 1; }
+        out = list_push(out, "NAMING " + b + " TIP-CONFLICT refs=" + nl.to_string() + " tips=" + tc);
+    }
+    if nl > 1 { out = list_push(out, "NAMING " + b + " MULTI-LATEST refs=" + nl.to_string()); }
+    if nl > 0 && !canon { out = list_push(out, "NAMING " + b + " MISSING-CANONICAL legacy=" + noncanon); }
+    return out;
+}
+
+// Basename of the repo path for line display.
+fn nm_base(path: String) -> String {
+    let n: Int = bytes_len(path);
+    let mut i: Int = n;
+    while i > 0 {
+        if byte_at(path, i - 1) == 47 { return bt_slice(path, i, n); }
+        i = i - 1;
+    }
+    return path;
+}
+
+// Section lines for every swept repo plus the naming= rollup counts.
+pub fn naming_report(p: &ProcessCap, fr: &FsReadCap, repos: List[String]) -> List[String] {
+    let host: String = nm_host(fr);
+    let mut out: List[String] = list_new();
+    let mut hit: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        let rl: List[String] = nm_repo(p, host, list_get(repos, i));
+        if list_len(rl) > 0 { hit = hit + 1; }
+        let mut j: Int = 0;
+        while j < list_len(rl) { out = list_push(out, list_get(rl, j)); j = j + 1; }
+        i = i + 1;
+    }
+    let mut miss: Int = 0;
+    let mut conf: Int = 0;
+    let mut dbln: Int = 0;
+    i = 0;
+    while i < list_len(out) {
+        let l: String = list_get(out, i);
+        if bt_idx_from(l, " MISSING-CANONICAL", 0) >= 0 { miss = miss + 1; }
+        if bt_idx_from(l, " TIP-CONFLICT", 0) >= 0 { conf = conf + 1; }
+        if bt_idx_from(l, " DOUBLE-TOKEN", 0) >= 0 { dbln = dbln + 1; }
+        i = i + 1;
+    }
+    out = list_push(out, "naming=" + hit.to_string() + " missing=" + miss.to_string()
+        + " conflict=" + conf.to_string() + " double=" + dbln.to_string());
+    return out;
+}
