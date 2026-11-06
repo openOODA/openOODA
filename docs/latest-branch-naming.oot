@@ -1,0 +1,61 @@
+// # Latest-Branch Naming Normalization (Proposal)
+//
+// Logline: Normalize the three coexisting rolling-pointer branch
+//          conventions found by the fleet wip audit to one canonical
+//          host-scoped form. Proposal only — no renames or deletes.
+//
+// Setup:   Evidence from the 2026-11-06 wip audit (233 refs, 97
+//          repos, /tmp/wip-evidence.txt). Sibling convention:
+//          autosnap.sh writes refs/heads/wip/autosnap-<host>.
+//
+// Beats:
+//   1. The three conventions and their overlap.
+//   2. Evidence they are generations, not aliases.
+//   3. Recommended canonical form and migration order.
+
+## 1. Three coexisting conventions
+
+| Branch | Refs | Repos | Likely generation |
+|---|---|---|---|
+| wip/head-latest | 22 | 22 | oldest — role-named pointer |
+| wip/spotlight-latest | 22 | 22 | middle — host-named pointer |
+| wip/spotlight-spotlight-latest | 59 | 59 | newest — doubled host token |
+
+Repo overlap: 37 repos carry ONLY spotlight-spotlight-latest;
+22 repos carry ALL THREE; zero repos carry only head-latest or
+only spotlight-latest. The newest convention covers the superset.
+
+## 2. Generations, not aliases
+
+All 22 triple-carrier repos hold three DIFFERENT tips across the
+three conventions — they are successive generations of the same
+rolling-pointer idea, not synced aliases. The doubled word in
+spotlight-spotlight-latest matches a template bug shape:
+`wip/<ws>-$(hostname -s)-latest` with workspace == hostname.
+
+## 3. Recommendation
+
+Canonical form: `wip/<host>-latest`
+
+- Matches the sibling autosnap convention `wip/autosnap-<host>`
+  (one writer per host, self-describing ownership).
+- `head-latest` names a role, not a machine — ambiguous the moment
+  a second lead pane exists.
+- `spotlight-spotlight-latest` is the current de-facto superset
+  (59 refs) but carries the doubled-token scar; renaming to
+  `spotlight-latest` is a one-ref move per repo for its writer.
+
+Migration order (each step gated, no deletes without approval):
+
+  1. Writers: spotlight automation repoints to wip/spotlight-latest;
+     head automation retires head-latest in favor of its own
+     <host>-latest if it still snapshots.
+  2. Consumers (reconcile.sh's wip/* match is already generic —
+      verify no consumer hardcodes one convention).
+  3. Hold all legacy refs until the manager signs off on deletes —
+      same rule as the 31 stale pane wips in the audit.
+  4. fleettick backlog: add a wip-naming drift check (count distinct
+     *-latest conventions per repo; alert when >1 non-autosnap form).
+
+Non-goal: snapshot-snapshot-<ts> dated branches are a separate,
+valid family (point-in-time checkpoints, not rolling pointers).
