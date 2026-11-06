@@ -1,5 +1,8 @@
 # Naming & Single-Responsibility Audit — Reconciled Consensus
 
+> **Disposition (2026-11-06):** LANDED. The missing ownership table this audit demanded was published as `persona-ownership.oot` (normative SSoT). Its invariant #3 (zero catalog double-ships) was enforced in `openOODA/catalog` `cb4490b` — 70 persona-token packages withdrawn, index 238→168. Retained as the audit's reconciled record; supersedes the two passes below.
+
+
 **Reconciler:** Devin `wR:p2` (swe-2-max) — third pass, independent verification
 **Date:** 2026-11-05
 **Inputs:**

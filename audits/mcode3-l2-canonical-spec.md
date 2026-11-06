@@ -1,5 +1,8 @@
 # L2 openOODA-OS Remediation Spec — canonical std wiring (mcode-review 3)
 
+> **Disposition (2026-11-06):** Archived spec. The L2 `openOODA-OS` canonical-std remediation it prescribes was executed and verified — see `nextgen-2axis-review-mcode3.md` (18/18 PASS). Retained as the transformation reference.
+
+
 **Status:** reference implementation PROVEN at `/Projects/openOODA-OS/ooaudiod` commit `07fb716`.
 `make verify` passes and `make test` reports `PASS: 70/70 assertions` + `ALL TESTS PASSED`.
 

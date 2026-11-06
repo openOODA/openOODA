@@ -1,5 +1,8 @@
 # 2-Axis Next-Generation Code Review — L0 `openOODA-core`, L1 `openOODA-kernel`, L2 `openOODA-OS`
 
+> **Disposition (2026-11-06):** Archived 2-axis review (44 L0–L2 repos). Note: executed against the pre-consolidation tree — repo counts/layers reflect Nov-5 state (L1 16→6, L2 18→8 canonical per `persona-ownership.oot`). Defect fixes from this pass are in-tree.
+
+
 **Date:** 2026-11-05 (first pass `07:35 HST`, second pass `18:20 HST`)
 **Reviewer:** `mcode-review 1` (Stage 1 Code Reviewer, MiniMax Code)
 **Scope:** 44 git repositories — L0 `openOODA-core` (10 repos), L1 `openOODA-kernel` (16 repos), L2 `openOODA-OS` (18 repos)

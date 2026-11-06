@@ -1,5 +1,8 @@
 # 2-Axis Next-Generation Code Review — Tier 0 Flagships + L2 `openOODA-OS` Batch
 
+> **Disposition (2026-11-06):** Archived 2-axis review (Tier-0 flagships + 15 L2 daemons, all PASS). Scope predates consolidation — `oodevd`, `oodnsd`, `oofs-*`, `oologd`, `ooimage`, `oorealm`, `oosession`, `oodevd` are absorbed names under `persona-ownership.oot` now.
+
+
 **Date:** 2026-11-05 (18:20–21:50 HST)
 **Reviewer:** `mcode-review 3` (Stage 1 Code Reviewer, MiniMax Code)
 **Scope:** 18 git repositories — Tier 0 flagships (`idlescreen`, `ooflash`, `openOODA`) and the L2 `openOODA-OS` batch (`ooaid`, `ooaudiod`, `oodevd`, `oodnsd`, `oofs-ext4`, `oofs-tmp`, `oohealthd`, `ooimage`, `ooinit`, `oologd`, `oonetd`, `oopolicyd`, `oopowerd`, `oorealm`, `oosession`)

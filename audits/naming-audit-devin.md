@@ -1,5 +1,8 @@
 # Naming & Single-Responsibility Audit — Independent Findings (Devin)
 
+> **Disposition (2026-11-06):** Independent pass 1 of 2 — subsumed by `naming-audit-consensus.md` (reconciled + tree-reverified). Findings landed via `persona-ownership.oot` + catalog `cb4490b`.
+
+
 **Scope:** All repositories across the 9 openOODA organizations under `/Projects/` (read-only inspection only: directory names, `README.md`, `Makefile` `BIN`/`PERSONAS`, `.oo` page inventories, governing docs). No compilers, builds, or tests were executed.
 
 **Date:** 2026-11-05 · **Auditor:** Devin (independent, zero-trust)

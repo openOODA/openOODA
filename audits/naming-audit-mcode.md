@@ -1,5 +1,8 @@
 # Naming & Single-Responsibility Audit — Independent Pass (mcode / MiniMax M3.1-Flash)
 
+> **Disposition (2026-11-06):** Independent pass 2 of 2 — subsumed by `naming-audit-consensus.md`. The "20 signed double-shipped package names" finding is resolved at the catalog level (70 persona withdrawals, `cb4490b`); binary-level mutual claims remain a release decision.
+
+
 **Auditor:** MiniMax Code (`mcode`, MiniMax-M3.1-Flash) — Stage 1 Code Reviewer, openOODA `spotlight` (`w3:p1`)
 **Date:** 2026-11-05
 **Scope:** all 9 openOODA organizations — `/Projects/openOODA`, `/Projects/openOODA-core`, `/Projects/openOODA-kernel`, `/Projects/openOODA-OS`, `/Projects/openOODA-tools`, `/Projects/openOODA-DE`, `/Projects/openOODA-apps`, `/Projects/openOODA-cloud`, `/Projects/openOODA-agents`

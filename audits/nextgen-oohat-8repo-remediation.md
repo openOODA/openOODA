@@ -1,5 +1,8 @@
 # oohat 8-Hat Remediation — 8 Repos to `quorum_mask=255`
 
+> **Disposition (2026-11-06):** Archived remediation record — 8 repos reached `quorum_mask=255`. Environment notes at the bottom remain operationally valid (`OODA_COMPILER`/`oodac.real`, `OODA_NO_JAIL` for lint — now also documented in `oodac/docs/runtime-env.oot`).
+
+
 **Session:** `wE:p1 mcode-review 3` (continuation) · **Date:** 2026-11-05 HST
 **Scope:** 8 repositories remediated to pass the L7 8-Hat oohat cycle with `cycle=PASS quorum_mask=255 epoch=1->2 verdict=pass`.
 

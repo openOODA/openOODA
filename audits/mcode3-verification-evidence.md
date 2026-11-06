@@ -1,5 +1,8 @@
 # mcode-review 3 — Verification Evidence Log
 
+> **Disposition (2026-11-06):** Archived record of the completed mcode-review-3 campaign (18 repos, verdicts below). The campaign machinery (`mcode3-*.sh/.py/.log`, `logs/` capture tree) was retired in `audits/` cleanup — this evidence log is the surviving record; script references are historical.
+
+
 **Date:** 2026-11-05 (18:20–21:50 HST)
 **Scope:** 18 repositories — Tier 0 flagships and the L2 `openOODA-OS` batch.
 
