@@ -1,0 +1,39 @@
+// # Head Watch Verification Suite - Pane Triage Assertions
+//
+// Logline: Exercises the pure pane classifiers of the head watcher and seals the verdict to the canonical PQC round.
+//
+// Setup: Needs FsReadCap only for the not-there refusal case; spawns no process.
+//
+// Beats:
+//   1. Assert the classifiers detect prompts, rate limits, and idle devin panes.
+//   2. Assert the classifiers refuse busy panes and unrelated text.
+//   3. Bind the verdict of the suite to the canonical PQC round and print the count.
+
+import "std/sec/pqc.oo";
+import "watch/panes.oo";
+
+fn assert_case(cond: Bool, label: String) -> Int {
+    if cond { println("ok " + label); return 1; }
+    println("FAIL " + label);
+    return 0;
+}
+
+pub fn main(fs: &FsReadCap, args: List[String]) -> Result[Int, String] {
+    let mut n: Int = 0;
+    n = n + assert_case(wp_has_prompt("↑↓ select · ↵ confirm · esc cancel"), "a selection prompt is detected");
+    n = n + assert_case(wp_has_prompt("Proceed? (y/n)"), "a yes/no prompt is detected");
+    n = n + assert_case(!wp_has_prompt("Thinking · 3m"), "a busy pane is not a prompt");
+    n = n + assert_case(wp_rate_limited("Reached free model rate limit. Send a message"), "the hourly limit is detected");
+    n = n + assert_case(!wp_rate_limited("Running tools · 2m"), "a working pane is not rate limited");
+    n = n + assert_case(wp_devin_idle("❭ Ask Devin to build features"), "an idle devin pane is detected");
+    n = n + assert_case(!wp_devin_idle("Thinking · 1s\n❭ Ask Devin to build features"), "a thinking devin pane is not idle");
+    n = n + assert_case(!wp_devin_idle("Reached free model rate limit\n❭ Ask Devin to build"), "a rate-limited pane is not idle");
+    n = n + assert_case(wp_tail("a\nb\nc", 2) == "b\nc\n", "the tail keeps the last lines");
+    let refused: Bool = !oo_path_exists(fs, "/nonexistent/head-watch/watch.last");
+    n = n + assert_case(refused, "a path that is not there is refused, not read");
+    let seal: Int = oo_pqc_sha3_round(n, 20261106);
+    n = n + assert_case(seal > 0, "the canonical PQC round answers a digest of the verdict");
+    println("verdict " + n.to_string() + "/11");
+    if n != 11 { return Err("head watch suite failed"); }
+    return Ok(0);
+}
