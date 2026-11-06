@@ -1,0 +1,88 @@
+// # Fleet Forge Probe - Live Tip Drift Check For The Canonical Remote (RFC 0013)
+//
+// Logline: Compare github remote branch tips read live via ls-remote against local tracking refs and report drift without fetching.
+//
+// Setup: &ProcessCap only — argv git remote get-url, ls-remote, rev-parse. Read-only: the probe never fetches, pushes, or writes a ref.
+//
+// Beats:
+//   1. Resolve the github remote URL from the repository's own git config — no URL is hardcoded.
+//   2. ls-remote the canonical refs and map each to its refs/remotes/github/<name> tracking ref via rev-parse.
+//   3. Emit FORGE <name> SYNC|DRIFT|GAP|UNKNOWN per ref; FORGE_ERR when the remote itself is unreachable.
+
+import "fleettick/btext.oo";
+import "std/core/primitives/str.oo";
+
+// The "ref|sha" triples of an ls-remote reply: "sha<TAB>ref" per line.
+pub fn forge_parse(text: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut pos: Int = 0;
+    while true {
+        let t: Int = bt_idx_from(text, "\trefs/", pos);
+        if t < 0 { return out; }
+        if t >= 40 {
+            let sha: String = bt_slice(text, t - 40, t);
+            let e: Int = bt_idx_from(text, "\n", t);
+            let r: String = bt_slice(text, t + 1, if e < 0 { bytes_len(text) } else { e });
+            out = list_push(out, r + "|" + sha);
+        }
+        pos = t + 1;
+    }
+}
+
+// The remote sha recorded for refname, or "" when the ref is absent.
+pub fn forge_tip(refs: List[String], refname: String) -> String {
+    let mut i: Int = 0;
+    let n: Int = list_len(refs);
+    while i < n {
+        let parts: List[String] = str_split(list_get(refs, i), "|");
+        if list_get(parts, 0) == refname { return list_get(parts, 1); }
+        i = i + 1;
+    }
+    return "";
+}
+
+// SYNC when tips agree, GAP when the tracking ref is absent locally,
+// UNKNOWN when the remote ref is absent, DRIFT when both exist and differ.
+pub fn forge_drift(local: String, remote: String) -> String {
+    if remote == "" { return "UNKNOWN"; }
+    if local == "" { return "GAP"; }
+    if local == remote { return "SYNC"; }
+    return "DRIFT";
+}
+
+// The sha that a rev-parse reply carries, with the trailing newline cut.
+fn forge_sha(s: String) -> String {
+    let nl: Int = bt_idx_from(s, "\n", 0);
+    return if nl < 0 { s } else { bt_slice(s, 0, nl) };
+}
+
+// The live probe for the canonical refs (ooda, master): remote tip via
+// ls-remote, local tip via the github tracking ref, classified per ref.
+pub fn forge_report(p: &ProcessCap, repo: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let ur: Result[String, String] = sys_exec(p, "git", "-C", repo, "remote", "get-url", "github");
+    let url: String = match ur {
+        Ok(u) => forge_sha(u), Err(_) => "",
+    };
+    if url == "" { return list_push(out, "FORGE_ERR no github remote"); }
+    let lr: Result[String, String] = sys_exec(p, "git", "ls-remote", url,
+        "refs/heads/ooda", "refs/heads/master");
+    let remote: List[String] = match lr {
+        Ok(t) => forge_parse(t), Err(_) => list_new(),
+    };
+    if list_len(remote) == 0 { return list_push(out, "FORGE_ERR ls-remote unreachable " + url); }
+    let names: List[String] = list_push(list_push(list_new(), "ooda"), "master");
+    let mut i: Int = 0;
+    while i < list_len(names) {
+        let n: String = list_get(names, i);
+        let rt: String = forge_tip(remote, "refs/heads/" + n);
+        let lv: Result[String, String] = sys_exec(p, "git", "-C", repo, "rev-parse",
+            "--verify", "refs/remotes/github/" + n);
+        let lsha: String = match lv { Ok(s) => forge_sha(s), Err(_) => "" };
+        out = list_push(out, "FORGE " + n + " " + forge_drift(lsha, rt)
+            + " local=" + if lsha == "" { "none" } else { bt_slice(lsha, 0, 12) }
+            + " remote=" + if rt == "" { "none" } else { bt_slice(rt, 0, 12) });
+        i = i + 1;
+    }
+    return out;
+}

@@ -1,0 +1,93 @@
+// # Fleet Host Health - Per-Box Disk, Memory And Process Checks (RFC 0013)
+//
+// Logline: Turn a threshold config plus read-only df/meminfo/pgrep probes into one HEALTH verdict line per host check.
+//
+// Setup: &ProcessCap runs df and pgrep argv directly; &FsReadCap reads /proc/meminfo and the threshold config. Thresholds come from a key=value file (disk_warn, mem_warn, proc, disk_path) with built-in defaults.
+//
+// Beats:
+//   1. Parse "key=value" config lines by byte offset; missing keys fall back to defaults.
+//   2. Disk percent comes from df -P, memory percent from /proc/meminfo, liveness from pgrep.
+//   3. Emit HEALTH disk|mem|proc lines: OK under the warn floor, WARN at or above it, UNKNOWN on a failed probe.
+
+import "fleettick/btext.oo";
+import "std/fs/os/fs.oo";
+import "std/core/primitives/str.oo";
+
+// The integer on the "key=N" line, or -1 when the key is absent. The
+// newline prefix on both sides pins the match to the start of a line so
+// "warn" can never match inside "disk_warn".
+pub fn host_conf_int(text: String, key: String) -> Int {
+    let doc: String = "\n" + text;
+    let mark: String = "\n" + key + "=";
+    let i: Int = bt_idx_from(doc, mark, 0);
+    if i < 0 { return -1; }
+    return bt_uint_at(doc, i + bytes_len(mark));
+}
+
+// The value of the "key=value" line up to end of line, or "" when absent.
+pub fn host_conf_str(text: String, key: String) -> String {
+    let doc: String = "\n" + text;
+    let mark: String = "\n" + key + "=";
+    let i: Int = bt_idx_from(doc, mark, 0);
+    if i < 0 { return ""; }
+    let v0: Int = i + bytes_len(mark);
+    let e: Int = bt_idx_from(doc, "\n", v0);
+    return bt_slice(doc, v0, if e < 0 { bytes_len(doc) } else { e });
+}
+
+// The Use% field of a df -P data row, or -1. Searching after the first
+// newline skips a "%" that a header column might carry.
+pub fn host_disk_pct(dftext: String) -> Int {
+    let nl: Int = bt_idx_from(dftext, "\n", 0);
+    if nl < 0 { return -1; }
+    let p: Int = bt_idx_from(dftext, "%", nl);
+    if p < 0 { return -1; }
+    return bt_num_before(dftext, p);
+}
+
+// Memory used percent = 100 - MemAvailable * 100 / MemTotal, or -1.
+pub fn host_mem_pct(meminfo: String) -> Int {
+    let ti: Int = bt_idx_from(meminfo, "MemTotal:", 0);
+    let ai: Int = bt_idx_from(meminfo, "MemAvailable:", 0);
+    if ti < 0 || ai < 0 { return -1; }
+    let t: Int = bt_uint_at(meminfo, ti + 9);
+    let a: Int = bt_uint_at(meminfo, ai + 13);
+    if t <= 0 || a < 0 { return -1; }
+    return 100 - (a * 100 / t);
+}
+
+// OK under the warn floor, WARN at or above it, UNKNOWN on a bad reading.
+pub fn host_class(used: Int, warn: Int) -> String {
+    if used < 0 || warn < 0 { return "UNKNOWN"; }
+    if used >= warn { return "WARN"; }
+    return "OK";
+}
+
+// The live report: disk, memory, and the configured process's liveness.
+pub fn host_report(p: &ProcessCap, fr: &FsReadCap, conf: String) -> List[String] {
+    let mut doc: String = "disk_warn=90\nmem_warn=90\nproc=herdr\ndisk_path=/\n";
+    match fs_read_file(fr, conf) { Ok(d) => { doc = d; }, Err(_) => { } }
+    let dwarn: Int = host_conf_int(doc, "disk_warn");
+    let mwarn: Int = host_conf_int(doc, "mem_warn");
+    let pname: String = host_conf_str(doc, "proc");
+    let mut dpath: String = host_conf_str(doc, "disk_path");
+    if dpath == "" { dpath = "/"; }
+    let mut out: List[String] = list_new();
+    let df: Result[String, String] = sys_exec(p, "df", "-P", dpath);
+    match df {
+        Ok(t) => { let u: Int = host_disk_pct(t);
+            out = list_push(out, "HEALTH disk " + host_class(u, dwarn) + " use=" + u.to_string() + " warn=" + dwarn.to_string()); },
+        Err(_) => { out = list_push(out, "HEALTH disk UNKNOWN use=-1 warn=" + dwarn.to_string()); },
+    }
+    match fs_read_file(fr, "/proc/meminfo") {
+        Ok(t) => { let u: Int = host_mem_pct(t);
+            out = list_push(out, "HEALTH mem " + host_class(u, mwarn) + " use=" + u.to_string() + " warn=" + mwarn.to_string()); },
+        Err(_) => { out = list_push(out, "HEALTH mem UNKNOWN use=-1 warn=" + mwarn.to_string()); },
+    }
+    if pname != "" {
+        let pg: Result[String, String] = sys_exec(p, "pgrep", pname);
+        let st: String = match pg { Ok(_) => "UP", Err(_) => "DOWN" };
+        out = list_push(out, "HEALTH proc " + pname + " " + st);
+    }
+    return out;
+}

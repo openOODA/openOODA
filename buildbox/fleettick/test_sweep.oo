@@ -10,10 +10,13 @@
 //   3. Enumeration: a known space root yields its known repository; a file root yields none; fixtures prove ERR and .git-file detection.
 //   4. Quota metering: every observed usage shape parses and the pacing verdicts hold.
 //   5. Idle workspaces: the herdr JSON aligns into triples and the per-workspace verdicts hold.
+//   6. Host health and forge probe: config/df/meminfo/ls-remote parsing and the threshold/drift classifiers.
 
 import "fleettick/sweep.oo";
 import "fleettick/meter.oo";
 import "fleettick/agents.oo";
+import "fleettick/probe/host.oo";
+import "fleettick/probe/forge.oo";
 import "std/fs/os/fs.oo";
 
 fn ts_expect(name: String, got: String, want: String) -> Int {
@@ -98,6 +101,16 @@ fn ts_meter_checks() -> Int {
     fails = fails + ts_expect("entries_count", list_len(meter_entries(led)).to_string(), "2");
     fails = fails + ts_expect("entry_devin", list_get(meter_entries(led), 0), "devin|0|100");
     fails = fails + ts_expect_has("report_vibe_throttle", meter_report(led), "QUOTA vibe THROTTLE used=90 rem=10");
+    let conf: String = "disk_warn=85\nmem_warn=90\nproc=herdr\ndisk_path=/\n";
+    fails = fails + ts_expect("conf_disk_warn", host_conf_int(conf, "disk_warn").to_string(), "85");
+    fails = fails + ts_expect("conf_missing", host_conf_int(conf, "swap_warn").to_string(), "-1");
+    fails = fails + ts_expect("conf_str_proc", host_conf_str(conf, "proc"), "herdr");
+    fails = fails + ts_expect("disk_pct", host_disk_pct("Filesystem 1K-blocks Used Available Capacity Mounted on\n/dev/sda 1000 450 550 45% /\n").to_string(), "45");
+    fails = fails + ts_expect("disk_pct_hdr_pct", host_disk_pct("Filesystem Use% Mounted\n/dev/sda 1000 450 550 67% /\n").to_string(), "67");
+    fails = fails + ts_expect("mem_pct", host_mem_pct("MemTotal:       1000 kB\nMemFree:         100 kB\nMemAvailable:    250 kB\n").to_string(), "75");
+    fails = fails + ts_expect("health_ok", host_class(80, 85), "OK");
+    fails = fails + ts_expect("health_warn", host_class(85, 85), "WARN");
+    fails = fails + ts_expect("health_unknown", host_class(-1, 85), "UNKNOWN");
     return fails;
 }
 
@@ -111,12 +124,20 @@ fn ts_agent_checks() -> Int {
     fails = fails + ts_expect_has("ws_summary", agents_report(js), "workspaces=2 idle=1 active=0 blocked=1");
     fails = fails + ts_expect("panes_empty", list_len(agents_panes("{}")).to_string(), "0");
     fails = fails + ts_expect("panes_misaligned", list_get(agents_panes("{\"pane_id\":\"w1:p1\"}"), 0), "ERR||misaligned");
+    let lsr: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/heads/ooda\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\trefs/heads/master\n";
+    fails = fails + ts_expect("forge_parse_n", list_len(forge_parse(lsr)).to_string(), "2");
+    fails = fails + ts_expect("forge_tip", forge_tip(forge_parse(lsr), "refs/heads/ooda"), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    fails = fails + ts_expect("forge_tip_missing", forge_tip(forge_parse(lsr), "refs/heads/nope"), "");
+    fails = fails + ts_expect("forge_drift_sync", forge_drift("aaa", "aaa"), "SYNC");
+    fails = fails + ts_expect("forge_drift_diff", forge_drift("aaa", "bbb"), "DRIFT");
+    fails = fails + ts_expect("forge_drift_gap", forge_drift("", "bbb"), "GAP");
+    fails = fails + ts_expect("forge_drift_unknown", forge_drift("aaa", ""), "UNKNOWN");
     return fails;
 }
 
 pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, _args: List[String]) -> Int {
     let fails: Int = ts_sweep_checks(p, fr, fw) + ts_meter_checks() + ts_agent_checks();
     if fails > 0 { println("FAIL\ttest_sweep\t" + fails.to_string() + " check(s) failed"); return 1; }
-    println("Ran 39 checks in pure .oo — OK");
+    println("Ran 55 checks in pure .oo — OK");
     return 0;
 }

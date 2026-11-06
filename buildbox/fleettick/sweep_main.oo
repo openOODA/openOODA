@@ -1,17 +1,20 @@
 // # Fleet Tick - Read-Only Sweep Entrypoint (RFC 0013)
 //
-// Logline: Run the read-only fleet tick sections: repository states, quota metering, and the idle-workspace report.
+// Logline: Run the read-only fleet tick sections: repository states, quota metering, idle workspaces, host health, and the forge probe.
 //
-// Setup: &FsReadCap reads repos and the quota ledger; &ProcessCap runs git status and herdr agent list; &EnvCap reads OODA_FLEET_HOME / OODA_FLEET_XDG for the herdr socket env; &FsWriteCap is admitted but unused (read-only contract).
+// Setup: &FsReadCap reads repos, the quota ledger, the health config and /proc/meminfo; &ProcessCap runs git, herdr, df, pgrep; &EnvCap reads OODA_FLEET_HOME / OODA_FLEET_XDG; &FsWriteCap is admitted but unused (read-only contract).
 //
 // Beats:
 //   1. Sweep the repos under the root and print the verdict lines plus the tally.
 //   2. Read .fleet-quota-ledger.json for ledger QUOTA lines, then meter each agent pane's visible text into live QUOTA lines.
 //   3. Snapshot the local herdr agent list and print the per-workspace report.
+//   4. Run the host health checks and the github forge probe; both stay read-only.
 
 import "fleettick/sweep.oo";
 import "fleettick/meter.oo";
 import "fleettick/agents.oo";
+import "fleettick/probe/host.oo";
+import "fleettick/probe/forge.oo";
 import "std/fs/os/fs.oo";
 import "std/fs/process/env.oo";
 
@@ -39,5 +42,9 @@ pub fn main(p: &ProcessCap, fr: &FsReadCap, _fw: &FsWriteCap, env: &EnvCap, args
     if atext == "" { println("QUOTA panes UNREADABLE"); } else { sm_print(agents_pane_quota(p, home, xdg, atext)); }
     println("-- workspaces");
     if atext == "" { println("AGENTS_ERR herdr unreadable"); } else { sm_print(agents_report(atext)); }
+    println("-- health");
+    sm_print(host_report(p, fr, "/Projects/openOODA/.fleet-health.conf"));
+    println("-- forge");
+    sm_print(forge_report(p, "/Projects/openOODA/openOODA"));
     return 0;
 }
