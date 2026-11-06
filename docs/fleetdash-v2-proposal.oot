@@ -1,0 +1,88 @@
+// # Fleet Dashboard v2 — Per-Repo Health + Trend Sparklines (Proposal)
+//
+// Logline: Extend status.openooda.org with a fleet-health board fed
+//          by fleettick's own state file and alert spool — zero
+//          changes to the tick itself.
+//
+// Setup:   Data contract verified against sweep_main.oo on
+//          wip/ringmaster-ringmaster-wC: every tick packs all verdict
+//          lines into /Projects/openOODA/.fleet-state.txt and spools
+//          ALERT files into /Projects/openOODA/.fleet-alerts/.
+//
+// Beats:
+//   1. Source contract (what the state file already gives us).
+//   2. New surfaces (page, JSON, history, refresh driver).
+//   3. Verdict -> severity map for chips and sparklines.
+//   4. Refresh cadence options with recommendation.
+//   5. Risks and honest limits.
+
+## 1. Source contract (read-only, no fleettick changes)
+
+`.fleet-state.txt` — rewritten every 600s tick, fixed section order:
+
+| Section | Line shape | Example |
+|---|---|---|
+| repos | per-repo dirty state | `openOODA DIRTY=WIP`, `<repo> CLEAN` |
+| quota | ledger + pane meters | `QUOTA <agent> <n>`, `QUOTA panes UNREADABLE` |
+| workspaces | herdr agent inventory | `AGENTS <n> ...` |
+| health | host gauges | `HEALTH load=<x>`, `HEALTH mem use=<n>` |
+| forge | github ls-remote probe | `FORGE SYNC` / `FORGE ERR` |
+| reconcile | per-repo verdict | `RECON <repo> SYNC|AHEAD|BEHIND|DIVERGED|PULLED|PULL_ERR|DIRTY-SKIP|NO-TRACK|DETACHED|FETCH_ERR|GATE-SKIP|ERR` |
+| snapshot/alerts | write + spool receipts | `SNAP <path> lines=<n>`, `ALERT*`, `ALERT_CLEAR` |
+
+`.fleet-alerts/` — one file per live breach, removed on recovery.
+This is the breach truth: spool dir non-empty = something is red.
+
+## 2. New surfaces (website repo, zero-build static)
+
+- `src/fleet_refresh.oo` — refresh driver (dogfood law): reads the
+  state file + spool dir via &FsReadCap, writes `status/fleet.json`
+  and appends `status/fleet_history.jsonl` via &FsWriteCap. No
+  ProcessCap — pure file work; the state file IS the subprocess
+  product already.
+- `status/fleet.json` — current tick digest: sections, per-repo
+  verdicts, health gauges, live alerts, tick timestamp.
+- `status/fleet_history.jsonl` — append-only, tick-grain dedupe
+  (same tick -> replace line), rolling 7-day window (~1000 lines).
+- `status/fleet.html` + `js/fleet.js` — board page, terminal-house
+  style, linked from index footer as [FLEET HEALTH].
+
+## 3. Verdict -> severity map (chips + sparklines)
+
+| Severity | Verdicts | Chip |
+|---|---|---|
+| 0 ok | SYNC, CLEAN, PULLED | green |
+| 1 note | AHEAD, BEHIND | cyan |
+| 2 warn | DIRTY-SKIP, DIRTY=WIP, NO-TRACK, DETACHED, GATE-SKIP, QUOTA warn | amber |
+| 3 bad | DIVERGED, PULL_ERR, FETCH_ERR, FORGE_ERR, ERR, QUOTA cutoff, ALERT spooled | red |
+
+Sparkline per repo: last ~24 ticks (~4h at 10-min grain) as
+severity-colored cells, newest right. A green strip that flashes
+amber then red IS the flap signature; stable-warn repos show as
+steady amber. ALERT history overlays the spool open/close times.
+
+## 4. Refresh cadence — the real design tension
+
+quota.json ships via commit+push — fine daily, wrong for 10-min
+fleet data (144 commits/day of git-log noise).
+
+| Option | Mechanism | Verdict |
+|---|---|---|
+| A. timer+push | fleetdash.timer runs refresh, commits, pushes every tick | REJECT — history spam |
+| B. refresh writes to a served dir | driver writes JSON under the status host's docroot directly; page fetches it | RECOMMENDED — status host is fleet-side; git only sees the code |
+| C. hourly commit | refresh runs per-tick to a staging dir; a slower job commits a compacted digest | fallback if B unavailable |
+
+Page remains static; only the JSON transport differs from quota v1.
+
+## 5. Risks and honest limits
+
+- Fleettick is not live yet — state file is soak-era until cutover
+  flips; board ships with a visible "state as of <ts>, tick cadence
+  600s" stamp and renders whatever the file holds.
+- Per-tick flap fidelity requires option B's cadence; committed
+  history is always lagging — acceptable, the alert spool is the
+  authoritative breach signal anyway.
+- RECON only covers repos under the fleet root; the wider 383-repo
+  fleet is out of scope for v2 (a fleet-392 sweep is its own lane).
+- Page Rule: fleet_refresh.oo stays under 256/8/40; quota_refresh
+  pattern (qsrc + driver split) is the template.
