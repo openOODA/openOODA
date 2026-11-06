@@ -8,6 +8,7 @@
 //   1. Parse "key=value" config lines by byte offset; missing keys fall back to defaults.
 //   2. Disk percent comes from df -P, memory percent from /proc/meminfo, liveness from pgrep.
 //   3. Emit HEALTH disk|mem|proc lines: OK under the warn floor, WARN at or above it, UNKNOWN on a failed probe.
+//   4. The mem verdict hardens to ERR under the 6GiB MemAvailable floor; the guard line reports the oom-guard timer's ActiveState.
 
 import "fleettick/btext.oo";
 import "std/fs/os/fs.oo";
@@ -63,8 +64,39 @@ pub fn host_class(used: Int, warn: Int) -> String {
     return "OK";
 }
 
+// MemAvailable in whole GiB from /proc/meminfo text, or -1 on a bad reading.
+pub fn host_mem_avail(meminfo: String) -> Int {
+    let ai: Int = bt_idx_from(meminfo, "MemAvailable:", 0);
+    if ai < 0 { return -1; }
+    let kb: Int = bt_uint_at(meminfo, ai + 13);
+    if kb < 0 { return -1; }
+    return kb / 1048576;
+}
+
+// The oom-guard timer's ActiveState via one argv — HEALTH guard OK only
+// when systemd reports the unit active, ERR with the raw state otherwise.
+// The user-bus address is passed explicitly: sys_exec children get a minimal
+// env, so without it systemctl --user fails closed to state=systemctl.
+pub fn host_guard(p: &ProcessCap, xdg: String) -> String {
+    let r: Result[String, String] = sys_exec(p, "env",
+        "XDG_RUNTIME_DIR=" + xdg,
+        "DBUS_SESSION_BUS_ADDRESS=unix:path=" + xdg + "/bus",
+        "systemctl", "--user", "show",
+        "ooda-oom-guard.timer", "-p", "ActiveState", "--value");
+    let mut st: String = "";
+    match r {
+        Ok(v) => { st = v; },
+        Err(_) => { return "HEALTH guard ERR state=systemctl"; },
+    }
+    while bytes_len(st) > 0 && byte_at(st, bytes_len(st) - 1) < 33 {
+        st = bt_slice(st, 0, bytes_len(st) - 1);
+    }
+    if st == "active" { return "HEALTH guard OK"; }
+    return "HEALTH guard ERR state=" + st;
+}
+
 // The live report: disk, memory, and the configured process's liveness.
-pub fn host_report(p: &ProcessCap, fr: &FsReadCap, conf: String) -> List[String] {
+pub fn host_report(p: &ProcessCap, fr: &FsReadCap, xdg: String, conf: String) -> List[String] {
     let mut doc: String = "disk_warn=90\nmem_warn=90\nproc=herdr\ndisk_path=/\n";
     match fs_read_file(fr, conf) { Ok(d) => { doc = d; }, Err(_) => { } }
     let dwarn: Int = host_conf_int(doc, "disk_warn");
@@ -81,7 +113,10 @@ pub fn host_report(p: &ProcessCap, fr: &FsReadCap, conf: String) -> List[String]
     }
     match fs_read_file(fr, "/proc/meminfo") {
         Ok(t) => { let u: Int = host_mem_pct(t);
-            out = list_push(out, "HEALTH mem " + host_class(u, mwarn) + " use=" + u.to_string() + " warn=" + mwarn.to_string()); },
+            let av: Int = host_mem_avail(t);
+            let mut v: String = host_class(u, mwarn);
+            if av >= 0 && av < 6 { v = "ERR"; }
+            out = list_push(out, "HEALTH mem " + v + " avail=" + av.to_string() + "G use=" + u.to_string() + " warn=" + mwarn.to_string()); },
         Err(_) => { out = list_push(out, "HEALTH mem UNKNOWN use=-1 warn=" + mwarn.to_string()); },
     }
     if pname != "" {
@@ -89,5 +124,6 @@ pub fn host_report(p: &ProcessCap, fr: &FsReadCap, conf: String) -> List[String]
         let st: String = match pg { Ok(_) => "UP", Err(_) => "DOWN" };
         out = list_push(out, "HEALTH proc " + pname + " " + st);
     }
+    out = list_push(out, host_guard(p, xdg));
     return out;
 }

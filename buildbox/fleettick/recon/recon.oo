@@ -8,6 +8,7 @@
 //   1. recon_gate: the FORGE section decides — any FORGE_ERR or empty probe closes the gate and every repo reports GATE-SKIP.
 //   2. Per repo: fetch github, classify HEAD vs refs/remotes/github/<branch> via rev-list counts (SYNC/AHEAD/BEHIND/DIVERGED).
 //   3. Only a clean BEHIND repo pulls --ff-only; dirty trees, diverged tips, detached HEADs and untracked branches are reported, never mutated.
+//   4. The backlog count totals RECON lines that stayed unconverged — AHEAD, DIVERGED, DETACHED, NO-TRACK, *_ERR — and emits RECON BACKLOG when nonzero.
 
 import "fleettick/btext.oo";
 import "fleettick/sweep.oo";
@@ -64,7 +65,23 @@ pub fn recon_repo(p: &ProcessCap, repo: String) -> String {
     return "RECON " + repo + " " + act;
 }
 
+// Count of RECON lines that did not converge and are not benign skips:
+// AHEAD, DIVERGED, DETACHED, NO-TRACK and every *_ERR all count as backlog.
+pub fn recon_backlog(lines: List[String]) -> Int {
+    let mut n: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let l: String = list_get(lines, i);
+        if str_contains(l, " AHEAD") || str_contains(l, " DIVERGED")
+            || str_contains(l, " DETACHED") || str_contains(l, " NO-TRACK")
+            || str_contains(l, "ERR") { n = n + 1; }
+        i = i + 1;
+    }
+    return n;
+}
+
 // One RECON line per repo, walked sequentially — no parallel pools.
+// A nonzero backlog seals the section with a RECON BACKLOG marker line.
 pub fn recon_report(p: &ProcessCap, repos: List[String], gate: Bool) -> List[String] {
     let mut out: List[String] = list_new();
     let mut i: Int = 0;
@@ -76,5 +93,7 @@ pub fn recon_report(p: &ProcessCap, repos: List[String], gate: Bool) -> List[Str
         else { out = list_push(out, recon_repo(p, repo)); }
         i = i + 1;
     }
+    let bl: Int = recon_backlog(out);
+    if bl > 0 { out = list_push(out, "RECON BACKLOG n=" + bl.to_string()); }
     return list_push(out, "recon=" + n.to_string());
 }

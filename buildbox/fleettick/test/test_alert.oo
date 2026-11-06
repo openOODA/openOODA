@@ -1,0 +1,72 @@
+// # Test Alert Conditions - RFC 0013 s2.7 Residuals: Guard, Floor, Backlog, Idle
+//
+// Logline: Prove the mem-avail floor parse, the recon backlog counter, the guard verdict line, and the new alert kinds on fixed and live inputs.
+//
+// Setup: no capabilities for the pure checks; &ProcessCap feeds host_guard's live systemctl probe whose verdict is asserted by shape only (HEALTH guard prefix), never by live state.
+//
+// Beats:
+//   1. host_mem_avail — MemAvailable kB to whole GiB, -1 on bad input.
+//   2. recon_backlog — unconverged verdicts count, converged/skipped do not.
+//   3. alert_of — backlog and idle-ready kinds land; guard ERR rides err.
+//   4. host_guard — the live line is well-formed regardless of timer state.
+
+import "fleettick/probe/host.oo";
+import "fleettick/recon/recon.oo";
+import "fleettick/out/alert.oo";
+import "std/core/primitives/str.oo";
+
+fn ta_expect(name: String, got: String, want: String) -> Int {
+    if got == want { println("PASS\t" + name); return 0; }
+    println("FAIL\t" + name + "\twant=" + want + "\tgot=" + got);
+    return 1;
+}
+
+fn ta_avail() -> Int {
+    let mi: String = "MemTotal:       32768 kB\nMemFree:        1024 kB\nMemAvailable:    5242880 kB\n";
+    let mut f: Int = 0;
+    f = f + ta_expect("avail 5G", host_mem_avail(mi).to_string(), "5");
+    f = f + ta_expect("avail 8G", host_mem_avail("MemAvailable:    8388608 kB\n").to_string(), "8");
+    f = f + ta_expect("avail none", host_mem_avail("MemTotal: 1 kB\n").to_string(), "-1");
+    f = f + ta_expect("avail junk", host_mem_avail("MemAvailable: xx\n").to_string(), "-1");
+    return f;
+}
+
+fn ta_backlog() -> Int {
+    let mut lines: List[String] = list_new();
+    lines = list_push(lines, "RECON /a SYNC");
+    lines = list_push(lines, "RECON /b AHEAD");
+    lines = list_push(lines, "RECON /c DIVERGED");
+    lines = list_push(lines, "RECON /d DETACHED");
+    lines = list_push(lines, "RECON /e NO-TRACK");
+    lines = list_push(lines, "RECON /f FETCH_ERR");
+    lines = list_push(lines, "RECON /g PULLED");
+    lines = list_push(lines, "RECON /h DIRTY-SKIP");
+    lines = list_push(lines, "RECON /i GATE-SKIP");
+    let mut f: Int = 0;
+    f = f + ta_expect("backlog n", recon_backlog(lines).to_string(), "5");
+    f = f + ta_expect("backlog zero", recon_backlog(list_push(list_new(), "RECON /a SYNC")).to_string(), "0");
+    return f;
+}
+
+fn ta_kinds() -> Int {
+    let mut f: Int = 0;
+    f = f + ta_expect("kind backlog", alert_of("RECON BACKLOG n=2"), "backlog");
+    f = f + ta_expect("kind idle", alert_of("IDLE-WS w3 blocked=0"), "idle-ready");
+    f = f + ta_expect("kind guard-err", alert_of("HEALTH guard ERR state=inactive"), "err");
+    f = f + ta_expect("kind mem-err", alert_of("HEALTH mem ERR avail=4G use=92 warn=90"), "err");
+    f = f + ta_expect("kind guard-pass", alert_of("HEALTH guard OK"), "");
+    return f;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+    let mut fails: Int = ta_avail() + ta_backlog() + ta_kinds();
+    let g: String = host_guard(p, "/tmp/no-such-xdg");
+    if starts_with(g, "HEALTH guard ") && (str_contains(g, "OK") || str_contains(g, "ERR")) {
+        println("PASS\tguard line\t" + g);
+    } else {
+        println("FAIL\tguard line\t" + g); fails = fails + 1;
+    }
+    if fails > 0 { println("FAIL\ttest_alert\t" + fails.to_string() + " check(s) failed"); return 1; }
+    println("test_alert OK");
+    return 0;
+}
