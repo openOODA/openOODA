@@ -1,0 +1,65 @@
+// # 2026-11-06 Fleettick Soak — 3 Sequential Live Ticks
+//
+// Logline: Soak report for RFC-0013 fleettick at commit 12f2ae9
+//          (v2.11.133): three sequential full live ticks against the
+//          real fleet, state docs diffed for stability. Verdict:
+//          stable — alerts stayed 0, no classification flaps.
+//
+// Setup:   Binary /tmp/sweep built from buildbox/fleettick/sweep_main.oo
+//          via oodac.real. Runtime env per oodac/docs/runtime-env.oot:
+//          OODA_NO_JAIL=1, OO_LIST_AMBIENT_QUOTA=8589934592,
+//          OODA_FLEET_HOME/OODA_FLEET_XDG for herdr discovery.
+//          Target root /Projects/openOODA (6 repos).
+//
+// Beats:
+//   1. Protocol.
+//   2. Per-tick results.
+//   3. Diff evidence.
+//   4. Verdict.
+//   5. Watch items.
+
+// ## 1. Protocol
+
+// Three sequential invocations of the single-run tick (external-scheduler
+// model — no in-process loop). Stdout captured per tick as the verdict
+// stream; .fleet-state.txt snapshotted after each tick as the state doc.
+
+// ## 2. Per-tick results
+
+// | Tick | Lines | Lock | Sections | alerts | Exit |
+// |------|-------|------|----------|--------|------|
+// | 1    | 60    | took | all 9    | 0      | 0    |
+// | 2    | 60    | took | all 9    | 0      | 0    |
+// | 3    | 60    | took | all 9    | 0      | 0    |
+
+// Every tick: TICK_LOCK took -> repos/quota/workspaces/health/forge/
+// reconcile/snapshot/alerts -> TICK_UNLOCK -> TICK done. State doc 47
+// lines each. Spool dir .fleet-alerts/ remained empty throughout — no
+// ALERT file created, none cleared. No lock contention (sequential
+// invocations, lock released before next started).
+
+// ## 3. Diff evidence
+
+// - Verdict stream tick2 -> tick3: byte-identical.
+// - State doc tick2 -> tick3: byte-identical.
+// - tick1 -> tick2 single delta: `HEALTH mem OK use=16` -> `use=14`
+//   (live gauge jitter on a 90 warn floor; verdict stayed OK).
+// - Repo classification identical across all ticks: openOODA DIRTY
+//   (intentional WIP), 5 CLEAN, 0 ERR/LOCKED.
+// - FORGE ooda/master SYNC at c030fda4ad1d; RECON x6 SYNC.
+// - QUOTA vibe THROTTLE (ledger 90/10) stable; pane UNKNOWNs stable
+//   (no usage footers visible in panes at rest — known limit).
+
+// ## 4. Verdict
+
+// PASS. No state flaps (DIRTY<->CLEAN, ALERT create/clear cycles, or
+// verdict oscillation). The only inter-tick delta is a live memory
+// reading well inside its threshold — gauge noise, not instability.
+
+// ## 5. Watch items
+
+// - Pane-quota UNKNOWN is the dominant pane verdict; footers surface
+//   only when a usage line is visible. Acceptable at 10-min cadence.
+// - recon paths PULLED/PULL_ERR/DIVERGED/DIRTY-SKIP remain unexercised
+//   live — all six repos were SYNC for the full soak.
+// - Genuine alert firing still unobserved (no real breach occurred).
