@@ -12,12 +12,14 @@
 //   5. Idle workspaces: the herdr JSON aligns into triples and the per-workspace verdicts hold.
 //   6. Host health and forge probe: config/df/meminfo/ls-remote parsing and the threshold/drift classifiers.
 //   7. Snapshot and alerts: pack format, breach classification, and live spool write/clear.
+//   8. Reconcile: rev-list count classification, forge gate logic, GATE-SKIP and LOCKED-SKIP.
 
 import "fleettick/sweep.oo";
 import "fleettick/meter.oo";
 import "fleettick/agents.oo";
 import "fleettick/probe/host.oo";
 import "fleettick/probe/forge.oo";
+import "fleettick/recon/recon.oo";
 import "fleettick/out/snap.oo";
 import "fleettick/out/alert.oo";
 import "std/fs/os/fs.oo";
@@ -122,12 +124,20 @@ fn ts_meter_checks() -> Int {
     fails = fails + ts_expect("health_ok", host_class(80, 85), "OK");
     fails = fails + ts_expect("health_warn", host_class(85, 85), "WARN");
     fails = fails + ts_expect("health_unknown", host_class(-1, 85), "UNKNOWN");
-    fails = fails + ts_expect("snap_pack_two", snap_pack(list_push(list_push(list_new(), "a"), "b")), "a\nb\n");
-    fails = fails + ts_expect("snap_pack_empty", snap_pack(list_new()), "");
+    fails = fails + ts_expect("snap_pack_two", snap_pack(list_push(list_push(list_new(), "a"), "b")), "a\nb\n")
+        + ts_expect("snap_pack_empty", snap_pack(list_new()), "");
+    let lsr: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/heads/ooda\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\trefs/heads/master\n";
+    fails = fails + ts_expect("forge_parse_n", list_len(forge_parse(lsr)).to_string(), "2");
+    fails = fails + ts_expect("forge_tip", forge_tip(forge_parse(lsr), "refs/heads/ooda"), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    fails = fails + ts_expect("forge_tip_missing", forge_tip(forge_parse(lsr), "refs/heads/nope"), "");
+    fails = fails + ts_expect("forge_drift_sync", forge_drift("aaa", "aaa"), "SYNC")
+        + ts_expect("forge_drift_diff", forge_drift("aaa", "bbb"), "DRIFT")
+        + ts_expect("forge_drift_gap", forge_drift("", "bbb"), "GAP")
+        + ts_expect("forge_drift_unknown", forge_drift("aaa", ""), "UNKNOWN");
     return fails;
 }
 
-fn ts_agent_checks() -> Int {
+fn ts_agent_checks(p: &ProcessCap) -> Int {
     let mut fails: Int = 0;
     let js: String = "{\"result\":{\"agents\":[{\"agent_status\":\"idle\",\"pane_id\":\"w3:p1\",\"workspace_id\":\"w3\"},{\"agent_status\":\"working\",\"pane_id\":\"w4:p1\",\"workspace_id\":\"w4\"},{\"agent_status\":\"blocked\",\"pane_id\":\"w4:p2\",\"workspace_id\":\"w4\"}]}}";
     fails = fails + ts_expect("panes_count", list_len(agents_panes(js)).to_string(), "3");
@@ -137,14 +147,6 @@ fn ts_agent_checks() -> Int {
     fails = fails + ts_expect_has("ws_summary", agents_report(js), "workspaces=2 idle=1 active=0 blocked=1");
     fails = fails + ts_expect("panes_empty", list_len(agents_panes("{}")).to_string(), "0");
     fails = fails + ts_expect("panes_misaligned", list_get(agents_panes("{\"pane_id\":\"w1:p1\"}"), 0), "ERR||misaligned");
-    let lsr: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/heads/ooda\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\trefs/heads/master\n";
-    fails = fails + ts_expect("forge_parse_n", list_len(forge_parse(lsr)).to_string(), "2");
-    fails = fails + ts_expect("forge_tip", forge_tip(forge_parse(lsr), "refs/heads/ooda"), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    fails = fails + ts_expect("forge_tip_missing", forge_tip(forge_parse(lsr), "refs/heads/nope"), "");
-    fails = fails + ts_expect("forge_drift_sync", forge_drift("aaa", "aaa"), "SYNC");
-    fails = fails + ts_expect("forge_drift_diff", forge_drift("aaa", "bbb"), "DRIFT");
-    fails = fails + ts_expect("forge_drift_gap", forge_drift("", "bbb"), "GAP");
-    fails = fails + ts_expect("forge_drift_unknown", forge_drift("aaa", ""), "UNKNOWN");
     fails = fails + ts_expect("alert_warn", alert_of("HEALTH mem WARN use=91 warn=90"), "warn");
     fails = fails + ts_expect("alert_cutoff", alert_of("QUOTA vibe CUTOFF used=96 rem=4"), "cutoff");
     fails = fails + ts_expect("alert_down", alert_of("HEALTH proc herdr DOWN"), "down");
@@ -154,12 +156,24 @@ fn ts_agent_checks() -> Int {
     fails = fails + ts_expect("alert_forge_err", alert_of("FORGE_ERR no github remote"), "err");
     fails = fails + ts_expect("alert_pass_clean", alert_of("CLEAN /a"), "");
     fails = fails + ts_expect("alert_pass_idle", alert_of("IDLE-WS w3 blocked=0"), "");
+    fails = fails + ts_expect("recon_ahead", recon_counts("2\t0\n"), "AHEAD");
+    fails = fails + ts_expect("recon_behind", recon_counts("0\t3\n"), "BEHIND");
+    fails = fails + ts_expect("recon_diverged", recon_counts("1\t1\n"), "DIVERGED");
+    fails = fails + ts_expect("recon_sync", recon_counts("0\t0\n"), "SYNC");
+    fails = fails + ts_expect("recon_garbage", recon_counts("no numbers"), "ERR");
+    fails = fails + ts_expect_bool("gate_open", recon_gate(list_push(list_new(), "FORGE ooda SYNC")), true);
+    fails = fails + ts_expect_bool("gate_err_closed", recon_gate(list_push(list_push(list_new(), "FORGE ooda SYNC"), "FORGE_ERR no github remote")), false);
+    fails = fails + ts_expect_bool("gate_empty_closed", recon_gate(list_new()), false);
+    let skip: List[String] = ts_copy(recon_report(p, list_push(list_new(), "/tmp/fleettick-fix/err-repo"), false));
+    fails = fails + ts_expect_has("recon_gate_skip", skip, "RECON /tmp/fleettick-fix/err-repo GATE-SKIP");
+    let lskip: List[String] = ts_copy(recon_report(p, list_push(list_new(), "/Projects/openOODA-core/std"), true));
+    fails = fails + ts_expect_has("recon_locked_skip", lskip, "RECON /Projects/openOODA-core/std LOCKED-SKIP");
     return fails;
 }
 
 pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, _args: List[String]) -> Int {
-    let fails: Int = ts_sweep_checks(p, fr, fw) + ts_meter_checks() + ts_agent_checks();
+    let fails: Int = ts_sweep_checks(p, fr, fw) + ts_meter_checks() + ts_agent_checks(p);
     if fails > 0 { println("FAIL\ttest_sweep\t" + fails.to_string() + " check(s) failed"); return 1; }
-    println("Ran 71 checks in pure .oo — OK");
+    println("Ran 81 checks in pure .oo — OK");
     return 0;
 }

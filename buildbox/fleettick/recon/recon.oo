@@ -1,0 +1,80 @@
+// # Fleet Reconcile - Sequential Fetch Classify And Ff-Only Pull (RFC 0013)
+//
+// Logline: Walk each repository in order, fetch its github remote, classify HEAD against the tracking ref, and fast-forward only when it is clean and strictly behind.
+//
+// Setup: &ProcessCap runs argv git fetch/rev-parse/rev-list/status/pull — never a shell. The github remote is the only remote touched; repos without one fail closed to FETCH_ERR. LOCKED repos and a closed forge gate skip before any network op.
+//
+// Beats:
+//   1. recon_gate: the FORGE section decides — any FORGE_ERR or empty probe closes the gate and every repo reports GATE-SKIP.
+//   2. Per repo: fetch github, classify HEAD vs refs/remotes/github/<branch> via rev-list counts (SYNC/AHEAD/BEHIND/DIVERGED).
+//   3. Only a clean BEHIND repo pulls --ff-only; dirty trees, diverged tips, detached HEADs and untracked branches are reported, never mutated.
+
+import "fleettick/btext.oo";
+import "fleettick/sweep.oo";
+import "fleettick/probe/forge.oo";
+import "std/core/primitives/str.oo";
+
+// The FORGE lines open or close the gate: a FORGE_ERR line, or no FORGE
+// line at all, means the remote cannot be trusted this tick.
+pub fn recon_gate(lines: List[String]) -> Bool {
+    let mut seen: Bool = false;
+    let mut i: Int = 0;
+    let n: Int = list_len(lines);
+    while i < n {
+        let l: String = list_get(lines, i);
+        if starts_with(l, "FORGE ") { seen = true; }
+        if starts_with(l, "FORGE_ERR") { return false; }
+        i = i + 1;
+    }
+    return seen;
+}
+
+// The "ahead<TAB>behind" counts of rev-list --left-right --count into a
+// four-way class: DIVERGED > BEHIND > AHEAD > SYNC. Garbage is ERR.
+pub fn recon_counts(text: String) -> String {
+    let t: Int = bt_idx_from(text, "\t", 0);
+    if t < 0 { return "ERR"; }
+    let a: Int = bt_uint_at(text, 0);
+    let b: Int = bt_uint_at(text, t + 1);
+    if a < 0 || b < 0 { return "ERR"; }
+    if a > 0 && b > 0 { return "DIVERGED"; }
+    if b > 0 { return "BEHIND"; }
+    if a > 0 { return "AHEAD"; }
+    return "SYNC";
+}
+
+// Fetch + classify + optional ff-only pull for one repository.
+pub fn recon_repo(p: &ProcessCap, repo: String) -> String {
+    let fe: Result[String, String] = sys_exec(p, "git", "-C", repo, "fetch", "github", "--quiet");
+    match fe { Ok(_) => { }, Err(_) => { return "RECON " + repo + " FETCH_ERR"; } }
+    let br: Result[String, String] = sys_exec(p, "git", "-C", repo, "symbolic-ref", "--short", "-q", "HEAD");
+    let b: String = match br { Ok(s) => forge_sha(s), Err(_) => "" };
+    if b == "" { return "RECON " + repo + " DETACHED"; }
+    let rl: Result[String, String] = sys_exec(p, "git", "-C", repo, "rev-list",
+        "--left-right", "--count", "HEAD...refs/remotes/github/" + b);
+    let counts: String = match rl { Ok(t) => t, Err(_) => "" };
+    if counts == "" { return "RECON " + repo + " NO-TRACK"; }
+    let cls: String = recon_counts(counts);
+    if cls != "BEHIND" { return "RECON " + repo + " " + cls; }
+    let st: Result[String, String] = sys_exec(p, "git", "-C", repo, "status", "--porcelain");
+    let dirty: Bool = match st { Ok(t) => t != "" && t != "\n", Err(_) => true };
+    if dirty { return "RECON " + repo + " DIRTY-SKIP"; }
+    let pl: Result[String, String] = sys_exec(p, "git", "-C", repo, "pull", "--ff-only");
+    let act: String = match pl { Ok(_) => "PULLED", Err(_) => "PULL_ERR" };
+    return "RECON " + repo + " " + act;
+}
+
+// One RECON line per repo, walked sequentially — no parallel pools.
+pub fn recon_report(p: &ProcessCap, repos: List[String], gate: Bool) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    let n: Int = list_len(repos);
+    while i < n {
+        let repo: String = list_get(repos, i);
+        if !gate { out = list_push(out, "RECON " + repo + " GATE-SKIP"); }
+        else if sweep_locked(repo) { out = list_push(out, "RECON " + repo + " LOCKED-SKIP"); }
+        else { out = list_push(out, recon_repo(p, repo)); }
+        i = i + 1;
+    }
+    return list_push(out, "recon=" + n.to_string());
+}

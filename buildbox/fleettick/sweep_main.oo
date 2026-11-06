@@ -1,20 +1,22 @@
-// # Fleet Tick - Read-Only Sweep Entrypoint (RFC 0013)
+// # Fleet Tick - Mechanical Tick Entrypoint (RFC 0013)
 //
-// Logline: Run the fleet tick sections, then capture the full verdict set to the state file and emit breach alerts to the spool dir.
+// Logline: Run the fleet tick sections and the gated reconcile, then capture the full verdict set to the state file and emit breach alerts to the spool dir.
 //
-// Setup: &FsReadCap reads repos, the quota ledger, the health config, /proc/meminfo and the spool dir; &ProcessCap runs git, herdr, df, pgrep; &EnvCap reads OODA_FLEET_HOME / OODA_FLEET_XDG; &FsWriteCap writes the state file and the alert spool.
+// Setup: &FsReadCap reads repos, the quota ledger, the health config, /proc/meminfo and the spool dir; &ProcessCap runs git (incl. fetch/pull --ff-only behind the forge gate), herdr, df, pgrep; &EnvCap reads OODA_FLEET_HOME / OODA_FLEET_XDG; &FsWriteCap writes the state file and the alert spool.
 //
 // Beats:
 //   1. Sweep the repos under the root and print the verdict lines plus the tally.
 //   2. Read .fleet-quota-ledger.json for ledger QUOTA lines, then meter each agent pane's visible text into live QUOTA lines.
 //   3. Snapshot the local herdr agent list and print the per-workspace report; run host health and the github forge probe.
-//   4. Pack every verdict into .fleet-state.txt, then spool one ALERT file per breached condition and clear recovered ones.
+//   4. Reconcile: the forge gate admits or skips the sequential fetch/classify/pull walk per repo.
+//   5. Pack every verdict into .fleet-state.txt, then spool one ALERT file per breached condition and clear recovered ones.
 
 import "fleettick/sweep.oo";
 import "fleettick/meter.oo";
 import "fleettick/agents.oo";
 import "fleettick/probe/host.oo";
 import "fleettick/probe/forge.oo";
+import "fleettick/recon/recon.oo";
 import "fleettick/out/snap.oo";
 import "fleettick/out/alert.oo";
 import "std/fs/os/fs.oo";
@@ -62,7 +64,10 @@ pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args:
     println("-- health");
     all = sm_emit(all, host_report(p, fr, "/Projects/openOODA/.fleet-health.conf"));
     println("-- forge");
-    all = sm_emit(all, forge_report(p, "/Projects/openOODA/openOODA"));
+    let fl: List[String] = forge_report(p, "/Projects/openOODA/openOODA");
+    all = sm_emit(all, fl);
+    println("-- reconcile");
+    all = sm_emit(all, recon_report(p, sweep_repos(fr, root), recon_gate(fl)));
     println("-- snapshot");
     println(snap_write(fw, "/Projects/openOODA/.fleet-state.txt", all));
     println("-- alerts");
