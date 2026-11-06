@@ -1,0 +1,70 @@
+# l3-next — Proposal for the Next Layer-3 Absorption Lane (2026-11-06)
+File: openOODA/audit/l3_next_2026_11_06.oot
+Status: proposal, doc only. Sources: northstar.oot §1.1 L3 row, persona-ownership.oot §2,
+in-tree evidence from /Projects/openOODA-tools on 2026-11-06.
+
+## 1. Where the fleet stands
+
+- L3 target per northstar.oot: 257 repos -> 64 canonical multi-call utilities.
+- COMPLETE lane: `oohash` — every registry token native
+  (`b3sum,sha256sum,sha512sum,md5sum,cksum,crc32` + `oochecksum` and the
+  `xxhsum`/`xxh64sum` personas), all five absorbees converted to delegation
+  shims (`oochecksum,oomd5,oosha256,oosha512,oob3sum`), all relays removed.
+- Every other absorbee repo is still a full scaffold (no `ipc/delegate.oo`).
+- The `oohash` run produced the reusable pattern: canonical host owns engines,
+  absorbees keep CLI surface via `OO_HASH_BIN`-style delegate shims.
+
+## 2. Registry tokens with no in-tree repo
+
+These tokens are persona work inside the host, not shim candidates:
+`ootee` (oocat), `oowhich` (oosh), `ooindent` (ootext), `oozip` (ooarchive),
+`oojsondiff`, `ooxmldiff` (oostructureddiff), `oopgrep`, `oolsof`, `oopkill`
+(ooproc), `oopoll` (oowatch), `oox509`, `oohmac`, `ookdf` (oossl).
+Rename sources already retired: `oobase64`->oocodec, `oosqllite`->oosqlite,
+`oote`->ootheme (rename completed; only `oomcp`->`oomcp-cli` still pending).
+
+## 3. Lane inventory (host | absorbees | state)
+
+| Lane | Absorbee repos in-tree | Host tokens wired | Risk |
+|---|---|---|---|
+| oocat | head,tail,nl,tac,rev (tee missing) | 0/6 | trivial I/O transforms |
+| oocodec | base32,base58,hex,xxd (+base64 renamed) | 3/4 | table-driven codecs |
+| oosort | uniq,cut,paste,join,tr,wc | 6/6 | line algorithms, already wired |
+| ootext | fmt,fold,col,colrm,expand,unexpand (indent missing) | 7/7 | text filters, already wired |
+| ooproc | ps,top,kill,free,meminfo,vmstat,iostat,cpuinfo (pgrep,pkill,lsof missing) | 5/12 | partially vendored already |
+| ooarchive | tar,gzip,xz,zstd,unzip,bzip2,7z,cpio (zip missing) | 8/8 | REAL engines: deflate/lzma/zstd |
+| oodiff | sdiff,wdiff,cmp,comm,patch | 4/5 | diff family, medium |
+| oosh | bash,true,false,yes,alias,wait (which missing) | 4/7 | tiny utils, host is a shell |
+| ools | tree,du,df,stat,file | 1/5 | fs-metadata readers, medium |
+| oojq | yq,toml,xml,csv,bson,cbor,msgpack | 2/8 | serializers, mechanical |
+| oogrep/oofind | ripl / xargs | 0/1, 0/1 | regex + traversal engines |
+| oossl | tls,cert (x509,hmac,kdf missing) | 4/6 | crypto+network, hardest |
+| oocurl | wget,wget2,fetch | 3/3 | network egress, medium |
+| ootheme | color,ansi,border,banner (+ote renamed) | 1/5 | render primitives |
+| oosed/ooawk | - / filter | 1/1, 1/2 | small |
+| oosqlite/oowatch/ooprogress/oomcp-cli | query / poll / bar,spinner / mcprun | partial | small |
+
+## 4. Recommendation — lane order
+
+1. **`oocat` first.** Six absorbees, all pure byte/stream transforms with no
+   codec or crypto; it re-proves the shim+delegate flow on the cheapest
+   possible engines and retires the largest count of repos per unit effort.
+2. **`oocodec` second.** Table-driven codecs (base32/58/hex/xxd) mirror the
+   oohash engine style directly; the rename `oobase64`->`oocodec` precedent is
+   already in the registry.
+3. **`oosort` + `ootext` next.** Hosts already reference every token; the work
+   is engine parity + shim conversion, no dispatch design needed.
+4. **`ooproc` to finish its partial vendoring** (add pgrep/pkill/lsof
+   personas + shim the nine scaffold absorbees).
+5. **`ooarchive` is the strategic big one** but lands last in this group:
+   tar/cpio are format code (easy), while gzip/xz/zstd need real DEFLATE,
+   LZMA, and zstd engines — schedule it as its own program like the hash lane.
+6. Defer `oossl`, `oocurl`, `oogrep`/`oofind` until after #5; each needs an
+   engine program, not a shim sweep.
+
+## 5. Suggested immediate order of operations
+
+oocat -> oocodec -> oosort -> ootext -> ooproc -> (program) ooarchive.
+Each lane reuses the oohash contract: host persona wiring, absorbees become
+`ipc/delegate.oo` shims, parity table vs upstream, suite green x2, oohat PASS,
+github-only push with VERSION/ooda.pkg bump and ci.yml already neutered.
