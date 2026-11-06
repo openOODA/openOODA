@@ -53,6 +53,7 @@
 
 import "std/core/text/num_buffer.oo";
 import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
 import "words.oo";
 
 // The count of the three kinds of case. The table of a tool that answers more
@@ -164,20 +165,27 @@ fn parity_strip(words: List[String], persona: String) -> List[String] { let mut 
 // not reach. The workflow of every repository makes the same search and
 // links the program it finds, so the gate and the workflow always compare
 // against the same program.
-fn parity_find_upstream(sys: &ProcessCap, upstream: String) -> String { let script: String = "for d in /usr/local/bin /usr/bin /bin /usr/local/sbin /usr/sbin /sbin /usr/games; do "
-        + "p=\"$d\"/" + parity_quote(upstream) + "; "
-        + "if [ -x \"$p\" ]; then echo \"$p\"; exit 0; fi; done; "
-        + "command -v " + parity_quote(upstream) + " 2>/dev/null"; let r: Result[String, String] = sys_exec(sys, "sh", "-c", script);
-    if r.is_err() { return ""; }
-    let lines: List[String] = parity_lines(r.val); if list_len(lines) == 0 { return ""; }
-    let first: String = parity_trim(list_get(lines, 0)); return first;
+fn parity_find_upstream(fs_r: &FsReadCap, env: &EnvCap, upstream: String) -> String {
+    if upstream == "" { return ""; }
+    let mut dirs: List[String] = str_split("/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/games", ":");
+    let path_env: String = match env_get(env, "PATH") { Ok(s) => s, Err(_) => "" };
+    let pdirs: List[String] = str_split(path_env, ":");
+    let mut i: Int = 0;
+    while i < list_len(pdirs) { dirs = list_push(dirs, list_get(pdirs, i)); i = i + 1; }
+    let mut j: Int = 0;
+    while j < list_len(dirs) {
+        let d: String = list_get(dirs, j);
+        if d != "" { let p: String = d + "/" + upstream; if fs_path_exists(fs_r, p) { return p; } }
+        j = j + 1;
+    }
+    return "";
 }
 
 // Run every case of the case table and count the results. A persona line
 // names the persona of the case that follows it and the upstream program the
 // persona answers to. The persona word is given to the tool under test and
 // taken out of the arguments of the upstream program.
-fn parity_cases(sys: &ProcessCap, fs_r: &FsReadCap, lines: List[String], upstream: String, tool: String) -> ParityCount { let mut c: ParityCount = ParityCount { matches: 0, devs: 0, skips: 0, fails: 0, missing: 0, personas: 0, used: 0 };
+fn parity_cases(sys: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, lines: List[String], upstream: String, tool: String) -> ParityCount { let mut c: ParityCount = ParityCount { matches: 0, devs: 0, skips: 0, fails: 0, missing: 0, personas: 0, used: 0 };
     let mut input_words: List[String] = list_new(); let mut setup: List[String] = list_new();
     let mut p_word: String = ""; let mut p_prog: String = "";
     let mut cached: String = ""; let mut cached_path: String = "";
@@ -198,7 +206,7 @@ fn parity_cases(sys: &ProcessCap, fs_r: &FsReadCap, lines: List[String], upstrea
         let up_name: String = if p_prog == "" { upstream } else { p_prog };
         if up_name == "" { c.missing = c.missing + 1;
             println("  FAIL " + kind + " [" + l + "] the case names no upstream program"); p_word = ""; p_prog = ""; continue; }
-        if up_name != cached { cached = up_name; cached_path = parity_find_upstream(sys, up_name); }
+        if up_name != cached { cached = up_name; cached_path = parity_find_upstream(fs_r, env, up_name); }
         if cached_path == "" { c.missing = c.missing + 1;
             println("  FAIL " + kind + " [" + l + "] the upstream " + up_name + " is not installed"); p_word = ""; p_prog = ""; continue; }
         c.used = c.used + 1;
@@ -223,7 +231,7 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap)
         let l: String = parity_trim(list_get(lines, i)); if str_starts_with(l, "# upstream:") { upstream = parity_trim(str_slice(l, 11, chars_len(l))); }
         if str_starts_with(l, "# tool:") { tool_rel = parity_trim(str_slice(l, 7, chars_len(l))); }
         i = i + 1; }
-    if upstream != "" { let up_path: String = parity_find_upstream(sys, upstream); if up_path == "" {
+    if upstream != "" { let up_path: String = parity_find_upstream(fs_r, env, upstream); if up_path == "" {
         println("ERR\tparity\tupstream tool " + upstream + " is not installed. The parity gate cannot pass without it."); return 1; } }
     if tool_rel == "" { println("ERR\tparity\tno tool in " + cases_path); return 1; }
     let tool: String = if str_starts_with(tool_rel, "/") { tool_rel } else { "./" + tool_rel };
@@ -231,7 +239,7 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap)
     let pr: Result[String, String] = fs_read_file(fs_r, "qa/parity/personas.oot");
     if pr.is_ok() { let pl: List[String] = parity_lines(pr.val); let mut k: Int = 0;
         while k < list_len(pl) { all = list_push(all, list_get(pl, k)); k = k + 1; } }
-    let c: ParityCount = parity_cases(sys, fs_r, all, upstream, tool);
+    let c: ParityCount = parity_cases(sys, fs_r, env, all, upstream, tool);
     if c.missing > 0 { println("ERR\tparity\t" + int_to_str(c.missing) + " case(s) name an upstream that is not installed."); return 1; }
     if upstream == "" && c.used == 0 { println("SKIP\tparity\tno upstream in " + cases_path + ", the tool names no program to replace, so it has no parity gate"); return 0; }
     let against: String = if upstream == "" { "its persona upstreams" } else { upstream };

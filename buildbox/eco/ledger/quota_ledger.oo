@@ -1,22 +1,35 @@
 // # Eco Quota Ledger - Writes Shared Cross-Server Fleet Quota Ledger JSON
 //
-// Logline: Generates /Projects/openOODA/.fleet-quota-ledger.json in pure .oo so ringmaster and spotlight share global token pools.
+// Logline: Generates /Projects/openOODA/.fleet-quota-ledger.json in pure .oo so the fleet nodes share global token pools.
 //
-// Setup: Needs ProcessCap for date/ssh and FsWriteCap to write /Projects/openOODA/.fleet-quota-ledger.json.
+// Setup: Needs TimeCap for the wall-clock stamp, ProcessCap for the remote fleet probe, EnvCap for the fleet host names, and FsWriteCap to write /Projects/openOODA/.fleet-quota-ledger.json.
 //
 // Beats:
-//   1. Query current Unix epoch and HST timestamp via ProcessCap.
-//   2. Probe ringmaster and spotlight Herdr workspace lists via ssh.
+//   1. Query the current Unix epoch and HST timestamp from the canonical TimeCap.
+//   2. Probe the fleet Herdr workspace lists over ssh, with the hosts taken from the environment.
 //   3. Emit the formatted .fleet-quota-ledger.json policy and agent roster.
 //   4. Write /Projects/openOODA/.fleet-quota-ledger.json and report success.
 
 import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+import "std/fs/time/anchor.oo";
 import "text/lines.oo";
+import "hst_stamp.oo";
 
-fn ql_probe_host(sys: &ProcessCap, ip: String) -> String {
-    let r: Result[String, String] = sys_exec(sys, "ssh", "-o", "ConnectTimeout=2", ip, "/home/ubermetroid/.local/bin/herdr workspace list");
+fn ql_probe_host(sys: &ProcessCap, host: String) -> String {
+    if host == "" { return ""; }
+    let r: Result[String, String] = sys_exec(sys, "ssh", "-o", "ConnectTimeout=2", host, "/home/ubermetroid/.local/bin/herdr workspace list");
     if r.is_ok() { return text_trim(r.val); }
     return "";
+}
+
+// The fleet host of one slot, taken from the environment. The default is the
+// loopback address, so a ledger written without configuration never reaches
+// out to a remote node.
+fn ql_fleet_host(env: &EnvCap, key: String) -> String {
+    let v: String = match env_get(env, key) { Ok(s) => s, Err(_) => "" };
+    if v == "" { return "127.0.0.1"; }
+    return text_trim(v);
 }
 
 fn ql_agent_entry(id: String, bin: String, models_json: String, inv: String, win: String, used: String, rem: String, m_rm: String, m_sp: String, st: String, comma: String) -> String {
@@ -72,13 +85,12 @@ fn ql_build_json(epoch_s: String, hst_s: String) -> String {
     return hdr + ql_agents_part1() + ql_agents_part2();
 }
 
-pub fn main(sys: &ProcessCap, _fs_r: &FsReadCap, fs_w: &FsWriteCap, _env: &EnvCap, _args: List[String]) -> Int {
-    let _rm: String = ql_probe_host(sys, "100.88.249.93");
-    let _sp: String = ql_probe_host(sys, "100.66.54.24");
-    let er: Result[String, String] = sys_exec(sys, "date", "+%s");
-    let epoch_s: String = if er.is_ok() && text_trim(er.val) != "" { text_trim(er.val) } else { "1793856000" };
-    let hr: Result[String, String] = sys_exec(sys, "env", "TZ=Pacific/Honolulu", "date", "+%Y-%m-%d %H:%M:%S HST");
-    let hst_s: String = if hr.is_ok() && text_trim(hr.val) != "" { text_trim(hr.val) } else { "2026-11-04 20:35:00 HST" };
+pub fn main(sys: &ProcessCap, _fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, time_cap: &TimeCap, _args: List[String]) -> Int {
+    let _rm: String = ql_probe_host(sys, ql_fleet_host(env, "OODA_FLEET_HOST_A"));
+    let _sp: String = ql_probe_host(sys, ql_fleet_host(env, "OODA_FLEET_HOST_B"));
+    let now_ms: Int = time_mod_chrono_now_ms(time_cap);
+    let epoch_s: String = (now_ms / 1000).to_string();
+    let hst_s: String = ql_hst_stamp(now_ms / 1000);
     let out_path: String = "/Projects/openOODA/.fleet-quota-ledger.json";
     let doc: String = ql_build_json(epoch_s, hst_s);
     let wr: Result[Void, String] = fs_write_file(fs_w, out_path, doc);

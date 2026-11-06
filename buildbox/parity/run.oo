@@ -13,6 +13,7 @@
 
 import "std/core/text/num_buffer.oo";
 import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
 import "words.oo";
 
 // The count of the three kinds of case.
@@ -190,17 +191,20 @@ fn parity_cases(sys: &ProcessCap, fs_r: &FsReadCap, lines: List[String], upstrea
 // not reach. The workflow of every repository makes the same search and
 // links the program it finds, so the gate and the workflow always compare
 // against the same program.
-fn parity_find_upstream(sys: &ProcessCap, upstream: String) -> String {
-    let script: String = "for d in /usr/local/bin /usr/bin /bin /usr/local/sbin /usr/sbin /sbin /usr/games; do "
-        + "p=\"$d\"/" + parity_quote(upstream) + "; "
-        + "if [ -x \"$p\" ]; then echo \"$p\"; exit 0; fi; done; "
-        + "command -v " + parity_quote(upstream) + " 2>/dev/null";
-    let r: Result[String, String] = sys_exec(sys, "sh", "-c", script);
-    if r.is_err() { return ""; }
-    let lines: List[String] = parity_lines(r.val);
-    if list_len(lines) == 0 { return ""; }
-    let first: String = parity_trim(list_get(lines, 0));
-    return first;
+fn parity_find_upstream(fs_r: &FsReadCap, env: &EnvCap, upstream: String) -> String {
+    if upstream == "" { return ""; }
+    let mut dirs: List[String] = str_split("/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/games", ":");
+    let path_env: String = match env_get(env, "PATH") { Ok(s) => s, Err(_) => "" };
+    let pdirs: List[String] = str_split(path_env, ":");
+    let mut i: Int = 0;
+    while i < list_len(pdirs) { dirs = list_push(dirs, list_get(pdirs, i)); i = i + 1; }
+    let mut j: Int = 0;
+    while j < list_len(dirs) {
+        let d: String = list_get(dirs, j);
+        if d != "" { let p: String = d + "/" + upstream; if fs_path_exists(fs_r, p) { return p; } }
+        j = j + 1;
+    }
+    return "";
 }
 
 // Read the case table, run every case, and report the parity result.
@@ -224,7 +228,7 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap)
         return 0;
     }
     if tool_rel == "" { println("ERR\tparity\tno tool in " + cases_path); return 1; }
-    let upstream_path: String = parity_find_upstream(sys, upstream);
+    let upstream_path: String = parity_find_upstream(fs_r, env, upstream);
     if upstream_path == "" {
         println("ERR\tparity\tupstream tool " + upstream + " is not installed. The parity gate cannot pass without it.");
         return 1;
