@@ -14,7 +14,9 @@
 | **Standards** (Power-of-2 Shape Ladder) | **FAIL** — `BIGFILE=0`, but `MANYFN=957`, `LONGFN=336`, `DENSE=5394`; 153 directories hold more than 8 `.oo` pages | **PASS** — 406 pages, 0 violations | **PASS** — 556 pages, 0 violations |
 | **Spec** (canonical imports, no toy clones, real I/O) | **PARTIAL** — the `std-hw/` resolver gap is fixed, but `std/sec/speculate.oo` shipped a build-breaking arena call and `std/sec/pqc.oo` has no L1 importer | **FAIL** — 10 of 16 repos still ship the banned `wire.oo` / `warrant.oo` / `attest.oo` / `quorum/blackbox.oo` clone set, 30 of them toy `% 1000000007` MACs | **PASS** — real `FsReadCap` I/O in 18 of 18; real socket I/O in the 3 network-owning daemons |
 
-Seven defects were fixed, verified, committed, and pushed. Six further findings are reported with a remediation direction, and three findings from the first pass were resolved upstream during the review window.
+Seven defects were fixed, verified, committed, and pushed. Six further findings are reported with a remediation direction. Four findings — three from the first pass and one found in this pass — were resolved upstream while the review was running.
+
+**Final verification state: L1 16 of 16 and L2 18 of 18 green on both `make verify` and `make test`; L0 `cli` green, `tui` and `mcp` red only on a load artefact that reproduces identically at HEAD.**
 
 **The second pass found the defect that matters most.** `std/sec/speculate.oo` called `oo_arena_mark()` and `oo_arena_reset_mark(mark)`, two symbols that exist nowhere in the tree. Every consumer of the canonical `std/core/ooda.oo` therefore failed to compile. The six L1 repositories that consume it — `oodrv-net`, `oodrv-nvme`, `oodrv-virtio`, `ookernel-boot`, `ookernel-hal-x86`, `ookernel-sched` — were all unbuildable, and all six are green again after the repair.
 
@@ -88,7 +90,7 @@ The six consolidated kernel repositories — `oodrv-net` (`net/net_dma_ring.oo`)
 
 ### 2.2 The canonical PQC page has no L1 importer
 
-`std/sec/pqc.oo` states that it is the canonical post-quantum primitive page that "every layer imports instead of carrying copies", and it explicitly forbids toy prime moduli. It is imported by `std/core/ooda.oo` and by the L2 and L4/L7 consumers of that engine, but **zero of the sixteen L1 repositories import it directly**. The L1 consumers reach it only transitively through `std/core/ooda.oo`. This is reported as F8, because the page claims a wider adoption than the tree shows.
+`std/sec/pqc.oo` states that it is the canonical post-quantum primitive page that "every layer imports instead of carrying copies", and it explicitly forbids toy prime moduli. It is imported by `std/core/ooda.oo` and by the L2 and L4/L7 consumers of that engine, but **zero of the sixteen L1 repositories import it directly**. The L1 consumers reach it only transitively through `std/core/ooda.oo`. This is reported as F4, because the page claims a wider adoption than the tree shows.
 
 ### 2.3 Toy clones (the `% 1000000007` pattern)
 
@@ -171,7 +173,7 @@ The 16 failures were four distinct compiler-enforced defects, all pre-existing a
 | Class | Pages | Repair |
 | :--- | :--- | :--- |
 | `unused import` | `token/cmd_more_p1.oo`, `token/cmd_token_p1.oo`, `ui/cards/card_tool_p2.oo`, `ui/indicators/indicator_bar_p1.oo`, `ui/input/input_compose_p1.oo`, `ui/statusbar/statusbar_footer.oo`, `agent_turn_p1_p1.oo`, `theme_p2.oo` | Removed the import line the compiler named. |
-| `unused let 'role'` | `ui/cards/card_say_p2.oo` | Removed the dead binding. The binding was computed and never read; `card_say_card(theme, role, text, color)` — the function that renders the role pill — has no caller anywhere in the tree. That gap is reported as F9 rather than changed here, because wiring it would change what the TUI renders. |
+| `unused let 'role'` | `ui/cards/card_say_p2.oo` | Removed the dead binding. The binding was computed and never read; `card_say_card(theme, role, text, color)` — the function that renders the role pill — has no caller anywhere in the tree. That gap is reported as F5 rather than changed here, because wiring it would change what the TUI renders. |
 | `use after move accent` | `input.oo`, `ui/indicators/indicator_telemetry.oo`, `ui/input/input_compose_p1_p2.oo` | A theme colour was bound to a `let`, then moved by a later binding initialisation (`let mut ctx_color: String = accent;`) or assignment (`mode_color = accent;`), and then read again. The compiler's rule, established by measurement, is that **binding initialisation and assignment move** while **function arguments copy**. Each site now derives the colour freshly instead of moving the shared binding, which leaves the rendered value byte-identical. |
 | `cannot assign to field of immutable binding 'ts'` | `teamwork_p1.oo`, `teamwork_p1_p1.oo` | The four functions that mutated their `TeamState` parameter now copy into a `let mut` local first, which is the idiom the same file already uses for `TeamworkAgent`. The grammar has no `mut` parameter (`Parameter ::= Identifier ":" [ "&" ] Type`), so a by-value parameter can never be mutated in place. |
 
@@ -246,7 +248,13 @@ The tracked compiler entry point became a 1275-byte shell wrapper, and the real 
 
 *Remediation.* Land the wrapper and `bin/oodac.real` as one deliberate change with the ELF committed, and replace the host-name slot table with a single configurable slot count read from the environment.
 
-### F7 — Three first-pass findings resolved upstream during the review window
+### F7 — `oosvc-mgr` kept a stale build dependency after a test rename — *resolved upstream*
+
+Upstream commit `4c66b19` renamed `tests/test_deep_parta.oo` to `tests/test_deep_sec.oo` per House Law §1.1, but the Makefile `SRC` list still named the old file, so `make test` failed on every run with `No rule to make target 'tests/test_deep_parta.oo', needed by 'bin/oosvc-mgr'` and the repository's own test gate never ran.
+
+Upstream commit `0ea041e` repaired the same line while this review was running. The repair was confirmed by re-running the gate against it: `ALL TESTS PASSED`, 70/70 assertions. A sweep of every Makefile in all 44 repositories for source references to files that no longer exist found no other case; the remaining hits are `*.oot` files and a guarded cross-repository probe.
+
+### F8 — Three first-pass findings resolved upstream during the review window
 
 Three findings from the first pass were resolved upstream while this review was running, and are recorded here so they are not misread as still open:
 
@@ -283,10 +291,12 @@ Each repository was verified with its own gate set, one build per repository dir
 | L0 | `tui` | 1 | 2 | `check` fails on `./main_p1.oo` only, and `test` fails in the `dist/tui` build; both are signal-9 kills that reproduce identically at HEAD. 15 of the 16 original failures are repaired. |
 | L0 | `mcp` | 2 | 2 | `build` fails with `emit-llvm failed`, exit 1 after four minutes and a 1.07 GB peak. The repository is clean and carries no change from this review. |
 | L0 | `std` | — | — | No `Makefile`; the gate is the CI double-run suite. `qa/probe_sec_shared.oo` builds and runs with `fails=0`, and every page this review touched checks `OK`. |
-| L2 | `ooaid`, `ooaudiod`, `oodevd`, `oodnsd`, `oofs-ext4`, `oofs-tmp`, `oohealthd`, `ooimage` | 0 | 0 | Re-verified in this pass; every one reports `ALL TESTS PASSED`. |
-| L2 | `ooinit`, `oologd`, `oonetd`, `oopolicyd`, `oopowerd`, `oorealm`, `oosession`, `oosvc-mgr`, `oosysbus`, `oovfs` | 0 | 0 | Verified in the first pass after D1 and D2; `oosysbus` reports `ALL TESTS PASSED`, `oosession` `PASS 121/121 assertions`, and `oovfs` `PASS 65/65 assertions, RESULTS fails=0`. No L2 repository imports `std/core/ooda.oo` or `std/sec/speculate.oo`, so the D6 repair cannot have changed any L2 result, and a second-pass re-sweep was in progress for these ten when this table was written. |
+| L2 | `ooaid`, `ooaudiod`, `oodevd`, `oodnsd`, `oofs-ext4`, `oofs-tmp`, `oohealthd`, `ooimage`, `ooinit`, `oologd`, `oonetd`, `oopolicyd`, `oopowerd`, `oorealm`, `oosession`, `oosysbus`, `oovfs` | 0 | 0 | Re-verified in this pass; every one reports `ALL TESTS PASSED`. `oonetd` was red in the first pass and is green now. |
+| L2 | `oosvc-mgr` | 0 | 0 | Red in this pass for a stale build dependency — see F7 — and green after the upstream repair. `ALL TESTS PASSED`, 70/70 assertions. |
 
 The L2 gate set is `line-cap file-law academy density vocab check shape link-law`, the same seven targets every L1 repository runs, and all 18 L2 repositories report `PASS: directory density (<= 8 pages per directory) holds`, `PASS: shape law holds (<=8 fns/page, <=64 lines/fn)`, and `PASS: link law holds`.
+
+**Final state: L0 `cli` green; L1 16 of 16 green on both `verify` and `test`; L2 18 of 18 green on both.**
 
 ---
 
