@@ -1,0 +1,75 @@
+// # Fleet Alerts - Threshold-Breach Emission To A Spool Directory (RFC 0013)
+//
+// Logline: Classify each verdict line as a breach or a pass, write one ALERT file per breach to the spool dir, and clear files whose conditions recovered.
+//
+// Setup: &FsWriteCap creates the spool dir, writes alert files, and removes stale ones; &FsReadCap lists the spool for reconciliation. Classification itself is pure.
+//
+// Beats:
+//   1. alert_of maps a verdict line to a breach kind (err, warn, cutoff, down, drift, blocked) or "" when it passes.
+//   2. alert_emit writes <dir>/ALERT-<kind>-<i>.txt for every breach line.
+//   3. Reconcile: spool files from older ticks that no longer match a live breach are removed; ALERT_CLEAR records each removal.
+
+import "fleettick/btext.oo";
+import "std/fs/os/fs.oo";
+import "std/core/primitives/str.oo";
+
+// The breach kind of one verdict line, or "" when it is a pass. Order
+// matters: CUTOFF/DRIFT/DOWN/BLOCKED-WS are checked before the generic
+// WARN and ERR markers so a line lands in its sharpest class.
+pub fn alert_of(line: String) -> String {
+    if str_contains(line, "CUTOFF") { return "cutoff"; }
+    if str_contains(line, " DRIFT") { return "drift"; }
+    if str_contains(line, " DOWN") { return "down"; }
+    if str_contains(line, "BLOCKED-WS") { return "blocked"; }
+    if str_contains(line, " WARN ") { return "warn"; }
+    if str_contains(line, "ERR") { return "err"; }
+    return "";
+}
+
+// True when name is in names.
+fn alert_in(names: List[String], name: String) -> Bool {
+    let mut i: Int = 0;
+    let n: Int = list_len(names);
+    while i < n { if list_get(names, i) == name { return true; } i = i + 1; }
+    return false;
+}
+
+// Write one spool file per breach, drop stale spool files, and return the
+// report lines (ALERT <file> / ALERT_CLEAR <file> / alerts=<n> / ALERT_ERR).
+pub fn alert_emit(fw: &FsWriteCap, fr: &FsReadCap, dir: String, lines: List[String]) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mk: Result[Void, String] = fs_mkdir_p(fw, dir);
+    match mk { Ok(_) => { }, Err(e) => { return list_push(out, "ALERT_ERR mkdir " + dir + " " + e); } }
+    let mut written: List[String] = list_new();
+    let mut i: Int = 0;
+    let n: Int = list_len(lines);
+    while i < n {
+        let line: String = list_get(lines, i);
+        let k: String = alert_of(line);
+        if k != "" {
+            let name: String = "ALERT-" + k + "-" + i.to_string() + ".txt";
+            let wr: Result[Void, String] = fs_write_file(fw, dir + "/" + name, line + "\n");
+            match wr {
+                Ok(_) => { out = list_push(out, "ALERT " + name + " " + line);
+                    written = list_push(written, name); },
+                Err(e) => { out = list_push(out, "ALERT_ERR write " + name + " " + e); },
+            }
+        }
+        i = i + 1;
+    }
+    let existing: List[String] = fs_read_dir(fr, dir);
+    let mut j: Int = 0;
+    let en: Int = list_len(existing);
+    while j < en {
+        let f: String = list_get(existing, j);
+        if starts_with(f, "ALERT-") && !alert_in(written, f) {
+            let rm: Result[Void, String] = fs_remove_file(fw, dir + "/" + f);
+            match rm {
+                Ok(_) => { out = list_push(out, "ALERT_CLEAR " + f); },
+                Err(e) => { out = list_push(out, "ALERT_ERR clear " + f + " " + e); },
+            }
+        }
+        j = j + 1;
+    }
+    return list_push(out, "alerts=" + list_len(written).to_string());
+}

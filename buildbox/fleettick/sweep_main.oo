@@ -1,20 +1,22 @@
 // # Fleet Tick - Read-Only Sweep Entrypoint (RFC 0013)
 //
-// Logline: Run the read-only fleet tick sections: repository states, quota metering, idle workspaces, host health, and the forge probe.
+// Logline: Run the fleet tick sections, then capture the full verdict set to the state file and emit breach alerts to the spool dir.
 //
-// Setup: &FsReadCap reads repos, the quota ledger, the health config and /proc/meminfo; &ProcessCap runs git, herdr, df, pgrep; &EnvCap reads OODA_FLEET_HOME / OODA_FLEET_XDG; &FsWriteCap is admitted but unused (read-only contract).
+// Setup: &FsReadCap reads repos, the quota ledger, the health config, /proc/meminfo and the spool dir; &ProcessCap runs git, herdr, df, pgrep; &EnvCap reads OODA_FLEET_HOME / OODA_FLEET_XDG; &FsWriteCap writes the state file and the alert spool.
 //
 // Beats:
 //   1. Sweep the repos under the root and print the verdict lines plus the tally.
 //   2. Read .fleet-quota-ledger.json for ledger QUOTA lines, then meter each agent pane's visible text into live QUOTA lines.
-//   3. Snapshot the local herdr agent list and print the per-workspace report.
-//   4. Run the host health checks and the github forge probe; both stay read-only.
+//   3. Snapshot the local herdr agent list and print the per-workspace report; run host health and the github forge probe.
+//   4. Pack every verdict into .fleet-state.txt, then spool one ALERT file per breached condition and clear recovered ones.
 
 import "fleettick/sweep.oo";
 import "fleettick/meter.oo";
 import "fleettick/agents.oo";
 import "fleettick/probe/host.oo";
 import "fleettick/probe/forge.oo";
+import "fleettick/out/snap.oo";
+import "fleettick/out/alert.oo";
 import "std/fs/os/fs.oo";
 import "std/fs/process/env.oo";
 
@@ -23,28 +25,47 @@ fn sm_print(lines: List[String]) {
     while i < list_len(lines) { println(list_get(lines, i)); i = i + 1; }
 }
 
-pub fn main(p: &ProcessCap, fr: &FsReadCap, _fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
+// Print a section's lines and append them to the running state list.
+fn sm_emit(all: List[String], lines: List[String]) -> List[String] {
+    let mut acc: List[String] = all;
+    sm_print(lines);
+    let mut i: Int = 0;
+    while i < list_len(lines) { acc = list_push(acc, list_get(lines, i)); i = i + 1; }
+    return acc;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
     let root: String = if list_len(args) > 0 && list_get(args, 0) != "" { list_get(args, 0) } else { "/Projects" };
     let home: String = match env_get(env, "OODA_FLEET_HOME") { Ok(s) => s, Err(_) => "" };
     let xdg: String = match env_get(env, "OODA_FLEET_XDG") { Ok(s) => s, Err(_) => "" };
     let al: Result[String, String] = agents_fetch(p, home, xdg);
     let atext: String = match al { Ok(v) => v, Err(_) => "" };
+    let mut all: List[String] = list_new();
     println("-- repos");
-    let lines: List[String] = sweep_report(fr, p, root);
-    sm_print(lines);
-    println(sweep_summary(lines));
+    let rl: List[String] = sweep_report(fr, p, root);
+    all = sm_emit(all, rl);
+    let sum: String = sweep_summary(rl);
+    println(sum);
+    all = list_push(all, sum);
     println("-- quota");
     let rd: Result[String, String] = fs_read_file(fr, "/Projects/openOODA/.fleet-quota-ledger.json");
-    match rd {
-        Ok(doc) => sm_print(meter_report(doc)),
-        Err(e) => println("QUOTA none (ledger unreadable): " + e)
-    }
-    if atext == "" { println("QUOTA panes UNREADABLE"); } else { sm_print(agents_pane_quota(p, home, xdg, atext)); }
+    let ql: List[String] = match rd {
+        Ok(doc) => meter_report(doc),
+        Err(e) => list_push(list_new(), "QUOTA none (ledger unreadable): " + e)
+    };
+    all = sm_emit(all, ql);
+    let pq: List[String] = if atext == "" { list_push(list_new(), "QUOTA panes UNREADABLE") } else { agents_pane_quota(p, home, xdg, atext) };
+    all = sm_emit(all, pq);
     println("-- workspaces");
-    if atext == "" { println("AGENTS_ERR herdr unreadable"); } else { sm_print(agents_report(atext)); }
+    let wl: List[String] = if atext == "" { list_push(list_new(), "AGENTS_ERR herdr unreadable") } else { agents_report(atext) };
+    all = sm_emit(all, wl);
     println("-- health");
-    sm_print(host_report(p, fr, "/Projects/openOODA/.fleet-health.conf"));
+    all = sm_emit(all, host_report(p, fr, "/Projects/openOODA/.fleet-health.conf"));
     println("-- forge");
-    sm_print(forge_report(p, "/Projects/openOODA/openOODA"));
+    all = sm_emit(all, forge_report(p, "/Projects/openOODA/openOODA"));
+    println("-- snapshot");
+    println(snap_write(fw, "/Projects/openOODA/.fleet-state.txt", all));
+    println("-- alerts");
+    sm_print(alert_emit(fw, fr, "/Projects/openOODA/.fleet-alerts", all));
     return 0;
 }

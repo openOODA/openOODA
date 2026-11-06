@@ -1,8 +1,8 @@
 // # Test Fleet Sweep - Pure-Function Checks For The Read-Only Sweep
 //
-// Logline: Prove the sweep's pure classifiers and its repository detector against fixed inputs and one known repository.
+// Logline: Prove the tick's pure classifiers, repository detector, and file emitters against fixed inputs, /tmp fixtures, and a live spool dir.
 //
-// Setup: FsReadCap for the live detection checks; FsWriteCap + ProcessCap for the /tmp fixtures that prove ERR and .git-file detection; every other check is a pure string function over fixed text.
+// Setup: FsReadCap for the live detection checks; FsWriteCap + ProcessCap for the /tmp fixtures that prove ERR, .git-file detection, snapshot writes, and alert spool reconcile; every other check is a pure string function over fixed text.
 //
 // Beats:
 //   1. Porcelain classification: empty and whitespace-only text mean CLEAN, any marker means DIRTY.
@@ -11,12 +11,15 @@
 //   4. Quota metering: every observed usage shape parses and the pacing verdicts hold.
 //   5. Idle workspaces: the herdr JSON aligns into triples and the per-workspace verdicts hold.
 //   6. Host health and forge probe: config/df/meminfo/ls-remote parsing and the threshold/drift classifiers.
+//   7. Snapshot and alerts: pack format, breach classification, and live spool write/clear.
 
 import "fleettick/sweep.oo";
 import "fleettick/meter.oo";
 import "fleettick/agents.oo";
 import "fleettick/probe/host.oo";
 import "fleettick/probe/forge.oo";
+import "fleettick/out/snap.oo";
+import "fleettick/out/alert.oo";
 import "std/fs/os/fs.oo";
 
 fn ts_expect(name: String, got: String, want: String) -> Int {
@@ -80,6 +83,14 @@ fn ts_sweep_checks(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap) -> Int {
     fails = fails + ts_expect_has("fixture_gitfile_detected", frepos, "/tmp/fleettick-fix/wt-repo");
     fails = fails + ts_expect_has("fixture_err_classified", frep, "ERR /tmp/fleettick-fix/err-repo");
     fails = fails + ts_expect_has("fixture_gitfile_classified", frep, "ERR /tmp/fleettick-fix/wt-repo");
+    let alines: List[String] = list_push(list_push(list_new(), "HEALTH proc herdr DOWN"), "CLEAN /a");
+    fails = fails + ts_expect("snap_line", snap_write(fw, "/tmp/fleettick-state.txt", alines), "SNAP /tmp/fleettick-state.txt lines=2");
+    let ae1: List[String] = ts_copy(alert_emit(fw, fr, "/tmp/fleettick-alerts", alines));
+    fails = fails + ts_expect_has("alert_count", ae1, "alerts=1");
+    fails = fails + ts_expect_bool("alert_file_written", fs_path_exists(fr, "/tmp/fleettick-alerts/ALERT-down-0.txt"), true);
+    let ae2: List[String] = ts_copy(alert_emit(fw, fr, "/tmp/fleettick-alerts", list_push(list_new(), "CLEAN /a")));
+    fails = fails + ts_expect_has("alert_cleared_line", ae2, "ALERT_CLEAR ALERT-down-0.txt");
+    fails = fails + ts_expect_bool("alert_file_cleared", fs_path_exists(fr, "/tmp/fleettick-alerts/ALERT-down-0.txt"), false);
     return fails;
 }
 
@@ -111,6 +122,8 @@ fn ts_meter_checks() -> Int {
     fails = fails + ts_expect("health_ok", host_class(80, 85), "OK");
     fails = fails + ts_expect("health_warn", host_class(85, 85), "WARN");
     fails = fails + ts_expect("health_unknown", host_class(-1, 85), "UNKNOWN");
+    fails = fails + ts_expect("snap_pack_two", snap_pack(list_push(list_push(list_new(), "a"), "b")), "a\nb\n");
+    fails = fails + ts_expect("snap_pack_empty", snap_pack(list_new()), "");
     return fails;
 }
 
@@ -132,12 +145,21 @@ fn ts_agent_checks() -> Int {
     fails = fails + ts_expect("forge_drift_diff", forge_drift("aaa", "bbb"), "DRIFT");
     fails = fails + ts_expect("forge_drift_gap", forge_drift("", "bbb"), "GAP");
     fails = fails + ts_expect("forge_drift_unknown", forge_drift("aaa", ""), "UNKNOWN");
+    fails = fails + ts_expect("alert_warn", alert_of("HEALTH mem WARN use=91 warn=90"), "warn");
+    fails = fails + ts_expect("alert_cutoff", alert_of("QUOTA vibe CUTOFF used=96 rem=4"), "cutoff");
+    fails = fails + ts_expect("alert_down", alert_of("HEALTH proc herdr DOWN"), "down");
+    fails = fails + ts_expect("alert_drift", alert_of("FORGE ooda DRIFT local=a remote=b"), "drift");
+    fails = fails + ts_expect("alert_blocked", alert_of("BLOCKED-WS w4 blocked=1"), "blocked");
+    fails = fails + ts_expect("alert_err", alert_of("ERR /some/repo"), "err");
+    fails = fails + ts_expect("alert_forge_err", alert_of("FORGE_ERR no github remote"), "err");
+    fails = fails + ts_expect("alert_pass_clean", alert_of("CLEAN /a"), "");
+    fails = fails + ts_expect("alert_pass_idle", alert_of("IDLE-WS w3 blocked=0"), "");
     return fails;
 }
 
 pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, _args: List[String]) -> Int {
     let fails: Int = ts_sweep_checks(p, fr, fw) + ts_meter_checks() + ts_agent_checks();
     if fails > 0 { println("FAIL\ttest_sweep\t" + fails.to_string() + " check(s) failed"); return 1; }
-    println("Ran 55 checks in pure .oo — OK");
+    println("Ran 71 checks in pure .oo — OK");
     return 0;
 }
