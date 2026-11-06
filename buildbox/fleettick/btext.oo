@@ -1,0 +1,56 @@
+// # Fleet Byte Text - Byte-Native Text Primitives For The Tick Parsers (RFC 0013)
+//
+// Logline: Provide the slice, search, and number readers the tick parsers need, all on byte offsets so multibyte text never skews a position.
+//
+// Setup: Free builtins only (bytes_*, byte_at, str_index_of). str_index_of returns byte offsets while str_slice and char_at are char-indexed — never mix the two families.
+//
+// Beats:
+//   1. bt_slice copies a byte range into a fresh String.
+//   2. bt_idx_from searches a pattern at or after a byte offset.
+//   3. bt_uint_at and bt_num_before read unsigned numbers by byte walk.
+
+// The byte range [start, end) copied into a fresh String.
+pub fn bt_slice(s: String, start: Int, stop: Int) -> String {
+    let n: Int = bytes_len(s);
+    let hi: Int = if stop > n { n } else { stop };
+    let mut bs: List[Int] = bytes_new();
+    let mut i: Int = if start < 0 { 0 } else { start };
+    while i < hi { bs = bytes_push(bs, byte_at(s, i)); i = i + 1; }
+    return bytes_to_str(bs);
+}
+
+// The byte index of pat at or after start, or -1 when it is absent.
+pub fn bt_idx_from(text: String, pat: String, start: Int) -> Int {
+    let tail: String = bt_slice(text, start, bytes_len(text));
+    let p: Int = str_index_of(tail, pat);
+    if p < 0 { return -1; }
+    return start + p;
+}
+
+// The first unsigned number at or after byte start, or -1 when none.
+pub fn bt_uint_at(text: String, start: Int) -> Int {
+    let n: Int = bytes_len(text);
+    let mut acc: Int = 0;
+    let mut seen: Bool = false;
+    let mut i: Int = if start < 0 { 0 } else { start };
+    while i < n {
+        let b: Int = byte_at(text, i);
+        if b >= 48 && b <= 57 { acc = acc * 10 + (b - 48); seen = true; }
+        else if seen { break; }
+        i = i + 1;
+    }
+    if !seen { return -1; }
+    return acc;
+}
+
+// The unsigned number that ends immediately before byte idx, or -1.
+pub fn bt_num_before(text: String, idx: Int) -> Int {
+    let mut j: Int = idx - 1;
+    while j >= 0 {
+        let b: Int = byte_at(text, j);
+        if b < 48 || b > 57 { break; }
+        j = j - 1;
+    }
+    if j == idx - 1 { return -1; }
+    return bt_uint_at(text, j + 1);
+}

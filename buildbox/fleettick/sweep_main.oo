@@ -1,16 +1,41 @@
-// # Fleet Sweep Main - Read-Only Sweep Entrypoint
+// # Fleet Tick - Read-Only Sweep Entrypoint (RFC 0013)
 //
-// Logline: Resolves the sweep root from argv and delegates to sweep_run so sweep.oo stays importable without a duplicate main symbol.
+// Logline: Run the read-only fleet tick sections: repository states, quota metering, and the idle-workspace report.
 //
-// Setup: ProcessCap for read-only git argv; FsReadCap for the directory walk. The root defaults to /Projects.
+// Setup: &FsReadCap reads repos and the quota ledger; &ProcessCap runs git status and herdr agent list; &EnvCap reads OODA_FLEET_HOME / OODA_FLEET_XDG for the herdr socket env; &FsWriteCap is admitted but unused (read-only contract).
 //
 // Beats:
-//   1. Take the root from argv[0] when present, else /Projects.
-//   2. Delegate to sweep_run; the binary always observes and never mutates.
+//   1. Sweep the repos under the root and print the verdict lines plus the tally.
+//   2. Read .fleet-quota-ledger.json and print one QUOTA verdict per metered agent.
+//   3. Snapshot the local herdr agent list and print the per-workspace report.
 
 import "fleettick/sweep.oo";
+import "fleettick/meter.oo";
+import "fleettick/agents.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
 
-pub fn main(p: &ProcessCap, fr: &FsReadCap, _fw: &FsWriteCap, _env: &EnvCap, args: List[String]) -> Int {
+fn sm_print(lines: List[String]) {
+    let mut i: Int = 0;
+    while i < list_len(lines) { println(list_get(lines, i)); i = i + 1; }
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, _fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
     let root: String = if list_len(args) > 0 && list_get(args, 0) != "" { list_get(args, 0) } else { "/Projects" };
-    return sweep_run(p, fr, root);
+    println("-- repos");
+    let lines: List[String] = sweep_report(fr, p, root);
+    sm_print(lines);
+    println(sweep_summary(lines));
+    println("-- quota");
+    let rd: Result[String, String] = fs_read_file(fr, "/Projects/openOODA/.fleet-quota-ledger.json");
+    match rd {
+        Ok(doc) => sm_print(meter_report(doc)),
+        Err(e) => println("QUOTA none (ledger unreadable): " + e)
+    }
+    println("-- workspaces");
+    let home: String = match env_get(env, "OODA_FLEET_HOME") { Ok(s) => s, Err(_) => "" };
+    let xdg: String = match env_get(env, "OODA_FLEET_XDG") { Ok(s) => s, Err(_) => "" };
+    let al: Result[String, String] = agents_fetch(p, home, xdg);
+    if al.is_err() { println("AGENTS_ERR herdr unreadable"); } else { sm_print(agents_report(al.val)); }
+    return 0;
 }
