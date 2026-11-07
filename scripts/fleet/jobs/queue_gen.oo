@@ -9,16 +9,11 @@
 //   2. Write the queue document and print the summary counts.
 
 import "job_text.oo";
+import "queue_doc.oo";
 import "queue_scan.oo";
 import "std/core/primitives/str.oo";
-import "std/core/format/json_writer.oo";
 import "std/fs/os/fs.oo";
 import "std/fs/process/env.oo";
-
-type QueueScan = struct {
-    tasks: List[QueueTask], gap: List[String], gated: List[String],
-    no_cap: List[String], skipped: List[String], cand: List[String]
-};
 
 // Scan the eight L-spaces for the reg64 campaign.
 fn qg_scan_spaces(p: &ProcessCap, fr: &FsReadCap) -> QueueScan {
@@ -114,72 +109,6 @@ fn qg_batch_tasks(cand: List[String], batch: Int) -> List[QueueTask] {
         n = n + 1;
     }
     return out;
-}
-
-// Write one task object in the queue key order.
-fn qg_write_task(t: QueueTask) -> String {
-    let pri: Int = t.priority;
-    let mut out: String = "{\"id\":" + json_escape_str(t.id);
-    out = out + ",\"kind\":" + json_escape_str(t.kind);
-    out = out + ",\"space\":" + json_escape_str(t.space);
-    if str_len(t.repo) == 0 { out = out + ",\"repo\":null";
-    } else { out = out + ",\"repo\":" + json_escape_str(t.repo); }
-    if str_len(t.path) == 0 { out = out + ",\"path\":null";
-    } else { out = out + ",\"path\":" + json_escape_str(t.path); }
-    out = out + ",\"repos\":" + qg_json_list(t.repos, 0);
-    if str_len(t.repos_ids) > 0 { out = out + ",\"repos_ids\":" + qg_json_list(t.repos_ids, 0); }
-    if str_len(t.work_item) > 0 {
-        out = out + ",\"work_item\":" + json_escape_str(t.work_item);
-        out = out + ",\"title\":" + json_escape_str(t.title);
-        out = out + ",\"objective\":" + json_escape_str(t.objective);
-    }
-    if str_len(t.priority_text) > 0 { out = out + ",\"priority\":" + json_escape_str(t.priority_text); }
-    else { out = out + ",\"priority\":" + pri.to_string(); }
-    out = out + ",\"state\":\"queued\",\"owner_pane\":null,\"attempts\":0,\"last_error\":null}";
-    return out;
-}
-
-// Write a string array, a count object, or a count text as the mode asks.
-fn qg_json_list(items: List[String], mode: Int) -> String {
-    let mut out: String = "";
-    let mut i: Int = 0;
-    while i < list_len(items) {
-        let item: String = list_get(items, i);
-        if i > 0 { if mode == 2 { out = out + ", ";
-        } else { out = out + ","; } }
-        if mode == 0 { out = out + "\"" + json_escape_str(item) + "\""; }
-        else {
-            let eq: Int = index_of(item, "=");
-            let key: String = str_sub(item, 0, eq);
-            let val: String = str_sub(item, eq + 1, str_len(item));
-            if mode == 1 { out = out + "\"" + key + "\":" + val; }
-            else { out = out + "'" + key + "': " + val; }
-        }
-        i = i + 1;
-    }
-    return out;
-}
-
-// Write the whole queue document.
-fn qg_write_doc(scan: QueueScan, tasks: List[QueueTask], now: String, batch: Int, reg64: Int, org: Int) -> String {
-    let mut out: String = "{\"schema\":1,\"generated_at\":" + json_escape_str(now);
-    out = out + ",\"tools_batch_size\":" + batch.to_string();
-    out = out + ",\"counts\":{\"reg64_tasks\":" + reg64.to_string();
-    out = out + ",\"org_tasks\":" + org.to_string();
-    out = out + ",\"no_capability_surface\":" + list_len(scan.no_cap).to_string();
-    out = out + ",\"skipped_reviewer_locked\":" + list_len(scan.skipped).to_string() + "}";
-    out = out + ",\"gap_by_space\":{" + qg_json_list(scan.gap, 1) + "}";
-    out = out + ",\"gated_by_space\":{" + qg_json_list(scan.gated, 1) + "}";
-    out = out + ",\"no_capability_surface\":" + qg_json_list(scan.no_cap, 0);
-    out = out + ",\"skipped_reviewer_locked\":" + qg_json_list(scan.skipped, 0);
-    out = out + ",\"tasks\":[";
-    let mut i: Int = 0;
-    while i < list_len(tasks) {
-        if i > 0 { out = out + ","; }
-        out = out + qg_write_task(list_get(tasks, i));
-        i = i + 1;
-    }
-    return out + "]}";
 }
 
 // Build the fleet work queue and write it to the state directory.

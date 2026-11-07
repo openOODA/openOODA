@@ -1,0 +1,75 @@
+// # Test Queue Doc - Schema Contract For work-queue.json
+//
+// Logline: Prove qg_write_doc emits schema-valid JSON: quoted strings, array repos, and parser-compatible fields.
+//
+// Setup: Pure function calls over synthetic QueueTask records. No capabilities required.
+//
+// Beats:
+//   1. Build a QueueScan with gap, gated, skipped samples and three tasks covering reg64, batch, and org kinds.
+//   2. Call qg_write_doc and assert quoted scalars, bracketed repos arrays, and escaped special characters.
+//   3. Round-trip task fields through jt_value, jt_text, and jt_array to prove parser compatibility.
+
+import "queue_doc.oo";
+import "queue_scan.oo";
+import "job_text.oo";
+import "std/core/primitives/str.oo";
+
+fn tqd_expect(name: String, cond: Bool) -> Int {
+    if cond { println("PASS\t" + name);
+    return 0; }
+    println("FAIL\t" + name);
+    return 1;
+}
+
+fn tqd_task(id: String, kind: String, repo: String, path: String, priority_text: String, work_item: String,
+    title: String, objective: String) -> QueueTask {
+    let mut repos: List[String] = list_new();
+    repos = list_push(repos, path);
+    let mut ids: List[String] = list_new();
+    ids = list_push(ids, repo);
+    return QueueTask { id: id, kind: kind, space: "openOODA-agents", repo: repo, path: path, repos: repos,
+        repos_ids: ids, priority: 0, priority_text: priority_text, work_item: work_item, title: title,
+        objective: objective };
+}
+
+fn tqd_checks() -> Int {
+    let mut fails: Int = 0;
+    let scan: QueueScan = QueueScan { tasks: list_new(), gap: list_push(list_new(), "openOODA-tools=3"),
+        gated: list_push(list_new(), "openOODA-tools=4"), no_cap: list_push(list_new(), "openOODA-tools/www"),
+        skipped: list_new(), cand: list_new() };
+    let mut tasks: List[QueueTask] = list_new();
+    tasks = list_push(tasks, tqd_task("reg64:openOODA-agents/ooarchitect", "reg64-gate", "openOODA-agents/ooarchitect",
+        "/Projects/openOODA-agents/ooarchitect", "", "", "", ""));
+    tasks = list_push(tasks, tqd_task("reg64-batch:openOODA-tools#1", "reg64-gate-batch", "", "",
+        "", "", "", ""));
+    tasks = list_push(tasks, tqd_task("org:O3-catalog", "org-maintenance", "openOODA/catalog",
+        "/Projects/openOODA/catalog", "O3", "O3", "Verify catalog index", "say \"hi\" \\o/ end"));
+    let doc: String = qg_write_doc(scan, tasks, "2026-11-07T00:00:00-1000", 12, 2, 1);
+    fails = fails + tqd_expect("quoted_generated_at", str_contains(doc, "\"generated_at\":\"2026-11-07"));
+    fails = fails + tqd_expect("array_repos", str_contains(doc, "\"repos\":[\"/Projects/"));
+    fails = fails + tqd_expect("no_scalar_repos", !str_contains(doc, "\"repos\":\""));
+    fails = fails + tqd_expect("no_unquoted_kind", !str_contains(doc, ",\"kind\":reg64"));
+    fails = fails + tqd_expect("escaped_quotes", str_contains(doc, "say \\\"hi\\\" \\\\o/ end"));
+    let now_v: String = jt_text(doc, "generated_at");
+    fails = fails + tqd_expect("jt_generated_at", now_v == "2026-11-07T00:00:00-1000");
+    let tasks_v: String = jt_value(doc, "tasks");
+    let elems: List[String] = jt_elements(str_sub(tasks_v, 1, str_len(tasks_v) - 1));
+    fails = fails + tqd_expect("task_count", list_len(elems) == 3);
+    let t0: String = jt_trim(list_get(elems, 0));
+    fails = fails + tqd_expect("jt_task_id", jt_text(t0, "id") == "reg64:openOODA-agents/ooarchitect");
+    let repos0: List[String] = jt_array(t0, "repos");
+    fails = fails + tqd_expect("jt_repos_full_path", list_len(repos0) == 1 && list_get(repos0, 0) ==
+        "/Projects/openOODA-agents/ooarchitect");
+    let t2: String = jt_trim(list_get(elems, 2));
+    fails = fails + tqd_expect("jt_org_priority", jt_text(t2, "priority") == "O3");
+    fails = fails + tqd_expect("jt_org_objective", jt_text(t2, "objective") == "say \\\"hi\\\" \\\\o/ end");
+    return fails;
+}
+
+pub fn main() -> Int {
+    let fails: Int = tqd_checks();
+    if fails > 0 { println("FAIL\ttest_queue_doc\t" + fails.to_string() + " check(s) failed");
+    return 1; }
+    println("PASS\ttest_queue_doc\tqueue document schema contract holds");
+    return 0;
+}

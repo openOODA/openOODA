@@ -1,0 +1,139 @@
+// # Fleet Queue Document - work-queue.json Writer
+//
+// Logline: Serialize the fleet work queue into schema-valid JSON with quoted strings and bracketed arrays.
+//
+// Setup: Pure text page. QueueTask records arrive from queue_scan.oo; no capabilities required.
+// Escaped fragments are computed before concatenation and each object is assembled from
+// small fragments joined once, so no allocator call runs inside a long concat chain.
+//
+// Beats:
+//   1. Escape every string scalar and wrap string lists in JSON array brackets.
+//   2. Emit one task object per QueueTask in the queue key order.
+//   3. Compose the full document with counts, gap, gated, and task sections.
+
+import "queue_scan.oo";
+import "std/core/primitives/str.oo";
+import "std/core/format/json_writer.oo";
+
+pub type QueueScan = struct {
+    tasks: List[QueueTask], gap: List[String], gated: List[String],
+    no_cap: List[String], skipped: List[String], cand: List[String]
+};
+
+// Join string fragments with a separator.
+fn qg_join(items: List[String], sep: String) -> String {
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < list_len(items) {
+        if i > 0 { out = out + sep; }
+        let it: String = list_get(items, i);
+        out = out + it;
+        i = i + 1;
+    }
+    return out;
+}
+
+// Write one task object in the queue key order.
+pub fn qg_write_task(t: QueueTask) -> String {
+    let id_j: String = json_escape_str(t.id);
+    let kind_j: String = json_escape_str(t.kind);
+    let space_j: String = json_escape_str(t.space);
+    let repo_j: String = json_escape_str(t.repo);
+    let path_j: String = json_escape_str(t.path);
+    let repos_j: String = qg_json_list(t.repos, 0);
+    let repos_ids_j: String = qg_json_list(t.repos_ids, 0);
+    let has_ids: Bool = list_len(t.repos_ids) > 0;
+    let has_item: Bool = str_len(t.work_item) > 0;
+    let work_item_j: String = json_escape_str(t.work_item);
+    let title_j: String = json_escape_str(t.title);
+    let objective_j: String = json_escape_str(t.objective);
+    let has_pri: Bool = str_len(t.priority_text) > 0;
+    let pri_j: String = json_escape_str(t.priority_text);
+    let pri_num: String = t.priority.to_string();
+    let mut repo_frag: String = "\"repo\":null";
+    let mut path_frag: String = "\"path\":null";
+    if str_len(t.repo) > 0 { repo_frag = "\"repo\":\"" + repo_j + "\""; }
+    if str_len(t.path) > 0 { path_frag = "\"path\":\"" + path_j + "\""; }
+    let pri_frag: String = "\"priority\":" + pri_num;
+    let mut frags: List[String] = list_new();
+    frags = list_push(frags, "\"id\":\"" + id_j + "\"");
+    frags = list_push(frags, "\"kind\":\"" + kind_j + "\"");
+    frags = list_push(frags, "\"space\":\"" + space_j + "\"");
+    frags = list_push(frags, repo_frag);
+    frags = list_push(frags, path_frag);
+    frags = list_push(frags, "\"repos\":" + repos_j);
+    if has_ids { frags = list_push(frags, "\"repos_ids\":" + repos_ids_j); }
+    if has_item {
+        frags = list_push(frags, "\"work_item\":\"" + work_item_j + "\"");
+        frags = list_push(frags, "\"title\":\"" + title_j + "\"");
+        frags = list_push(frags, "\"objective\":\"" + objective_j + "\"");
+    }
+    if has_pri { frags = list_push(frags, "\"priority\":\"" + pri_j + "\""); }
+    else { frags = list_push(frags, pri_frag); }
+    frags = list_push(frags, "\"state\":\"queued\"");
+    frags = list_push(frags, "\"owner_pane\":null");
+    frags = list_push(frags, "\"attempts\":0");
+    frags = list_push(frags, "\"last_error\":null");
+    let body: String = qg_join(frags, ",");
+    return "{" + body + "}";
+}
+
+// Write a string array, a count object, or a count text as the mode asks.
+pub fn qg_json_list(items: List[String], mode: Int) -> String {
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < list_len(items) {
+        let item: String = list_get(items, i);
+        if i > 0 { if mode == 2 { out = out + ", ";
+        } else { out = out + ","; } }
+        if mode == 0 {
+            let item_j: String = json_escape_str(item);
+            out = out + "\"" + item_j + "\"";
+        } else {
+            let eq: Int = index_of(item, "=");
+            let key: String = str_sub(item, 0, eq);
+            let val: String = str_sub(item, eq + 1, str_len(item));
+            if mode == 1 { out = out + "\"" + key + "\":" + val; }
+            else { out = out + "'" + key + "': " + val; }
+        }
+        i = i + 1;
+    }
+    if mode == 0 { return "[" + out + "]"; }
+    return out;
+}
+
+// Write the whole queue document.
+pub fn qg_write_doc(scan: QueueScan, tasks: List[QueueTask], now: String, batch: Int, reg64: Int, org: Int) -> String {
+    let now_j: String = json_escape_str(now);
+    let gap_j: String = qg_json_list(scan.gap, 1);
+    let gated_j: String = qg_json_list(scan.gated, 1);
+    let no_cap_j: String = qg_json_list(scan.no_cap, 0);
+    let skipped_j: String = qg_json_list(scan.skipped, 0);
+    let batch_s: String = batch.to_string();
+    let reg64_s: String = reg64.to_string();
+    let org_s: String = org.to_string();
+    let no_cap_n: String = list_len(scan.no_cap).to_string();
+    let skipped_n: String = list_len(scan.skipped).to_string();
+    let mut task_strs: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(tasks) {
+        task_strs = list_push(task_strs, qg_write_task(list_get(tasks, i)));
+        i = i + 1;
+    }
+    let counts_frag: String = "\"counts\":{\"reg64_tasks\":" + reg64_s +
+        ",\"org_tasks\":" + org_s + ",\"no_capability_surface\":" + no_cap_n +
+        ",\"skipped_reviewer_locked\":" + skipped_n + "}";
+    let mut frags: List[String] = list_new();
+    frags = list_push(frags, "\"schema\":1");
+    frags = list_push(frags, "\"generated_at\":\"" + now_j + "\"");
+    frags = list_push(frags, "\"tools_batch_size\":" + batch_s);
+    frags = list_push(frags, counts_frag);
+    frags = list_push(frags, "\"gap_by_space\":{" + gap_j + "}");
+    frags = list_push(frags, "\"gated_by_space\":{" + gated_j + "}");
+    frags = list_push(frags, "\"no_capability_surface\":" + no_cap_j);
+    frags = list_push(frags, "\"skipped_reviewer_locked\":" + skipped_j);
+    let tasks_body: String = qg_join(task_strs, ",");
+    frags = list_push(frags, "\"tasks\":[" + tasks_body + "]");
+    let body: String = qg_join(frags, ",");
+    return "{" + body + "}";
+}

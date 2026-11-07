@@ -8,6 +8,7 @@
 //   1. R1/R2: Verify L0 openOODA-core repository count (9 core repos + .github) and Root Umbrella count (5 repos).
 //   2. R3/R4: Verify cli_host_rt Landlock toolhome parent allowlist and DWARF monotonic DI counter in ll_emit.oo.
 //   3. R5: Verify spec.oot <= 256-line boundary and zero symlinks in /Projects/openOODA and /Projects/openOODA-core.
+//   4. F1/F2: Verify fleet queue_gen emits schema-valid work-queue.json and assign fails closed on bad input.
 
 import "std/fs/os/fs.oo";
 import "std/core/primitives/str.oo";
@@ -54,9 +55,57 @@ fn run_b4_b6(sys: &ProcessCap, fs_r: &FsReadCap) -> Int {
     return p;
 }
 
+fn run_b7_queue_doc(sys: &ProcessCap, fs_r: &FsReadCap) -> Int {
+    let mut p: Int = 0;
+    let oodac: String = e2e_compiler_bin();
+    let env_pfx: String = "OODA_NO_JAIL=1 OODA_COMPILER=" + oodac +
+        " OODA_FS_READDIR=/Projects:/tmp OODA_FS_WRITEDIR=/Projects:/tmp ";
+    let mut a: List[String] = list_new();
+    a = list_push(a, "-c");
+    a = list_push(a, env_pfx + oodac +
+        " build /Projects/openOODA/openOODA/scripts/fleet/jobs/queue_gen.oo -o /tmp/e2e_queue_gen.bin >/dev/null 2>&1 && " +
+        env_pfx + oodac +
+        " build /Projects/openOODA/openOODA/scripts/fleet/ops/assign.oo -o /tmp/e2e_assign.bin >/dev/null 2>&1 && " +
+        "OODA_NO_JAIL=1 /tmp/e2e_queue_gen.bin --state-dir /tmp/e2e-qstate >/dev/null 2>&1");
+    let r: Result[Int, String] = sys_exec_wait(sys, "bash", a);
+    p = p + e2e_check("T2.F1.1", "queue_gen builds and emits work-queue.json", r.is_ok() && r.val == 0);
+    let doc: Result[String, String] = fs_read_file(fs_r, "/tmp/e2e-qstate/work-queue.json");
+    let schema_ok: Bool = doc.is_ok() && str_contains(doc.val, "\"generated_at\":\"") && str_contains(doc.val,
+        "\"repos\":[") && !str_contains(doc.val, "\"repos\":\"") && !str_contains(doc.val, ",\"kind\":reg64");
+    p = p + e2e_check("T2.F1.2", "work-queue.json is schema JSON (quoted strings, array repos)", schema_ok);
+    let mut n1: List[String] = list_new();
+    n1 = list_push(n1, "-c");
+    n1 = list_push(n1, "OODA_NO_JAIL=1 OODA_FLEET_STATE_DIR=/tmp/e2e-qstate /tmp/e2e_assign.bin >/dev/null 2>&1");
+    let r1: Result[Int, String] = sys_exec_wait(sys, "bash", n1);
+    p = p + e2e_check("T2.F2.1", "assign refuses missing subcommand (fail-closed)", !(r1.is_ok() && r1.val == 0));
+    let mut n2: List[String] = list_new();
+    n2 = list_push(n2, "-c");
+    n2 = list_push(n2, "OODA_NO_JAIL=1 OODA_FLEET_STATE_DIR=/tmp/e2e-empty-state /tmp/e2e_assign.bin status >/dev/null 2>&1");
+    let r2: Result[Int, String] = sys_exec_wait(sys, "bash", n2);
+    p = p + e2e_check("T2.F2.2", "assign refuses absent work queue (fail-closed)", !(r2.is_ok() && r2.val == 0));
+    let mut n3: List[String] = list_new();
+    n3 = list_push(n3, "-c");
+    n3 = list_push(n3,
+        "OODA_NO_JAIL=1 OODA_FLEET_STATE_DIR=/tmp/e2e-qstate /tmp/e2e_assign.bin assign w3:p1 bogus:task >/dev/null 2>&1");
+    let r3: Result[Int, String] = sys_exec_wait(sys, "bash", n3);
+    p = p + e2e_check("T2.F2.3", "assign refuses unknown task id (fail-closed)", !(r3.is_ok() && r3.val == 0));
+    let mut n4: List[String] = list_new();
+    n4 = list_push(n4, "-c");
+    n4 = list_push(n4,
+        "OODA_NO_JAIL=1 OODA_FLEET_STATE_DIR=/tmp/e2e-qstate /tmp/e2e_assign.bin status 2>/dev/null | grep -q '^tasks [0-9]'");
+    let r4: Result[Int, String] = sys_exec_wait(sys, "bash", n4);
+    p = p + e2e_check("T2.F2.4", "assign status reads valid queue (positive control)", r4.is_ok() && r4.val == 0);
+    let mut c: List[String] = list_new();
+    c = list_push(c, "-c");
+    c = list_push(c, "rm -rf /tmp/e2e-qstate /tmp/e2e-empty-state /tmp/e2e_queue_gen.bin /tmp/e2e_assign.bin");
+    let _rc: Result[Int, String] = sys_exec_wait(sys, "bash", c);
+    return p;
+}
+
 pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, _args: List[String]) -> Int {
-    println("--- Tier 2: Boundary & Corner Cases (R1-R5) ---");
+    println("--- Tier 2: Boundary & Corner Cases (R1-R5, F1) ---");
     let p1: Int = run_b1_b3(fs_r);
     let p2: Int = run_b4_b6(sys, fs_r);
-    return e2e_report_tier("qa/e2e_tier2", p1 + p2, 12);
+    let p3: Int = run_b7_queue_doc(sys, fs_r);
+    return e2e_report_tier("qa/e2e_tier2", p1 + p2 + p3, 18);
 }
