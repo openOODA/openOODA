@@ -1,0 +1,84 @@
+// # Determinism - Strict Sequential Double Run Of The Test And The Daemon
+//
+// Logline: Run the test binary and the daemon binary twice and compare the two outputs byte for byte.
+//
+// Setup: ProcessCap for the child calls, FsReadCap and FsWriteCap for the tree and the
+//   reports, EnvCap for the roots. The write root must cover the report directory.
+//
+// Beats:
+//   1. Read the branch and the two binary names of the repository.
+//   2. Run the test binary and the daemon binary twice.
+//   3. Compare the two outputs and report the verdict.
+
+import "std/core/primitives/str.oo";
+import "std/core/primitives/byte.oo";
+import "std/fs/file/path.oo";
+import "std/fs/os/fs.oo";
+import "tools/text/line_span.oo";
+import "tools/text/exec_argv.oo";
+import "tools/text/cmd_argv.oo";
+import "tools/env/audit_env.oo";
+
+fn det_make_value(fr: &FsReadCap, repo: String, key: String) -> String {
+    let src: String = match fs_read_file(fr, repo + "/Makefile") { Ok(s) => s, Err(_) => "" };
+    let lines: List[String] = str_split(src, "\n");
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let line: String = list_get(lines, i);
+        if starts_with(line, key + " :=") {
+            let mut value: String = byte_sub(line, byte_len(key) + 2, byte_len(line));
+            while str_len(value) > 0 && (starts_with(value, " ") || starts_with(value, "\t")) {
+                value = byte_sub(value, 1, byte_len(value));
+            }
+            return value;
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+fn det_compare(p: &ProcessCap, logdir: String, n: String, tag: String, label: String) -> Int {
+    let a_path: String = logdir + "/det-" + n + tag + "-1.txt";
+    let b_path: String = logdir + "/det-" + n + tag + "-2.txt";
+    let same: Int = exec_argv_code(p, cmd_prog("cmp", "-s", a_path, b_path, "", ""));
+    if same == 0 {
+        println("    " + label + " BYTE-IDENTICAL");
+        return 0;
+    }
+    println("    " + label + " DIFFERS");
+    let d: ExecRun = exec_argv_run(p, cmd_prog("diff", a_path, b_path, "", "", ""));
+    print(text_head_lines(d.output, 10));
+    return 0;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int {
+    let logdir: String = audit_log_dir(e);
+    let _m: Result[Void, String] = fs_mkdir_p(fw, logdir);
+    let env_argv: List[String] = cmd_env("HOME=" + audit_home(e), "OODA_NO_JAIL=1", "", "", "", "");
+    let repos: List[String] = sys_args(p);
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        let repo: String = list_get(repos, i);
+        let n: String = path_basename(repo);
+        if !fs_is_dir(fr, repo) { i = i + 1; continue; }
+        let ref_argv: List[String] = cmd_git(repo, "symbolic-ref", "--short", "HEAD", "", "", "", "", "");
+        let branch: String = exec_argv_stdout(p, argv_join(env_argv, ref_argv));
+        let bin: String = det_make_value(fr, repo, "BIN");
+        let tbin: String = det_make_value(fr, repo, "TESTBIN");
+        println("--- " + n + " [" + branch + "] bin=" + bin + " testbin=" + tbin);
+        let mut run: Int = 1;
+        while run <= 2 {
+            let test_out: ExecRun = exec_argv_run(p, argv_join(env_argv, cmd_prog(repo + "/" + tbin, "", "", "", "", "")));
+            let tpath: String = logdir + "/det-" + n + "-" + run.to_string() + ".txt";
+            let _w1: Result[Void, String] = fs_write_file(fw, tpath, test_out.output);
+            let json_out: ExecRun = exec_argv_run(p, argv_join(env_argv, cmd_prog(repo + "/" + bin, "--json", "", "", "", "")));
+            let jpath: String = logdir + "/det-" + n + "-json-" + run.to_string() + ".txt";
+            let _w2: Result[Void, String] = fs_write_file(fw, jpath, json_out.output);
+            run = run + 1;
+        }
+        det_compare(p, logdir, n, "", "test-binary output:");
+        det_compare(p, logdir, n, "-json", "--json output:      ");
+        i = i + 1;
+    }
+    return 0;
+}

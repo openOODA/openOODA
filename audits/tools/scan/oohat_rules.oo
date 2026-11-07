@@ -1,0 +1,151 @@
+// # Oohat Rules - Purple And Black Hat Gate Rules
+//
+// Logline: Apply the oohat Purple Hat and Black Hat rules to one page source and report the findings.
+//
+// Setup: Imports the text primitives and the path helper. The fleet identity list is
+//   the audit specification, not a deployment binding, so the caller supplies it.
+//
+// Beats:
+//   1. Test the page name and the Academy header.
+//   2. Measure the page shape and find the execution vectors.
+//   3. Find the data vectors and score the page.
+
+import "std/core/primitives/str.oo";
+import "std/fs/file/path.oo";
+import "tools/text/str_scan.oo";
+import "tools/text/line_span.oo";
+
+type OohatPage = struct {
+    lines: Int,
+    fns: Int,
+    maxfn: Int,
+    header: Bool
+};
+
+type OohatExec = struct {
+    shell: Int,
+    dos: Int,
+    traversal: Int,
+    memory: Int
+};
+
+type OohatData = struct {
+    secret: Int,
+    cluster: Int,
+    poison: Int,
+    bounds: Int
+};
+
+pub fn oohat_is_banned_name(name: String) -> Bool {
+    if name == "util.oo" || name == "utils.oo" { return true; }
+    if name == "helper.oo" || name == "helpers.oo" { return true; }
+    if name == "common.oo" || name == "misc.oo" { return true; }
+    if name == "shared.oo" || name == "base.oo" { return true; }
+    if name == "core.oo" { return true; }
+    if str_contains(name, "_ext.oo") { return true; }
+    if str_contains(name, "_part") { return true; }
+    return false;
+}
+
+pub fn oohat_has_academy(src: String) -> Bool {
+    let lines: List[String] = text_lines(src);
+    let mut head: String = "";
+    let mut i: Int = 0;
+    while i < list_len(lines) && i < 16 {
+        head = head + list_get(lines, i) + "\n";
+        i = i + 1;
+    }
+    if !str_contains(head, "// # ") { return false; }
+    if !str_contains(head, "// Logline:") { return false; }
+    if !str_contains(head, "// Setup:") { return false; }
+    if !str_contains(head, "// Beats:") { return false; }
+    return true;
+}
+
+pub fn oohat_page_info(src: String) -> OohatPage {
+    let raw: List[String] = str_split(src, "\n");
+    let mut fns: Int = 0;
+    let mut cur: Int = 0;
+    let mut maxfn: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(raw) {
+        let t: String = text_trim(list_get(raw, i));
+        if starts_with(t, "pub fn ") || starts_with(t, "fn ") {
+            fns = fns + 1;
+            if cur > maxfn { maxfn = cur; }
+            cur = 1;
+        } else if cur > 0 {
+            cur = cur + 1;
+        }
+        i = i + 1;
+    }
+    if cur > maxfn { maxfn = cur; }
+    let lines: Int = list_len(text_lines(src));
+    return OohatPage { lines: lines, fns: fns, maxfn: maxfn, header: oohat_has_academy(src) };
+}
+
+pub fn oohat_exec_vectors(src: String) -> OohatExec {
+    let mut sh: Bool = str_contains(src, "sh -c") || str_contains(src, "bash -c");
+    if str_contains(src, "system(") || str_contains(src, "popen(") { sh = true; }
+    let dos: Bool = str_contains(src, "process_exit(") || str_contains(src, "abort()");
+    let mut trv_hit: Bool = str_contains(src, "../") || str_contains(src, "/etc/passwd");
+    if str_contains(src, "/etc/shadow") { trv_hit = true; }
+    if str_contains(src, "/proc/self/mem") { trv_hit = true; }
+    if str_contains(src, "/dev/mem") { trv_hit = true; }
+    let mut safe: Bool = str_contains(src, "path_safe(") || str_contains(src, "assert_eq(");
+    if str_contains(src, "_expect_") || str_contains(src, "!str_contains") { safe = true; }
+    if str_contains(src, "test_") || str_contains(src, "selftest") { safe = true; }
+    let mut mem: Bool = str_contains(src, "unsafe ") || str_contains(src, "transmute");
+    if str_contains(src, "raw_ptr") || str_contains(src, "dlopen") { mem = true; }
+    if str_contains(src, "LD_PRELOAD") { mem = true; }
+    let sh_n: Int = if sh { 1 } else { 0 };
+    let dos_n: Int = if dos { 1 } else { 0 };
+    let trv_n: Int = if trv_hit && !safe { 1 } else { 0 };
+    let mem_n: Int = if mem { 1 } else { 0 };
+    return OohatExec { shell: sh_n, dos: dos_n, traversal: trv_n, memory: mem_n };
+}
+
+pub fn oohat_data_vectors(src: String, tokens: List[String]) -> OohatData {
+    let mut secret: Bool = str_contains(src, "PRIVATE_KEY") || str_contains(src, " api_key");
+    if str_contains(src, "secret_key") || str_contains(src, "password =") { secret = true; }
+    let mut cluster: Bool = false;
+    let mut i: Int = 0;
+    while i < list_len(tokens) {
+        let token: String = list_get(tokens, i);
+        if token != "" && str_contains(src, token) { cluster = true; }
+        i = i + 1;
+    }
+    let mut poison: Bool = str_contains(src, "<<<<<<<<") || str_contains(src, ">>>>>>>>");
+    if str_contains(src, "1000000007") || str_contains(src, "// TODO") { poison = true; }
+    if str_contains(src, "// FIXME") { poison = true; }
+    let mut bounds: Bool = str_contains(src, "unchecked_idx") || str_contains(src, "unauth_ipc");
+    if str_contains(src, "gets(") || str_contains(src, "strcpy(") { bounds = true; }
+    let sec_n: Int = if secret { 1 } else { 0 };
+    let cls_n: Int = if cluster { 1 } else { 0 };
+    let psn_n: Int = if poison { 1 } else { 0 };
+    let bnd_n: Int = if bounds { 1 } else { 0 };
+    return OohatData { secret: sec_n, cluster: cls_n, poison: psn_n, bounds: bnd_n };
+}
+
+pub fn oohat_spec_page(src: String, tokens: List[String]) -> Int {
+    let ev: OohatExec = oohat_exec_vectors(src);
+    let dv: OohatData = oohat_data_vectors(src, tokens);
+    let mut v: Int = ev.shell + ev.dos + ev.traversal + ev.memory;
+    v = v + dv.secret + dv.cluster + dv.poison + dv.bounds;
+    if str_contains(src, "sovereign") || str_contains(src, "moonshot") { v = v + 1; }
+    if str_contains(src, "dogfight") || str_contains(src, "bootstrap") { v = v + 1; }
+    return v;
+}
+
+pub fn oohat_standards_page(src: String, path: String) -> Int {
+    let info: OohatPage = oohat_page_info(src);
+    let mut v: Int = 0;
+    if !info.header { v = v + 1; }
+    if info.lines > 256 { v = v + 1; }
+    if info.fns > 0 && info.lines < 16 { v = v + 1; }
+    if info.fns > 8 { v = v + 1; }
+    if info.maxfn > 64 { v = v + 1; }
+    if oohat_is_banned_name(path_basename(path)) { v = v + 1; }
+    if str_contains(src, "\t") { v = v + 1; }
+    return v;
+}

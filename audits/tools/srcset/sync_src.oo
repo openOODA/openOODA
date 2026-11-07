@@ -1,0 +1,94 @@
+// # Sync Src - Match The Declared Source Set To The Committed Page Set
+//
+// Logline: Rewrite the declared source set so that it names exactly the committed pages.
+//
+// Setup: FsReadCap and FsWriteCap for the Makefile, EnvCap for the operating system root.
+//
+// Beats:
+//   1. Read the declared source set and drop the names that no longer exist.
+//   2. Add every committed page that the declared source set omits.
+//   3. Report the dropped and the added names.
+
+import "std/fs/os/fs.oo";
+import "tools/text/str_scan.oo";
+import "tools/env/audit_env.oo";
+import "src_pages.oo";
+
+fn sync_skip_dirs() -> List[String] {
+    let mut out: List[String] = list_new();
+    out = list_push(out, ".git");
+    out = list_push(out, "bin");
+    out = list_push(out, "dist");
+    out = list_push(out, ".ooda-cache");
+    out = list_push(out, "target");
+    out = list_push(out, ".github");
+    return out;
+}
+
+fn sync_keep_names(fr: &FsReadCap, dir: String, current: List[String]) -> List[String] {
+    let mut keep: List[String] = list_new();
+    let mut j: Int = 0;
+    while j < list_len(current) {
+        let name: String = list_get(current, j);
+        if fs_path_exists(fr, dir + "/" + name) { keep = list_push(keep, name); }
+        j = j + 1;
+    }
+    return keep;
+}
+
+fn sync_missing_pages(fr: &FsReadCap, dir: String, skip: List[String], keep: List[String]) -> List[String] {
+    let committed: List[String] = srcset_collect_pages(fr, dir, skip);
+    let mut missing: List[String] = list_new();
+    let mut k: Int = 0;
+    while k < list_len(committed) {
+        let page: String = list_get(committed, k);
+        if !text_list_contains(keep, page) { missing = list_push(missing, page); }
+        k = k + 1;
+    }
+    return missing;
+}
+
+fn sync_repo(fr: &FsReadCap, fw: &FsWriteCap, root: String, skip: List[String], repo: String) -> String {
+    let dir: String = root + "/" + repo;
+    let mk: String = dir + "/Makefile";
+    if !fs_path_exists(fr, mk) { return repo + ": no Makefile"; }
+    let text: String = match fs_read_file(fr, mk) { Ok(s) => s, Err(_) => "" };
+    let line: SrcLine = srcset_find_src(text);
+    if line.start < 0 { return repo + ": no SRC line"; }
+    let current: List[String] = srcset_split_ws(line.value);
+    let keep: List[String] = sync_keep_names(fr, dir, current);
+    let mut dropped: List[String] = list_new();
+    let mut j: Int = 0;
+    while j < list_len(current) {
+        let name: String = list_get(current, j);
+        if !text_list_contains(keep, name) { dropped = list_push(dropped, name); }
+        j = j + 1;
+    }
+    let missing: List[String] = sync_missing_pages(fr, dir, skip, keep);
+    if list_len(dropped) == 0 && list_len(missing) == 0 {
+        return repo + ": SRC already matches the committed page set";
+    }
+    let mut names: List[String] = list_new();
+    let mut m: Int = 0;
+    while m < list_len(keep) { names = list_push(names, list_get(keep, m)); m = m + 1; }
+    let mut n: Int = 0;
+    while n < list_len(missing) { names = list_push(names, list_get(missing, n)); n = n + 1; }
+    let w: Result[Void, String] = fs_write_file(fw, mk, srcset_rewrite_src(text, names));
+    if w.is_err() { return repo + ": cannot write Makefile"; }
+    let mut parts: List[String] = list_new();
+    if list_len(dropped) > 0 { parts = list_push(parts, "dropped stale " + text_join(dropped, " ")); }
+    if list_len(missing) > 0 { parts = list_push(parts, "added " + text_join(missing, " ")); }
+    return repo + ": " + text_join(parts, "; ");
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int {
+    let root: String = audit_os_root(e);
+    let skip: List[String] = sync_skip_dirs();
+    let repos: List[String] = srcset_repos();
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        println(sync_repo(fr, fw, root, skip, list_get(repos, i)));
+        i = i + 1;
+    }
+    return 0;
+}

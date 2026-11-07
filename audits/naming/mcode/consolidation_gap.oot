@@ -1,0 +1,224 @@
+# Naming and Single-Responsibility Audit: Consolidation Target and Extra Defects
+File: openOODA/audits/naming/mcode/consolidation_gap.oot
+
+Provenance: converted from `openOODA/audits/naming-audit-mcode.md` (788 lines). Part 6 of 7.
+
+Redaction note: fleet host names and tailnet addresses are written as generic
+placeholders. The audited tree still holds the literals.
+
+## 6. Defect class (e) — Consolidation target vs reality (F10)
+
+RFC 0012 §2.3 sets the target: **377 → 129 canonical repos**, with a per-org list. Cross-checked against the tree:
+
+### 6.1 Canonical target names in RFC 0012 §2.3 that do not exist as repos
+
+Table columns: Org | RFC target name | Status
+- kernel | `ooboot` | no repo — the boot repo is `ookernel-boot` (which carries `ooboot` as a persona)
+- kernel | `oohal` | no repo — the HAL repo is `ookernel-hal-x86` (carries `oohal` as a persona)
+- kernel | `ookernel` | no repo — `ookernel-sched` carries it as a persona
+- kernel | `oodrv-storage` | no repo — `oodrv-nvme` carries it as a persona
+- kernel | `oodrv-io` | no repo — `oodrv-net` carries it as a persona
+- kernel | `oodrv-virt` | no repo — `oodrv-virtio` carries it as a persona
+- OS | `ooauthd` | **no repo and no persona anywhere** — the real repos are `ooaid` and `oopolicyd`
+- DE | `ooshell` | no repo — the role is split between `oopanel` and `oofiles` (§2.4, §2.5)
+- apps | `oooffice` | **no repo** — the office host is named `oodocs`, though `oodocs/personas/multicall.oo:3` calls it "the
+  canonical oooffice engine" and `oodocs/personas/dispatch.oo:20` serves the alias `oooffice`
+- tools | `oocodec` | no repo — the codec host is `oobase64`, which absorbs `oobase32`, `oobase58`, `oohex`
+- tools | `ootext` | no repo — `oote` is a **theme** engine (§2.15)
+- agents | `oofalse` | no agent repo — and **`openOODA-tools/oofalse` is the POSIX `false` utility**. The RFC's agents list
+  names a token owned by a different org
+
+**Two of these are outright errors in the governing spec**: `ooauthd` (a repo that never existed) and `oofalse` in the agents
+list (a token owned by `openOODA-tools`).
+
+### 6.2 Existing repos with no canonical target in RFC 0012 §2.3
+
+Table columns: Org | RFC target count | Repos with no planned home
+- kernel (16→6) | 6 | `oodrv-net`, `oodrv-pci`, `oodrv-nvme`, `oodrv-usb-hid`, `oodrv-virtio`, `oodrv-display-gop`,
+  `ookernel-boot`, `ookernel-hal-x86`, `ookernel-hal-arm64`, `ookernel-hal-riscv`, `ookernel-sched`, `ookernel-mm`,
+  `ookernel-ipc`, `ookernel-iommu`, `ookernel-ob`, `ookernel-unikernel` — all 16 are named only via *persona* names, not repo
+  names
+- OS (18→8) | 8 | `oorealm`, `oosvc-mgr`, `oopowerd`, `oodnsd`, `oosession`, `oofs-ext4`, `oodevd`, `oofs-tmp`, `ooaudiod`,
+  `oologd`, `oopolicyd` — 11 repos unassigned
+- tools (257→64) | 64 | ~193 repos have no declared host; only 5 persona tables exist (RFC §2.2 item 4)
+- DE (20→9) | 9 | `oocockpit`, `ootoast`, `ootaskmgr`, `ooview`, `oowm`, `ooshelf`, `oowall`, `oolaunch`, `ooedit`, `ooshot`,
+  `ooclip` — 11 repos unassigned
+- apps (17→11) | 11 | `oodocs` (the actual office host is not in the list; `oooffice` is), `oochat` (the actual comms host is
+  not in the list)
+- cloud (18→8) | 8 | `ooconsent`, `ooqueue` — 2 repos unassigned
+- agents (16→8) | 8 | `oorouter`, `ooreviewer`, `ooevolve`, `ooplanner`, `oorelease`, `ooarchitect`, `ooeval`, `ooredteam` — 8
+  repos unassigned
+
+### 6.3 The spec's own persona table vs the tree
+
+RFC 0012 §2.2 item 4 assigns:
+- **HTTP/Transfer → `oocurl`**: `oocurl`, `curl`, `oowget`, `wget`, `oowget2`, `wget2`, `oofetch` — implemented as personas of
+  `oocurl`, but `oowget`, `oowget2`, `oofetch` also ship as standalone catalog packages (§4.2).
+- **Diff/Comparison → `oodiff`**: `oodiff`, `diff`, `oosdiff`, `sdiff`, `oowdiff`, `wdiff`, `oocmp`, `cmp`, `oocomm`, `comm` —
+  the tree has **five separate diff repos** (`oodiff`, `oodiff3`, `oogitdiff`, `oowdiff`, `oosdiff`) plus `oocmp`, `oocomm`,
+  `ooschemadiff`, `oosemantcdiff`, `oostructureddiff`, `oobindiff`.
+- **Cryptographic Digests → `oob3sum`**: `oob3sum`, `b3sum`, `oosha256`, `sha256sum`, `oomd5`, `md5sum`, `oocksum`, `cksum`,
+  `oohash` — the tree's owner is `oohash`, and both claim each other (§4.3). The spec names `oob3sum`; the directive names
+  `oohash`. **The spec must pick one.**
+- **Archive/Compression → `ootar`, `oozstd`, `oogzip`, `ooxz`, `oozip`**: the tree's de-facto owner is `ooarchive`, which
+  absorbs `oogzip`, `ooxz`, `oozstd`, `oounzip`. **`oozip` and `ooarchive` are not in the RFC list.**
+- **Shell Builtins → `oosh`**: `oosh`, `sh`, `oobash`, `bash`, `ootrue`, `true`, `oofalse`, `false`, `ooyes`, `yes`, `oowhich`,
+  `which` — the tree has `oosh`, `oobash`, `ootrue`, `oofalse`, `ooyes` as separate repos. `oowhich` does not exist;
+  `openOODA-tools/owhich`… does not exist (verified).
+- **Cloud → 8 engines**: matches the tree's absorption graph, except `ooconsent` and `ooqueue` are unassigned (§6.2).
+
+### 6.4 The `unix_consolidation_blueprint.md` referenced by the directive does not exist
+
+`openOODA/zero_symlinks_directive.oot:19-20` states: *"`unix_consolidation_blueprint.md` has been updated to remove
+`oo_sys_argv0` symlink dispatch and codify the Zero Symlinks / Hardlinks Law."*
+
+**No file named `unix_consolidation_blueprint.md` exists anywhere under `/Projects`** (searched recursively across all 9 orgs).
+The consolidation contract actually lives in `openOODA/openOODA/rfcs/0012-unix-less-is-more-consolidation.oot`. The directive
+points at a phantom document — the same class of defect as the `ooffice`/`oooffice` typo (§4.8, §7.2).
+
+---
+
+## 7. Additional defects found while verifying (not in the original hunt list)
+
+### 7.1 `website/llms.txt` is factually wrong about the dispatch mechanism and the repo counts
+
+`openOODA/website/llms.txt:35`:
+> "…RFC 0012 Unix \"Less-Is-More\" multi-call **`sys_argv0` symlink dispatch**, `102/102` KVM microVM verification…"
+
+- The "`sys_argv0` symlink dispatch" claim contradicts Rule 1.25 and the RFC's own "Supersedes" clause (`rfcs/0012-…:14-17`).
+- The per-org repo counts are stale: `openOODA-apps 16/16` (there are now **17** apps repos, `ooflash` added), and the fleet
+  total `385` / `377/377` no longer matches.
+
+### 7.2 `oodocs/README.md:54` documents a persona alias that does not exist
+
+> "…the office-suite personas: `oodocs`, `oosheet`, `oodeck`, `oonotes`, and `oopdf` (**umbrella alias `ooffice` maps to
+> `oodocs`**)."
+
+The code implements **`oooffice`** (two leading `o`s), not `ooffice`:
+`oodocs/personas/dispatch.oo:20` — `if name == "oodocs" || name == "oooffice" { return oodocs_mc_persona_docs(); }`;
+`oodocs/Makefile:146` — `@./$(BIN) oooffice --version | grep -q …`; `oodocs/tests/multicall/test_multicall.oo:50,59` asserts
+`"oooffice"`.
+
+A user following the README would run a subcommand the dispatcher rejects. The same phantom-documentation class as the missing
+`unix_consolidation_blueprint.md`.
+
+### 7.3 README page-count and assertion-count drift is systemic
+
+- **Page counts**: `openOODA-apps` READMEs use a boilerplate `## Architecture — 25 .oo pages` header and a 25-row table; the
+  actual counts are 30 (`oopdf`, `oosheet`, `oodeck`, `oonotes`, `oopaint`, `oomail`, `oogit-ui`, `oobrowser`, `oodaw`, `oopass`
+  , `oovm-ui`), 34 (`oocanvas`, `oochat`, `oostudio`), 47 (`oodocs`), 30 (`oomedia` post-split), 16 (`ooflash`).
+- **Kernel** is worse: `oodrv-display-gop/README.md:5` claims 16 pages but has **36**; `oodrv-pci` claims 15, has 36;
+  `ookernel-boot` claims 15, has 36; `ookernel-hal-x86` claims 14, has 37; `oodrv-usb-hid` claims 10, has 30. The undocumented
+  files are the shared scaffolding.
+- **Assertion counts**: 11 apps repos gate `95/95` in their Makefile but the README header *and* table say `80`.
+- **Versions**: 11 agents repos have README versions one behind the Makefile `VER` (e.g. `ooarchitect` 0.3.9 vs 0.4.0; `oocoder`
+  0.3.9 vs 0.4.1; `ooherdr` 0.3.9 vs 0.4.1). `openOODA-core/oodac/ooda.pkg` says `0.2.3` while `oodac/VERSION` says
+  `oodac=0.11.63`; `oodar/ooda.pkg` says `0.2.3` while `oodar/VERSION` says `oodar=4.2.0`.
+- **Org profile tables**: `openOODA-DE/.github/README.md:19` says "The 20 Desktop Environment Repositories" but lists **18** (
+  `oobazaar` and `oocockpit` are absent). `openOODA-OS/.github/README.md:17` says `v0.2.3` while `.github/profile/README.md:17`
+  says `v0.3.3`.
+
+### 7.4 The org profile tables advertise absorbed personas as independent products
+
+`openOODA-DE/.github/profile/README.md:33-46` lists every absorbed persona (`oowm`, `ooshelf`, `ootoast`, `ooshot`, `ooview`,
+`ooclip`, `ootaskmgr`, `ooedit`, `oolaunch`) as if each were an independent repository. The same is true of
+`openOODA-OS/.github/profile/README.md:23-40`. This is how the §4 ambiguity survived: the public surface still advertises 18 DE
+repos as peers when 11 are already personas.
+
+Separately, **every one of the 20 DE micro-repos carries a `.github/profile/README.md` whose body is byte-identical** across all
+20 (sha256 prefix `b44b0837587a31fb`) — a generated template stub, not documentation.
+
+### 7.5 `openOODA-core/oodac` ships four differently-named copies of the compiler
+
+| path | md5 |
+|---|---|
+| `oodac/bin/oodac` | `45868c8b6f155286d613b9f5f00307bd` |
+| `oodac/bin/oodac.real` | `45868c8b6f155286d613b9f5f00307bd` (identical) |
+| `oodac/bin/oodac_bin.core` | `0927031ee9d0d9637425ad05d55814e6` (stale, Oct 25) |
+| `oodac/oodac_bin` (repo **root**) | `65375110dc557371a7647fd25de33ce3` (stale, Nov 2) |
+
+Plus `cli/dist/cli` and `cli/dist/cli-linux-x86_64` are byte-identical copies under two names in one `dist/`.
+
+### 7.6 `openOODA-kernel` `SRC` lists omit `fs/fsprobe.oo`
+
+`main.oo:11` (or `:12`) imports `"fs/fsprobe.oo"` in `oodrv-net`, `oodrv-pci`, `oodrv-nvme`, `ookernel-mm`, `ookernel-iommu`,
+`ookernel-ipc` — but the `SRC :=` variable in each Makefile never lists it. The build still succeeds because `SRC` is only a
+`$(BIN): $(SRC)` **prerequisite** while the actual compile follows imports — so `SRC` is an incomplete dependency list and
+incremental rebuilds will not re-trigger on a `fsprobe.oo` change.
+
+### 7.7 The "ELF64 boot image" inspect claim is copy-pasted into unrelated kernel drivers
+
+`README.md` lines for `oodrv-net:43`, `oodrv-nvme:41`, `ookernel-iommu:35`, `ookernel-ipc:36`, `ookernel-mm:53`,
+`ookernel-sched:43` all say `inspect # JSON status + decoded ELF64 boot image header record`. Their actual codecs decode
+unrelated records: `oodrv-net/core/drv_net_parse.oo:3` = "ethernet frame header"; `oodrv-nvme/core/drv_nvme_parse.oo:3` = "NVMe
+submission command"; `ookernel-ipc/core/ipc_parse.oo:3` = "IPC message frame"; `ookernel-iommu/core/iommu_parse.oo:3` = "IOMMU
+context entry". Only `ookernel-boot/README.md:17` legitimately decodes an ELF64 boot image.
+
+### 7.8 Hardcoded hostnames and Tailscale IPs inside `.oo` sources (F12)
+
+Host names and tailnet addresses are written here as generic placeholders
+(`<fleet-host-N>`, `<tailnet-N>`, `<reviewer-dir>`). The audited tree still
+holds the literals.
+
+Table columns: file:line | content
+- `openOODA/openOODA/buildbox/eco/status.oo:176` |
+  `status_node_telemetry(sys, fs_r, fs_w, "<fleet-host-1>", "<tailnet-1>", "control/herdr")`
+- `openOODA/openOODA/buildbox/eco/status.oo:177` | `… "<fleet-host-2>", "<tailnet-2>", "buildbox+gpu")`
+- `openOODA/openOODA/buildbox/eco/status.oo:178` | `… "<fleet-host-3>", "<tailnet-3>", "llm+replica")`
+- `openOODA/openOODA/buildbox/fanout.oo:91` | `env_or(env, "OODA_REVIEWER", "http://<tailnet-3>:11434")` — hardcoded Tailscale
+  default
+- `openOODA/openOODA/buildbox/eco/ledger/quota_ledger.oo:76` | `ql_probe_host(sys, "<tailnet-2>")`
+- `openOODA/openOODA/buildbox/eco/ledger/quota_ledger.oo:77` | `ql_probe_host(sys, "<tailnet-3>")`
+- `openOODA/openOODA/buildbox/<reviewer-dir>/reviewer.oo:3` | "…continuous review daemon for the reviewer (<tailnet-3>)…"
+
+**Fair qualification:** `fanout.oo:91` and `quota_ledger.oo:76-77` are env-overridable, so they are *defaults*, not hard
+bindings. `status.oo:176-178` are hard bindings.
+
+**Hostnames inside live identifiers (values are env-driven, names are not):**
+`openOODA-OS/ooaid/net/config.oo:50` `pub fn ooaid_node_<fleet-host-3>(env: &EnvCap)`, `:61`
+`pub fn ooaid_node_<fleet-host-2>(env: &EnvCap)`, `:73-74` call sites; `openOODA-OS/ooaid/net/router.oo:47,76,77`. The *values*
+are correctly env-driven (`OODA_AID_NODE0_ADDR` default `"unbound"`), but the *identifiers* embed fleet hostnames into a repo
+that must run standalone.
+
+**One legitimate exception:** `openOODA/openOODA/buildbox/eco/status_sync/sections_p2.oo:79-84` and
+`test_status_helpers.oo:87-97` deliberately contain those literals **in order to redact them** before publication. That is an
+acceptable, intentional use — a redaction table is not a host binding. It should be declared as a scoped exemption rather than
+left as an incidental violation.
+
+**Note on `openOODA-core/oodac/qa/emit_gap_inline_repro.oo`** — the reviewer-service hits at `:9,20,121` and the `OODA_REVIEWER`
+env reads at `:12,124` are in a QA fan-out script, not a library; and
+`openOODA-core/std/app/ui/pbr_raytracing/light_point_directional.oo:21` (a directional-light type),
+`std/app/ui/3d/lights_spot.oo`, `lights_engine.oo` are a legitimate 3D lighting type, **not** the reviewer service — false
+positives.
+
+### 7.9 `openOODA-core/oodac/scripts/oodac_cluster.sh` is a real legacy fallback path
+
+`oodac/scripts/oodac_cluster.sh:24` — `REAL_BIN="${OODA_COMPILER:-$REPO_ROOT/bin/oodac}"` — a distributed build router that fans
+out to remote builders, an alternate implementation path around the real compiler.
+
+`openOODA-core/tui/mcp_client.oo:79` — a shell one-liner probing `command -v ooda-mcp || command -v mcp`, then two `$codex/bin`
+paths, then two `$HOME/.openooda/bin` paths, then bare `"mcp"` — **five sequential legacy-name fallbacks** for one binary.
+
+`openOODA-core/cli/build/spawn.oo:33-38` — `spawn_alias()` maps `"lsp"`→`"ooda-lsp"` and `"mcp"`→`"ooda-mcp"`, commented "Old
+on-disk names only."
+
+### 7.10 The `install/` surface installs only 8 components, and 5 of them lack the `oo` prefix
+
+`install/install.sh:105` —
+`declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=lsp [mcp]=mcp [cli]=cli [tui]=tui)`, mirrored
+by `install/docs/surface.oot:33` and gated by `install/qa/qa-02-bin_manifest.oo`.
+
+Correct per Rule 1.25 (canonical binaries only, no persona aliases as files). But `~/.openooda/bin/mcp` and
+`~/.openooda/bin/lsp` are dangerously generic global binary names that will collide with unrelated tools, and they break the
+project's own `oo` namespace convention.
+
+### 7.11 The catalog is clean on drift but is the only registry — L1/L2/L4/L5/L6/L7 have no registry at all
+
+`catalog/index` holds 260 names; `catalog/` holds 256 package directories; the 4 extras (`caps`, `echo`, `hello`, `sqlite`) are
+example packages. **Zero drift** between the index and the on-disk set — this is the single best-maintained surface in the
+project.
+
+But the catalog registers **only L3 tools**.
+`grep -cE "^(oomedia|oodocs|oopaint|oochat|oostudio|oobrowser|oonotes|oopdf|oopass|oosheet|oodeck|oodaw|oocanvas|oogit
+-ui|oovm-ui|oomail|ooflash)\|" catalog/index` → **0**. No apps binary is registry-checked, which is precisely why the §4.1 apps
+collisions survived.

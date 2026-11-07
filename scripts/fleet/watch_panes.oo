@@ -1,0 +1,54 @@
+// # Fleet Pane Watch - Rate-Limit Resume and Idle Detection
+//
+// Logline: Read each builder pane, resume panes whose rate limit has reset, and flag panes that wait for input or sit idle.
+//
+// Setup: ProcessCap for herdr argv through fleet_user_cmd; the current UTC time arrives as an HH:MM string.
+//
+// Beats:
+//   1. Keep the last non-blank lines of a pane screen.
+//   2. Pull the HH:MM reset time out of a rate-limit notice.
+//   3. Classify the pane, send "continue" when its reset time has passed, and return a status word.
+
+import "fleet/run_argv.oo";
+import "std/core/primitives/str.oo";
+
+pub fn fleet_tail(screen: String, keep: Int) -> String {
+    let lines: List[String] = str_split(screen, "\n");
+    let mut out: String = "";
+    let mut seen: Int = 0;
+    let mut i: Int = list_len(lines) - 1;
+    while i >= 0 && seen < keep {
+        let l: String = list_get(lines, i);
+        if str_len(str_replace(l, " ", "")) > 0 && !str_contains(l, "───") { out = l + "\n" + out; seen = seen + 1; }
+        i = i - 1;
+    }
+    return out;
+}
+
+pub fn fleet_reset_hhmm(tail: String) -> String {
+    let at: Int = index_of(tail, " UTC)");
+    if at < 5 { return ""; }
+    return str_sub(tail, at - 5, at);
+}
+
+pub fn fleet_minutes(hhmm: String) -> Int {
+    if str_len(hhmm) != 5 { return 0 - 1; }
+    return parse_int_digits(str_sub(hhmm, 0, 2)) * 60 + parse_int_digits(str_sub(hhmm, 3, 5));
+}
+
+pub fn fleet_watch_pane(p: &ProcessCap, e: FleetEnv, pane: String, utc_hhmm: String) -> String {
+    let screen: String = fleet_text(sys_exec(p, "/usr/bin/env", "HOME=" + e.home, "XDG_RUNTIME_DIR=" + e.xdg, "herdr", "pane", "read", pane, "--source", "visible"));
+    let tail: String = fleet_tail(screen, 4);
+    if str_contains(tail, "Reached free model rate limit") {
+        let reset: Int = fleet_minutes(fleet_reset_hhmm(tail));
+        if reset >= 0 && fleet_minutes(utc_hhmm) > reset {
+            let _s: Result[String, String] = sys_exec(p, "/usr/bin/env", "HOME=" + e.home, "XDG_RUNTIME_DIR=" + e.xdg, "herdr", "pane", "send-text", pane, "continue your current task; follow the git safety rule");
+            let _k: Result[String, String] = sys_exec(p, "/usr/bin/env", "HOME=" + e.home, "XDG_RUNTIME_DIR=" + e.xdg, "herdr", "pane", "send-keys", pane, "Enter");
+            return "resumed";
+        }
+        return "rate-limited";
+    }
+    if str_contains(tail, "Thinking") || str_contains(tail, "Running tools") || str_contains(tail, "Typing") { return "working"; }
+    if str_contains(tail, "[y/n]") || str_contains(tail, "(y/N)") || str_contains(tail, "Press Enter") { return "waiting"; }
+    return "idle";
+}

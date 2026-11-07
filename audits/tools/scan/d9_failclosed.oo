@@ -1,0 +1,161 @@
+// # D9 Fail Closed - Fail Closed Capability Register Wrappers
+//
+// Logline: Add the fail closed capability register wrappers to the Generation A daemons and route the live gates through them.
+//
+// Setup: FsReadCap and FsWriteCap for the daemon pages, EnvCap for the operating system root.
+//
+// Beats:
+//   1. Insert the wrapper block and rewrite the canonical call sites.
+//   2. Route the live attestation and delegation gates through the wrappers.
+//   3. Report the page size and the call counts.
+
+import "std/core/primitives/str.oo";
+import "std/core/primitives/byte.oo";
+import "std/fs/os/fs.oo";
+import "tools/text/str_scan.oo";
+import "tools/env/audit_env.oo";
+
+fn d9_fail(msg: String) -> String {
+    println("FAIL: " + msg);
+    process_exit(1);
+    return "";
+}
+
+fn d9_pad(s: String, width: Int) -> String {
+    let mut out: String = s;
+    while byte_len(out) < width { out = out + " "; }
+    return out;
+}
+
+fn d9_wrappers(pfx: String) -> String {
+    let mut out: String = "";
+    out = out + "pub fn " + pfx + "_reg64_pack(epoch: Int, rights: Int, badge: Int, caps_mask: Int) -> Int {\n";
+    out = out + "    if rights < 0 || rights > 255 { return 0; }\n";
+    out = out + "    if badge < 0 || badge > 255 { return 0; }\n";
+    out = out + "    if caps_mask < 0 || caps_mask > 4294967295 { return 0; }\n";
+    out = out + "    return oo_cap_reg64_pack(epoch, rights, badge, caps_mask);\n";
+    out = out + "}\n\n";
+    out = out + "pub fn " + pfx + "_reg64_check(reg64: Int, cur_epoch: Int, req_rights: Int, req_caps: Int) -> Bool {\n";
+    out = out + "    if req_rights < 0 || req_rights > 255 { return false; }\n";
+    out = out + "    if req_caps < 0 || req_caps > 4294967295 { return false; }\n";
+    out = out + "    return oo_cap_reg64_check(reg64, cur_epoch, req_rights, req_caps);\n";
+    out = out + "}\n\n";
+    out = out + "pub fn " + pfx + "_reg64_attenuate(parent_reg64: Int, child_rights: Int, ";
+    out = out + "child_badge: Int, child_caps: Int) -> Int {\n";
+    out = out + "    if parent_reg64 <= 0 { return 0; }\n";
+    out = out + "    if child_rights < 0 || child_rights > 255 { return 0; }\n";
+    out = out + "    if child_badge < 0 || child_badge > 255 { return 0; }\n";
+    out = out + "    if child_caps < 0 || child_caps > 4294967295 { return 0; }\n";
+    out = out + "    return oo_cap_reg64_attenuate(parent_reg64, child_rights, child_badge, child_caps);\n";
+    out = out + "}\n\n";
+    return out;
+}
+
+fn d9_count_calls(src: String, needle: String) -> Int {
+    let sl: Int = byte_len(src);
+    let mut count: Int = 0;
+    let mut base: Int = 0;
+    while base <= sl {
+        let at: Int = index_of(byte_sub(src, base, sl), needle);
+        if at < 0 { break; }
+        let abs: Int = base + at;
+        if abs == 0 || !text_byte_is_word(byte_get(src, abs - 1)) { count = count + 1; }
+        base = abs + 1;
+    }
+    return count;
+}
+
+fn d9_fn_count(src: String) -> Int {
+    let lines: List[String] = str_split(src, "\n");
+    let mut count: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let t: String = text_trim(list_get(lines, i));
+        if starts_with(t, "fn ") || starts_with(t, "pub fn ") { count = count + 1; }
+        i = i + 1;
+    }
+    return count;
+}
+
+fn d9_patch_capreg(fr: &FsReadCap, fw: &FsWriteCap, base: String, repo: String, pfx: String) -> String {
+    let path: String = base + "/core/capreg.oo";
+    let src: String = match fs_read_file(fr, path) { Ok(s) => s, Err(_) => d9_fail(repo + ": cannot read core/capreg.oo") };
+    let pack_name: String = pfx + "_reg64_pack";
+    let check_name: String = pfx + "_reg64_check";
+    let atten_name: String = pfx + "_reg64_attenuate";
+    if text_find_word(src, pack_name) { return d9_fail(repo + ": " + pack_name + " already exists in core/capreg.oo"); }
+    if text_find_word(src, check_name) { return d9_fail(repo + ": " + check_name + " already exists in core/capreg.oo"); }
+    if text_find_word(src, atten_name) { return d9_fail(repo + ": " + atten_name + " already exists in core/capreg.oo"); }
+    let sl: Int = byte_len(src);
+    let at: Int = index_of(src, "pub fn ");
+    if at < 0 { return d9_fail(repo + ": core/capreg.oo has no pub fn marker"); }
+    let head: String = byte_sub(src, 0, at);
+    let tail: String = byte_sub(src, at, sl);
+    let n_pack: Int = d9_count_calls(tail, "oo_cap_reg64_pack(");
+    let n_check: Int = d9_count_calls(tail, "oo_cap_reg64_check(");
+    let n_atten: Int = d9_count_calls(tail, "oo_cap_reg64_attenuate(");
+    let wrappers: String = d9_wrappers(pfx);
+    let t1: String = str_replace(tail, "oo_cap_reg64_pack(", pack_name + "(");
+    let t2: String = str_replace(t1, "oo_cap_reg64_check(", check_name + "(");
+    let t3: String = str_replace(t2, "oo_cap_reg64_attenuate(", atten_name + "(");
+    if str_contains(t3, pack_name) && !str_contains(wrappers, "oo_cap_reg64_pack") {
+        return d9_fail(repo + ": wrapper body lost the canonical call");
+    }
+    let out: String = head + wrappers + t3;
+    let w: Result[Void, String] = fs_write_file(fw, path, out);
+    if w.is_err() { return d9_fail(repo + ": cannot write core/capreg.oo"); }
+    let lines: Int = text_count_occurrences(out, "\n");
+    let fns: Int = d9_fn_count(out);
+    return "pack=" + n_pack.to_string() + " check=" + n_check.to_string() + " atten=" + n_atten.to_string()
+        + " capreg_lines=" + lines.to_string() + " capreg_fns=" + fns.to_string();
+}
+
+fn d9_patch_gate(fr: &FsReadCap, fw: &FsWriteCap, repo: String, base: String, pfx: String, file: String, canon: String) -> Int {
+    let path: String = base + "/" + file;
+    let src: String = match fs_read_file(fr, path) { Ok(s) => s, Err(_) => d9_fail(repo + ": cannot read " + file) };
+    let cnt: Int = text_count_occurrences(src, canon);
+    let label: String = if canon == "oo_cap_reg64_check(" { "check" } else { "pack" };
+    if cnt != 1 {
+        let msg: String = repo + ": expected exactly 1 canonical " + label + " in " + file;
+        let _f: String = d9_fail(msg + ", found " + cnt.to_string());
+        return 0 - 1;
+    }
+    let repl: String = pfx + (if canon == "oo_cap_reg64_check(" { "_reg64_check(" } else { "_reg64_pack(" });
+    let out: String = str_replace(src, canon, repl);
+    let w: Result[Void, String] = fs_write_file(fw, path, out);
+    if w.is_err() {
+        let _f: String = d9_fail(repo + ": cannot write " + file);
+        return 0 - 1;
+    }
+    return cnt;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int {
+    let root: String = audit_os_root(e);
+    let mut repos: List[String] = list_new();
+    repos = list_push(repos, "ooaid");
+    repos = list_push(repos, "oohealthd");
+    repos = list_push(repos, "ooimage");
+    repos = list_push(repos, "ooinit");
+    repos = list_push(repos, "oonetd");
+    repos = list_push(repos, "oosession");
+    let mut prefixes: List[String] = list_new();
+    prefixes = list_push(prefixes, "ooaid");
+    prefixes = list_push(prefixes, "oohealth");
+    prefixes = list_push(prefixes, "ooimage");
+    prefixes = list_push(prefixes, "oo");
+    prefixes = list_push(prefixes, "oo");
+    prefixes = list_push(prefixes, "oo");
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        let repo: String = list_get(repos, i);
+        let pfx: String = list_get(prefixes, i);
+        let base: String = root + "/" + repo;
+        let stats: String = d9_patch_capreg(fr, fw, base, repo, pfx);
+        let _c: Int = d9_patch_gate(fr, fw, repo, base, pfx, "hw/attest.oo", "oo_cap_reg64_check(");
+        let _d: Int = d9_patch_gate(fr, fw, repo, base, pfx, "hw/delegate.oo", "oo_cap_reg64_pack(");
+        println(d9_pad(repo, 10) + " prefix=" + d9_pad(pfx + "_", 10) + " " + stats);
+        i = i + 1;
+    }
+    return 0;
+}

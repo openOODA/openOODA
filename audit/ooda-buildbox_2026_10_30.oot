@@ -5,7 +5,7 @@ Status: complete
 Subject: docs/ooda-buildbox.oot (v0.1.0, untracked at audit time)
 
 ## 0. Scope and method
-Full-scan adversarial audit of the OODA-buildbox plan on host zebes. Every claim was checked against source, not against the plan's own prose.
+Full-scan adversarial audit of the OODA-buildbox plan on the control host. Every claim was checked against source, not against the plan's own prose.
 Evidence: /Projects/openOODA/{openOODA,oodac,oodar,std,cli,tui,ooda,opm,lsp,mcp}, /Projects/openOODA-tools (257 repos), /etc/containers/systemd, the 2026-10-30 audit boards, live compiler probes.
 Live probes (read-only): `oodac emit-llvm std/net/http_client.oo` -> exit 1, ERR llvm unknown call fetch. Same for std/net/http.oo. std/net/tls.oo -> exit 1, ERR llvm unknown call tls_connect. std/net/tcp.oo -> OK. std/net/http_cap.oo -> OK. `oodac check tui/main.oo` -> OK.
 
@@ -45,7 +45,7 @@ oodar/fs/os/netfloor_tcp.c:144 makes oo_tcp_read an untimed blocking read; std/f
 Fix: bound every model call with an outer timeout. The curl precedent at tui/llm_exec.oo:197 uses `-m 60`.
 
 ### C8 (HIGH) "Internal only" network is incompatible with the pipeline
-Plan section 4 says internal only, no tunnel. The pipeline needs `git fetch` from github.com (section 5 step 1) and Ollama on spotlight, a remote host at tailscale address 100.66.54.24 (confirmed by `tailscale status` on zebes). A podman bridge with Internal=true has no default route.
+Plan section 4 says internal only, no tunnel. The pipeline needs `git fetch` from github.com (section 5 step 1) and Ollama on the reviewer host, a remote host at a tailscale address (confirmed by `tailscale status` on the control host). A podman bridge with Internal=true has no default route.
 Fix: specify the egress path explicitly. Preferred: two interfaces, internal for the build plane and a filtered egress for git and curl only. Do not run remote-fetched code with egress.
 
 ### C9 (MEDIUM) The quadlet set is incomplete against host convention
@@ -57,7 +57,7 @@ Section 3 says the image bakes "a read-only polyrepo checkout refreshed by git a
 Fix: define the per-repo checkout layout and the refresh order.
 
 ### C11 (MEDIUM) The image package list is incomplete
-Plan section 3 lists clang, llvm-18, git, make, rustc+cargo and an optional podman client. Missing: curl, which the .oo HTTP path needs (P2), and python3, which openOODA/qa/lint_oo_size.sh embeds as a Python heredoc. llvm-18 IS available on Fedora 44 (llvm18.x86_64-18.1.8-8.fc44); clang on zebes is 22.1.8. "podman client (optional)" inside a podman container means nested podman, which needs privileges the hardening in S1 removes.
+Plan section 3 lists clang, llvm-18, git, make, rustc+cargo and an optional podman client. Missing: curl, which the .oo HTTP path needs (P2), and python3, which openOODA/qa/lint_oo_size.sh embeds as a Python heredoc. llvm-18 IS available on Fedora 44 (llvm18.x86_64-18.1.8-8.fc44); clang on the control host is 22.1.8. "podman client (optional)" inside a podman container means nested podman, which needs privileges the hardening in S1 removes.
 Fix: drop podman, add curl, add python3 only if the size lint runs in-box.
 
 ### C12 (MEDIUM) The claimed audit record does not exist
@@ -78,7 +78,7 @@ Plan section 5 step 4 pipes diffs into three models; step 5 writes their output 
 Fix: keep model output in a separate file from confirmed findings. A finding may only turn a commit red after an independent check against source. Tag every finding with model, prompt hash and verifier.
 
 ### S4 (HIGH) Queue file trust is undefined
-queue/findings.oot and queue/state.oot live on a host bind mount. No integrity control, no owner, no permission mode, no rule that a consumer re-verifies. The standard tool is also missing: minisign is not installed on zebes. The seed ships oodac.pub, oodac.sha256 and oodac.sha256.minisig (oodac/bootstrap/seed/), and a pure .oo Ed25519 verify exists at std/sec/asymmetric/ecc/ed25519.oo:100, but no .oo minisign page exists.
+queue/findings.oot and queue/state.oot live on a host bind mount. No integrity control, no owner, no permission mode, no rule that a consumer re-verifies. The standard tool is also missing: minisign is not installed on the control host. The seed ships oodac.pub, oodac.sha256 and oodac.sha256.minisig (oodac/bootstrap/seed/), and a pure .oo Ed25519 verify exists at std/sec/asymmetric/ecc/ed25519.oo:100, but no .oo minisign page exists.
 Fix: pin ownership and mode, add a per-file sha256 manifest, verify with ed25519_verify_hex.
 
 ### S5 (HIGH) Writing into the canonical repo breaches the 256-line cap
@@ -112,7 +112,7 @@ rules.oot:143 bans .py, .ts, .rb and .pl. .rs is absent from that list. rules.oo
 Fix: remove the shim, or file an RFC that adds .rs to the corpus and to the Rule C list.
 
 ### P2 (HIGH) The .rs shim is not needed, and D1 gives the wrong reason
-D1 says the shim exists because the loop needs "streaming chat + model list today". The real state of the .oo HTTP path: std/net/http_client.oo and std/net/http.oo FAIL TO EMIT (exit 1, ERR llvm unknown call fetch); std/net/tls.oo FAILS TO EMIT (exit 1, ERR llvm unknown call tls_connect); std/net/http_cap.oo is a pure serializer whose header line 5 reads "No live I/O is performed"; std/net/http_client.oo:55-60 makes http_client_post ignore content_type AND body and perform a GET; oodar/fs/os/netfloor_tcp.c:80-87 makes oo_tcp_connect loopback-only. A .oo client therefore cannot reach spotlight at all, for reasons the plan never states. The org already ships a working .oo precedent at tui/llm_exec.oo:197: sys_exec(sys, "curl", "-sS", "--fail", "-m", "60", "-X", "POST", url, "-H", "@" + hdr, "--data-binary", "@" + tmp). argv form, no shell, TLS via curl, 60 s timeout, headers in a 0600 temp file so the key never appears on argv. tui/llm_exec.oo is the LIVE path; tui/llm_ollama.oo and tui/llm.oo are dead code outside the tui import closure and cannot be emitted.
+D1 says the shim exists because the loop needs "streaming chat + model list today". The real state of the .oo HTTP path: std/net/http_client.oo and std/net/http.oo FAIL TO EMIT (exit 1, ERR llvm unknown call fetch); std/net/tls.oo FAILS TO EMIT (exit 1, ERR llvm unknown call tls_connect); std/net/http_cap.oo is a pure serializer whose header line 5 reads "No live I/O is performed"; std/net/http_client.oo:55-60 makes http_client_post ignore content_type AND body and perform a GET; oodar/fs/os/netfloor_tcp.c:80-87 makes oo_tcp_connect loopback-only. A .oo client therefore cannot reach the reviewer host at all, for reasons the plan never states. The org already ships a working .oo precedent at tui/llm_exec.oo:197: sys_exec(sys, "curl", "-sS", "--fail", "-m", "60", "-X", "POST", url, "-H", "@" + hdr, "--data-binary", "@" + tmp). argv form, no shell, TLS via curl, 60 s timeout, headers in a 0600 temp file so the key never appears on argv. tui/llm_exec.oo is the LIVE path; tui/llm_ollama.oo and tui/llm.oo are dead code outside the tui import closure and cannot be emitted.
 Fix: implement ooda-ollama in .oo on the llm_exec pattern, drop the .rs, add curl to the image. This removes the only written-law violation in the plan.
 
 ### P3 (HIGH) "No .sh, no .py anywhere in the box" has an unenumerated blast radius

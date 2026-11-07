@@ -1,0 +1,110 @@
+// # Audit Exec Argv - List Driven Child Process Execution
+//
+// Logline: Run a child program from an argument list and report its output and its exit status.
+//
+// Setup: ProcessCap only. The child starts from a scrubbed environment, so the caller passes KEY=VALUE entries as arguments.
+//
+// Beats:
+//   1. Build and concatenate argument lists.
+//   2. Run a program from an argument list and capture its merged output.
+//   3. Report the exit status of a program from an argument list.
+
+type ExecRun = struct {
+    output: String,
+    code: Int
+};
+
+fn exec_arg(argv: List[String], i: Int) -> String {
+    if i < 0 || i >= list_len(argv) { return ""; }
+    return list_get(argv, i);
+}
+
+pub fn argv_add(argv: List[String], value: String) -> List[String] {
+    if value == "" { return argv; }
+    return list_push(argv, value);
+}
+
+pub fn argv_join(head: List[String], tail: List[String]) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(head) { out = list_push(out, list_get(head, i)); i = i + 1; }
+    let mut j: Int = 0;
+    while j < list_len(tail) { out = list_push(out, list_get(tail, j)); j = j + 1; }
+    return out;
+}
+
+pub fn exec_argv_capture(p: &ProcessCap, argv: List[String]) -> Result[String, String] {
+    let n: Int = list_len(argv);
+    if n == 0 { return Err("empty argv"); }
+    let prog: String = list_get(argv, 0);
+    let a1: String = exec_arg(argv, 1);
+    let a2: String = exec_arg(argv, 2);
+    let a3: String = exec_arg(argv, 3);
+    let a4: String = exec_arg(argv, 4);
+    let a5: String = exec_arg(argv, 5);
+    let a6: String = exec_arg(argv, 6);
+    let a7: String = exec_arg(argv, 7);
+    let a8: String = exec_arg(argv, 8);
+    let a9: String = exec_arg(argv, 9);
+    let a10: String = exec_arg(argv, 10);
+    let a11: String = exec_arg(argv, 11);
+    let a12: String = exec_arg(argv, 12);
+    let a13: String = exec_arg(argv, 13);
+    let a14: String = exec_arg(argv, 14);
+    let a15: String = exec_arg(argv, 15);
+    if n == 1 { return sys_exec(p, prog); }
+    if n == 2 { return sys_exec(p, prog, a1); }
+    if n == 3 { return sys_exec(p, prog, a1, a2); }
+    if n == 4 { return sys_exec(p, prog, a1, a2, a3); }
+    if n == 5 { return sys_exec(p, prog, a1, a2, a3, a4); }
+    if n == 6 { return sys_exec(p, prog, a1, a2, a3, a4, a5); }
+    if n == 7 { return sys_exec(p, prog, a1, a2, a3, a4, a5, a6); }
+    if n == 8 { return sys_exec(p, prog, a1, a2, a3, a4, a5, a6, a7); }
+    if n == 9 { return sys_exec(p, prog, a1, a2, a3, a4, a5, a6, a7, a8); }
+    if n == 10 { return sys_exec(p, prog, a1, a2, a3, a4, a5, a6, a7, a8, a9); }
+    if n == 11 { return sys_exec(p, prog, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10); }
+    if n == 12 { return sys_exec(p, prog, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11); }
+    if n == 13 { return sys_exec(p, prog, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12); }
+    if n == 14 { return sys_exec(p, prog, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13); }
+    if n == 15 { return sys_exec(p, prog, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14); }
+    if n == 16 { return sys_exec(p, prog, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15); }
+    return Err("argv exceeds the supported width");
+}
+
+pub fn exec_argv_code(p: &ProcessCap, argv: List[String]) -> Int {
+    let n: Int = list_len(argv);
+    if n == 0 { return 0 - 1; }
+    let prog: String = list_get(argv, 0);
+    let mut rest: List[String] = list_new();
+    let mut i: Int = 1;
+    while i < n { rest = list_push(rest, list_get(argv, i)); i = i + 1; }
+    let r: Result[Int, String] = sys_exec_wait(p, prog, rest);
+    return match r { Ok(c) => c, Err(_) => 0 - 1 };
+}
+
+pub fn exec_argv_run(p: &ProcessCap, argv: List[String]) -> ExecRun {
+    let r: Result[String, String] = exec_argv_capture(p, argv);
+    match r {
+        Ok(s) => { return ExecRun { output: s, code: 0 }; }
+        Err(e) => { return ExecRun { output: e, code: 1 }; }
+    }
+}
+
+pub fn exec_argv_stdout(p: &ProcessCap, argv: List[String]) -> String {
+    let r: Result[String, String] = exec_argv_capture(p, argv);
+    match r {
+        Ok(s) => { return s; }
+        Err(_) => { return ""; }
+    }
+}
+
+pub fn exec_argv_idempotent(p: &ProcessCap, argv: List[String]) -> ExecRun {
+    let r: Result[String, String] = exec_argv_capture(p, argv);
+    match r {
+        Ok(s) => { return ExecRun { output: s, code: 0 }; }
+        Err(e) => {
+            let c: Int = exec_argv_code(p, argv);
+            return ExecRun { output: e, code: c };
+        }
+    }
+}

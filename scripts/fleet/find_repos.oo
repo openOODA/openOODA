@@ -1,0 +1,54 @@
+// # Fleet Repository Finder - Git Trees Under /Projects
+//
+// Logline: List every git working tree up to three directory levels below a root.
+//
+// Setup: FsReadCap only. A directory is a repository when it holds a .git directory.
+//
+// Beats:
+//   1. Read one directory level and keep the child directories.
+//   2. Descend up to three levels and collect directories that own a .git directory.
+//   3. Mark the repositories that other servers own so callers skip them.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+
+pub fn fleet_child_dirs(fr: &FsReadCap, dir: String) -> List[String] {
+    let names: List[String] = fs_read_dir(fr, dir);
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(names) {
+        let n: String = list_get(names, i);
+        let path: String = dir + "/" + n;
+        if n != ".git" && fs_is_dir(fr, path) { out = list_push(out, path); }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn fleet_is_repo(fr: &FsReadCap, dir: String) -> Bool {
+    return fs_is_dir(fr, dir + "/.git");
+}
+
+pub fn fleet_find_repos(fr: &FsReadCap, root: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let top: List[String] = fleet_child_dirs(fr, root);
+    let mut i: Int = 0;
+    while i < list_len(top) {
+        let a: String = list_get(top, i);
+        if fleet_is_repo(fr, a) { out = list_push(out, a); }
+        let mid: List[String] = fleet_child_dirs(fr, a);
+        let mut j: Int = 0;
+        while j < list_len(mid) {
+            let b: String = list_get(mid, j);
+            if fleet_is_repo(fr, b) { out = list_push(out, b); }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn fleet_is_locked(repo: String) -> Bool {
+    if ends_with(repo, "/openOODA-core/std") || ends_with(repo, "/openOODA-core/oodar") { return true; }
+    return ends_with(repo, "/openOODA-core/oodac") || ends_with(repo, "/openOODA-agents/oohat");
+}

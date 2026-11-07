@@ -1,0 +1,75 @@
+// # Fleet Git Classify - One Repository Against Origin
+//
+// Logline: Fetch one repository and classify it as synced, pull-only, push-only, diverged, or unreachable.
+//
+// Setup: ProcessCap runs git under timeout. A pull is fast-forward only. No merge and no push.
+//
+// Beats:
+//   1. Fetch origin with a bounded timeout.
+//   2. Compare HEAD with origin/master, falling back to origin/main.
+//   3. Fast-forward a pull-only repository and return one tab row.
+
+import "std/core/primitives/str.oo";
+
+fn gr_trim(s: String) -> String {
+    return str_replace(str_replace(s, "\n", ""), "\r", "");
+}
+
+fn gr_ok(r: Result[String, String]) -> Bool {
+    return match r { Ok(_) => true, Err(_) => false };
+}
+
+fn gr_text(r: Result[String, String]) -> String {
+    return gr_trim(match r { Ok(s) => s, Err(_) => "" });
+}
+
+fn gr_has(p: &ProcessCap, repo: String, ref: String) -> Bool {
+    let r: Result[String, String] = sys_exec(p, "git", "-C", repo, "rev-parse", "--verify", "--quiet", ref);
+    return gr_ok(r);
+}
+
+fn gr_primary(p: &ProcessCap, repo: String) -> String {
+    if gr_has(p, repo, "origin/master") { return "origin/master"; }
+    if gr_has(p, repo, "origin/main") { return "origin/main"; }
+    return "";
+}
+
+fn gr_count(p: &ProcessCap, repo: String, spec: String) -> String {
+    let r: Result[String, String] = sys_exec(p, "git", "-C", repo, "rev-list", "--count", spec);
+    let n: String = gr_text(r);
+    if str_len(n) == 0 { return "0"; }
+    return n;
+}
+
+fn gr_pull(p: &ProcessCap, repo: String, branch: String, limit: String) -> String {
+    let r: Result[String, String] = sys_exec(p, "timeout", limit, "git", "-C", repo, "pull", "--ff-only", "--quiet", "origin", branch);
+    if gr_ok(r) { return "fast-forwarded to origin/" + branch; }
+    return "pull --ff-only failed (no merge attempted)";
+}
+
+pub fn gr_classify(p: &ProcessCap, repo: String, sp: String, name: String, limit: String) -> String {
+    let base: String = sp + "\t" + name + "\t" + repo + "\t";
+    let fetch: Result[String, String] = sys_exec(p, "timeout", limit, "git", "-C", repo, "fetch", "--prune", "--quiet", "origin");
+    if !gr_ok(fetch) { return base + "FETCH_FAIL\t0\t0\tnone\tfetch failed or timed out"; }
+    let head: String = gr_text(sys_exec(p, "git", "-C", repo, "rev-parse", "HEAD"));
+    let primary: String = gr_primary(p, repo);
+    if primary == "" { return base + "NO_REMOTE\t0\t0\tnone\tno origin/master or origin/main"; }
+    let tip: String = gr_text(sys_exec(p, "git", "-C", repo, "rev-parse", "--verify", primary));
+    if head == tip { return base + "SYNCED\t0\t0\tnone\talready current"; }
+    let ahead: String = gr_count(p, repo, primary + "..HEAD");
+    let behind: String = gr_count(p, repo, "HEAD.." + primary);
+    let an: Int = parse_int_digits(ahead);
+    let bn: Int = parse_int_digits(behind);
+    if bn > 0 && an > 0 {
+        return base + "DIVERGED\t" + ahead + "\t" + behind + "\tescalate\tboth sides have unique commits";
+    }
+    if bn > 0 {
+        let cur: String = gr_text(sys_exec(p, "git", "-C", repo, "rev-parse", "--abbrev-ref", "HEAD"));
+        let mut branch: String = str_sub(primary, 7, str_len(primary));
+        if cur != "" && cur != "HEAD" && gr_has(p, repo, "origin/" + cur) { branch = cur; }
+        let pulled: String = gr_pull(p, repo, branch, limit);
+        let action: String = if starts_with(pulled, "pull") { "pull-failed" } else { "pull" };
+        return base + "PULL_ONLY\t" + ahead + "\t" + behind + "\t" + action + "\t" + pulled;
+    }
+    return base + "PUSH_ONLY\t" + ahead + "\t0\tescalate\tlocal commits are not on " + primary;
+}

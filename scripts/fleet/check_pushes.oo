@@ -1,0 +1,31 @@
+// # Fleet Push Check - Commits That Exist Only Locally
+//
+// Logline: Find repositories whose HEAD history holds commits that no remote branch contains.
+//
+// Setup: ProcessCap for git argv. Uses the remote-tracking refs already on disk; pushes to wip branches count as backed up.
+//
+// Beats:
+//   1. Count commits reachable from HEAD and from no remote-tracking ref.
+//   2. Collect one report line per repository with a non-zero count.
+//   3. Return the lines so the tick can raise one alert for the whole set.
+
+import "fleet/run_argv.oo";
+import "std/core/primitives/str.oo";
+
+pub fn fleet_local_only_count(p: &ProcessCap, e: FleetEnv, repo: String) -> Int {
+    let out: Result[String, String] = sys_exec(p, "/usr/bin/env", "HOME=" + e.home, "git", "-C", repo, "rev-list", "--count", "HEAD", "--not", "--remotes");
+    if !fleet_ok(out) { return 0; }
+    return parse_int_digits(str_replace(fleet_text(out), "\n", ""));
+}
+
+pub fn fleet_check_pushes(p: &ProcessCap, e: FleetEnv, repos: List[String]) -> List[String] {
+    let mut lines: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        let repo: String = list_get(repos, i);
+        let n: Int = fleet_local_only_count(p, e, repo);
+        if n > 0 { lines = list_push(lines, "LOCAL-ONLY " + n.to_string() + " " + repo); }
+        i = i + 1;
+    }
+    return lines;
+}

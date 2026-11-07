@@ -1,0 +1,100 @@
+// # Fleet Review Gate - Verdicts For One Completed Batch
+//
+// Logline: Review each repository in a batch and write the verdict document, reusing a cached verdict for the same commit.
+//
+// Setup: ProcessCap runs git, mcode, and the hat cycle. FsWriteCap stores the review JSON under the fleet state directory.
+//
+// Beats:
+//   1. Resolve the commit of each repository.
+//   2. Reuse a cached verdict or run one fresh review.
+//   3. Write the batch document and the cache. A dirty target is inconclusive.
+
+import "fleet/ops/review_one.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+
+fn rg_state(env: &EnvCap) -> String {
+    let e: Result[String, String] = env_get(env, "OODA_FLEET_STATE_DIR");
+    return match e { Ok(s) => s, Err(_) => "/Projects/openOODA/.fleet-tick" };
+}
+
+fn rg_or(env: &EnvCap, key: String, dflt: String) -> String {
+    let e: Result[String, String] = env_get(env, key);
+    let s: String = match e { Ok(v) => v, Err(_) => "" };
+    if str_len(s) == 0 { return dflt; }
+    return s;
+}
+
+fn rg_sha(p: &ProcessCap, repo: String) -> String {
+    let r: Result[String, String] = sys_exec(p, "git", "-C", repo, "rev-parse", "HEAD");
+    return str_replace(match r { Ok(s) => s, Err(_) => "" }, "\n", "");
+}
+
+fn rg_hit(cache: String, repo: String, sha: String) -> String {
+    let lines: List[String] = str_split(cache, "\n");
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let line: String = list_get(lines, i);
+        let parts: List[String] = str_split(line, "\t");
+        if list_len(parts) >= 3 && list_get(parts, 0) == repo && list_get(parts, 1) == sha {
+            let why: String = if list_len(parts) > 3 { list_get(parts, 3) } else { "" };
+            return list_get(parts, 2) + "\t" + why;
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+fn rg_item(repo: String, sha: String, verdict: String, reasons: String) -> String {
+    return "{\"repo\":\"" + repo + "\",\"sha\":\"" + sha + "\",\"verdict\":\"" + verdict
+        + "\",\"reasons\":\"" + reasons + "\"}";
+}
+
+fn rg_esc(s: String) -> String {
+    return str_replace(str_replace(s, "\\", ""), "\"", "");
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Result[Int, String] {
+    if list_len(args) < 3 { return Err("review: need a space, a batch, and at least one repo"); }
+    let space: String = list_get(args, 0);
+    let batch: String = list_get(args, 1);
+    let state: String = rg_state(env);
+    let dir: String = state + "/reviews";
+    let model: String = rg_or(env, "REVIEW_MODEL", "minimax/MiniMax-M3.1-Flash");
+    let prompt: String = rg_or(env, "REVIEW_PROMPT", "/home/ubermetroid/.minimax/ooda-code-review-prompt.md");
+    let bin: String = rg_or(env, "OOHAT_BIN", "/Projects/openOODA-agents/oohat/bin/oohat");
+    let stamp: Result[String, String] = sys_exec(p, "date", "+%s");
+    let scratch: String = "/tmp/rhf-review-" + str_replace(match stamp { Ok(s) => s, Err(_) => "0" }, "\n", "");
+    let _mk: Result[Void, String] = fs_mkdir_p(fw, scratch);
+    let _dir: Result[Void, String] = fs_mkdir_p(fw, dir);
+    let cache_path: String = dir + "/.cache-" + space + "-" + batch + ".txt";
+    let prev: Result[String, String] = fs_read_file(fr, cache_path);
+    let mut cache: String = match prev { Ok(s) => s, Err(_) => "" };
+    let mut items: String = "";
+    let mut i: Int = 2;
+    let mut n: Int = 0;
+    while i < list_len(args) {
+        let repo: String = list_get(args, i);
+        let sha: String = rg_sha(p, repo);
+        let mut row: String = rg_hit(cache, repo, sha);
+        if row == "" {
+            row = rv_one(p, fr, repo, model, prompt, bin, scratch);
+            cache = cache + repo + "\t" + sha + "\t" + row + "\n";
+        }
+        let parts: List[String] = str_split(row, "\t");
+        let verdict: String = if list_len(parts) > 0 { list_get(parts, 0) } else { "INCONCLUSIVE" };
+        let reasons: String = if list_len(parts) > 1 { list_get(parts, 1) } else { "" };
+        if n > 0 { items = items + ","; }
+        items = items + rg_item(rg_esc(repo), rg_esc(sha), verdict, rg_esc(reasons));
+        println("   " + repo + ": " + verdict);
+        n = n + 1;
+        i = i + 1;
+    }
+    let doc: String = "{\"schema\":1,\"space\":\"" + space + "\",\"batch\":\"" + batch + "\",\"results\":[" + items + "]}\n";
+    let _w: Result[Void, String] = fs_write_file(fw, dir + "/" + space + "-" + batch + ".json", doc);
+    let _c: Result[Void, String] = fs_write_file(fw, cache_path, cache);
+    let _rm: Result[String, String] = sys_exec(p, "rm", "-rf", scratch);
+    println("-- review: " + n.to_string() + " repo(s) -> " + dir + "/" + space + "-" + batch + ".json");
+    return Ok(0);
+}

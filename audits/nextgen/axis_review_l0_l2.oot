@@ -1,0 +1,165 @@
+# Two-Axis Next-Generation Code Review: L0 Core, L1 Kernel, and L2 OS
+File: openOODA/audits/nextgen/axis_review_l0_l2.oot
+
+Provenance: converted from `openOODA/audits/nextgen-2axis-review-l0-l2.md` (326 lines). Part 1 of 3.
+
+Redaction note: fleet host names and tailnet addresses are written as generic
+placeholders. The audited tree still holds the literals.
+
+# 2-Axis Next-Generation Code Review — L0 `openOODA-core`, L1 `openOODA-kernel`, L2 `openOODA-OS`
+
+**Date:** 2026-11-05 (first pass `07:35 HST`, second pass `18:20 HST`)
+**Reviewer:** `mcode-review 1` (Stage 1 Code Reviewer, MiniMax Code)
+**Scope:** 44 git repositories — L0 `openOODA-core` (10 repos), L1 `openOODA-kernel` (16 repos), L2 `openOODA-OS` (18 repos)
+**Method:** Pull from the remote Forgejo host (`http://<remote-git-host>:3000`) → two-axis review → fix defects → `make verify`
++ `make test` → commit → push `origin`
+
+---
+
+## 0. Summary
+
+Table columns: Axis | L0 core | L1 kernel | L2 OS
+- **Standards** (Power-of-2 Shape Ladder) | **FAIL** — `BIGFILE=0`, but `MANYFN=957`, `LONGFN=336`, `DENSE=5394`; 153
+  directories hold more than 8 `.oo` pages | **PASS** — 406 pages, 0 violations | **PASS** — 556 pages, 0 violations
+- **Spec** (canonical imports, no toy clones, real I/O) | **PARTIAL** — the `std-hw/` resolver gap is fixed, but
+  `std/sec/speculate.oo` shipped a build-breaking arena call and `std/sec/pqc.oo` has no L1 importer | **FAIL** — 10 of 16 repos
+  still ship the banned `wire.oo` / `warrant.oo` / `attest.oo` / `quorum/blackbox.oo` clone set, 30 of them toy `% 1000000007`
+  MACs | **PASS** — real `FsReadCap` I/O in 18 of 18; real socket I/O in the 3 network-owning daemons
+
+Seven defects were fixed, verified, committed, and pushed. Six further findings are reported with a remediation direction. Four
+findings — three from the first pass and one found in this pass — were resolved upstream while the review was running.
+
+**Final verification state: L1 16 of 16 and L2 18 of 18 green on both `make verify` and `make test`; L0 `cli` green, `tui` and
+`mcp` red only on a load artefact that reproduces identically at HEAD.**
+
+**The second pass found the defect that matters most.** `std/sec/speculate.oo` called `oo_arena_mark()` and
+`oo_arena_reset_mark(mark)`, two symbols that exist nowhere in the tree. Every consumer of the canonical `std/core/ooda.oo`
+therefore failed to compile. The six L1 repositories that consume it — `oodrv-net`, `oodrv-nvme`, `oodrv-virtio`,
+`ookernel-boot`, `ookernel-hal-x86`, `ookernel-sched` — were all unbuildable, and all six are green again after the repair.
+
+---
+
+## 1. Standards Axis — Power-of-2 Shape Ladder
+
+### 1.1 `lint-oo-size` per layer
+
+`/home/ubermetroid/.local/bin/lint-oo-size`, thresholds `lines>256 fns>8 longest>64 dir_files>8`:
+
+| Layer | Root | Pages scanned | BIGFILE | MANYFN | LONGFN | DENSE | Files affected |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| L0 | `/Projects/openOODA-core` | 6743 | 0 | 957 | 336 | 5394 | 5569 |
+| L1 | `/Projects/openOODA-kernel` | 406 | 0 | 0 | 0 | 0 | 0 |
+| L2 | `/Projects/openOODA-OS` | 556 | 0 | 0 | 0 | 0 | 0 |
+
+`BIGFILE` is 0 in every layer, so the 256-line page ceiling holds everywhere. L1 and L2 hold all nine rungs.
+
+### 1.2 L0 violations by repo, and the missing gate
+
+| L0 repo | Pages | BIGFILE | MANYFN | LONGFN | DENSE | Files affected | Directories with more than 8 pages |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `std` | 5374 | 0 | 898 | 240 | 4635 | 4775 | 116 |
+| `oodac` | 536 | 0 | 37 | 66 | 489 | 489 | 23 |
+| `tui` | 282 | 0 | 0 | 25 | 206 | 219 | 10 |
+| `mcp` | 139 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `cli` | 49 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `opm` | 118 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `lsp` | 119 | 0 | 0 | 4 | 49 | 51 | 3 |
+| `std-hw` | 59 | 0 | 22 | 0 | 15 | 34 | 1 |
+| `ooda` | 28 | 0 | 0 | 1 | 0 | 1 | 0 |
+| `oodar` | 39 | 0 | 0 | 0 | 0 | 0 | 0 |
+| **Total** | **6743** | **0** | **957** | **336** | **5394** | **5569** | **153** |
+
+The directory counts were confirmed independently with `find … -printf '%h' | uniq -c | awk '$1>8'`. The per-repo `MANYFN`,
+`LONGFN`, `DENSE`, and affected-file counts sum exactly to the whole-layer totals, so the debt is confined to `std`, `oodac`,
+`tui`, `lsp`, and `std-hw`; `mcp`, `cli`, `opm`, `ooda`, and `oodar` are clean.
+
+**Root cause.** The violations survive because no L0 repository runs the shape gate:
+
+| Layer | `verify` target |
+| :--- | :--- |
+| L1 and L2 (34 repos, every one) | `line-cap file-law academy density vocab check shape link-law` |
+| L0 `cli`, `mcp` | `line-cap file-law academy persona` |
+| L0 `tui` | `line-cap file-law academy check persona` |
+
+L0 lacks `density`, `vocab`, `shape`, and `link-law`. That is why L1 and L2 report 0 violations while L0 reports 5569 affected
+pages: the L1 and L2 gates fail closed, and the L0 gates do not exist.
+
+### 1.3 Rule 1.14 file-type law
+
+`rules.oot` §1.14 permits `.sh` only at `bootstrap/oodac_pure_build`, `install.sh`, `*/profile.d.sh`, `tests/test_*.sh`,
+`tests/*_inner.sh`, `qa/*.sh`, `scripts/repro_*.sh`, `scripts/double_run.sh`, and `bootstrap/corpus/*/diffrun.sh`.
+
+`cli`, `mcp`, and `tui` each shipped `scripts/link_law_gate.sh`, which is outside that list, and their own `file-law` target
+failed on it. Fixed — see D4.
+
+### 1.4 Link law (Rule 1.25)
+
+Every L1 and L2 repository runs a `link-law` gate. No symlink and no hardlink was found in any of the 44 repositories. The
+`link-law` gate in `cli`, `mcp`, and `tui` still runs after the relocation, and a planted symlink still fails it.
+
+---
+
+## 2. Spec Axis — Canonical Imports, Toy Clones, Real I/O
+
+### 2.1 Canonical import adoption
+
+| Layer | `std/sec/*` | `std/core/ooda.oo` | `std-hw/*` |
+| :--- | :--- | :--- | :--- |
+| L2 OS (18 repos) | 18 of 18 repos | 0 | 18 of 18 repos |
+| L1 kernel, consolidated (6 repos) | 6 of 6 repos, 8 canonical security pages each | 6 of 6 repos | 0 |
+| L1 kernel, not yet consolidated (10 repos) | **0 of 10** | 0 | 0 |
+
+The six consolidated kernel repositories — `oodrv-net` (`net/net_dma_ring.oo`), `oodrv-nvme` (`core/nvme_sq_cq.oo`),
+`oodrv-virtio` (`core/vring_split.oo`), `ookernel-boot` (`core/elf_loader.oo`), `ookernel-hal-x86` (`x86/lapic_ioapic.oo`), and
+`ookernel-sched` (`sched/upcall_queue.oo`) — import the canonical security pages
+`std/sec/{capreg,warrant,attest,audit,blackbox,speculate,quorum,delegate}.oo` and the canonical turn engine `std/core/ooda.oo`,
+and every one of them calls `oo_ooda_cycle` on a live runtime page. The other ten import none of them and carry local copies
+instead.
+
+### 2.2 The canonical PQC page has no L1 importer
+
+`std/sec/pqc.oo` states that it is the canonical post-quantum primitive page that "every layer imports instead of carrying
+copies", and it explicitly forbids toy prime moduli. It is imported by `std/core/ooda.oo` and by the L2 and L4/L7 consumers of
+that engine, but **zero of the sixteen L1 repositories import it directly**. The L1 consumers reach it only transitively through
+`std/core/ooda.oo`. This is reported as F4, because the page claims a wider adoption than the tree shows.
+
+### 2.3 Toy clones (the `% 1000000007` pattern)
+
+`rules.oot` §1.14 and the review charter ban `wire.oo`, `warrant.oo`, `attest.oo`, and `quorum/blackbox.oo` inside L1, and ban a
+copied shared data structure across repositories.
+
+Ten L1 repositories ship all four banned files — 40 pages. Thirty of those forty compute a MAC, an attestation digest, or a seal
+with the toy modulus `1000000007` (three of the four files in each repository; `quorum/blackbox.oo` is the one that does not).
+
+The pages are rename clones. `diff openOODA-kernel/oodrv-pci/wire.oo openOODA-kernel/oodrv-usb-hid/wire.oo` reports only the
+repository name and the `drv_pci_` / `drv_usbhid_` function prefix; the arithmetic, including
+
+```
+let x: Int = raw % 1000000007;
+h = (h * 1000003 + mag * 31) % 1000000007;
+```
+
+is identical. This is the Fowler duplicated-code smell and the banned template clone at the same time.
+
+Three of the ten also carry a `persona/` subtree: `oodrv-display-gop`, `oodrv-pci`, and `ookernel-mm`.
+
+The six consolidated kernel repositories are clean: 0 banned pages, 0 `persona/` subtrees.
+
+### 2.4 Real I/O
+
+**L2 holds real I/O in 18 of 18 repositories.** Every repository calls `fs_read_dir` or `fs_read_file` under `FsReadCap` outside
+its test tree. `ooinit` and `oosvc-mgr` scan a real directory tree through `svcmgr/procscan.oo` with `fs_path_exists`,
+`fs_is_dir`, `fs_read_dir`, and `fs_read_file`, and fail closed with scanner codes 20 to 23. No L2 repository resolves a path
+through `sys_exec` to a host binary.
+
+**Real socket I/O sits with the three network-owning daemons**, and it is real rather than declarative. `ooaid` serves HTTP over
+`BindCap` and `TcpCap` using `std/net/tcp_conn.oo`, `std/net/http_stream.oo`, and `std/net/http_server.oo`.
+`oonetd/core/capreg.oo` and `oosysbus/core/capreg.oo` bind a real loopback listener through
+`tcp_conn_bind(bind, "127.0.0.1", 15353)` and close it, and both fail closed with `Err("net")` when the bind fails. The
+remaining fifteen L2 daemons are file and process personas that correctly declare no socket capability.
+
+### 2.5 Hardcoded hostnames and addresses
+
+No product `.oo` page in L0, L1, or L2 contains a fleet host name or a tailnet address. The reviewer-service occurrences in
+`oodac` are comments, and `oodac/qa/emit_gap_inline_repro.oo` reads its endpoint from `OODA_REVIEWER` and fails closed when the
+variable is unset. The CGNAT-range text in `std/net/egress.oo` is the CGNAT range in an egress policy, not a host address.

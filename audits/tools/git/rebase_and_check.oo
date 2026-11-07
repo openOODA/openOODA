@@ -1,0 +1,54 @@
+// # Rebase And Check - Rebase A Repository And Report The Tree Change
+//
+// Logline: Rebase a repository onto the current remote head and report whether the verified tree still holds.
+//
+// Setup: ProcessCap for git, EnvCap for the home root.
+//
+// Beats:
+//   1. Read the branch, the tree, and the distance to the remote head.
+//   2. Rebase the repository and report a conflict.
+//   3. Compare the tree before and after the rebase.
+
+import "tools/text/line_span.oo";
+import "tools/text/exec_argv.oo";
+import "tools/text/cmd_argv.oo";
+import "tools/env/audit_env.oo";
+
+fn rbc_run(p: &ProcessCap, env_argv: List[String], git_argv: List[String]) -> ExecRun {
+    return exec_argv_run(p, argv_join(env_argv, git_argv));
+}
+
+fn rbc_out(p: &ProcessCap, env_argv: List[String], git_argv: List[String]) -> String {
+    return exec_argv_stdout(p, argv_join(env_argv, git_argv));
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int {
+    let repos: List[String] = sys_args(p);
+    if list_len(repos) == 0 { return 0 - 1; }
+    let repo: String = list_get(repos, 0);
+    let env_argv: List[String] = cmd_env("HOME=" + audit_home(e), "", "", "", "", "");
+    let br: String = rbc_out(p, env_argv, cmd_git(repo, "symbolic-ref", "--short", "HEAD", "", "", "", "", ""));
+    let tree_before: String = rbc_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD^{tree}", "", "", "", "", "", ""));
+    let _fetch: ExecRun = rbc_run(p, env_argv, cmd_git(repo, "fetch", "origin", br, "-q", "", "", "", ""));
+    let behind: String = rbc_out(p, env_argv, cmd_git(repo, "rev-list", "--count", "HEAD..origin/" + br, "", "", "", "", ""));
+    if behind == "0" {
+        println(repo + ": up to date with origin/" + br);
+        return 0;
+    }
+    let rb: ExecRun = rbc_run(p, env_argv, cmd_git(repo, "rebase", "origin/" + br, "", "", "", "", "", ""));
+    if rb.code != 0 {
+        println(repo + ": REBASE CONFLICT -- needs manual resolution");
+        let status: String = rbc_out(p, env_argv, cmd_git(repo, "status", "--porcelain", "", "", "", "", "", ""));
+        print(text_head_lines(status, 10));
+        return 1;
+    }
+    let tree_after: String = rbc_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD^{tree}", "", "", "", "", "", ""));
+    if tree_before == tree_after {
+        println(repo + ": rebased, TREE UNCHANGED -- verification still holds");
+        return 0;
+    }
+    println(repo + ": rebased, TREE CHANGED -- must re-verify");
+    let d: ExecRun = rbc_run(p, env_argv, cmd_git(repo, "diff", "--stat", tree_before, tree_after, "", "", "", ""));
+    print(text_tail_lines(d.output, 15));
+    return 0;
+}

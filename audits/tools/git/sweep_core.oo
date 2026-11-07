@@ -1,0 +1,123 @@
+// # Sweep Core - Independent Re Verification Sweep
+//
+// Logline: Verify and test every repository twice, filter the build echo, and compare the two test runs.
+//
+// Setup: ProcessCap for the child calls, FsReadCap and FsWriteCap for the tree and the
+//   log, EnvCap for the roots. The write root must cover the log path and the temp files.
+//
+// Beats:
+//   1. Build the child environment and append to the sweep log.
+//   2. Verify one repository and run its test suite twice.
+//   3. Strip the build echo and compare the two test runs.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "tools/text/line_span.oo";
+import "tools/text/exec_argv.oo";
+import "tools/text/cmd_argv.oo";
+import "tools/env/audit_env.oo";
+
+fn sweep_env(env: &EnvCap) -> List[String] {
+    let home: String = audit_home(env);
+    let readdir: String = audit_env_or(env, "OODA_AUDIT_FS_READDIR", "/Projects:/proc:/sys");
+    let oodac: String = audit_env_or(env, "OODA_AUDIT_OODAC", "/Projects/openOODA-core/oodac/bin/oodac");
+    return cmd_env("HOME=" + home, "OODA_NO_JAIL=1", "OODA_FS_READDIR=" + readdir,
+        "OODA_COMPILER=" + oodac, "OODAC_BIN=" + oodac, "");
+}
+
+fn sweep_emit(fw: &FsWriteCap, log: String, path: String, fragment: String) -> String {
+    print(fragment);
+    let next: String = log + fragment;
+    let _w: Result[Void, String] = fs_write_file(fw, path, next);
+    return next;
+}
+
+fn sweep_assert_count(p: &ProcessCap, path: String) -> String {
+    let mut out: String = "";
+    let m1: String = exec_argv_stdout(p, cmd_prog("grep", "-oE", "PASS: [0-9]+(/[0-9]+)? assertions", path, "", ""));
+    let m2: String = exec_argv_stdout(p, cmd_prog("grep", "-oE", "PASS: test suite \\([0-9]+ assertions\\)", path, "", ""));
+    let m3: String = exec_argv_stdout(p, cmd_prog("grep", "-oE", "ALL TESTS PASSED", path, "", ""));
+    let l1: List[String] = text_lines(m1);
+    let l2: List[String] = text_lines(m2);
+    let l3: List[String] = text_lines(m3);
+    if list_len(l1) > 0 { out = out + list_get(l1, list_len(l1) - 1) + " "; }
+    if list_len(l2) > 0 { out = out + list_get(l2, list_len(l2) - 1) + " "; }
+    if list_len(l3) > 0 { out = out + list_get(l3, list_len(l3) - 1) + " "; }
+    return out;
+}
+
+fn sweep_strip(p: &ProcessCap, path: String) -> String {
+    let pattern: String = "(OO_LIST_AMBIENT_QUOTA=|OK_PURE_NATIVE$|OK[[:space:]]+build[[:space:]]|built[[:space:]])";
+    return exec_argv_stdout(p, cmd_prog("grep", "-vE", pattern, path, "", ""));
+}
+
+fn sweep_tests(p: &ProcessCap, fw: &FsWriteCap, env: &EnvCap, acc: String, out_path: String, repo: String) -> String {
+    let mut log: String = acc;
+    let r1_path: String = "/tmp/mcode3-sweep-r1.txt";
+    let r2_path: String = "/tmp/mcode3-sweep-r2.txt";
+    let s1_path: String = "/tmp/mcode3-sweep-s1.txt";
+    let s2_path: String = "/tmp/mcode3-sweep-s2.txt";
+    let test_argv: List[String] = argv_join(sweep_env(env), cmd_make(repo, "test"));
+    let run1: ExecRun = exec_argv_run(p, test_argv);
+    if run1.code != 0 {
+        log = sweep_emit(fw, log, out_path, "TEST RUN1: FAIL\n");
+        return sweep_emit(fw, log, out_path, text_tail_lines(run1.output, 25));
+    }
+    let _w1: Result[Void, String] = fs_write_file(fw, r1_path, run1.output);
+    log = sweep_emit(fw, log, out_path, "TEST RUN1: PASS  [" + sweep_assert_count(p, r1_path) + "]\n");
+    let run2: ExecRun = exec_argv_run(p, test_argv);
+    if run2.code != 0 {
+        log = sweep_emit(fw, log, out_path, "TEST RUN2: FAIL\n");
+        return sweep_emit(fw, log, out_path, text_tail_lines(run2.output, 25));
+    }
+    let _w2: Result[Void, String] = fs_write_file(fw, r2_path, run2.output);
+    log = sweep_emit(fw, log, out_path, "TEST RUN2: PASS  [" + sweep_assert_count(p, r2_path) + "]\n");
+    let _w3: Result[Void, String] = fs_write_file(fw, s1_path, sweep_strip(p, r1_path));
+    let _w4: Result[Void, String] = fs_write_file(fw, s2_path, sweep_strip(p, r2_path));
+    let same: Int = exec_argv_code(p, cmd_prog("cmp", "-s", s1_path, s2_path, "", ""));
+    if same == 0 {
+        return sweep_emit(fw, log, out_path, "DETERMINISM: Run_1 == Run_2 (test output byte-identical)\n");
+    }
+    log = sweep_emit(fw, log, out_path, "DETERMINISM: Run_1 != Run_2 -- DIFF:\n");
+    let d: ExecRun = exec_argv_run(p, cmd_prog("diff", s1_path, s2_path, "", "", ""));
+    return sweep_emit(fw, log, out_path, text_head_lines(d.output, 20));
+}
+
+fn sweep_repo(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, log: String,
+    out_path: String, repo: String) -> String {
+    let mut acc: String = log;
+    acc = sweep_emit(fw, acc, out_path, "===== " + repo + " =====\n");
+    let lint: ExecRun = exec_argv_run(p, argv_join(sweep_env(env), cmd_prog(audit_lint_bin(env), repo, "", "", "", "")));
+    let lint_lines: List[String] = text_lines(lint.output);
+    let mut summary: String = "";
+    let mut i: Int = 0;
+    while i < list_len(lint_lines) {
+        let line: String = list_get(lint_lines, i);
+        if starts_with(line, "# violations:") || starts_with(line, "# files_scanned:") { summary = summary + line + "\n"; }
+        i = i + 1;
+    }
+    acc = sweep_emit(fw, acc, out_path, summary);
+    let rm_argv: List[String] = argv_join(sweep_env(env), cmd_prog("rm", "-f", repo + "/.ooda-cache/check.stamp", "", "", ""));
+    let _rm: ExecRun = exec_argv_run(p, rm_argv);
+    let verify: ExecRun = exec_argv_run(p, argv_join(sweep_env(env), cmd_make(repo, "verify")));
+    if verify.code != 0 {
+        acc = sweep_emit(fw, acc, out_path, "VERIFY: FAIL\n");
+        return sweep_emit(fw, acc, out_path, text_tail_lines(verify.output, 25));
+    }
+    acc = sweep_emit(fw, acc, out_path, "VERIFY: PASS\n");
+    acc = sweep_tests(p, fw, env, acc, out_path, repo);
+    return sweep_emit(fw, acc, out_path, "\n");
+}
+
+pub fn sweep_run(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, out_path: String, repos: List[String]) -> Int {
+    let _t: Result[Void, String] = fs_write_file(fw, out_path, "");
+    let mut acc: String = "";
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        let repo: String = list_get(repos, i);
+        if fs_is_dir(fr, repo) { acc = sweep_repo(p, fr, fw, env, acc, out_path, repo); }
+        i = i + 1;
+    }
+    let _done: String = sweep_emit(fw, acc, out_path, "FINAL SWEEP DONE\n");
+    return 0;
+}

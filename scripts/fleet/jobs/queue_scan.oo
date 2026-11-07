@@ -1,0 +1,198 @@
+// # Fleet Queue Scan - Repo Enumeration, Gate Probes, and Org Records
+//
+// Logline: List the git trees of one space, report the reg64 gate and the capability surface, and hold the org backlog records.
+//
+// Setup: FsReadCap walks the space directory; ProcessCap runs one grep per repo.
+//
+// Beats:
+//   1. Return the sorted "space/name" keys of one space.
+//   2. Report the repos another server owns.
+//   3. Find the .oo pages of a repo outside the skip directories.
+//   4. Order a tools repo by the tools-backlog tier.
+
+import "job_text.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+
+type QueueTask = struct {
+    id: String, kind: String, space: String, repo: String, path: String,
+    repos: List[String], repos_ids: List[String], priority: Int,
+    priority_text: String, work_item: String, title: String, objective: String
+};
+
+// Sorted "space/name" keys of the git working trees in one space.
+pub fn qspace_repos(fr: &FsReadCap, space: String) -> List[String] {
+    let base: String = "/Projects/" + space;
+    let mut out: List[String] = list_new();
+    if !fs_is_dir(fr, base) { return out; }
+    let names: List[String] = jt_sort(fs_read_dir(fr, base));
+    let mut i: Int = 0;
+    while i < list_len(names) {
+        let n: String = list_get(names, i);
+        let path: String = base + "/" + n;
+        if n != ".github" && fs_is_dir(fr, path) && fs_path_exists(fr, path + "/.git") {
+            out = list_push(out, space + "/" + n);
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+// True when another server owns the repo and it stays out of the campaign.
+pub fn qlocked(key: String) -> Bool {
+    if key == "openOODA-core/std" { return true; }
+    if key == "openOODA-core/oodar" { return true; }
+    if key == "openOODA-core/oodac" { return true; }
+    return key == "openOODA-agents/oohat";
+}
+
+// True when a .oo page of the repo already references the reg64 gate marker.
+pub fn qhas_gate(p: &ProcessCap, key: String) -> Bool {
+    let path: String = "/Projects/" + key;
+    let r: Result[String, String] = sys_exec(p, "/usr/bin/grep", "-rl", "oo_cap_reg64_check", path, "--include=*.oo");
+    let text: String = match r { Ok(s) => s, Err(_) => "" };
+    return str_len(str_replace(text, "\n", "")) > 0;
+}
+
+// The .oo pages of one repo, with the skip directories left out.
+pub fn qoo_files(fr: &FsReadCap, dir: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut stack: List[String] = list_push(list_new(), dir);
+    let mut idx: Int = 0;
+    while idx < list_len(stack) {
+        let cur: String = list_get(stack, idx);
+        idx = idx + 1;
+        let names: List[String] = fs_read_dir(fr, cur);
+        let mut i: Int = 0;
+        while i < list_len(names) {
+            let n: String = list_get(names, i);
+            let sub: String = cur + "/" + n;
+            if n != ".git" && n != "bin" && n != "dist" && n != ".ooda-cache" {
+                if fs_is_dir(fr, sub) {
+                    if list_len(stack) < 4000 { stack = list_push(stack, sub); }
+                } else if ends_with(n, ".oo") {
+                    out = list_push(out, sub);
+                }
+            }
+            i = i + 1;
+        }
+    }
+    return out;
+}
+
+// True when any .oo page of the repo names a capability token.
+pub fn qhas_capability(fr: &FsReadCap, key: String) -> Bool {
+    let files: List[String] = qoo_files(fr, "/Projects/" + key);
+        let tokens: List[String] = str_split("capreg|oo_cap_reg64_check|CapCap|NetCap|FsCap|ProcessCap|BlockCap|FrameCap|" +
+    "IrqCap|MetricsCap|AudioCap|ThreadCap|MmioCap|DmaCap|SysCap|TcpCap|BindCap|SignCap|" +
+    "IpcCap|TimeCap|ArenaCap|EnvCap", "|");
+    let mut i: Int = 0;
+    let mut hit: Bool = false;
+    while i < list_len(files) && !hit {
+        let text: String = match fs_read_file(fr, list_get(files, i)) { Ok(s) => s, Err(_) => "" };
+        let mut j: Int = 0;
+        while j < list_len(tokens) && !hit {
+            if str_contains(text, list_get(tokens, j)) { hit = true; }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return hit;
+}
+
+// True when the token appears in the blob on a word boundary.
+pub fn qword_hit(blob: String, token: String) -> Bool {
+    let n: Int = str_len(blob);
+    let m: Int = str_len(token);
+    let mut i: Int = 0;
+    let mut hit: Bool = false;
+    while i + m <= n && !hit {
+        let mut j: Int = 0;
+        let mut same: Bool = true;
+        while j < m && same {
+            if str_char_at(blob, i + j) != str_char_at(token, j) { same = false; }
+            j = j + 1;
+        }
+        if same {
+            let mut before: Bool = true;
+            let mut after: Bool = true;
+            if i > 0 {
+                let bb: Int = byte_at(blob, i - 1);
+                before = !(bb >= 65 && bb <= 90) && !(bb >= 97 && bb <= 122) && !(bb >= 48 && bb <= 57) && bb != 95;
+            }
+            if i + m < n {
+                let ba: Int = byte_at(blob, i + m);
+                after = !(ba >= 65 && ba <= 90) && !(ba >= 97 && ba <= 122) && !(ba >= 48 && ba <= 57) && ba != 95;
+            }
+            if before && after { hit = true; }
+        }
+        i = i + 1;
+    }
+    return hit;
+}
+
+// Order a tools repo by the tools-backlog tier: network, then file system.
+pub fn qtools_tier(fr: &FsReadCap, key: String) -> Int {
+    let names: List[String] = fs_read_dir(fr, "/Projects/" + key);
+    let mut blob: String = "";
+    let mut i: Int = 0;
+    while i < list_len(names) { blob = blob + list_get(names, i) + " "; i = i + 1; }
+    let up: String = to_uppercase(blob);
+    let net: List[String] = str_split("NET|CURL|SSH|FTP|SOCKS|HTTP|TCP|UDP|DNS", "|");
+    let fs: List[String] = str_split("LS|CP|MV|RM|TAR|ZIP|FS|DISK|MOUNT|FILE", "|");
+    let mut tier: Int = 2;
+    let mut j: Int = 0;
+    while j < list_len(net) {
+        if qword_hit(up, list_get(net, j)) { tier = 0; }
+        j = j + 1;
+    }
+    j = 0;
+    while j < list_len(fs) {
+        if tier == 2 && qword_hit(up, list_get(fs, j)) { tier = 1; }
+        j = j + 1;
+    }
+    return tier;
+}
+
+// The five org-maintenance work items, one record per line.
+pub fn qg_org_tasks() -> List[QueueTask] {
+        let raw: String = "O1\tRefresh the status site to the current workspace topology\topenOODA/status\t" +
+    "status/index.html hardcodes a workspace->agent table that still describes the pre-split topology. " +
+    "It lists (L0) openOODA-core .. (L6) openOODA-cloud with per-workspace agent rosters, and has NO row for " +
+    "the head workspace 'openOODA (mgr)' (w2) or the org builder 'openOODA' (wC). Add the two missing builder rows, " +
+    "correct the agent roster for the 9 builders, leave the other hosts' rows intact, and bump the VERSION file " +
+    "in the same change.\n" + "O2\tBring the developer portal back in line with the fleet\topenOODA/website\t" +
+    "The portal was last updated 2026-11-04 and no longer reflects the fleet. Refresh the content that names spaces, " +
+    "orgs or capabilities so it matches the current state, keeping llms.txt, the docs viewer and the 404 page consistent. " +
+    "Never publish internal node names or 100.x addresses.\n" +
+    "O3\tVerify and rebuild the opm catalog index\topenOODA/catalog\t" +
+    "The catalog must remain a valid minisig-signed opm index: `catalog` is the search index " +
+    "(name|version|caps|deps|sha), `index` is a copy, `index.minisig` signs it. Rebuild with `opm bot .`, re-sign, and audit " +
+    "every entry against persona-ownership.oot for the single-owner persona law - no dual-host persona tokens, no " +
+    "double-ships, no misspelled tool names.\n" +
+    "O4\tReconcile the installers with what the fleet actually ships\topenOODA/install\t" +
+    "install.sh and the apt/dnf/pacman trees must ship the artifact names the fleet actually builds (ooda-lsp / " +
+    "ooda-mcp, never bare lsp / mcp), carry fail-closed SHA-256 sidecars, and stay idempotent under a dry run. Audit every " +
+    "referenced artifact against the real build outputs and fix the drift.\n" +
+    "O5\tGovernance upkeep for the openOODA hub\topenOODA/openOODA\t" +
+    "Keep the governance hub true: RFC lifecycle in rfcs/ (0000-0012), the backlog in roadmap.oot, the 152-repo " +
+    "unimplemented-tools board in docs/tools-backlog.oot, the audits in audits/, and the practices in practices/. " +
+    "Reconcile the [BACKLOG] and [DEFERRED] markers in roadmap.oot against the current fleet state. NOTE: this repo " +
+    "carries untracked fleet scripts - use explicit pathspecs only, never `git add -A`.";
+    let mut out: List[QueueTask] = list_new();
+    let records: List[String] = str_split(raw, "\n");
+    let mut i: Int = 0;
+    while i < list_len(records) {
+        let f: List[String] = str_split(list_get(records, i), "\t");
+        let repo: String = list_get(f, 2);
+        let slash: Int = index_of(repo, "/");
+        let name: String = str_sub(repo, slash + 1, str_len(repo));
+        let path: String = "/Projects/" + name;
+        out = list_push(out, QueueTask { id: "org:" + list_get(f, 0) + "-" + name, kind: "org-maintenance",
+            space: "openOODA", repo: repo, path: path, repos: list_push(list_new(), path),
+            repos_ids: list_new(), priority: 0, priority_text: list_get(f, 0), work_item: list_get(f, 0),
+            title: list_get(f, 1), objective: list_get(f, 3) });
+        i = i + 1;
+    }
+    return out;
+}

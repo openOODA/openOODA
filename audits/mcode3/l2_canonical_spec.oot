@@ -1,0 +1,154 @@
+# L2 OpenOODA-OS Remediation Spec: Mandate, Primitives, and Transformations T1 to T4
+File: openOODA/audits/mcode3/l2_canonical_spec.oot
+
+Provenance: converted from `openOODA/audits/mcode3-l2-canonical-spec.md` (331 lines). Part 1 of 2.
+
+Redaction note: fleet host names and tailnet addresses are written as generic
+placeholders. The audited tree still holds the literals.
+
+# L2 openOODA-OS Remediation Spec — canonical std wiring (mcode-review 3)
+
+**Status:** reference implementation PROVEN at `/Projects/openOODA-OS/ooaudiod` commit `07fb716`.
+`make verify` passes and `make test` reports `PASS: 70/70 assertions` + `ALL TESTS PASSED`.
+
+Read the reference diff first:
+
+```
+cd /Projects/openOODA-OS/ooaudiod && git show 07fb716
+```
+
+## Founder mandate (do not violate)
+
+> Do NOT delete or strip OODA loop, capability attenuation, attestation, audit, blackbox, quorum, or speculation functionality
+> from L2 OS daemons. Instead, replace the toy `% 1000000007` modulus clones by wiring their functions to canonical
+> `std/core/ooda.oo`, `std/sec/pqc.oo`, `std/sec/capreg.oo`, and `std/sec/warrant.oo` so every L2 daemon has real Next-Gen OODA
+> + 32-capability security woven into live execution and passes `make verify` + `make test`.
+
+Keep every existing function, struct, type, and assertion. No file deletions. No test assertion
+count changes.
+
+## Canonical primitives (read-only, do NOT edit)
+
+Table columns: Path | Exports
+- `/Projects/openOODA-core/std/sec/pqc.oo` | `oo_pqc_sha3_round(a,b)`, `oo_pqc_sign(digest,sk)`, `oo_pqc_hmac(digest,key)` —
+  62-bit, always >= 1
+- `/Projects/openOODA-core/std/ipc/wire.oo` | `oo_wire_mac(words)` — 62-bit SplitMix64 MAC over words[0..6]; **requires >= 7
+  elements**
+- `/Projects/openOODA-core/std/sec/capreg.oo` | `oo_cap_reg64_pack/check/attenuate`, `oo_cap_bit_index`, `rt_cap_bit_index`
+- `/Projects/openOODA-core/std/core/ooda.oo` | `OodaTurn`, `oo_ooda_init/observe/orient/decide/act`
+- `/Projects/openOODA-core/std/sec/warrant.oo` | `oo_warrant_check(reg64,cur_epoch,req_caps,warrant)`,
+  `oo_warrant_attenuate(parent,child_caps,child_warrants)`, `oo_warrant_is_immutable`
+
+**Import path form is always the sibling-repo absolute form**: `import "std/sec/pqc.oo";`,
+`import "std/ipc/wire.oo";`, `import "std/core/ooda.oo";`, `import "std/sec/capreg.oo";`.
+Never `::`, never a relative copy.
+
+## Transformation rules
+
+### T1 — rolling mixer / fingerprint  → canonical sponge
+
+Old shape (any file):
+
+```
+    let fv: Int = v % 1000000007;
+    let x: Int = if fv < 0 { fv + 1000000007 } else { fv };
+    let fa: Int = acc % 1000000007;
+    let base: Int = if fa < 0 { fa + 1000000007 } else { fa };
+    let prod: Int = (base * 131) % 1000000007;
+    return (prod + x) % 1000000007;
+```
+
+New:
+
+```
+    let h: Int = oo_pqc_sha3_round(acc, v);
+    if h <= 0 { return 1; }
+    return h;
+```
+
+Add `import "std/sec/pqc.oo";` to that file. Same treatment for a string/name hash that folds
+`h = ((folded * 33) % 1000000007 + rank) % 1000000007;` → `h = oo_pqc_sha3_round(h, rank);`
+and for a state checksum that folds several fields → fold them with `oo_pqc_sha3_round`.
+
+**Semantics**: the old mixer returned values in `[0, 1000000007)` and could return `0`. The
+canonical sponge returns a 62-bit value `>= 1`. Any caller that tested `== 0` must be re-read;
+in this codebase the checksums are only ever compared for equality against a value produced by
+the same function, so equality still holds. Keep a `if h <= 0 { return 1; }` floor.
+
+### T2 — IPC frame integrity tag → canonical MAC
+
+Old shape (`core/wire.oo` and its per-repo equivalents `core/aid_parse.oo`,
+`core/realm_parse.oo`, `realm/realm_parse.oo`):
+
+```
+    let folded: Int = raw % 1000000007;
+    let w: Int = if folded < 0 { folded + 1000000007 } else { folded };
+    h = ((h * 31) % 1000000007 + w) % 1000000007;
+...
+    w = list_push(w, ((h * h) % 1000000007 + h % 97) % 1000000007);
+...
+    if list_get(wire, 7) != ((h * h) % 1000000007 + h % 97) % 1000000007 { return bad; }
+```
+
+New — replace the whole checksum function body with the canonical MAC and use it directly as
+the word-7 tag:
+
+```
+pub fn <PFX>_frame_checksum(words: List[Int]) -> Int {
+    if list_len(words) < 7 { return 0; }
+    return oo_wire_mac(words);
+}
+```
+
+and `w = list_push(w, h);` in encode, `if list_get(wire, 7) != h { return bad; }` in decode.
+Add `import "std/ipc/wire.oo";`.
+
+Keep the local frame layout (magic 7951, 32-bit header) exactly as it is — only the tag
+algorithm changes.
+
+### T3 — attestation primitives → canonical PQC (`hw/attest.oo` in every repo)
+
+Replace the keccak-sponge body of `<PFX>_attest_shake3` and route hmac/sign through canonical:
+
+```
+pub fn <PFX>_attest_shake3(a: Int, b: Int, c: Int) -> Int {
+    let h: Int = oo_pqc_sha3_round(oo_pqc_sha3_round(a, b), c);
+    if h <= 0 { return 1; }
+    return h;
+}
+
+pub fn <PFX>_attest_hmac(digest: Int, key: Int) -> Int {
+    if digest <= 0 || key <= 0 { return 0; }
+    let t: Int = oo_pqc_hmac(digest, key);
+    if t <= 0 { return 1; }
+    return t;
+}
+
+pub fn <PFX>_attest_sign(digest: Int, secret: Int) -> Int {
+    if digest <= 0 || secret <= 0 { return 0; }
+    let s: Int = oo_pqc_sign(digest, secret);
+    if s <= 0 { return 1; }
+    return s;
+}
+```
+
+Add `import "std/sec/pqc.oo";` and drop the now-unused `std/sec/hash/keccak_sponge.oo` import.
+`<PFX>_attest_digest`, `_verify`, `_mask`, `_record`, and the `O<PFX>Attest` struct keep their
+exact signatures and semantics — the mask must still come out `7` on the good path and
+`3 / 6 / 5 / 4` on the four rejection paths.
+
+### T4 — warrant seal → canonical PQC (`core/warrant.oo` in every repo)
+
+```
+pub fn oo_warrant_seal(reg64: Int, key: Int) -> Int {
+    let r: Int = (reg64 >> 40) & 255;
+    if (r & 64) == 0 { return 0; }
+    if key <= 0 { return 0; }
+    let d: Int = oo_pqc_sha3_round(reg64, key);
+    let s: Int = oo_pqc_hmac(d, key);
+    if s <= 0 { return 1; }
+    return s;
+}
+```
+
+Add `import "std/sec/pqc.oo";`.

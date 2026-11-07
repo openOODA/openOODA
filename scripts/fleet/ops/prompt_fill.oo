@@ -1,0 +1,132 @@
+// # Fleet Prompt Fill - Render And Claim One Queue Task
+//
+// Logline: Read one task out of the work queue, fill its prompt, and record the pane that owns it.
+//
+// Setup: Pure text over the queue document plus FsReadCap for the prompt templates.
+//
+// Beats:
+//   1. Find the task object by id.
+//   2. Fill the reg64 or org-maintenance template.
+//   3. Stamp the task assigned to one pane.
+
+import "fleet/jobs/job_text.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+
+pub fn pf_find(doc: String, id: String) -> String {
+    let tasks: String = jt_value(doc, "tasks");
+    if str_len(tasks) < 2 { return ""; }
+    let elems: List[String] = jt_elements(str_sub(tasks, 1, str_len(tasks) - 1));
+    let mut i: Int = 0;
+    while i < list_len(elems) {
+        let e: String = jt_trim(list_get(elems, i));
+        if jt_text(e, "id") == id { return e; }
+        i = i + 1;
+    }
+    return "";
+}
+
+fn pf_repos(task: String) -> String {
+    let repos: List[String] = jt_array(task, "repos");
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        out = out + "  " + list_get(repos, i) + "\n";
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn pf_render(fr: &FsReadCap, prompts: String, task: String, pane: String) -> String {
+    let mut use: String = pane;
+    if use == "" || use == "null" { use = jt_text(task, "owner_pane"); }
+    if use == "" || use == "null" { use = "PANE"; }
+    let kind: String = jt_text(task, "kind");
+    if starts_with(kind, "reg64") {
+        let raw: Result[String, String] = fs_read_file(fr, prompts + "/reg64-gate.oot");
+        let mut tmpl: String = match raw { Ok(s) => s, Err(_) => "" };
+        let repos: List[String] = jt_array(task, "repos");
+        let first: String = if list_len(repos) > 0 { list_get(repos, 0) } else { "" };
+        tmpl = str_replace(tmpl, "{{SPACE}}", jt_text(task, "space"));
+        tmpl = str_replace(tmpl, "{{PANE}}", use);
+        tmpl = str_replace(tmpl, "{{REPO_COUNT}}", list_len(repos).to_string());
+        tmpl = str_replace(tmpl, "{{REPO_LIST}}", pf_repos(task));
+        return str_replace(tmpl, "{{REPO_PATH}}", first);
+    }
+    let raw: Result[String, String] = fs_read_file(fr, prompts + "/org-maintenance.oot");
+    let mut tmpl: String = match raw { Ok(s) => s, Err(_) => "" };
+    tmpl = str_replace(tmpl, "{{PANE}}", use);
+    tmpl = str_replace(tmpl, "{{WORK_ITEM_ID}}", jt_text(task, "work_item"));
+    tmpl = str_replace(tmpl, "{{WORK_ITEM_TITLE}}", jt_text(task, "title"));
+    tmpl = str_replace(tmpl, "{{OBJECTIVE}}", jt_text(task, "objective"));
+    return str_replace(tmpl, "{{REPO_PATH}}", jt_text(task, "path"));
+}
+
+pub fn pf_allowed(pane: String, kind: String) -> Bool {
+    if pane == "wC:p1" { return kind == "org-maintenance"; }
+    return starts_with(kind, "reg64");
+}
+
+pub fn pf_claim(doc: String, id: String, pane: String, now: String) -> String {
+    let tasks: String = jt_value(doc, "tasks");
+    if str_len(tasks) < 2 { return doc; }
+    let elems: List[String] = jt_elements(str_sub(tasks, 1, str_len(tasks) - 1));
+    let mut out: String = "[";
+    let mut i: Int = 0;
+    while i < list_len(elems) {
+        if i > 0 { out = out + ","; }
+        let mut e: String = jt_trim(list_get(elems, i));
+        if jt_text(e, "id") == id {
+            e = str_replace(e, "\"state\":\"queued\"", "\"state\":\"assigned\"");
+            e = str_replace(e, "\"owner_pane\":null", "\"owner_pane\":\"" + pane + "\"");
+            if index_of(e, "assigned_at") < 0 {
+                let n: Int = str_len(e);
+                e = str_sub(e, 0, n - 1) + ",\"assigned_at\":\"" + now + "\"}";
+            }
+        }
+        out = out + e;
+        i = i + 1;
+    }
+    return str_replace(doc, tasks, out + "]");
+}
+
+pub fn pf_next(doc: String, pane: String) -> String {
+    let tasks: String = jt_value(doc, "tasks");
+    if str_len(tasks) < 2 { return ""; }
+    let elems: List[String] = jt_elements(str_sub(tasks, 1, str_len(tasks) - 1));
+    let mut best: String = "";
+    let mut best_pri: Int = 1000000;
+    let mut i: Int = 0;
+    while i < list_len(elems) {
+        let e: String = jt_trim(list_get(elems, i));
+        let owner: String = jt_text(e, "owner_pane");
+        let kind: String = jt_text(e, "kind");
+        if (owner == "" || owner == "null") && pf_allowed(pane, kind) {
+            let pri: Int = parse_int_digits(jt_text(e, "priority"));
+            if best == "" || pri < best_pri { best = jt_text(e, "id"); best_pri = pri; }
+        }
+        i = i + 1;
+    }
+    return best;
+}
+
+pub fn pf_status(doc: String) -> String {
+    let counts: String = jt_value(doc, "counts");
+    let mut out: String = "queue generated " + jt_text(doc, "generated_at") + "\ncounts " + counts + "\n";
+    let tasks: String = jt_value(doc, "tasks");
+    if str_len(tasks) < 2 { return out; }
+    let elems: List[String] = jt_elements(str_sub(tasks, 1, str_len(tasks) - 1));
+    let mut n: Int = 0;
+    let mut i: Int = 0;
+    let mut assigned: String = "";
+    while i < list_len(elems) {
+        let e: String = jt_trim(list_get(elems, i));
+        let owner: String = jt_text(e, "owner_pane");
+        n = n + 1;
+        if owner != "" && owner != "null" {
+            assigned = assigned + "  " + jt_text(e, "id") + " -> " + owner + " (" + jt_text(e, "state") + ")\n";
+        }
+        i = i + 1;
+    }
+    return out + "tasks " + n.to_string() + "\n" + assigned;
+}

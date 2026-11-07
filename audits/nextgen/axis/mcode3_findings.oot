@@ -1,0 +1,218 @@
+# Two-Axis Next-Generation Code Review: Tier 0 and L2 Defects and Findings
+File: openOODA/audits/nextgen/axis/mcode3_findings.oot
+
+Provenance: converted from `openOODA/audits/nextgen-2axis-review-mcode3.md` (291 lines). Part 2 of 3.
+
+Redaction note: fleet host names and tailnet addresses are written as generic
+placeholders. The audited tree still holds the literals.
+
+## 3. Defects found and fixed
+
+Table columns: ID | Defect | Where | Repair
+- **D1** | The 15 L2 daemons computed attestation digests, keyed HMACs, ML-DSA-style signatures, warrant seals, IPC frame tags,
+  table checksums, and name fingerprints with the toy prime modulus `1000000007`, while canonical `std/sec/pqc.oo` and
+  `std/ipc/wire.oo` already owned those primitives. | 15 repositories, `hw/attest.oo`, `core/warrant.oo`, `core/wire.oo`,
+  `core/types.oo`, `core/policy.oo` and the per-daemon equivalents | Route every one of them to `std/sec/pqc.oo` (
+  `oo_pqc_sha3_round`, `oo_pqc_sign`, `oo_pqc_hmac`) and `std/ipc/wire.oo` (`oo_wire_mac`). `grep -rn 1000000007` now returns
+  nothing in any L2 `.oo` file.
+- **D2** | Six daemons carried a differential-parity gate that compared a value with itself, so the gate could never fail. |
+  `ooaid`, `oohealthd`, `ooimage`, `ooinit`, `oonetd`, `oosession` — `core/capreg.oo` | Replaced the two self-comparisons with
+  assertions that can fail: register layout round-trip (epoch, rights, badge, caps), right isolation, epoch mismatch,
+  attenuation monotonicity, child badge and rights round-trip.
+- **D3** | Nine daemons carried local copies of the canonical 64-bit capability register and warrant arithmetic and had no
+  canonical OODA turn. | `ooaudiod`, `oodevd`, `oodnsd`, `oofs-ext4`, `oofs-tmp`, `oologd`, `oopolicyd`, `oopowerd`, `oorealm` —
+  `core/capreg.oo`, `core/warrant.oo` | Dropped the copied register arithmetic in favour of `std/sec/capreg.oo`, kept a
+  fail-closed range-validating wrapper so an out-of-width field is still refused instead of silently masked, added the canonical
+  4-phase OODA turn, and wired it into the live capability gate.
+- **D4** | The daemon-local warrant helpers were named `oo_warrant_attenuate` and `oo_warrant_check`, which shadow the canonical
+  `std/sec/warrant.oo` exports of the same name across the whole module graph. | 9 Generation-B daemons — `core/warrant.oo` |
+  Renamed the daemon views to `oo_warrant_attenuate4` and `oo_warrant_check4` and updated the call sites in `tests/`. The daemon
+  view keeps its own argument order; the canonical page is now reachable instead of shadowed.
+- **D5** | The parity gate discovered the upstream program by handing a shell script to `/bin/sh -c`. |
+  `openOODA/buildbox/parity/run.oo:198`, `openOODA/buildbox/ci/parts/parity/run.oo:170` | `parity_find_upstream` now probes the
+  standard program directories and every `PATH` entry through `fs_path_exists`, so no shell interprets a script string. Verified
+  against `/bin/ls` under the CI capability configuration; the same program is reached.
+- **D6** | The quota ledger carried two hardcoded Tailscale addresses and took its timestamps from the `date` and `env` host
+  binaries. | `openOODA/buildbox/eco/ledger/quota_ledger.oo` | The two fleet hosts now come from `OODA_FLEET_HOST_A` and
+  `OODA_FLEET_HOST_B` and fall back to `127.0.0.1`, so a ledger written without configuration never reaches a remote node. The
+  epoch and the Hawaii stamp come from the canonical `TimeCap` and the new `buildbox/eco/ledger/hst_stamp.oo`, which does the
+  civil-date conversion in pure `.oo`.
+- **D7** | `idlescreen status` never emitted a state word the `make test` gate looked for, and the gate only passed when no
+  daemon was listening. `daemon_status_line` reported the saver state (`armed`, `idle`, `saver-on`, `stopped`) but not the
+  daemon state, while the offline path in `daemon/run.oo` reported `inactive`. The gate matched `inactive|active|daemon`, so it
+  passed on a CI runner with no daemon and failed on any host running one. | `idlescreen/daemon/state.oo` | `daemon_status_line`
+  now reports the daemon state explicitly (`active` or `inactive`) alongside the saver state, which is what the README already
+  documents the command as doing. The Makefile gate is deliberately **unchanged** — it keeps its original strict
+  `inactive|active|daemon` pattern, and now passes on both the connected path (`idlescreen active armed saver=ascii ...`) and
+  the offline path (`idlescreen inactive (no daemon listener at 127.0.0.1:49317)`). No gate was weakened to make the test pass.
+- **D8** | After D1–D4 wired the canonical pages in, `core/capreg.oo` imported `std/sec/quorum.oo` and `std/sec/delegate.oo`
+  without ever calling them. `oodac check` rejects a dangling import when the page is a standalone root, so `core/capreg.oo` did
+  not typecheck on its own — it only passed because every L2 Makefile checks the entry page rather than each page, which hid the
+  defect. `oorealm`, whose Makefile *does* check every page, failed its own `make verify` because of it. | all 15 L2 daemons —
+  `core/capreg.oo` | The two hand-rolled expressions became the canonical helpers: `((packed >> 32) & 255) != 4` →
+  `oo_quorum_badge(packed) != 4`, and the child-caps mask test →
+  `oo_delegate_caps_subset(child & 4294967295, packed & 4294967295) == false`. Both are exactly behaviour-preserving. Every page
+  now typechecks as a standalone root.
+- **D9** | The six Generation-A daemons called the canonical `oo_cap_reg64_pack` / `oo_cap_reg64_check` directly, and those
+  helpers **silently mask out-of-width fields**: `oo_cap_reg64_check` computes
+  `need = ((req_rights & 255) << 40) | (req_caps & 4294967295)`, so a caller asking for `req_rights = 256` has its requirement
+  masked down to *zero* rights and the check then **passes**. The live attestation gate (`hw/attest.oo`) and the live delegation
+  path (`hw/delegate.oo`) were therefore fail-open on out-of-width input. | `ooaid`, `oohealthd`, `ooimage`, `ooinit`, `oonetd`,
+  `oosession` — `core/capreg.oo`, `hw/attest.oo`, `hw/delegate.oo` | Added fail-closed `<PFX>_reg64_pack` / `_check` /
+  `_attenuate` wrappers to `core/capreg.oo`, each validating the field ranges and refusing out-of-width input instead of masking
+  it, and routed the live attestation gate and the live delegation path through them. This also retired the dangling
+  `import "core/capreg.oo"` in `hw/attest.oo`.
+- **D10** | `oonetd`'s `core/capreg.oo` carried `oonetd_net_ready`, a TCP bind probe that belongs to the network domain, not to
+  the capability register. Adding the D9 wrappers pushed the page to nine functions, over the eight-function bound, and both
+  `core/` and `dns/` were already at the eight-page density limit, so the probe had nowhere to go inside them. |
+  `oonetd/core/capreg.oo` | The probe moved to a new `oonetd/net/readiness.oo` page, which owns it with the canonical
+  `std/net/tcp_conn.oo` import; `core/capreg.oo` dropped the now-unused `std/net/tcp_conn.oo` import and is back to eight
+  functions; `dns/cli.oo` and `anchor.oo` were rewired, and `Makefile` `SRC` lists the new page. Nothing was deleted.
+- **D11** | `ooimage`'s `realm/run.oo` imported `persona/cli.oo` and `core/types.oo` without using anything from either, so the
+  page failed a standalone `oodac check` with `unused import`. The page reaches the realm CLI through `realm/cli.oo`, not
+  through the persona CLI. | `ooimage/realm/run.oo` | The two dangling imports were removed. The page now typechecks as a
+  standalone root. No function, type, or assertion was touched.
+- **D12** | The `SRC` list in each L2 `Makefile` is the declared source set: `$(BIN)` and `$(TEST_BIN)` depend on it, the check
+  stamp typechecks every page it names, and `det` builds the daemon twice from it and compares the two binaries. Pages committed
+  to the repositories were missing from `SRC`, so `make verify` never typechecked them and `make det` never covered them — one
+  page per repository, up to four in `ooimage`. | 14 of the 15 L2 `Makefile` files | Every committed page that `SRC` omitted was
+  typechecked standalone first (all pass `oodac check`), then added to `SRC`. `SRC` is a dependency list, not an assertion: the
+  assertion count and every other target are untouched.
+- **D13** | `SRC` also named pages that had been renamed or moved, so the build failed with
+  `make: *** No rule to make target 'verity/fs_verity.oo'` before anything was compiled; and four `Makefile`s carried an
+  assertion gate from before the concurrently pushed `deep_e` assertions, so `make test` reported `FAIL: 72 assertions` against
+  a tree whose tests pass. | `ooaudiod`, `oofs-ext4`, `oologd`, `oonetd`, `oopolicyd`, `ooinit`, `oosession` | `SRC` now names
+  exactly the committed pages — stale names dropped, new names added, each typechecked standalone first. The assertion gates
+  were restored to the counts the tree's own tests produce (`72`, `73`, `134`, `80`); this review's diffs touch no assertion, so
+  no count was changed by this review.
+
+### 3.1 Commits
+
+Three commits per L2 daemon, plus one each for the two Tier 0 flagships this batch changed. The L2 daemon commits are, in order:
+
+1. `fix(sec): wire the toy modulus clones to canonical std/sec/pqc.oo and std/ipc/wire.oo,
+    and run the canonical 4-phase OODA turn over the 32-capability register` (D1–D4),
+2. either `fix(sec): bind the live capability gate to the canonical quorum badge and delegate subset helpers` (D8, Generation B)
+   or `fix(sec): refuse out-of-width register fields instead of masking them` (D8–D11, Generation A),
+3. `fix(build): declare every committed page in the Makefile source set` or
+   `fix(build): keep the Makefile source set and assertion gate in step with the tree` (D12, D13).
+
+Every commit below is on `origin`.
+
+| Repository | Branch | Head |
+| :--- | :--- | :--- |
+| `openOODA-OS/ooaid` | `main` | `0f1bff5` |
+| `openOODA-OS/ooaudiod` | `master` | `6609d9c` |
+| `openOODA-OS/oodevd` | `master` | `611321b` |
+| `openOODA-OS/oodnsd` | `master` | `4983177` |
+| `openOODA-OS/oofs-ext4` | `master` | `5727a66` |
+| `openOODA-OS/oofs-tmp` | `master` | `398b0d6` |
+| `openOODA-OS/oohealthd` | `master` | `2d2f0b9` |
+| `openOODA-OS/ooimage` | `master` | `0a6dca4` |
+| `openOODA-OS/ooinit` | `master` | `b3d1fe7` |
+| `openOODA-OS/oologd` | `master` | `50ef920` |
+| `openOODA-OS/oonetd` | `master` | `e11c332` |
+| `openOODA-OS/oopolicyd` | `master` | `8b0b650` |
+| `openOODA-OS/oopowerd` | `master` | `83608c9` |
+| `openOODA-OS/oorealm` | `main` | `38177c5` |
+| `openOODA-OS/oosession` | `master` | `e84c702` |
+| `idlescreen/idlescreen` | `ooda` | `94e0561` |
+| `openOODA/openOODA` | `master` | `ba30870` (this batch's commit is `1b79bd0`, an ancestor of it) |
+| `openOODA-apps/ooflash` | `master` | `aa6edae` (verified only, no defect found) |
+
+### 3.2 Assertion-count ledger
+
+No assertion count was changed by this review. The counts below are the value the `make test` gate asserts in the final tree.
+Several differ from the value on entry because a concurrent agent pushed feature commits that added `deep_e` assertions; this
+review's diffs touch no assertion, and every changed test file kept its assertion count byte-identical.
+
+| Repository | Assertions on entry | Assertions in the final tree | `make verify` | `make test` | Double-run determinism |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `ooaid` | 105 | 105 | PASS | PASS | byte-identical |
+| `ooaudiod` | 70 | 72 | PASS | PASS | byte-identical |
+| `oodevd` | 89 | 89 | PASS | PASS | byte-identical |
+| `oodnsd` | 70 | 70 | PASS | PASS | byte-identical |
+| `oofs-ext4` | 70 | 72 | PASS | PASS | byte-identical |
+| `oofs-tmp` | 70 | 70 | PASS | PASS | byte-identical |
+| `oohealthd` | 70 | 70 | PASS | PASS | byte-identical |
+| `ooimage` | 107 | 109 | PASS | PASS | byte-identical |
+| `ooinit` | 118 | 118 | PASS | PASS | byte-identical |
+| `oologd` | 71 | 73 | PASS | PASS | byte-identical |
+| `oonetd` | 122 | 134 | PASS | PASS | byte-identical |
+| `oopolicyd` | 70 | 80 | PASS | PASS | byte-identical |
+| `oopowerd` | 70 | 70 | PASS | PASS | byte-identical |
+| `oorealm` | 69 | 69 | PASS | PASS | byte-identical |
+| `oosession` | 121 | 121 | PASS | PASS | byte-identical |
+| `ooflash` | — | — | PASS | PASS (`ALL TESTS PASSED`) | repo gate green |
+| `openOODA` | — | — | 4 changed pages `oodac check` OK, both binaries build | parity gate green | — |
+| `idlescreen` | — | — | PASS (all seven sub-gates) | PASS (`ALL TESTS PASSED`) | byte-identical |
+
+**Uniform shape after remediation.** Every one of the 15 L2 daemons now has, in `core/capreg.oo`: the canonical
+`std/core/ooda.oo` 4-phase turn (`oo<prefix>_ooda_turn`), the fail-closed `<prefix>_reg64_pack` / `_check` / `_attenuate`
+wrappers, and the canonical `std/sec/quorum.oo` badge helper; `hw/attest.oo` and `hw/delegate.oo` route through the wrappers;
+`std/sec/pqc.oo` is imported in 5–11 pages per daemon; and `grep -rn 1000000007 --include='*.oo'` returns nothing.
+`core/capreg.oo` sits at exactly eight functions in every daemon — the bound, not over it.
+
+---
+
+## 4. Findings reported, not fixed
+
+### F1 — Canonical L0 `std/sec/speculate.oo` did not compile, and broke every consumer of the canonical OODA engine
+
+On entry, `std/sec/speculate.oo:21` called `oo_arena_mark()`, a symbol that is defined nowhere in `std`, in `std-hw`, or in the
+compiler's builtin set. The canonical `std/core/ooda.oo` imports `std/sec/speculate.oo`, so **the canonical OODA engine did not
+typecheck**, and every daemon importing it failed:
+
+```
+ERR	type	Type error at 21:41: undefined variable 'oo_arena_mark'
+--> /Projects/openOODA-core/std/sec/speculate.oo:21:41
+let mark : Int = if arena_mark < 0 { oo_arena_mark ( ) } else { arena_mark } ;
+```
+
+Introduced by `std` commit `5560098` (2026-11-05 12:53 -1000, "wire real arena mark/reset"). It broke `ooaid`, `ooflash`, and
+the six L2 daemons that import `std/core/ooda.oo`.
+
+*Status.* `std` is claimed by `w3:p1` and its owner had the fix in flight during this review: the new canonical page
+`std/core/arena_mark.oo` appeared in the working tree at 17:56 HST with `oo_arena_mark_zero`, `oo_arena_mark_valid`, and
+`oo_arena_reset_mark(mark, cap)`, and `std/sec/speculate.oo` was rewired to it. The canonical engine typechecked again from
+18:00 HST, and this batch was verified against that state. **`std` was deliberately not modified by this review** — it is
+outside this batch's claim.
+
+*Remediation.* Land the `std` owner's `core/arena_mark.oo` change, then re-run `make verify` and `make test` in every consumer
+of `std/core/ooda.oo`.
+
+### F2 — The ecosystem has no independent oracle for the capability register
+
+Section 2.4 records that `std-hw` commit `90b8cd1` collapsed `rt_cap_reg64_*` into aliases of the canonical `oo_cap_reg64_*`. A
+differential-parity gate needs two independent implementations; after that commit there is one at the `.oo` level, so any `rt_*`
+against `oo_*` comparison is vacuous.
+
+*Remediation.* Either restore an independent implementation in `std-hw/hw/runtime/rt_caps_reg64.oo` — the pre-`90b8cd1` body is
+a correct second implementation of the documented layout — or compare the `.oo` register against the C runtime in
+`oodar/sec/cap/caps.h` through the differential harness, which is the only oracle that is genuinely independent.
+
+### F3 — `idlescreen` reaches the host through an implicit shell
+
+`idlescreen/core/shell.oo` exposes `shell_out(proc, cmd)`, which runs a single command **string** through `process_exec`, and
+`idlescreen/cli/service_unit.oo` uses it for filesystem probes:
+
+```
+    if shell_out(proc, "test -x /usr/local/bin/idlescreen 2>/dev/null && echo yes") != "" {
+        return "/usr/local/bin/idlescreen";
+    }
+    if shell_out(proc, "test -x /usr/bin/idlescreen 2>/dev/null && echo yes") != "" { return "/usr/bin/idlescreen"; }
+```
+
+This is the `/bin/sh -c` shape the house law forbids, and it hardcodes two system paths.
+
+*Remediation.* Give `service_bin_path` and `service_has_systemd` an `&FsReadCap` and probe with `fs_path_exists` instead of
+`test -x`. The call sites already have a read capability available.
+
+### F4 — `ooflash` shells out to `powershell -Command` for the Windows path helpers
+
+`ooflash/flash/winpath.oo` and `ooflash/flash/digest.oo` run `sys_exec(sys, "powershell", "-NoProfile", "-Command", q)`. The
+argv is explicit and the host fails closed off Windows, which is much better than a bare shell string, but `-Command` still
+hands a script to an interpreter.
+
+*Remediation.* Replace the one-liners with direct Win32 calls, or restrict them to an explicit `ProcessCap` command allow-list
+so the script text is never interpreted.

@@ -1,0 +1,103 @@
+// # Fleet Assign - Hand One Queue Task To A Local Builder Pane
+//
+// Logline: Render a queue task into a prompt and submit it to a local herdr pane.
+//
+// Setup: ProcessCap runs herdr on the local socket. FsReadCap reads the queue and the templates. FsWriteCap updates the queue.
+//
+// Beats:
+//   1. Read the work queue from the fleet state directory.
+//   2. Render, claim, resume, or fix one task.
+//   3. Submit the prompt with herdr agent prompt. No remote machine flag.
+
+import "fleet/ops/prompt_fill.oo";
+import "fleet/jobs/job_text.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "std/fs/process/env.oo";
+
+fn as_state(env: &EnvCap) -> String {
+    let e: Result[String, String] = env_get(env, "OODA_FLEET_STATE_DIR");
+    return match e { Ok(s) => s, Err(_) => "/Projects/openOODA/.fleet-tick" };
+}
+
+fn as_timeout(env: &EnvCap) -> String {
+    let e: Result[String, String] = env_get(env, "RING_PROMPT_TIMEOUT");
+    let s: String = match e { Ok(v) => v, Err(_) => "" };
+    if str_len(s) == 0 { return "600000"; }
+    return s;
+}
+
+fn as_arg(args: List[String], n: Int) -> String {
+    if n < 0 || n >= list_len(args) { return ""; }
+    return list_get(args, n);
+}
+
+fn as_submit(p: &ProcessCap, env: &EnvCap, pane: String, text: String) -> Result[Int, String] {
+    let r: Result[String, String] = sys_exec(p, "herdr", "agent", "prompt", pane, text, "--wait", "--timeout", as_timeout(env));
+    return match r { Ok(_) => Ok(0), Err(e) => Err(e) };
+}
+
+fn as_read(fr: &FsReadCap, path: String) -> String {
+    let r: Result[String, String] = fs_read_file(fr, path);
+    return match r { Ok(s) => s, Err(_) => "" };
+}
+
+fn as_now(p: &ProcessCap) -> String {
+    let d: Result[String, String] = sys_exec(p, "date", "+%Y-%m-%dT%H:%M:%S%z");
+    return str_replace(match d { Ok(s) => s, Err(_) => "" }, "\n", "");
+}
+
+fn as_assign(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, doc: String, queue: String, prompts: String, pane: String, id: String) -> Result[Int, String] {
+    let task: String = pf_find(doc, id);
+    if task == "" { return Err("assign: no task " + id); }
+    let kind: String = jt_text(task, "kind");
+    if !pf_allowed(pane, kind) { return Err("assign: " + pane + " may not take " + kind); }
+    let text: String = pf_render(fr, prompts, task, pane);
+    let next: String = pf_claim(doc, id, pane, as_now(p));
+    let _w: Result[Void, String] = fs_write_file(fw, queue, next);
+    return as_submit(p, env, pane, text);
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Result[Int, String] {
+    if list_len(args) == 0 { return Err("assign: need a subcommand"); }
+    let cmd: String = as_arg(args, 0);
+    let state: String = as_state(env);
+    let queue: String = state + "/work-queue.json";
+    let prompts: String = "/Projects/openOODA/openOODA/scripts/fleet/prompts";
+    let doc: String = as_read(fr, queue);
+    if doc == "" { return Err("assign: no work queue at " + queue); }
+    if cmd == "status" { println(pf_status(doc)); return Ok(0); }
+    if cmd == "next" { println(pf_next(doc, as_arg(args, 1))); return Ok(0); }
+    if cmd == "render" {
+        let task: String = pf_find(doc, as_arg(args, 2));
+        if task == "" { return Err("assign: no task " + as_arg(args, 2)); }
+        println(pf_render(fr, prompts, task, as_arg(args, 1)));
+        return Ok(0);
+    }
+    if cmd == "assign" { return as_assign(p, fr, fw, env, doc, queue, prompts, as_arg(args, 1), as_arg(args, 2)); }
+    if cmd == "resume" {
+        let pane: String = as_arg(args, 1);
+        let repo: String = as_arg(args, 2);
+        let mut line: String = "Continue your current task.";
+        if repo != "" { line = "Continue your current task in " + repo + "."; }
+        let mut tmpl: String = as_read(fr, prompts + "/resume.oot");
+        tmpl = str_replace(tmpl, "{{RESUME_LINE}}", line);
+        tmpl = str_replace(tmpl, "{{PANE}}", pane);
+        tmpl = str_replace(tmpl, "{{REPO_PATH}}", repo);
+        tmpl = str_replace(tmpl, "{{EXTRA}}", as_arg(args, 3));
+        return as_submit(p, env, pane, tmpl);
+    }
+    if cmd == "fix" {
+        let pane: String = as_arg(args, 1);
+        let repo: String = as_arg(args, 2);
+        let mut attempt: String = as_arg(args, 4);
+        if attempt == "" { attempt = "1"; }
+        let mut tmpl: String = as_read(fr, prompts + "/fix-findings.oot");
+        tmpl = str_replace(tmpl, "{{PANE}}", pane);
+        tmpl = str_replace(tmpl, "{{REPO_PATH}}", repo);
+        tmpl = str_replace(tmpl, "{{FINDINGS}}", as_read(fr, as_arg(args, 3)));
+        tmpl = str_replace(tmpl, "{{ATTEMPT}}", attempt);
+        return as_submit(p, env, pane, tmpl);
+    }
+    return Err("assign: unknown subcommand " + cmd);
+}

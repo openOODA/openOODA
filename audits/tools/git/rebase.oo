@@ -1,0 +1,163 @@
+// # Rebase - Replay The Review Commits On The Remote Head
+//
+// Logline: Rebase the review commits onto the concurrently pushed remote head and keep the review version of every conflict.
+//
+// Setup: ProcessCap for git, FsReadCap and FsWriteCap for the touched pages, EnvCap for the roots.
+//
+// Beats:
+//   1. Rebase the repository and resolve every conflict with the review version.
+//   2. De duplicate the imports of every file the replay touched.
+//   3. Report the new head and the working tree state.
+
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+import "tools/text/str_scan.oo";
+import "tools/text/str_sort.oo";
+import "tools/text/line_span.oo";
+import "tools/text/exec_argv.oo";
+import "tools/text/cmd_argv.oo";
+import "tools/env/audit_env.oo";
+
+fn rebase_emit(fw: &FsWriteCap, log: String, path: String, fragment: String) -> String {
+    print(fragment);
+    let next: String = log + fragment;
+    let _w: Result[Void, String] = fs_write_file(fw, path, next);
+    return next;
+}
+
+fn rebase_run(p: &ProcessCap, env_argv: List[String], git_argv: List[String]) -> ExecRun {
+    return exec_argv_run(p, argv_join(env_argv, git_argv));
+}
+
+fn rebase_out(p: &ProcessCap, env_argv: List[String], git_argv: List[String]) -> String {
+    return exec_argv_stdout(p, argv_join(env_argv, git_argv));
+}
+
+fn rebase_dup_imports(fr: &FsReadCap, path: String) -> String {
+    let src: String = match fs_read_file(fr, path) { Ok(s) => s, Err(_) => "" };
+    let lines: List[String] = str_split(src, "\n");
+    let mut imports: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let line: String = list_get(lines, i);
+        if starts_with(line, "import ") { imports = list_push(imports, line); }
+        i = i + 1;
+    }
+    let sorted: List[String] = text_sort_strings(imports);
+    let mut dups: List[String] = list_new();
+    let mut j: Int = 0;
+    while j < list_len(sorted) {
+        let line: String = list_get(sorted, j);
+        let mut count: Int = 0;
+        let mut k: Int = j;
+        while k < list_len(sorted) && list_get(sorted, k) == line { count = count + 1; k = k + 1; }
+        if count > 1 && !text_list_contains(dups, line) { dups = list_push(dups, line); }
+        j = j + 1;
+    }
+    return text_join(dups, "\n");
+}
+
+fn rebase_dedup_file(fr: &FsReadCap, fw: &FsWriteCap, path: String) -> Bool {
+    let src: String = match fs_read_file(fr, path) { Ok(s) => s, Err(_) => "" };
+    let lines: List[String] = str_split(src, "\n");
+    let mut out: List[String] = list_new();
+    let mut seen: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let line: String = list_get(lines, i);
+        if starts_with(line, "import ") {
+            if !text_list_contains(seen, line) {
+                seen = list_push(seen, line);
+                out = list_push(out, line);
+            }
+        } else {
+            out = list_push(out, line);
+        }
+        i = i + 1;
+    }
+    let w: Result[Void, String] = fs_write_file(fw, path, text_join(out, "\n"));
+    return w.is_ok();
+}
+
+fn rebase_loop(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, log: String, path: String,
+    repo: String, br: String) -> String {
+    let mut acc: String = log;
+    let env_argv: List[String] = cmd_env("HOME=" + audit_home(env), "", "", "", "", "");
+    let mut step: Int = 0;
+    while true {
+        step = step + 1;
+        if step > 6 { return rebase_emit(fw, acc, path, "  ABORT: too many rebase steps\n"); }
+        let rb: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "rebase", "origin/" + br, "", "", "", "", "", ""));
+        if rb.code == 0 { return rebase_emit(fw, acc, path, "  rebased cleanly\n"); }
+        let head: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "rev-parse", "--verify", "REBASE_HEAD", "", "", "", "", ""));
+        if head.code != 0 {
+            acc = rebase_emit(fw, acc, path, "  REBASE ERROR (not a conflict):\n");
+            return rebase_emit(fw, acc, path, text_tail_lines(rb.output, 5));
+        }
+        let diff_argv: List[String] = cmd_git(repo, "diff", "--name-only", "--diff-filter=U", "", "", "", "", "");
+        let conflicted: String = rebase_out(p, env_argv, diff_argv);
+        let names: List[String] = text_lines(conflicted);
+        let mut i: Int = 0;
+        while i < list_len(names) {
+            let f: String = list_get(names, i);
+            acc = rebase_emit(fw, acc, path, "  conflict: " + f + " -> review version\n");
+            let _co: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "checkout", "--theirs", "--", f, "", "", "", ""));
+            i = i + 1;
+        }
+        let cached: String = rebase_out(p, env_argv, cmd_git(repo, "diff", "--cached", "--name-only", "", "", "", "", ""));
+        let files: List[String] = text_lines(cached);
+        let mut j: Int = 0;
+        while j < list_len(files) {
+            let f: String = list_get(files, j);
+            let target: String = repo + "/" + f;
+            if fs_path_exists(fr, target) {
+                let d: String = rebase_dup_imports(fr, target);
+                if d != "" {
+                    acc = rebase_emit(fw, acc, path, "  dedup imports: " + f + " (" + d + ")\n");
+                    let _dd: Bool = rebase_dedup_file(fr, fw, target);
+                }
+            }
+            j = j + 1;
+        }
+        let _add: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "add", "-A", "", "", "", "", "", ""));
+        let editor: List[String] = cmd_env("HOME=" + audit_home(env), "GIT_EDITOR=true", "", "", "", "");
+        let _cont: ExecRun = rebase_run(p, editor, cmd_git(repo, "rebase", "--continue", "", "", "", "", "", ""));
+    }
+}
+
+fn rebase_repo(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, log: String, path: String,
+    repo: String) -> String {
+    let mut acc: String = log;
+    let env_argv: List[String] = cmd_env("HOME=" + audit_home(env), "", "", "", "", "");
+    let br: String = rebase_out(p, env_argv, cmd_git(repo, "symbolic-ref", "--short", "HEAD", "", "", "", "", ""));
+    acc = rebase_emit(fw, acc, path, "===== " + repo + " (" + br + ") =====\n");
+    let _fetch: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "fetch", "origin", br, "-q", "", "", "", ""));
+    let before: String = rebase_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD", "", "", "", "", "", ""));
+    acc = rebase_loop(p, fr, fw, env, acc, path, repo, br);
+    let after: String = rebase_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD", "", "", "", "", "", ""));
+    if before == after {
+        acc = rebase_emit(fw, acc, path, "  NO CHANGE (already up to date or rebase skipped)\n");
+    } else {
+        let head: String = rebase_out(p, env_argv, cmd_git(repo, "log", "--oneline", "-1", "", "", "", "", ""));
+        acc = rebase_emit(fw, acc, path, "  new head: " + head + "\n");
+    }
+    let status: String = rebase_out(p, env_argv, cmd_git(repo, "status", "--porcelain", "", "", "", "", "", ""));
+    acc = rebase_emit(fw, acc, path, text_head_lines(status, 5));
+    return rebase_emit(fw, acc, path, "\n");
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int {
+    let root: String = audit_repo_root(e);
+    let path: String = root + "/audits/mcode3-rebase.log";
+    let _t: Result[Void, String] = fs_write_file(fw, path, "");
+    let repos: List[String] = sys_args(p);
+    let mut acc: String = "";
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        let repo: String = list_get(repos, i);
+        if fs_is_dir(fr, repo + "/.git") { acc = rebase_repo(p, fr, fw, e, acc, path, repo); }
+        i = i + 1;
+    }
+    let _done: String = rebase_emit(fw, acc, path, "REBASE PASS DONE\n");
+    return 0;
+}

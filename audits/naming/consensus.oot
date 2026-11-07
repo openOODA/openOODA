@@ -1,0 +1,180 @@
+# Naming and Single-Responsibility Audit: Reconciled Consensus, Findings
+File: openOODA/audits/naming/consensus.oot
+
+Provenance: converted from `openOODA/audits/naming-audit-consensus.md` (256 lines). Part 1 of 2.
+
+Redaction note: fleet host names and tailnet addresses are written as generic
+placeholders. The audited tree still holds the literals.
+
+# Naming & Single-Responsibility Audit — Reconciled Consensus
+
+**Reconciler:** Devin `wR:p2` (swe-2-max) — third pass, independent verification
+**Date:** 2026-11-05
+**Inputs:**
+- `naming-audit-mcode.md` (mcode / MiniMax-M3.1-Flash, `w3:p1` — 788 lines; token-collision matrix method) — cited as **M§n**
+- `naming-audit-devin.md` (Devin `wR:p1` — 283 lines; physical-subtree + RFC-conformance method) — cited as **D§n**
+
+**Method:** Both audits were independent and read-only (no compiler, build, test, or binary executed). This third pass
+re-verified **every contested, load-bearing, or divergent claim directly against the tree** — persona dispatch sources,
+Makefiles, `catalog/index`, RFC 0012 §2.3 (`rfcs/0012:139-145`), `northstar.oot`, and directory inventories. Claims that failed
+verification are listed in §5 **[ERRATA]**. A prior draft of this file written by `wR:p1` was superseded by this one after its
+`oohealthd` RFC misread and two inherited errata were caught (§5).
+
+**Conventions:** repo paths abbreviated to `org/name` (e.g. `apps/ooflash` = `openOODA-apps/ooflash`).
+
+---
+
+## 0. Bottom line
+
+Two independent auditors, different models, different extraction methods, converged on one root cause:
+
+> **The fleet does not have a bad-names problem — it has a name-ownership problem.** Repo dirs ↔ `BIN` names are nearly
+> perfectly consistent; the defects are persona/repo tokens with **two owners or none**, absorptions declared but never enacted,
+> canonical names existing only on paper, and at least four pairs of repos claiming *each other*.
+
+The single most consequential verified fact: **21 signed, publicly installable `catalog/index` package names are simultaneously
+persona tokens of other binaries** — the install surface and the runtime surface disagree about who owns a name.
+
+- **16 of 20** top findings are shared or mutually reinforcing (§1–2)
+- **11** verdict-level divergences adjudicated against the tree + RFC (§4)
+- Each auditor caught serious defects the other missed entirely (§3) — the audits are complementary, not redundant
+- Action plan: **5 ownership decisions → ~23 zero-risk archives → 21 catalog withdrawals → ~14 renames → 6 splits → substrate
+  dedup → registry/gates** (§7)
+
+---
+
+## 1. Executive agreement — verified joint findings
+
+Table columns: # | Joint finding | Devin | mcode | Verified here
+- C1 | **Duplicate persona embeddings** (same token, 2+ hosts, forked subtrees) | F2, §4.1 (7 tokens) | §4.1–4.4 (57 dual-host,
+  82-token union — **superset**) | ✅ dispatch sources
+- C2 | **Catalog-published collisions** — signed packages that are also personas | §4.3 families | F2/§4.2/§5.4 | ✅ all **21**
+  in `catalog/index`
+- C3 | **`oobuild-fleet`↔`oodeploy` mutual absorption cycle** | F1, §4.2 | §3.11 | ✅ both Makefiles
+- C4 | **RFC inversions** — code absorbs A→B where RFC declares A canonical | F1, §4.2 (4 pairs) | §5.3 partial | ✅ RFC L5/L7
+  lists
+- C5 | **RFC-canonical ghost names** | F3, §2.2 (9) | §6.1 | ✅ RFC §2.3
+- C6 | **Substrate/template cloning** — repo count overstates product count ~10–20× | F5, §3.1 | F7, §3.3, §3.7 | ✅ name-token
+  diffs
+- C7 | **Absorbed repos still ship standalone binaries** — absorption declared, never enacted | §4.1/§5.1 | F8, §5.1 | ✅ `bin/`
+  artifacts
+- C8 | **`sys_argv0` contract survives Rule 1.25** (source + docs) | F7, §5.5.7 | F4/§4.7, F11 | ✅ `ooimage/main.oo:62`,
+  `llms.txt:35`, `oooda-engine/AGENTS.md` §4.1
+- C9 | **`oomedia`→`ooflash` split = correct remediation** | §3.2 | §3.1 (pre/post states) | ✅ post-split tree
+- C10 | **`ooflash` adds host-binary execs** (`dd`,`sha256sum`,`sync`,`truncate`) — Rule-1.25 regression on 2026-11-05 | §4.4 |
+  F9, §3.1 | ✅ `rawio.oo` execs
+- C11 | **`oote` misnamed** — theming engine squatting a reserved axis | F4 (tee namespace) | §2.15 (`ootext` axis) | ✅ both
+  true
+- C12 | **`oosession`+`policy/` is the RFC's `ooauthd`** | §2.2, §5.3 | §6.1 ghost | ✅ `oosession/policy/` = 8 pages
+- C13 | **`oofalse` in RFC agents list = typo for `oofalsify`** (and collides with `tools/oofalse`) | §5.5.1 | §6.1 | ✅ RFC
+  `:145`
+- C14 | **Tools exec-relay to C binaries** — 8 persona tables shell out to GNU/OpenSSL/GPG | §4.4 partial | §3.10 (deepest) | ✅
+  8 `personas.oot` files
+- C15 | **0 symlinks / 0 hardlinks fleet-wide** — Rule 1.25 physically holds | §1, §7 | §8 | ✅
+- C16 | **Catalog index ↔ disk: zero drift** — but only L3 is registered | §2/§6 | §7.11 | ✅ 260 names / 256 pkgs
+
+---
+
+## 2. The duplicate-embedding set — both audits, fully verified
+
+Table columns: Token | Host A | Host B | Consensus owner
+- `oodns-cloud` | `oomesh` | `oogateway` (3rd: own repo) | **`oomesh`** (RFC L6 mesh pairing); strip from `oogateway`
+- `ooqueue` | `oodb-dist` | `oosched-cloud` | **`oodb-dist`** (queue = data plane; `oosched-cloud` is non-canonical anyway)
+- `ooclip` | `oofiles` | `ooportal` | **`ooportal`** (capability-grant boundary is the honest owner)
+- `ooshot` | `oofiles` | `ooportal` | **`ooportal`** (same)
+- `ootaskmgr` | `oofiles` | `oocockpit` (itself a `oopanel` persona) | **`oopanel`** transitively — a persona cannot host a
+  persona
+- `ooarchitect` | `oogovern` (30-pg subtree, byte-identical to standalone) | `oooda-engine` (`persona/architect.oo` — rewritten
+  variant that **drops `ooarch_basename`**) | **`oogovern`** — its copy preserves SSoT; retire engine's divergent variant
+- `oohealthd` | `ooinit` (`healthd/` subtree, 8 pages) | standalone repo ships `bin/oohealthd` | **`oohealthd` repo** — it is in
+  RFC's L2 canonical-8; strip `ooinit/healthd/` (see §4.4)
+- `engine` (alias) | `oooda-engine` (`meta.oo:24`) | `ooherdr` (`meta.oo:34`) | one side drops it — recommend `ooherdr` keeps,
+  `ooooda` loses on rename
+- `sha256sum` (token) | `oohash` relay | `oob3sum` relay **+ `ooflash/digest.oo`** | digest host (§4.7); `ooflash` must go
+  native anyway
+
+---
+
+## 3. Unique findings (one auditor only)
+
+### 3.1 mcode-only — spot-verified in this pass
+
+Table columns: Finding | Evidence | Consensus adoption
+- **`std/hw` kernel stack** — 112 impl `.oo` pages across 9 subdirs in a "standard library"; 2 verbatim-identical cap-space
+  pages vs `ookernel-ob`; `std/anchor.oo` vs `std/hw/anchor.oo` self-contradict | M§2.1/§3.2. Verified: exactly 112 in subdirs
+  (127 incl. top-level theory pages) | **SPLIT `std`→`std`+`std-hw`.** The largest single-scope violation in the fleet; devin
+  missed it entirely (called L0 "cleanest org")
+- **`oohash`↔`oob3sum` mutual persona cycle** | `oohash/ipc/dispatch_persona.oo:33` ↔ `oob3sum/ipc/persona_dispatch.oo:32` —
+  verbatim | Critical — feeds §4.7
+- **`ooimage` overclaim + port bug** — README:76 promises L1 ISO + L2 UEFI/Firecracker; only container-string gen exists;
+  `ooda_inference.oo:24,28`=`11434` vs `:39`=`11435` | M§2.2/F6. Verified | RENAME `oocontainer`; fix port bug (a live
+  functional defect)
+- **`oovm-ui` overclaim** — README promises KVM VM manager; sole domain page is a 42-line `/proc/meminfo`+`loadavg` reader |
+  M§2.7. Verified (zero qemu/kvm in domain code) | RENAME `oohostmon`
+- **Hidden aliases**: `oocompctl`→`oocomp`, `oowallpaper`→`oowall`, `oonotify`→`ootoast`, `ooidle`/`ooscreensaver` self-absorbed
+  by `oolock` | M§4.6 | Add to ownership table
+- **`oodeepseek` vendor persona** inside `oocoder` + hardcoded `:11435` | M§2.13. Verified | RENAME `oocoder-deepseek`
+- **`oodrv-net` overclaim** — promises e1000e/RTL8125; delivers a 7-word frame codec; own union persona already `oodrv-io` |
+  M§2.10 | RENAME `oodrv-io`
+- **`ookernel-hal-x86` overclaim** — x86-named host covering 3 archs | M§2.11 | RENAME `oohal`
+- **`oooda-engine` stutter** | M§2.12 | RENAME `ooooda`
+- **`bedaisy_gate` in `ookernel-mm`** — BattlEye/Destiny-2 anti-cheat IOMMU gate inside a memory manager; duplicated
+  `ookernel-ob/nt/` | M§3.4. Verified header | Extract → `ookernel-ob/nt/` before archive
+- **`oorouter` L6 files** (`core/fleet.oo`,`gpu_schedule.oo`) duplicating `ooinfer-grid` | M§3.5. Verified | Delete both files;
+  fold remainder → `ooherdr`
+- **`ooherdr` 4-domain split** — roster + cluster failover + `oomux` TUI + hardcoded vendor-driver registry | M§3.6. Verified |
+  Extract `oomux` + registry
+- **`lsp`/`mcp` ship-name debt** — `dist/mcp` vs `ooda-mcp`; 5-step legacy fallback `tui/mcp_client.oo:79`; `install.sh` puts
+  bare `lsp`/`mcp` in `~/.openooda/bin` | M§2.8/§7.9/§7.10. Verified | Uniform `ooda-lsp`/`ooda-mcp`; retire bare names from
+  install surface
+- **`oodar` metadata contradictions** (lib name / layer / file-count) | M§2.9 | Doc fix
+- **`oollama` anomaly** — only tools repo correctly absent from catalog; absorbed into `ooaid` | M§5.5. Verified | Archive repo;
+  keep persona
+- **Phantom `unix_consolidation_blueprint.md`** — directive cites a nonexistent doc | M§6.4. Verified absent | Fix directive →
+  cite RFC 0012
+- **README/AGENTS drift fleet-wide** — kernel page claims 10–16 vs actual 30–37; `95/95` vs `80` assertions; 11 agents repos one
+  version behind; DE org profile says 20 lists 18, byte-identical stub ×20 | M§7.3/§7.4 | Doc sweep checklist
+- **`oodac` 4 binary copies; kernel `SRC` omits `fs/fsprobe.oo` ×6; "ELF64 boot image" README lie ×6; `oodac_cluster.sh`
+  fallback; `install.sh` 8-component surface** | M§7.5–7.10 | Hygiene + build-correctness
+- **Hardcoded fleet hostnames/Tailscale IPs** — `status.oo:176-178` hard bindings; `fanout.oo:91`,`quota_ledger.oo:76-77`
+  env-defaults; `ooaid` embeds hostnames in *identifiers* | M§7.8 (F12). Verified | Hard bindings must go; defaults documented;
+  redaction table = declared exemption
+- **Conformance sweep** — 246 core files >8 fns (worst `ai_multimodal.oo`=87); 1,857 fns >40 lines; duplicated 200-line
+  `poly1305_mac` | M§8 | Declare shim exemption class + schedule cleanup; `boundary_257_lines.oo` needs allowlist entry
+- **Negative-tested pairs** — `ooconsent`≠`ooconsensus`, `oostore`≠`oostore-cas`, `oobilling`/`ooquota`/`ootelemetry` distinct |
+  M§2.18 | Good discipline; no action
+
+### 3.2 devin-only — spot-verified in this pass
+
+Table columns: Finding | Evidence | Consensus adoption
+- **`oosqllite` committed typo** — dir/`BIN`/AGENTS/catalog all spell "sqllite"; 0-byte README | D F4. Verified (catalog:197) |
+  RENAME `oosqlite` (or fold `ooquery`)
+- **104 skeleton stubs** — uniform 13-file `cli+read+core/{cap,codec,engine,ring,table}` skeleton; READMEs uniformly claim
+  "Native X TOOL" (`ooip show <file>` greps a file) | D F8. Sampled `ooip`/`oobiew`/`oonaa` | Reclassify: **unimplemented
+  backlog, NOT "absorbed"** — changes archive verdict for ~104 repos
+- **6 stale `oofzf` AGENTS.md copies** (`ooclock,oocurl,oops,oosed,otar→ootar,ootree`; `oocurl` says "operating on `oofzf`") | D
+  F9. All 6 verified | Regenerate per-repo
+- **Workspace debris** — `/Projects/openOODA/8` (74B), `bracket_probe{,2}.txt`, ~375 `.ooda-cache/` dirs | D F10. Verified |
+  Hygiene sweep
+- **Cryptic/hazard names** — `oonaa`, `ooripl`, `oobiew` (vs `DE/ooview`), `oobound`/`ooboundary`, `oocsplt` (truncated csplit),
+  `ooss`/`oossh`/`oossl` trio, `oood` (vs `oooda` prefix), `oorev` (rev vs revocation), `oomenubar` (DE chrome in L3) | D§2.1.
+  All repos verified exist | Rename/merge candidates in Phase 5
+- **Duplicate-domain pairs** — `oomeminfo`/`oofree`, `oofilter`/`ooawk`, `ootls`/`oossl` (both declare upstream `openssl`), 4
+  watchers, 3 progress bars | D§2.1/§4.3 | Merge each to one owner
+- **Ghost names** — `oozip` (only `oounzip` exists — unzip with no zip producer), `oocage` (`ooaid` README ref), `ooide`,
+  `oomsg` | D§2.2. Verified absent | Create or scrub references
+- **`oocockpit` nests canonical `ooagent-hud`** — shell-inside-a-shell carrying an RFC product | D§3.2/§4.2. Verified | Extract
+  `ooagent-hud` **before** `oocockpit`→`oopanel` demotion
+- **Missing-coverage gaps** — `oodate` (verified absent), `oodd`, `ooecho`, `oocal`, `ooed`, `ootee`, `oozip` | D§4.4 |
+  `ooflash` wraps host `dd` partly because **no `oodd` exists** — fill or persona-map
+- **Missing `link-law` Makefile gate** in all cloud + agents repos | D F7 | Phase-8 tooling
+- **`openOODA-tools.github.io`** docs-site repo inside tools org — inflates count 257→258, breaks `oo*` namespace | D§2.1.
+  Verified present | Declare non-product in `northstar`
+- **`oollama` layer mislabel** ("Layer 4" claim on an L3 repo absorbed into L2) | D§2.3 | Doc fix; complements mcode's anomaly
+  finding
+- **Absorption into non-canonical hosts** — `oopolicyd`→`oosession` (non-RFC), `oopowerd`→`oodevd` (non-RFC) | derived: D§5.1 +
+  RFC check | Staging waste — `oosession`→`ooauthd` rename rescues one; retarget `oodevd`'s `power/` subtree to `oosysbus` or
+  `oohealthd`
+- **`oostructureddiff` family collapse** — 5 differ repos → one host, format personas | D§5.4 | Adopted
+- **`oocat` triple mandate** (cat+less+highlight), `ooclock` triple (clock+stopwatch+pomodoro), `ooenv` triple | D§3.2 | Narrow
+  or accept as documented scope

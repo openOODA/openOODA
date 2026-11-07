@@ -1,0 +1,138 @@
+// # Import Audit - Resolve Every Page Import Against The Core Rules
+//
+// Logline: Resolve every import of every page of a tree with the oodac import rules and report the unresolved ones.
+//
+// Setup: FsReadCap for the tree and the core root, EnvCap for the core root. The
+//   resolution rules mirror the oodac import resolution rules.
+//
+// Beats:
+//   1. Probe a candidate import path as a regular file.
+//   2. Resolve one import name with the sibling, parent, and sibling walk probes.
+//   3. Scan a tree, count the imports, and report the unresolved names.
+
+import "std/core/primitives/str.oo";
+import "std/fs/file/path.oo";
+import "std/fs/os/fs.oo";
+import "tools/text/str_scan.oo";
+import "tools/text/str_sort.oo";
+import "tools/text/line_span.oo";
+import "tools/env/audit_env.oo";
+
+fn audit_is_file(fr: &FsReadCap, path: String) -> Bool {
+    if !fs_path_exists(fr, path) { return false; }
+    return !fs_is_dir(fr, path);
+}
+
+fn audit_join(dir: String, name: String) -> String {
+    if starts_with(name, "/") { return name; }
+    if dir == "" { return name; }
+    return dir + "/" + name;
+}
+
+fn audit_quoted(line: String) -> String {
+    let parts: List[String] = str_split(line, "\"");
+    if list_len(parts) < 2 { return ""; }
+    return list_get(parts, 1);
+}
+
+pub fn audit_resolve(fr: &FsReadCap, page_dir: String, imp: String, core: String) -> Bool {
+    let is_std: Bool = starts_with(imp, "std/");
+    let is_std_hw: Bool = starts_with(imp, "std-hw/");
+    let is_oodac: Bool = starts_with(imp, "oodac/");
+    let is_sibling: Bool = is_std || is_std_hw || is_oodac;
+    if !is_sibling {
+        if audit_is_file(fr, audit_join(page_dir, imp)) { return true; }
+    } else {
+        let mut cut: Int = 6;
+        if is_std { cut = 4; }
+        else if is_std_hw { cut = 7; }
+        let sub: String = str_sub(imp, cut, byte_len(imp));
+        if audit_is_file(fr, sub) { return true; }
+    }
+    if audit_is_file(fr, imp) { return true; }
+    let mut cur: String = page_dir;
+    let mut i: Int = 0;
+    while i < 8 {
+        let nxt: String = path_parent(cur);
+        if nxt == cur { break; }
+        cur = nxt;
+        if audit_is_file(fr, audit_join(cur, imp)) { return true; }
+        if fs_is_dir(fr, cur) {
+            let sibs: List[String] = text_sort_strings(fs_read_dir(fr, cur));
+            let mut k: Int = 0;
+            while k < list_len(sibs) {
+                let sibp: String = cur + "/" + list_get(sibs, k);
+                if fs_is_dir(fr, sibp) && audit_is_file(fr, audit_join(sibp, imp)) { return true; }
+                k = k + 1;
+            }
+        }
+        i = i + 1;
+    }
+    if is_std || is_std_hw {
+        if audit_is_file(fr, audit_join(core, imp)) { return true; }
+    }
+    return false;
+}
+
+fn audit_scan_root(fr: &FsReadCap, root: String, core: String) -> Int {
+    let mut total: Int = 0;
+    let mut bad_count: Int = 0;
+    let mut bad: List[String] = list_new();
+    let mut queue: List[String] = list_new();
+    let mut head: Int = 0;
+    queue = list_push(queue, root);
+    while head < list_len(queue) {
+        let dir: String = list_get(queue, head);
+        head = head + 1;
+        let names: List[String] = fs_read_dir(fr, dir);
+        let mut i: Int = 0;
+        while i < list_len(names) {
+            let name: String = list_get(names, i);
+            let p: String = audit_join(dir, name);
+            if fs_is_dir(fr, p) {
+                let mut skip: Bool = name == ".git" || name == "bin" || name == "dist";
+                if name == ".ooda-cache" || name == ".blackbox" { skip = true; }
+                if !skip { queue = list_push(queue, p); }
+            } else if ends_with(name, ".oo") {
+                let src: String = match fs_read_file(fr, p) { Ok(s) => s, Err(_) => "" };
+                let lines: List[String] = text_lines(src);
+                let mut j: Int = 0;
+                while j < list_len(lines) {
+                    let ln: String = text_trim(list_get(lines, j));
+                    if starts_with(ln, "import ") && str_contains(ln, "\"") {
+                        let imp: String = audit_quoted(ln);
+                        total = total + 1;
+                        if !audit_resolve(fr, dir, imp, core) {
+                            bad_count = bad_count + 1;
+                            let rel: String = str_replace(p, root + "/", "");
+                            let entry: String = rel + "\t" + imp;
+                            if !text_list_contains(bad, entry) { bad = list_push(bad, entry); }
+                        }
+                    }
+                    j = j + 1;
+                }
+            }
+            i = i + 1;
+        }
+    }
+    println("== " + root + " : imports=" + total.to_string() + " unresolved=" + bad_count.to_string());
+    let sorted: List[String] = text_sort_strings(bad);
+    let mut k: Int = 0;
+    while k < list_len(sorted) {
+        let parts: List[String] = str_split(list_get(sorted, k), "\t");
+        println("   UNRESOLVED " + list_get(parts, 0) + " -> " + list_get(parts, 1));
+        k = k + 1;
+    }
+    return 0;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, _fw: &FsWriteCap, e: &EnvCap) -> Int {
+    let roots: List[String] = sys_args(p);
+    let core: String = audit_core_root(e);
+    let mut i: Int = 0;
+    while i < list_len(roots) {
+        audit_scan_root(fr, list_get(roots, i), core);
+        i = i + 1;
+    }
+    return 0;
+}

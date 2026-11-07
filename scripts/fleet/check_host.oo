@@ -1,0 +1,45 @@
+// # Fleet Host Check - Memory, Swap, and OOM Guard
+//
+// Logline: Read host memory from /proc/meminfo and confirm the OOM guard timer is active.
+//
+// Setup: FsReadCap for /proc/meminfo; ProcessCap for systemctl --user through fleet_user_cmd.
+//
+// Beats:
+//   1. Parse one kB field from the meminfo text.
+//   2. Ask systemctl whether ooda-oom-guard.timer is active.
+//   3. Return a one-line report and an alert line when memory is low or the guard is down.
+
+import "fleet/run_argv.oo";
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
+
+type HostCheck = struct {
+    report: String,
+    alert: String
+};
+
+pub fn fleet_meminfo_kb(text: String, key: String) -> Int {
+    let lines: List[String] = str_split(text, "\n");
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let line: String = list_get(lines, i);
+        if starts_with(line, key + ":") {
+            let digits: String = str_replace(str_replace(str_sub(line, str_len(key) + 1, str_len(line)), " ", ""), "kB", "");
+            return parse_int_digits(digits);
+        }
+        i = i + 1;
+    }
+    return 0 - 1;
+}
+
+pub fn fleet_check_host(p: &ProcessCap, fr: &FsReadCap, e: FleetEnv) -> HostCheck {
+    let info: String = match fs_read_file(fr, "/proc/meminfo") { Ok(s) => s, Err(_) => "" };
+    let avail_mb: Int = fleet_meminfo_kb(info, "MemAvailable") / 1024;
+    let swap_mb: Int = (fleet_meminfo_kb(info, "SwapTotal") - fleet_meminfo_kb(info, "SwapFree")) / 1024;
+    let guard: String = str_replace(fleet_text(fleet_user_cmd(p, e, "systemctl", "--user", "is-active", "ooda-oom-guard.timer")), "\n", "");
+    let report: String = "host: avail=" + avail_mb.to_string() + "M swap_used=" + swap_mb.to_string() + "M oom_guard=" + guard;
+    let mut alert: String = "";
+    if guard != "active" { alert = "ooda-oom-guard.timer is " + guard; }
+    if avail_mb >= 0 && avail_mb < 6144 { alert = alert + " low memory " + avail_mb.to_string() + "M"; }
+    return HostCheck { report: report, alert: alert };
+}

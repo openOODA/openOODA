@@ -1,0 +1,87 @@
+// # Oohat Sweep - Lint, Verify, Test, And Compare
+//
+// Logline: Lint, verify, and test every given repository twice and compare the two test runs.
+//
+// Setup: ProcessCap for the child calls, FsReadCap and FsWriteCap for the tree and the
+//   reports, EnvCap for the roots. The write root must cover the report directory.
+//
+// Beats:
+//   1. Lint the repository and record the lint report.
+//   2. Verify and test the repository twice and record both reports.
+//   3. Compare the two test runs and report the verdict.
+
+import "std/fs/file/path.oo";
+import "std/fs/os/fs.oo";
+import "tools/text/line_span.oo";
+import "tools/text/exec_argv.oo";
+import "tools/text/cmd_argv.oo";
+import "tools/env/audit_env.oo";
+
+fn oohat_grep_lines(p: &ProcessCap, path: String, pattern: String) -> String {
+    let out: String = exec_argv_stdout(p, cmd_prog("grep", "-E", pattern, path, "", ""));
+    let lines: List[String] = text_lines(out);
+    let mut joined: String = "";
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        joined = joined + list_get(lines, i) + " ";
+        i = i + 1;
+    }
+    return joined;
+}
+
+fn oohat_sweep_repo(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, logdir: String, repo: String) -> Int {
+    let n: String = path_basename(repo);
+    println("######## " + n + " ########");
+    if !fs_is_dir(fr, repo) { println("cd failed"); return 0; }
+    let oodac: String = audit_env_or(env, "OODA_AUDIT_OODAC_REAL", "/Projects/openOODA-core/oodac/bin/oodac.real");
+    let env_argv: List[String] = cmd_env("HOME=" + audit_home(env), "OODA_NO_JAIL=1", "OODA_FS_READDIR=/Projects",
+        "OODA_FS_WRITEDIR=/tmp", "OODA_COMPILER=" + oodac, "OODAC_BIN=" + oodac);
+    println("-- lint-oo-size");
+    let lint_path: String = logdir + "/mcode3-" + n + "-lint.txt";
+    let lint_argv: List[String] = argv_join(env_argv, cmd_prog(audit_lint_bin(env), repo, "", "", "", ""));
+    let lint: ExecRun = exec_argv_idempotent(p, lint_argv);
+    let _w: Result[Void, String] = fs_write_file(fw, lint_path, lint.output);
+    let lint_grep: String = oohat_grep_lines(p, lint_path, "files_with_size_violation|BIGFILE|MANYFN|LONGFN|DENSE");
+    println("   lint rc=" + lint.code.to_string() + " :: " + lint_grep);
+    let rm_argv: List[String] = cmd_prog("rm", "-f", repo + "/.ooda-cache/check.stamp", "", "", "");
+    let _rm: ExecRun = exec_argv_run(p, argv_join(env_argv, rm_argv));
+    println("-- make verify");
+    let verify_path: String = logdir + "/mcode3-" + n + "-verify.txt";
+    let verify: ExecRun = exec_argv_idempotent(p, argv_join(env_argv, cmd_make(repo, "verify")));
+    let _w2: Result[Void, String] = fs_write_file(fw, verify_path, verify.output);
+    println("   verify rc=" + verify.code.to_string());
+    if verify.code != 0 { print(text_tail_lines(verify.output, 15)); }
+    println("-- make test (run 1)");
+    let test1_path: String = logdir + "/mcode3-" + n + "-test1.txt";
+    let run1: ExecRun = exec_argv_idempotent(p, argv_join(env_argv, cmd_make(repo, "test")));
+    let _w3: Result[Void, String] = fs_write_file(fw, test1_path, run1.output);
+    let test1_grep: String = oohat_grep_lines(p, test1_path, "ALL TESTS PASSED|FAIL|assertions");
+    println("   test1 rc=" + run1.code.to_string() + " :: " + test1_grep);
+    println("-- make test (run 2, determinism)");
+    let test2_path: String = logdir + "/mcode3-" + n + "-test2.txt";
+    let run2: ExecRun = exec_argv_idempotent(p, argv_join(env_argv, cmd_make(repo, "test")));
+    let _w4: Result[Void, String] = fs_write_file(fw, test2_path, run2.output);
+    println("   test2 rc=" + run2.code.to_string());
+    let same: Int = exec_argv_code(p, cmd_prog("diff", "-q", test1_path, test2_path, "", ""));
+    if same == 0 {
+        println("   DETERMINISM: byte-identical");
+    } else {
+        println("   DETERMINISM: DIFFERS");
+        let d: ExecRun = exec_argv_run(p, cmd_prog("diff", test1_path, test2_path, "", "", ""));
+        print(text_head_lines(d.output, 20));
+    }
+    println("");
+    return 0;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int {
+    let logdir: String = audit_log_dir(e);
+    let _m: Result[Void, String] = fs_mkdir_p(fw, logdir);
+    let repos: List[String] = sys_args(p);
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        oohat_sweep_repo(p, fr, fw, e, logdir, list_get(repos, i));
+        i = i + 1;
+    }
+    return 0;
+}

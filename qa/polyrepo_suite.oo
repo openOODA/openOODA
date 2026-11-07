@@ -5,30 +5,54 @@
 
 import "std/fs/process/env.oo";
 
+fn suite_env_prefix(env: &EnvCap, oodac: String) -> List[String] {
+    let mut pre: List[String] = list_new();
+    pre = list_push(pre, "OODA_COMPILER=" + oodac);
+    let rd: Result[String, String] = env_get(env, "OODA_FS_READDIR");
+    if rd.is_ok() { pre = list_push(pre, "OODA_FS_READDIR=" + rd.val); } else { pre = list_push(pre, "OODA_FS_READDIR=."); }
+    let wd: Result[String, String] = env_get(env, "OODA_FS_WRITEDIR");
+    if wd.is_ok() { pre = list_push(pre, "OODA_FS_WRITEDIR=" + wd.val); } else { pre = list_push(pre, "OODA_FS_WRITEDIR=."); }
+    let at: Result[String, String] = env_get(env, "OODA_MCP_ATTENUATION_SECRET");
+    if at.is_ok() { pre = list_push(pre, "OODA_MCP_ATTENUATION_SECRET=" + at.val); } else { pre = list_push(pre, "OODA_MCP_ATTENUATION_SECRET=ci-test-attenuation-secret"); }
+    return pre;
+}
+
+fn suite_argv(pre: List[String], head: List[String]) -> List[String] {
+    let mut out: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(pre) {
+        out = list_push(out, list_get(pre, i));
+        i = i + 1;
+    }
+    let mut j: Int = 0;
+    while j < list_len(head) {
+        out = list_push(out, list_get(head, j));
+        j = j + 1;
+    }
+    return out;
+}
+
 fn run_sub_suite(p: &ProcessCap, env: &EnvCap, oodac: String, path: String) -> Result[Int, String] {
     println("--- Executing Suite: " + path + " ---");
     let tmp_bin: String = path + ".tmp.bin";
-    // 2026-10-30 audit (mcode S10): no blind sh -c. argv exec via sys_exec_wait;
-    // child env is inherited, so set the vars on ourselves first.
-    let _e0: Result[Void, String] = env_set(env, "OODA_COMPILER", oodac);
-    let rd: Result[String, String] = env_get(env, "OODA_FS_READDIR");
-    if rd.is_err() { let _e: Result[Void, String] = env_set(env, "OODA_FS_READDIR", "."); }
-    let wd: Result[String, String] = env_get(env, "OODA_FS_WRITEDIR");
-    if wd.is_err() { let _e: Result[Void, String] = env_set(env, "OODA_FS_WRITEDIR", "."); }
-    let at: Result[String, String] = env_get(env, "OODA_MCP_ATTENUATION_SECRET");
-    if at.is_err() { let _e: Result[Void, String] = env_set(env, "OODA_MCP_ATTENUATION_SECRET", "ci-test-attenuation-secret"); }
-    let mut bargv: List[String] = list_new();
-    bargv = list_push(bargv, "build");
-    bargv = list_push(bargv, path);
-    bargv = list_push(bargv, "-o");
-    bargv = list_push(bargv, tmp_bin);
-    let b: Result[Int, String] = sys_exec_wait(p, oodac, bargv);
+    // 2026-10-30 audit (mcode S10): no blind sh -c. argv exec via sys_exec_wait.
+    // The toolchain exposes no env setter, so the child receives its variables
+    // as KEY=VALUE arguments in front of the program name under /usr/bin/env.
+    let pre: List[String] = suite_env_prefix(env, oodac);
+    let mut bhead: List[String] = list_new();
+    bhead = list_push(bhead, oodac);
+    bhead = list_push(bhead, "build");
+    bhead = list_push(bhead, path);
+    bhead = list_push(bhead, "-o");
+    bhead = list_push(bhead, tmp_bin);
+    let b: Result[Int, String] = sys_exec_wait(p, "/usr/bin/env", suite_argv(pre, bhead));
     if b.is_err() {
         let e: String = match b { Ok(_) => "", Err(m) => m };
         return Err("compile fail " + path + ": " + e);
     }
-    let mut rargv: List[String] = list_new();
-    let r: Result[Int, String] = sys_exec_wait(p, tmp_bin, rargv);
+    let mut rhead: List[String] = list_new();
+    rhead = list_push(rhead, tmp_bin);
+    let r: Result[Int, String] = sys_exec_wait(p, "/usr/bin/env", suite_argv(pre, rhead));
     let _del: Result[String, String] = sys_exec(p, "rm", "-f", tmp_bin);
     let out_text: String = match r { Ok(_) => "", Err(m) => m };
     let code: Int = match r { Ok(c) => c, Err(_) => 0 - 1 };

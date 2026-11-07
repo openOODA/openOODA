@@ -1,0 +1,107 @@
+# Naming and Single-Responsibility Audit: Conformance Sweep and Sequencing
+File: openOODA/audits/naming/mcode/conformance_sequence.oot
+
+Provenance: converted from `openOODA/audits/naming-audit-mcode.md` (788 lines). Part 7 of 7.
+
+Redaction note: fleet host names and tailnet addresses are written as generic
+placeholders. The audited tree still holds the literals.
+
+## 8. Coding-standards conformance sweep (fleet-wide, read-only)
+
+Table columns: Standard | Result
+- **`.oo` file ≤ 256 lines** | **1 finding fleet-wide**: `openOODA-core/oodac/tests/fixtures/boundary_257_lines.oo` (257 lines)
+  — a deliberate negative-test fixture whose sibling `boundary_256_lines.oo` is exactly 256. **Needs a CI allowlist entry**,
+  otherwise a naive `find`-based line gate flags it.
+- **≤ 8 functions per file** | **0 findings** in kernel, OS, DE, apps, cloud, agents, tools. **246 files exceed it in
+  `openOODA-core`** (195 in `std`, 32 in `oodac`, 9 in `tui`, 4 in `opm`, 3 in `mcp`, 2 in `cli`, 1 in `lsp`). Worst:
+  `std/app/ai/multimodal/ai_multimodal.oo` (87 fns), `std/meta/test/anchor.oo` (58), `oodac/ast/ast.oo` (57),
+  `std/hw/runtime/rt_caps_check.oo` (55). The dominant class is machine-generated `anchor.oo` re-export shims — an exemption
+  class that needs to be declared, not silently tolerated.
+- **≤ 40 lines per function** | **0 findings** in kernel, OS, DE, apps, cloud, agents, tools. **1,857 findings in
+  `openOODA-core`** (1,517 in `std`, 194 in `oodac`, 58 in `tui`, 28 in `opm`, 28 in `mcp`, 17 in `cli`, 10 in `lsp`, 5 in
+  `ooda`). Worst: `std/science/bio/smiles_parse.oo:14` (222), `std/sec/hash/sha256_engine.oo:15` (210), `oodac/lex/lex.oo:15`
+  (209), `std/sec/symmetric/poly1305.oo:14` (206), `std/sec/symmetric/poly1305_core.oo:14` (204) — the last two are a
+  **duplicated 200-line `poly1305_mac` in two files**.
+- **Directory density ≤ 8 entries** | 0 findings in apps (densest `ooflash/flash/` = 7).
+- **Academy 4-block header** | 0 findings in apps (371+ files), OS, DE, cloud, agents, tools.
+- **Zero symlinks** | **0 symlinks across all 9 org trees** (excluding `.git/`). ✅ Fully compliant with Rule 1.25.
+- **Zero hardlinks** | **0 files with link count > 1** across all 9 org trees. ✅
+- **No fleet host name or tailnet address in `.oo`** | **Violations**, all listed in §7.8 (buildbox hardcodes; `ooaid`
+  identifiers). The CGNAT-range hits in `openOODA-core/std/net/egress.oo:13,31` and `std/qa/probe_net_egress.oo:9-22` are
+  legitimate RFC 6598 CGNAT constants, not host bindings.
+- **Zero C/Rust/Python fallbacks** | `openOODA-core/oodar` holds 208 `.c`/`.h` files — **this is the repo's declared product**
+  (the host runtime ABI), not a wrapper. The genuine wrappers are `oodac/scripts/oodac_cluster.sh` (§7.9),
+  `tui/mcp_client.oo:79` (§7.9), and — newly — `openOODA-apps/ooflash/flash/rawio.oo` (§3.1). `ooflash/lint-oo-size` is a
+  `/bin/sh` linter, a build tool rather than a runtime fallback, but it diverges from the sibling convention where the same
+  linter is inline in the Makefile.
+- **`catalog/index` vs disk drift** | **0 drift.** ✅
+- **Repo name == shipped binary name** | Holds for **all** kernel, OS, DE, apps, cloud, agents repos. **Fails in `openOODA-core`
+  **: `lsp` ships as `ooda-lsp`, `mcp` ships as both `mcp` and `ooda-mcp`.
+
+---
+
+## 9. Recommended sequencing (first principles: ownership before archival)
+
+The evidence points to one conclusion: **the fleet's problem is not bad names — it is that names have no single owner.**
+Renaming before ownership is settled would multiply the ambiguity. The order that removes ambiguity fastest:
+
+1. **Publish an authoritative persona-ownership table** — one row per token, one column per candidate host, with a required
+   single winner. Today there is no machine-readable registry for 13 of the 17 absorbing binaries (§4.5), and no tool can detect
+   the 57 dual-host tokens automatically.
+2. **Break the two mutual-claim cycles** — `oohash`↔`oob3sum` (§4.3) and `oobuild-fleet`↔`oodeploy` (§3.11). Nothing in either
+   domain can be archived until these are broken.
+3. **Arbitrate the 3-host tokens** — `oodns-cloud`/`dns` (`oogateway` vs `oomesh`) and `ooqueue`/`queue` (`oodb-dist` vs
+   `oosched-cloud`).
+4. **Archive the 20 unambiguous absorbed repos** (§5.2) and withdraw their standalone binaries. This removes 20 tokens from the
+   ambiguity set with zero design risk.
+5. **Archive the 20 catalog-exposed double-shipped tools** (§5.4) and withdraw their `catalog/index` entries. This is the step
+   that fixes the **public** surface.
+6. **Rename only after ownership is settled**, in this order: `ooflash` (done), `oooffice` (`oodocs`→`oooffice`, per RFC),
+   `oocontainer` (`ooimage`), `oohostmon` (`oovm-ui`), `ooshell`+`oogrant` (DE), `oohal`/`ookernel`/`ooboot`/`oodrv-io`
+   (kernel), `ooooda` (agents), `ooda-lsp`/`ooda-mcp` (core).
+7. **Fix the contract documentation** — `website/llms.txt:35` (symlink dispatch + repo counts), `oodocs/README.md:54` (`ooffice`
+   →`oooffice`), the 9 stale `ooagent-*` README lines, `oooda-engine/README.md:25,61` + `AGENTS.md:44,53`, and the reference to
+   the non-existent `unix_consolidation_blueprint.md`.
+8. **Replace the new `ooflash` subprocess shims with native `.oo`** — this is a Rule-1.25 regression introduced on 2026-11-05
+   and it should not survive into a release.
+9. **Split `std` → `std` + `std-hw`**, and extract the shared app framework out of the 16 apps repos into an imported module.
+
+---
+
+## 10. Unknowns and risks (explicit)
+
+1. **The tree mutated during this audit.** `ooflash` was created and populated 03:55–03:58 and the `oomedia` flash half was
+   deleted ~03:59. Both states are reported. Any finding about `oomedia`'s current content should be re-verified before action.
+2. **No binary was executed and no build was run.** Every assertion-count and parity claim is a *string* comparison between
+   README and Makefile, not an observed test result. "Ready to archive" is judged from source/Makefile/persona-registry
+   evidence, not from a green suite.
+3. **Persona-table extraction is pattern-based.** Tokens were extracted from `== "…"` comparisons in persona dispatch files. A
+   persona implemented through a data table rather than an equality chain would be missed. `cloud`/`agents` use
+   `persona/meta.oo` id tables, which were included; `tools` uses `ipc/dispatch_persona.oo`, which was included.
+4. **The `openOODA-tools` per-repo inventory was not read page-by-page.** The 257-repo consolidation map (§3.10) is established
+   from the 8 persona tables, the `BIN` declarations, and RFC 0012 §2.3 — not from a full read of 257 READMEs. A tool whose
+   README overclaims in the way `ooimage` does would need a targeted read to detect.
+5. **`std/anchor.oo` vs `std/hw/anchor.oo`** may reflect an intentional re-layering that only one document was updated for. I
+   cannot determine which is authoritative from the tree alone.
+6. **The `ooagent-*` README lines may have been kept deliberately** for an external install script not present in these trees. I
+   could not verify such a script exists.
+7. **`/Projects/idlescreen`** exists alongside the 9 orgs and contains desktop-applet strings in its ASCII-effect scenes (
+   `idlescreen/idlescreen/ascii/effects.oo:14,35`, `ascii/scenes/orbit/<applet>.oo:3`). It is **outside the requested scope**
+   and was not audited, but it should be noted: the host-name literal rule, if applied repo-wide, would hit it.
+8. **The `catalog/index` signature files** (`index.sig`, `index.minisig`, `registry.pub`) were confirmed to exist; their
+   cryptographic coverage was not independently verified.
+
+---
+
+## 11. Bottom line
+
+The naming vocabulary is in better shape than the naming **ownership**. Twenty repos are genuinely ready to archive with zero
+design risk. Twenty more are ready once an ownership table exists. Five canonical hosts and the catalog itself are already
+correct and should not be touched.
+
+The single most consequential finding is that **20 signed, publicly installable package names are simultaneously persona tokens
+of other binaries**, and that **two pairs of binaries claim each other**. Until every token has exactly one owner, "one
+canonical binary per domain" is a stated intention rather than an enforced property — and the install surface will keep
+advertising binaries that the runtime also answers to.
+
+*End of independent pass.*

@@ -1,0 +1,68 @@
+// # D12 Src Repair - Add The Committed Pages To The Declared Source Set
+//
+// Logline: Add every committed page that the declared source set of a Makefile omits.
+//
+// Setup: FsReadCap and FsWriteCap for the Makefile, EnvCap for the operating system root.
+//
+// Beats:
+//   1. Read the declared source set of the Makefile.
+//   2. List the committed pages of the repository.
+//   3. Append the missing pages to the declared source set and report them.
+
+import "std/fs/os/fs.oo";
+import "tools/text/str_scan.oo";
+import "tools/env/audit_env.oo";
+import "src_pages.oo";
+
+fn d12_skip_dirs() -> List[String] {
+    let mut out: List[String] = list_new();
+    out = list_push(out, ".git");
+    out = list_push(out, "bin");
+    out = list_push(out, "dist");
+    out = list_push(out, ".ooda-cache");
+    out = list_push(out, "target");
+    out = list_push(out, ".github");
+    out = list_push(out, "tests");
+    return out;
+}
+
+pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int {
+    let root: String = audit_os_root(e);
+    let skip: List[String] = d12_skip_dirs();
+    let repos: List[String] = srcset_repos();
+    let mut i: Int = 0;
+    while i < list_len(repos) {
+        let repo: String = list_get(repos, i);
+        let dir: String = root + "/" + repo;
+        let mk: String = dir + "/Makefile";
+        if !fs_path_exists(fr, mk) { println(repo + ": no Makefile"); i = i + 1; continue; }
+        let text: String = match fs_read_file(fr, mk) { Ok(s) => s, Err(_) => "" };
+        let line: SrcLine = srcset_find_src(text);
+        if line.start < 0 { println(repo + ": no SRC line"); i = i + 1; continue; }
+        let names: List[String] = srcset_split_ws(line.value);
+        let pages: List[String] = srcset_collect_pages(fr, dir, skip);
+        let mut missing: List[String] = list_new();
+        let mut j: Int = 0;
+        while j < list_len(pages) {
+            let page: String = list_get(pages, j);
+            if !text_list_contains(names, page) { missing = list_push(missing, page); }
+            j = j + 1;
+        }
+        if list_len(missing) == 0 {
+            println(repo + ": SRC complete");
+            i = i + 1;
+            continue;
+        }
+        let value: String = line.value + " " + text_join(missing, " ");
+        let out: String = srcset_replace_src(text, value);
+        let w: Result[Void, String] = fs_write_file(fw, mk, out);
+        if w.is_err() {
+            println(repo + ": cannot write Makefile");
+            i = i + 1;
+            continue;
+        }
+        println(repo + ": added " + list_len(missing).to_string() + " -> " + text_join(missing, " "));
+        i = i + 1;
+    }
+    return 0;
+}
