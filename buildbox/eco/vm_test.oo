@@ -1,13 +1,13 @@
 // # Eco VM Test - Merkle System Image Assembler & Local VM Boot Validator
 //
-// Logline: Assembles a verified Merkle system image from all 102 compiled core subsystem binaries and validates the boot->init chain locally in pure .oo.
+// Logline: Assembles a verified Merkle system image from all 49 compiled core subsystem binaries and validates the boot->init chain locally in pure .oo.
 //
 // Setup: Needs ProcessCap for executing verified subsystem binaries and QEMU/KVM probes, FsReadCap to inspect /Projects/openOODA-*, and FsWriteCap to stage /tmp/openooda-vm-root.
 //
 // Beats:
-//   1. Verify and stage 16 kernel + 18 OS + 20 DE + 16 apps + 16 cloud + 16 agents binaries into /tmp/openooda-vm-root.
+//   1. Verify and stage 6 kernel + 9 OS + 8 DE + 10 apps + 8 cloud + 8 agents binaries into /tmp/openooda-vm-root.
 //   2. Invoke each staged binary's status and --self-test, Merkle-hash the set, and boot the initramfs in QEMU/KVM.
-//   3. Probe the live microVM serial log for the 102/102 verified result and emit a deterministic manifest.
+//   3. Probe the live microVM serial log for the 49/49 verified result and emit a deterministic manifest.
 
 import "eco/manifest_exec.oo";
 
@@ -124,24 +124,17 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     let _mk: Result[String, String] = sys_exec(sys, "mkdir", "-p", root + "/bin");
     println("== [eco-vm-test] assembling openOODA Merkle VM rootfs at " + root + " ==");
     let k_repos: List[String] = csv_list(
-        "oodrv-display-gop,oodrv-net,oodrv-nvme,oodrv-pci,oodrv-usb-hid,oodrv-virtio,ookernel-boot,ookernel-hal-arm64,ookerne" +
-            "l-hal-riscv,ookernel-hal-x86,ookernel-iommu,ookernel-ipc," +
-                "ookernel-mm,ookernel-ob,ookernel-sched,ookernel-unikernel");
+        "ooboot,oohal,ookernel,oodrv-storage,oodrv-io,oodrv-virt");
     let os_repos: List[String] = csv_list(
-        "ooaid,ooaudiod,oodevd,oodnsd,oofs-ext4,oofs-tmp,oohealthd,ooimage,ooinit,oologd,oonetd,oopolicyd,oopowerd,oorealm,oo" +
-            "session,oosvc-mgr,oosysbus,oovfs");
+        "ooinit,oovfs,oonetd,oosysbus,ooauthd,oohealthd,oocontainer,ooaid,oodevd");
     let de_repos: List[String] = csv_list(
-        "ooagent-hud,oobazaar,ooclip,oocockpit,oocomp,ooedit,oofiles,oolaunch,oolock,oopanel,ooportal,oosettings,ooshelf,oosh" +
-            "ot,ootaskmgr,ooterm,ootoast,ooview,oowall,oowm");
+        "oocomp,oopanel,ooportal,ooterm,oofiles,oosettings,oobazaar,ooagent-hud");
     let app_repos: List[String] = csv_list(
-        "oobrowser,oocanvas,oochat,oodaw,oodeck,oodocs,oogit-ui,oomail" +
-            ",oomedia,oonotes,oopaint,oopass,oopdf,oosheet,oostudio,oovm-ui");
+        "oobrowser,oostudio,oooffice,oocanvas,oomedia,ooflash,oodaw,oochat,oopass,oohostmon");
     let cloud_repos: List[String] = csv_list(
-        "oobilling,oobuild-fleet,oocdn,ooconsent,oodb-dist,oodeploy,oodns-cloud,oogateway,ooidentity,oomesh,ooqueue,ooregistr" +
-            "y-cloud,oorelay,oosched-cloud,oostore,ootelemetry");
+        "oomesh,oostore,oodeploy,oogateway,ooidentity,oodb-dist,ootelemetry,oobilling");
     let agent_repos: List[String] = csv_list(
-        "ooarchitect,oocoder,ooconsensus,ooeval,ooevolve,oofalsify,oogovern,ooherdr,oomemory,oooda-engine,ooplanner,ooquota,o" +
-            "oredteam,oorelease,ooreviewer,oorouter");
+        "ooooda,ooherdr,ooquota,oofalsify,ooconsensus,oocoder,oomemory,oogovern");
     let mut all: List[String] = list_new();
     all = vm_extend(all, k_repos);
     all = vm_extend(all, os_repos);
@@ -150,7 +143,7 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     all = vm_extend(all, cloud_repos);
     all = vm_extend(all, agent_repos);
     println("== [eco-vm-test] staging " + list_len(all).to_string() +
-        " core subsystems (16 kernel + 18 OS + 20 DE + 16 apps + 16 cloud + 16 agents) ==");
+        " core subsystems (6 kernel + 9 OS + 8 DE + 10 apps + 8 cloud + 8 agents) ==");
     let ok_k: Bool = vm_verify_layer(sys, fs_r, "openOODA-kernel", k_repos, root);
     let ok_o: Bool = vm_verify_layer(sys, fs_r, "openOODA-OS", os_repos, root);
     let ok_d: Bool = vm_verify_layer(sys, fs_r, "openOODA-DE", de_repos, root);
