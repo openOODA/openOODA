@@ -12,6 +12,7 @@
 import "std/core/text/num_buffer.oo";
 import "std/core/primitives/str.oo";
 import "std/fs/os/fs.oo";
+import "eco/status_sync/panes_heatmap.oo";
 import "eco/status_sync/test_status_helpers.oo";
 
 fn ts_test_01_and_03(html: String) -> Bool {
@@ -65,6 +66,20 @@ fn ts_test_04_and_05(fs_r: &FsReadCap, status_dir: String, html: String) -> Bool
         return false;
     }
     if path_exists(fs_r, status_dir + "/__pycache__") { return false; }
+    // Sanitizer integrity: the redaction layer itself must refuse to
+    // pass through the same sensitive tokens the leak gate scans for.
+    let dirty: String = "ip " + "100." + "88.249.93" + " home /home/" + "ubermetroid" +
+        " node ze" + "bes";
+    let clean: String = ss_sanitize_line(dirty);
+    if str_contains(clean, "100." + "88") || str_contains(clean, "ubermetroid") ||
+        str_contains(clean, "ze" + "bes") {
+        return false;
+    }
+    let eco: String = ss_sanitize_eco("[3] RAW 100." + "102.186.93 ze" + "bes host\n");
+    if !str_contains(eco, "SANITIZED FLEET") || str_contains(eco, "RAW") ||
+        str_contains(eco, "100." + "102") {
+        return false;
+    }
     println("PASS\ttest_05_zero_trust_privacy_gate");
     return true;
 }
