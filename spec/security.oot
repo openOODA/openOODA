@@ -1,0 +1,154 @@
+# Privacy Architecture
+File: openOODA/spec/security.oot
+
+This page is the normative privacy law for layers L0 through L7.
+Rule 1.5 in rules.oot points here. Three gates are installed today.
+Every other layer obeys the same sensor and sink split.
+
+## 1. CapReg64 sensor and sink split (L0)
+
+The register is one 64-bit word. Layout, from std/sec/capreg.oo and
+oodar/sec/cap/caps.h:
+
+- [63:48] epoch16. A stale epoch fails oo_cap_reg64_check.
+- [47:40] rights8. Eight rights. Values are listed in section 1.2.
+- [39:32] badge8. Scope badge. 0 is the root badge.
+- [31:0] caps32. One bit per explicit capability. Bits below are the
+  privacy split. oo_cap_bit_index is the authority for the numbers.
+
+Sensor bits capture a sample. They do not export it.
+
+- AudioCap is bit 20. PCM capture and playback.
+- CameraCap is bit 21. Camera frames.
+- HidCap is bit 23. HID reports and key state.
+- WindowCap is bit 24. Wayland surfaces.
+- FrameCap is bit 25. DMA-BUF and shared-memory frames.
+
+Sink bits move data out of the capturing process.
+
+- NetCap is bit 0. Network export.
+- MetricsCap is bit 11. Process counters and telemetry statistics.
+- EnvCap is bit 28. Process environment. The allowed namespace is OODA_*.
+
+A page that holds one sensor bit and one sink bit must call
+oo_cap_reg64_check before the sample moves. A failed check returns
+nothing. Attenuation (oo_cap_reg64_attenuate) may only drop rights
+and capability bits. A child cannot gain a sensor or a sink the
+parent does not hold.
+
+## 1.2 rights8 privacy bits
+
+rights8 sits at [47:40]. The mask is 8 bits (0..255).
+
+- 0x01 READ
+- 0x02 WRITE
+- 0x04 EXEC
+- 0x08 DELEGATE
+- 0x10 ATTENUATE
+- 0x20 REVOKE
+- 0x40 (decimal 64) RIGHT_PRIVACY_REDACT
+- 0x80 (decimal 128) RIGHT_ZERO_TELEMETRY
+
+The C macros at those two values are OODAR_REG64_RIGHT_SEAL (0x40)
+and OODAR_REG64_RIGHT_IMMUTABLE (0x80). This privacy law reads the
+same bits as follows.
+
+RIGHT_PRIVACY_REDACT (64): a sensor sample may cross a process
+boundary only after redaction. A remote capture of a blackout
+surface is a redacted capture (section 2).
+
+RIGHT_ZERO_TELEMETRY (128): the register forbids telemetry export
+for its whole life. A metrics or network sink must not carry a
+sensor sample, a key, or an analytics endpoint.
+
+oo_cap_reg64_check requires every requested rights bit to be set.
+A caller that omits bit 64 or bit 128 does not receive that right.
+
+## 2. oocomp surface redaction and seat guard (L4)
+
+Source: openOODA-DE/oocomp/scanout/net_stream_priv.oo.
+Seat model: openOODA-DE/oocomp/wl/obj/seat.oo.
+
+PRIVACY_BLACKOUT is surface flag bit 16.
+oocomp_privacy_redact_surface(flags, remote) returns:
+
+- -1 when flags < 0.
+- 0 when remote is true and (flags & 16) != 0. The frame is redacted
+  and is not placed on a remote stream or a screen share.
+- 1 otherwise. Local scanout stays visible. A blackout surface on
+  the local display is not blanked by this function.
+
+oocomp_seat_privacy_gate(focused, caller, capture) returns:
+
+- -22 when either surface id is not positive.
+- -13 when caller != focused. An unfocused surface must not read
+  wl_seat input or the clipboard.
+- 2 when capture is active and the caller is the focused surface.
+  Return 2 arms the privacy LED.
+- 1 when the caller is focused and capture is inactive.
+
+wl_seat_set_focus writes pointer focus only when seat bit 0 is set,
+and keyboard focus only when seat bit 1 is set. A negative target
+fails closed and leaves the previous focus in place.
+
+oocomp_net_stream_gated admits a stream only when all of these hold:
+
+- The register passes oo_cap_reg64_check for NetCap, FrameCap, and
+  WindowCap together.
+- Tile size is positive and the rate is in 60..240.
+- The seat gate returns a non-negative code.
+- Surface redaction returns a non-negative code.
+
+A refused stream has admitted=false and a zero seal. The remote
+vis_mode is 0 when the surface carries PRIVACY_BLACKOUT.
+
+## 3. oohat Blue Hat and Black Hat (L7)
+
+Blue Hat is badge 13. oohat_blue_audit_page is the sensor and
+exfiltration guard. The page increments wrong_caps when all three
+are true:
+
+- The source contains &CameraCap or &AudioCap.
+- The source contains &NetCap.
+- The source does not contain oo_cap_reg64_check.
+
+wrong_caps must be 0 or the Blue quorum bit stays 0. A kernel path
+that holds &NetCap or &ProcessCap is a separate wrong-cap finding.
+
+Black Hat is badge 15. oohat_black_data_vectors is the
+zero-telemetry and PII-leak check. The secret count increments when
+the source contains any of these needles:
+
+- PRIVATE_KEY, api_key, secret_key, or the text "password =".
+- google-analytics, sentry.io, mixpanel.com, or telemetry_upload.
+
+A non-zero secret count is a refusal (exit 2). The cycle does not
+reach quorum_mask=255 while that count is positive.
+
+## 4. Duties of L0 through L7
+
+Each layer keeps the sensor bits off the sink bits unless section 1
+admits the pair.
+
+- L0 (@openOODA-core): mint CapReg64. oo_cap_bit_index and
+  oo_cap_reg64_check are the only bit authority.
+- L1 (@openOODA-kernel): do not place NetCap or ProcessCap on a
+  kernel page. A driver takes one sensor bit, not a sink.
+- L2 (@openOODA-OS): a daemon that holds AudioCap does not open
+  NetCap on the same page without oo_cap_reg64_check.
+- L3 (@openOODA-tools): EnvCap reads stay inside the OODA_* names.
+  Do not copy the environment into a network payload.
+- L4 (@openOODA-DE): run the blackout redaction and the wl_seat
+  focus guard in section 2 before any remote frame leaves.
+- L5 (@openOODA-apps): accept only an attenuated child register.
+- L6 (@openOODA-cloud): carry frames that section 2 already redacted.
+  Do not reattach a PRIVACY_BLACKOUT surface on the mesh.
+- L7 (@openOODA-agents): Blue Hat and Black Hat in section 3 veto
+  the cycle when a guard fails.
+
+## 5. Fail closed
+
+A missing register check, a remote blackout surface, an unfocused
+seat read, a telemetry needle, or a key needle each stop the
+operation. The refused path exports nothing. No ambient sensor is
+valid. No partial frame is a success.
