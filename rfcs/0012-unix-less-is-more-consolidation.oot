@@ -78,26 +78,16 @@ aliases.
    - `std/fs/process/process.oo` exposes `pub fn sys_argv0(p: &ProcessCap) -> String`
      and `pub fn process_argv0(p: &ProcessCap) -> String`.
 
-### 2.2 Multi-Call Persona Dispatch Contract
+### 2.2 Clean Subcommand Dispatch Contract (Zero `--persona` Flags)
 
-A persona is a named mode of a consolidated binary. It is selected by a token
-on the command line. It is never a file on disk.
+Consolidated capabilities are exposed as clean subcommands of the canonical binary. `--persona` and `--list-personas` flags are forbidden to prevent naming confusion.
 
-1. **Selection precedence** (exactly one persona per invocation; the first
-   match wins, the selector is consumed, and the persona CLI receives only its
-   own arguments):
-   1. The explicit selector flag `--persona <name>` or `--mode <name>`.
-   2. A leading persona subcommand token (for example `oocurl wget URL`).
-   3. The invoked basename from `sys_argv0`, used as a fallback only.
-   4. The default persona of the binary.
-2. **Flag surface**: every consolidated multi-call binary accepts
-   `--persona <name>`, `--mode <name>` (an accepted synonym of `--persona`),
-   and `--list-personas` (with `--personas` accepted as a synonym) which
-   prints every persona that binary serves and exits.
-3. **Fail-closed selector handling**:
-   - An unknown persona name is refused with exit code 2.
-   - A repeated selector is refused with exit code 2.
-   - A selector with no name is refused with exit code 2.
+1. **Selection precedence**:
+   1. A clean subcommand token (for example `oohash sha256`, `ooarchive tar`, `ooswarm route`, `oobench rank`).
+   2. The default mode of the binary.
+2. **Flag surface**: `--persona`, `--persona=`, and `--list-personas` are retired across the ecosystem. Every binary uses its single canonical name and subcommands.
+3. **Fail-closed argument handling**:
+   - Any unknown subcommand or flag is refused with exit code 2.
    - A refused selector never falls through to the default persona.
 4. **Persona tables** (persona names, not installed aliases):
    - **HTTP/Transfer (`oocurl`)**: serves `oocurl`, `curl`, `oowget`, `wget`,
