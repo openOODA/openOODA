@@ -155,9 +155,9 @@ program without `ProcessCap` cannot inspect its invocation vector and receives
 names without directory traversal ambiguity.
 
 Because the invocation name is a fallback rather than the selector, a caller
-that needs a guaranteed persona must pass `--persona` or a leading persona
-subcommand. A caller that trusts only the invocation name inherits whatever
-name the process was started under.
+that needs a guaranteed persona must pass a leading persona subcommand; the
+retired `--persona` flag surface is refused fail-closed. A caller that trusts
+only the invocation name inherits whatever name the process was started under.
 
 The Zero Symlinks and Hardlinks Law (`rules.oot` section 1.25) holds for the
 consolidated binaries: an installed persona is a token, and the installed file
@@ -172,15 +172,15 @@ repositories happens at compile time through `import "std/..."` from
 2. `std/qa/probe_cap_process.oo` verifies `sys_argv0(p)` and `process_argv0(p)`
    through the self-hosted `oodac` compiler.
 3. Every multi-call binary must pass RFC 0011 parity tests for each of its
-   personas, invoked by the explicit `--persona` selector and by the leading
-   persona subcommand, before the absorbed repository is archived.
+   personas, invoked by the leading persona subcommand, before the absorbed
+   repository is archived.
 4. Every consolidated repository must run a link-law gate that fails closed
    when the repository tree, `bin/`, `dist/`, or `.ooda-cache/` holds a
    symlink, a file with a link count above 1, or a Makefile recipe that
    creates a link. The gate must not match its own source text.
-5. A consolidated binary must answer `--list-personas` with the full persona
-   table, and must refuse an unknown persona, a repeated selector, and a
-   selector with no name, each with exit code 2.
+5. A consolidated binary must refuse the retired `--persona` / `--list-personas`
+   flag surface, an unknown persona, a repeated selector, and a selector with
+   no name, each with exit code 2.
 
 ## 5. Rollout
 
@@ -188,9 +188,8 @@ repositories happens at compile time through `import "std/..."` from
    `oodar` (`v4.0.90`), `oodac` (`v0.11.63`), and `std` (`v1.0.86`); complete
    all 18 `openOODA-cloud` capability-backed manifests (`377/377 = 100.0%`
    USABLE across all 9 organizations); purge all `.ooda-cache/` build residue.
-2. **Phase 2 (Multi-Call Persona Dispatch & Link Removal)**: Add the
-   `--persona` / `--mode` selector tables and the leading persona subcommand
-   tables to the 64 canonical `openOODA-tools` binaries and 8 canonical
-   `openOODA-cloud` engines, verify persona parity, remove every persona
-   symlink and the Makefile recipes that create them, land the link-law gate
-   in each consolidated repository, and archive absorbed repos.
+2. **Phase 2 (Multi-Call Persona Dispatch & Link Removal)**: Add the leading
+   persona subcommand tables to the 64 canonical `openOODA-tools` binaries and
+   8 canonical `openOODA-cloud` engines, verify persona parity, remove every
+   persona symlink and the Makefile recipes that create them, land the
+   link-law gate in each consolidated repository, and archive absorbed repos.
