@@ -46,8 +46,10 @@ fn rv_mask(text: String) -> Int {
 
 fn rv_mcode(p: &ProcessCap, fr: &FsReadCap, repo: String, model: String, prompt: String) -> String {
     if !fs_path_exists(fr, prompt) { return "missing"; }
-    let scope: String = "Review only the most recent change. Report defects on the Standards axis and the Spec axis. Do not modify any file.";
-    let r: Result[String, String] = sys_exec(p, "timeout", "1800", "mcode", "exec", "--cwd", repo, "--model", model, "--mode", "lightweight", "--file", prompt, scope);
+    let scope: String = "Review only the most recent change. Report defects on the Standards axis and the Spec axis. Do not m" +
+        "odify any file.";
+    let r: Result[String, String] = sys_exec(p, "timeout", "1800", "mcode", "exec", "--cwd", repo, "--model", model, "--mode",
+        "lightweight", "--file", prompt, scope);
     let low: String = to_lowercase(rv_text(r));
     if rv_hit(low) { return "findings"; }
     if match r { Ok(_) => false, Err(_) => true } { return "mcode-fail"; }
@@ -73,7 +75,8 @@ fn rv_dirty(p: &ProcessCap, repo: String) -> Bool {
     return str_len(str_replace(rv_text(r), "\n", "")) > 0;
 }
 
-pub fn rv_one(p: &ProcessCap, fr: &FsReadCap, repo: String, model: String, prompt: String, bin: String, scratch: String) -> String {
+pub fn rv_one(p: &ProcessCap, fr: &FsReadCap, repo: String, model: String, prompt: String, bin: String,
+    scratch: String) -> String {
     let mut reasons: String = "";
     let m: String = rv_mcode(p, fr, repo, model, prompt);
     if m != "clean" { reasons = reasons + m + ","; }
@@ -82,9 +85,11 @@ pub fn rv_one(p: &ProcessCap, fr: &FsReadCap, repo: String, model: String, promp
     if rv_dirty(p, repo) { reasons = reasons + "dirty,"; }
     let fail: Bool = str_contains(reasons, "findings") || str_contains(reasons, "hat-refuse");
     let fail2: Bool = str_contains(reasons, "hat-quorum") || str_contains(reasons, "hat-fail");
-    let soft: Bool = str_contains(reasons, "missing") || str_contains(reasons, "hat-absent") || str_contains(reasons, "mcode-fail");
+    let soft: Bool = str_contains(reasons, "missing") || str_contains(reasons, "hat-absent") || str_contains(reasons,
+        "mcode-fail");
     let mut verdict: String = "PASS";
-    if fail || fail2 { verdict = "FAIL"; } else if soft { verdict = "INCONCLUSIVE"; }
+    if fail || fail2 { verdict = "FAIL";
+    } else if soft { verdict = "INCONCLUSIVE"; }
     if str_contains(reasons, "dirty") { verdict = "INCONCLUSIVE"; }
     return verdict + "\t" + reasons;
 }

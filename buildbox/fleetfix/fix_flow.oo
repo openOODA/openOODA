@@ -24,7 +24,8 @@ import "ci/makefile.oo";
 
 // Clone the repository of one tool into the work directory. The answer holds
 // the path of the clone, and it is empty when the clone failed.
-pub fn ff_clone(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String) -> String {
+pub fn ff_clone(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String,
+    tool: String) -> String {
     let dest: String = work + "/" + tool;
     if path_exists(fs_r, dest) {
         let _d: Result[Void, String] = fs_remove_tree(fs_w, fs_r, dest);
@@ -81,7 +82,8 @@ fn ff_checkout(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, 
 //
 // The push replaces the branch, because the branch is ours and the repair
 // is the whole of it. The default branch is never replaced.
-fn ff_push(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, branch: String, push: String) -> Bool {
+fn ff_push(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, branch: String,
+    push: String) -> Bool {
     let mut a: List[String] = list_new();
     a = list_push(a, "-C");
     a = list_push(a, repo);
@@ -144,16 +146,23 @@ fn ff_merge_makefile(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cach
 // put back together, and the workflows of the gate are written again out of
 // the generator of the contract. The answer holds the number of the files
 // that were put back.
-pub fn ff_fix_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, tool: String, branch: String, src: String, push: String, rows: List[String]) -> Int {
+type BagFfFixBranch = struct {
+    src: String,
+    push: String,
+    rows: List[String],
+};
+
+pub fn ff_fix_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, tool: String,
+    branch: String, bag: BagFfFixBranch) -> Int {
     if !ff_checkout(sys, fs_r, cache, repo, branch) { return 0; }
-    let old: String = ff_ref_version(sys, fs_r, cache, repo, src);
+    let old: String = ff_ref_version(sys, fs_r, cache, repo, bag.src);
     let new: String = ff_tree_version(fs_r, repo);
-    let n: Int = ff_restore(sys, fs_r, fs_w, cache, repo, src, "HEAD", old, new);
-    let _m: Bool = ff_merge_makefile(sys, fs_r, fs_w, cache, repo, src);
-    let upstream: String = ff_upstream(fs_r, rows, tool);
+    let n: Int = ff_restore(sys, fs_r, fs_w, cache, repo, bag.src, "HEAD", BagFfRestore { old: old, fresh: new });
+    let _m: Bool = ff_merge_makefile(sys, fs_r, fs_w, cache, repo, bag.src);
+    let upstream: String = ff_upstream(fs_r, bag.rows, tool);
     if ff_has_contract(fs_r, repo) {
         let _w: Bool = ff_write_workflows(fs_r, fs_w, repo, tool, upstream);
     }
-    if !ff_push(sys, fs_r, fs_w, cache, repo, branch, push) { return n; }
+    if !ff_push(sys, fs_r, fs_w, cache, repo, branch, bag.push) { return n; }
     return n + 1;
 }

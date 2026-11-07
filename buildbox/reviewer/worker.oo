@@ -74,7 +74,8 @@ pub fn sp_parity_detail(txt: String) -> String {
     return last;
 }
 
-pub fn sp_run_idlescreen(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, root: String, cyc: String, det_to: String) -> Int {
+pub fn sp_run_idlescreen(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, root: String, cyc: String,
+    det_to: String) -> Int {
     let idle: String = "/Projects/idlescreen/idlescreen";
     let rdir: String = root + "/results/c" + cyc;
     let _m: Result[Void, String] = fs_mkdir_p(fs_w, rdir);
@@ -89,10 +90,12 @@ pub fn sp_run_idlescreen(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     let ptxt: String = match pr { Ok(s) => s, Err(e) => e };
     let prc: Int = if pr.is_ok() { 0 } else { 1 };
     let _wp: Result[Void, String] = fs_write_file(fs_w, plog, ptxt);
-    let _wt: Result[Void, String] = fs_write_file(fs_w, rdir + "/idle-parity.txt", "gate=parity rc=" + int_to_str(prc) + "\n" + eco_tail_lines(ptxt, 12));
+    let _wt: Result[Void, String] = fs_write_file(fs_w, rdir + "/idle-parity.txt", "gate=parity rc=" + int_to_str(prc) + "\n" +
+        eco_tail_lines(ptxt, 12));
     if prc == 0 && str_contains(ptxt, "PASS: scene parity") {
         let _wv: Result[Void, String] = fs_write_file(fs_w, rdir + "/idle-parity.verdict", "PASS\n");
-        let _l1: Int = sp_log(sys, fs_r, fs_w, root, "IDLE parity PASS (" + int_to_str(sp_count_substr(ptxt, "bit-exact parity")) + " scenes)");
+        let _l1: Int = sp_log(sys, fs_r, fs_w, root, "IDLE parity PASS (" + int_to_str(sp_count_substr(ptxt,
+            "bit-exact parity")) + " scenes)");
     } else {
         let _wv: Result[Void, String] = fs_write_file(fs_w, rdir + "/idle-parity.verdict", "FAIL\n");
         let _l1: Int = sp_log(sys, fs_r, fs_w, root, "IDLE parity FAIL rc=" + int_to_str(prc) + " — see " + plog);
@@ -100,14 +103,16 @@ pub fn sp_run_idlescreen(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
     return sp_run_idlescreen_det(sys, fs_r, fs_w, root, cyc, det_to, idle, rdir);
 }
 
-pub fn sp_run_idlescreen_det(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, root: String, cyc: String, det_to: String, idle: String, rdir: String) -> Int {
+pub fn sp_run_idlescreen_det(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, root: String, cyc: String, det_to: String,
+    idle: String, rdir: String) -> Int {
     let dlog: String = root + "/logs/c" + cyc + "-idle-det.log";
     let dr: Result[String, String] = sys_exec(sys, "timeout", det_to, "make", "-C", idle, "det");
     let dtxt: String = match dr { Ok(s) => s, Err(e) => e };
     let drc: Int = if dr.is_ok() { 0 } else { 1 };
     let _wd: Result[Void, String] = fs_write_file(fs_w, dlog, dtxt);
     let dsha: String = sp_sha_of(dtxt);
-    let _wt: Result[Void, String] = fs_write_file(fs_w, rdir + "/idle-det.txt", "gate=det rc=" + int_to_str(drc) + " sha256=" + dsha + "\n" + eco_tail_lines(dtxt, 3));
+    let _wt: Result[Void, String] = fs_write_file(fs_w, rdir + "/idle-det.txt", "gate=det rc=" + int_to_str(drc) + " sha256=" +
+        dsha + "\n" + eco_tail_lines(dtxt, 3));
     if drc == 0 && str_contains(dtxt, "PASS: deterministic build") {
         let _wv: Result[Void, String] = fs_write_file(fs_w, rdir + "/idle-det.verdict", "PASS " + dsha + "\n");
         let sha16: String = if chars_len(dsha) >= 16 { str_slice(dsha, 0, 16) } else { dsha };
@@ -119,7 +124,14 @@ pub fn sp_run_idlescreen_det(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteC
     return 0;
 }
 
-pub fn sp_tool_worker(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, root: String, d: String, name: String, cyc: String, det_to: String, par_to: String, oodac: String) -> Int {
+type BagSpToolWorker = struct {
+    det_to: String,
+    par_to: String,
+    oodac: String,
+};
+
+pub fn sp_tool_worker(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, root: String, d: String, name: String, cyc: String,
+    bag: BagSpToolWorker) -> Int {
     let rdir: String = root + "/results/c" + cyc;
     let _m: Result[Void, String] = fs_mkdir_p(fs_w, rdir);
     let st_r: Result[String, String] = sys_exec(sys, "git", "-C", d, "status", "--porcelain");
@@ -127,26 +139,37 @@ pub fn sp_tool_worker(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, roo
     let mk: String = eco_read_trimmed(fs_r, d + "/Makefile");
     if str_contains("\n" + mk, "\ndet:") {
         let dlog: String = root + "/logs/c" + cyc + "-" + name + ".det.log";
-        let dr: Result[String, String] = sys_exec(sys, "timeout", det_to, "make", "-C", d, "det", "OODA_COMPILER=" + oodac);
+        let dr: Result[String, String] = sys_exec(sys, "timeout", bag.det_to, "make", "-C", d, "det", "OODA_COMPILER=" +
+            bag.oodac);
         let dtxt: String = match dr { Ok(s) => s, Err(e) => e };
         let _wd: Result[Void, String] = fs_write_file(fs_w, dlog, dtxt);
         let dsha: String = sp_sha_of(dtxt);
         let v_det: String = if dr.is_ok() && str_contains(dtxt, "PASS: deterministic") { "PASS" } else { "FAIL" };
-        let _w1: Result[Void, String] = fs_write_file(fs_w, rdir + "/" + name + ".det", v_det + " " + dsha + " dirty=" + dirty + "\n");
-        if v_det != "PASS" { let _cp: Result[Void, String] = fs_write_file(fs_w, root + "/logs/FAIL-c" + cyc + "-" + name + ".det.log", dtxt); }
+        let _w1: Result[Void, String] = fs_write_file(fs_w, rdir + "/" + name + ".det", v_det + " " + dsha + " dirty=" +
+            dirty + "\n");
+        if v_det != "PASS" { let _cp: Result[Void, String] = fs_write_file(fs_w, root + "/logs/FAIL-c" + cyc + "-" + name +
+            ".det.log", dtxt); }
     } else {
         let _w1: Result[Void, String] = fs_write_file(fs_w, rdir + "/" + name + ".det", "SKIP - - dirty=" + dirty + "\n");
     }
     if str_contains("\n" + mk, "\nparity:") {
         let plog: String = root + "/logs/c" + cyc + "-" + name + ".par.log";
-        let pr: Result[String, String] = sys_exec(sys, "timeout", par_to, "make", "-C", d, "parity", "OODA_COMPILER=" + oodac);
+        let pr: Result[String, String] = sys_exec(sys, "timeout", bag.par_to, "make", "-C", d, "parity", "OODA_COMPILER=" +
+            bag.oodac);
         let ptxt: String = match pr { Ok(s) => s, Err(e) => e };
         let _wp: Result[Void, String] = fs_write_file(fs_w, plog, ptxt);
         let det_s: String = sp_parity_detail(ptxt);
-        let v_par: String = if str_contains(ptxt, "no upstream in qa/parity/cases.oot") || str_contains(ptxt, "SKIP\tparity") || str_contains(ptxt, "SKIP:") || (str_contains(ptxt, "upstream tool") && str_contains(ptxt, "not installed")) || (str_contains(ptxt, "127 against") && str_contains(ptxt, "match=0") && str_contains(ptxt, "differ=0")) { "SKIP-NOUPSTREAM" } else if str_contains(ptxt, "no match case") && str_contains(ptxt, "differ=0") { "SKIP-NOMATCH" } else if pr.is_ok() && (str_contains(ptxt, "fail=0\n") || str_contains(ptxt, "fail=0 ") || str_ends_with(text_trim(ptxt), "fail=0")) { "PASS" } else { "FAIL" };
+        let v_par: String = if str_contains(ptxt, "no upstream in qa/parity/cases.oot") || str_contains(ptxt,
+            "SKIP\tparity") || str_contains(ptxt, "SKIP:") || (str_contains(ptxt, "upstream tool") && str_contains(ptxt,
+                "not installed")) || (str_contains(ptxt, "127 against") && str_contains(ptxt, "match=0") && str_contains(ptxt,
+                    "differ=0")) { "SKIP-NOUPSTREAM" } else if str_contains(ptxt, "no match case") && str_contains(ptxt,
+                        "differ=0") { "SKIP-NOMATCH" } else if pr.is_ok() && (str_contains(ptxt, "fail=0\n") || str_contains(
+                            ptxt, "fail=0 ") || str_ends_with(text_trim(ptxt), "fail=0")) { "PASS" } else { "FAIL" };
         let d_out: String = if det_s != "" { det_s } else { "rc=" + (if pr.is_ok() { "0" } else { "1" }) };
-        let _w2: Result[Void, String] = fs_write_file(fs_w, rdir + "/" + name + ".par", v_par + " " + d_out + " dirty=" + dirty + "\n");
-        if v_par == "FAIL" { let _cp2: Result[Void, String] = fs_write_file(fs_w, root + "/logs/FAIL-c" + cyc + "-" + name + ".par.log", ptxt); }
+        let _w2: Result[Void, String] = fs_write_file(fs_w, rdir + "/" + name + ".par", v_par + " " + d_out + " dirty=" +
+            dirty + "\n");
+        if v_par == "FAIL" { let _cp2: Result[Void, String] = fs_write_file(fs_w, root + "/logs/FAIL-c" + cyc + "-" + name +
+            ".par.log", ptxt); }
     } else {
         let _w2: Result[Void, String] = fs_write_file(fs_w, rdir + "/" + name + ".par", "SKIP - - dirty=" + dirty + "\n");
     }

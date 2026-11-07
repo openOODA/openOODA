@@ -50,7 +50,8 @@ fn rebase_dup_imports(fr: &FsReadCap, path: String) -> String {
         let line: String = list_get(sorted, j);
         let mut count: Int = 0;
         let mut k: Int = j;
-        while k < list_len(sorted) && list_get(sorted, k) == line { count = count + 1; k = k + 1; }
+        while k < list_len(sorted) && list_get(sorted, k) == line { count = count + 1;
+        k = k + 1; }
         if count > 1 && !text_list_contains(dups, line) { dups = list_push(dups, line); }
         j = j + 1;
     }
@@ -87,24 +88,29 @@ fn rebase_loop(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, lo
     while true {
         step = step + 1;
         if step > 6 { return rebase_emit(fw, acc, path, "  ABORT: too many rebase steps\n"); }
-        let rb: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "rebase", "origin/" + br, "", "", "", "", "", ""));
+        let rb: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "rebase", "origin/" + br, "", "", "", "", BagCmdGit { t7: "",
+            t8: "" }));
         if rb.code == 0 { return rebase_emit(fw, acc, path, "  rebased cleanly\n"); }
-        let head: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "rev-parse", "--verify", "REBASE_HEAD", "", "", "", "", ""));
+        let head: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "rev-parse", "--verify", "REBASE_HEAD", "", "", "",
+            BagCmdGit { t7: "", t8: "" }));
         if head.code != 0 {
             acc = rebase_emit(fw, acc, path, "  REBASE ERROR (not a conflict):\n");
             return rebase_emit(fw, acc, path, text_tail_lines(rb.output, 5));
         }
-        let diff_argv: List[String] = cmd_git(repo, "diff", "--name-only", "--diff-filter=U", "", "", "", "", "");
+        let diff_argv: List[String] = cmd_git(repo, "diff", "--name-only", "--diff-filter=U", "", "", "", BagCmdGit { t7: "",
+            t8: "" });
         let conflicted: String = rebase_out(p, env_argv, diff_argv);
         let names: List[String] = text_lines(conflicted);
         let mut i: Int = 0;
         while i < list_len(names) {
             let f: String = list_get(names, i);
             acc = rebase_emit(fw, acc, path, "  conflict: " + f + " -> review version\n");
-            let _co: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "checkout", "--theirs", "--", f, "", "", "", ""));
+            let _co: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "checkout", "--theirs", "--", f, "", "",
+                BagCmdGit { t7: "", t8: "" }));
             i = i + 1;
         }
-        let cached: String = rebase_out(p, env_argv, cmd_git(repo, "diff", "--cached", "--name-only", "", "", "", "", ""));
+        let cached: String = rebase_out(p, env_argv, cmd_git(repo, "diff", "--cached", "--name-only", "", "", "",
+            BagCmdGit { t7: "", t8: "" }));
         let files: List[String] = text_lines(cached);
         let mut j: Int = 0;
         while j < list_len(files) {
@@ -119,9 +125,10 @@ fn rebase_loop(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, lo
             }
             j = j + 1;
         }
-        let _add: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "add", "-A", "", "", "", "", "", ""));
+        let _add: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "add", "-A", "", "", "", "", BagCmdGit { t7: "", t8: "" }));
         let editor: List[String] = cmd_env("HOME=" + audit_home(env), "GIT_EDITOR=true", "", "", "", "");
-        let _cont: ExecRun = rebase_run(p, editor, cmd_git(repo, "rebase", "--continue", "", "", "", "", "", ""));
+        let _cont: ExecRun = rebase_run(p, editor, cmd_git(repo, "rebase", "--continue", "", "", "", "", BagCmdGit { t7: "",
+            t8: "" }));
     }
 }
 
@@ -129,19 +136,25 @@ fn rebase_repo(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, lo
     repo: String) -> String {
     let mut acc: String = log;
     let env_argv: List[String] = cmd_env("HOME=" + audit_home(env), "", "", "", "", "");
-    let br: String = rebase_out(p, env_argv, cmd_git(repo, "symbolic-ref", "--short", "HEAD", "", "", "", "", ""));
+    let br: String = rebase_out(p, env_argv, cmd_git(repo, "symbolic-ref", "--short", "HEAD", "", "", "", BagCmdGit { t7: "",
+        t8: "" }));
     acc = rebase_emit(fw, acc, path, "===== " + repo + " (" + br + ") =====\n");
-    let _fetch: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "fetch", "origin", br, "-q", "", "", "", ""));
-    let before: String = rebase_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD", "", "", "", "", "", ""));
+    let _fetch: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "fetch", "origin", br, "-q", "", "", BagCmdGit { t7: "",
+        t8: "" }));
+    let before: String = rebase_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD", "", "", "", "", BagCmdGit { t7: "",
+        t8: "" }));
     acc = rebase_loop(p, fr, fw, env, acc, path, repo, br);
-    let after: String = rebase_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD", "", "", "", "", "", ""));
+    let after: String = rebase_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD", "", "", "", "", BagCmdGit { t7: "",
+        t8: "" }));
     if before == after {
         acc = rebase_emit(fw, acc, path, "  NO CHANGE (already up to date or rebase skipped)\n");
     } else {
-        let head: String = rebase_out(p, env_argv, cmd_git(repo, "log", "--oneline", "-1", "", "", "", "", ""));
+        let head: String = rebase_out(p, env_argv, cmd_git(repo, "log", "--oneline", "-1", "", "", "", BagCmdGit { t7: "",
+            t8: "" }));
         acc = rebase_emit(fw, acc, path, "  new head: " + head + "\n");
     }
-    let status: String = rebase_out(p, env_argv, cmd_git(repo, "status", "--porcelain", "", "", "", "", "", ""));
+    let status: String = rebase_out(p, env_argv, cmd_git(repo, "status", "--porcelain", "", "", "", "", BagCmdGit { t7: "",
+        t8: "" }));
     acc = rebase_emit(fw, acc, path, text_head_lines(status, 5));
     return rebase_emit(fw, acc, path, "\n");
 }

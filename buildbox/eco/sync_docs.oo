@@ -45,7 +45,8 @@ fn sync_verify_profile(fs_r: &FsReadCap, org: String) -> Bool {
         }
     }
     if missing == 0 {
-        println("  PASS: " + org + "/.github/profile/README.md lists all " + int_to_str(count) + "/" + int_to_str(count) + " repositories");
+        println("  PASS: " + org + "/.github/profile/README.md lists all " + int_to_str(count) + "/" + int_to_str(count) +
+            " repositories");
         return true;
     }
     if (org == "openOODA-cloud" || org == "openOODA-agents") && count < 16 {
@@ -60,7 +61,8 @@ fn sync_push_org_profile(sys: &ProcessCap, org: String) -> Bool {
     let st: Result[String, String] = sys_exec(sys, "git", "-C", gh_dir, "status", "--porcelain");
     if st.is_err() || text_trim(st.val) == "" { return true; }
     let _a: Result[String, String] = sys_exec(sys, "git", "-C", gh_dir, "add", "profile/README.md");
-    let _c: Result[String, String] = sys_exec(sys, "git", "-C", gh_dir, "commit", "-q", "-m", "docs(profile): sync organization profile README");
+    let _c: Result[String, String] = sys_exec(sys, "git", "-C", gh_dir, "commit", "-q", "-m",
+        "docs(profile): sync organization profile README");
     let _p1: Result[String, String] = sys_exec(sys, "git", "-C", gh_dir, "push", "-q", "origin", "HEAD:refs/heads/main");
     let _p2: Result[String, String] = sys_exec(sys, "git", "-C", gh_dir, "push", "-q", "origin", "HEAD:refs/heads/master");
     return true;
@@ -76,7 +78,8 @@ fn sync_verify_website(sys: &ProcessCap, fs_r: &FsReadCap) -> Bool {
         i = i + 1;
         let a: List[String] = list_push(list_push(list_new(), "-c"), "cd " + web_dir + " && node " + t);
         let r: Result[Int, String] = sys_exec_wait(sys, "bash", a);
-        if r.is_err() || r.val != 0 { println("  FAIL: website test " + t); return false; }
+        if r.is_err() || r.val != 0 { println("  FAIL: website test " + t);
+        return false; }
     }
     let oodac: String = "/Projects/openOODA-core/oodac/bin/oodac";
     let walked: List[String] = fs_walk(fs_r, web_dir);
@@ -85,9 +88,12 @@ fn sync_verify_website(sys: &ProcessCap, fs_r: &FsReadCap) -> Bool {
         let p: String = list_get(walked, j);
         j = j + 1;
         if !str_ends_with(p, ".oo") || str_contains(p, "/.git/") { continue; }
-        let ca: List[String] = list_push(list_push(list_new(), "-c"), "cd " + web_dir + " && OODA_NO_JAIL=1 OODA_FS_READDIR=/Projects OODA_FS_WRITEDIR=/Projects:/tmp " + oodac + " check " + p + " >/dev/null");
+        let ca: List[String] = list_push(list_push(list_new(), "-c"), "cd " + web_dir +
+            " && OODA_NO_JAIL=1 OODA_FS_READDIR=/Projects OODA_FS_WRITEDIR=/Projects:/tmp " + oodac + " check " + p +
+                " >/dev/null");
         let cr: Result[Int, String] = sys_exec_wait(sys, "bash", ca);
-        if cr.is_err() || cr.val != 0 { println("  FAIL: oodac check failed on " + p); return false; }
+        if cr.is_err() || cr.val != 0 { println("  FAIL: oodac check failed on " + p);
+        return false; }
     }
     println("  PASS: oodac check holds on all website .oo anchor files");
     return true;
@@ -97,13 +103,16 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     let do_push: Bool = list_len(args) > 0 && list_get(args, 0) == "--push";
     println("== [eco-sync-docs] verifying organization profile READMEs ==");
     let mut ok: Bool = true;
-    let orgs: List[String] = list_push(list_push(list_push(list_push(list_push(list_push(list_push(list_push(list_push(list_new(),
-        "openOODA"), "openOODA-core"), "openOODA-kernel"), "openOODA-OS"), "openOODA-DE"), "openOODA-tools"), "openOODA-apps"), "openOODA-cloud"), "openOODA-agents");
+    let orgs: List[String] = list_push(list_push(list_push(list_push(list_push(list_push(list_push(list_push(list_push(list_new(
+        ),
+        "openOODA"), "openOODA-core"), "openOODA-kernel"), "openOODA-OS"), "openOODA-DE"), "openOODA-tools"), "openOODA-apps"),
+            "openOODA-cloud"), "openOODA-agents");
     let mut i: Int = 0;
     while i < list_len(orgs) {
         let org: String = list_get(orgs, i);
         i = i + 1;
-        if (org == "openOODA-apps" || org == "openOODA-cloud" || org == "openOODA-agents") && !path_exists(fs_r, "/Projects/" + org + "/.github/profile/README.md") { continue; }
+        if (org == "openOODA-apps" || org == "openOODA-cloud" || org == "openOODA-agents") && !path_exists(fs_r, "/Projects/" +
+            org + "/.github/profile/README.md") { continue; }
         if !sync_verify_profile(fs_r, org) { ok = false; }
         if do_push { let _p: Bool = sync_push_org_profile(sys, org); }
     }

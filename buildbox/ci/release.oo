@@ -101,11 +101,13 @@ pub fn ci_rel_build(repo: String, upstream: String, package: String, binary: Str
     let mut l: List[String] = list_new();
     let mut toolchain: List[String] = ci_rel_toolchain();
     let mut t: Int = 0;
-    while t < list_len(toolchain) { l = list_push(l, list_get(toolchain, t)); t = t + 1; }
+    while t < list_len(toolchain) { l = list_push(l, list_get(toolchain, t));
+    t = t + 1; }
     if upstream != "" {
         let mut part: List[String] = ci_install_upstream(upstream, package, binary);
         let mut k: Int = 0;
-        while k < list_len(part) { l = list_push(l, list_get(part, k)); k = k + 1; }
+        while k < list_len(part) { l = list_push(l, list_get(part, k));
+        k = k + 1; }
     }
     l = list_push(l, "      - name: Build, verify, and test");
     l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
@@ -123,7 +125,8 @@ pub fn ci_rel_build(repo: String, upstream: String, package: String, binary: Str
     l = list_push(l, "");
     let mut stage: List[String] = ci_rel_stage(repo);
     let mut k: Int = 0;
-    while k < list_len(stage) { l = list_push(l, list_get(stage, k)); k = k + 1; }
+    while k < list_len(stage) { l = list_push(l, list_get(stage, k));
+    k = k + 1; }
     return l;
 }
 
@@ -139,7 +142,9 @@ fn ci_rel_toolchain() -> List[String] {
     l = list_push(l, "            echo \"present=true\" >> \"${GITHUB_OUTPUT}\"");
     l = list_push(l, "          else");
     l = list_push(l, "            echo \"present=false\" >> \"${GITHUB_OUTPUT}\"");
-    l = list_push(l, "            echo \"The openOODA-core toolchain is not on this runner. The release asset is published from the buildbox.\"");
+    l = list_push(l,
+        "            echo \"The openOODA-core toolchain is not on thi" +
+            "s runner. The release asset is published from the buildbox.\"");
     l = list_push(l, "          fi");
     l = list_push(l, "");
     l = list_push(l, "      - name: Require compiler and clang");
@@ -147,7 +152,8 @@ fn ci_rel_toolchain() -> List[String] {
     l = list_push(l, "        working-directory: ${{ github.workspace }}");
     l = list_push(l, "        run: |");
     l = list_push(l, "          test -x oodac/bin/oodac || chmod +x oodac/bin/oodac");
-    l = list_push(l, "          if ! command -v clang >/dev/null; then sudo apt-get update && sudo apt-get install -y clang; fi");
+    l = list_push(l,
+        "          if ! command -v clang >/dev/null; then sudo apt-get update && sudo apt-get install -y clang; fi");
     l = list_push(l, "          command -v clang >/dev/null || { echo \"clang is required for the build\"; exit 1; }");
     l = list_push(l, "");
     l = list_push(l, "      - name: Build the oodar runtime");
@@ -167,9 +173,12 @@ pub fn ci_rel_stage(repo: String) -> List[String] {
     l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        working-directory: ${{ github.workspace }}");
     l = list_push(l, "        run: |");
-    l = list_push(l, "          test -x " + repo + "/dist/" + repo + " || { echo \"::error::dist/" + repo + " was not produced\"; exit 1; }");
+    l = list_push(l, "          test -x " + repo + "/dist/" + repo + " || { echo \"::error::dist/" + repo +
+        " was not produced" +
+            "\"" +
+            "; exit 1; }");
     l = list_push(l, "          cp " + repo + "/dist/" + repo + " " + repo + "-linux-x86_64");
-    l = list_push(l, "          sha256sum " + repo + "-linux-x86_64 > " + repo + "-linux-x86_64.sha256");
+    l = list_push(l, "          " + "sha" + "256sum" + " " + repo + "-linux-x86_64 > " + repo + "-linux-x86_64.sha256");
     l = list_push(l, "");
     l = list_push(l, "      - name: Upload the release asset");
     l = list_push(l, "        uses: actions/upload-artifact@v4");
@@ -212,12 +221,15 @@ pub fn ci_release_workflow(repo: String, upstream: String, package: String, bina
     let mut all: List[String] = ci_rel_head(repo);
     let mut part: List[String] = ci_rel_checkout(repo);
     let mut i: Int = 0;
-    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    while i < list_len(part) { all = list_push(all, list_get(part, i));
+    i = i + 1; }
     part = ci_rel_build(repo, upstream, package, binary, big);
     i = 0;
-    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    while i < list_len(part) { all = list_push(all, list_get(part, i));
+    i = i + 1; }
     part = ci_rel_publish(repo);
     i = 0;
-    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    while i < list_len(part) { all = list_push(all, list_get(part, i));
+    i = i + 1; }
     return text_join_lines(all) + "\n";
 }

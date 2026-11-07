@@ -29,7 +29,8 @@ pub fn fleet_snap_tree(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: Fleet
     let ix: String = "/tmp/fleet-snap-index";
     let _c: Result[Void, String] = fs_copy_file(fr, fw, repo + "/.git/index", ix);
     let _a: Result[String, String] = fleet_git_ix(p, e, ix, repo, "add", "-A");
-    let tree: String = str_replace(fleet_text(sys_exec(p, "env", "HOME=" + e.home, "GIT_INDEX_FILE=" + ix, "git", "-C", repo, "write-tree")), "\n", "");
+    let tree: String = str_replace(fleet_text(sys_exec(p, "env", "HOME=" + e.home, "GIT_INDEX_FILE=" + ix, "git", "-C", repo,
+        "write-tree")), "\n", "");
     let _r: Result[Void, String] = fs_remove_file(fw, ix);
     return tree;
 }
@@ -43,10 +44,13 @@ pub fn fleet_snap_repo(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: Fleet
     let tree: String = fleet_snap_tree(p, fr, fw, e, repo);
     let ref: String = "refs/heads/wip/autosnap-" + host;
     let prev: String = list_get(str_split(fleet_text(fleet_git3(p, e, repo, "ls-remote", rem, ref)), "\t"), 0);
-    if str_len(prev) > 0 && str_replace(fleet_text(fleet_git2(p, e, repo, "rev-parse", prev + "^{tree}")), "\n", "") == tree { return ""; }
+    if str_len(prev) > 0 && str_replace(fleet_text(fleet_git2(p, e, repo, "rev-parse", prev + "^{tree}")), "\n",
+        "") == tree { return ""; }
     let msg: String = "autosnap " + host;
-    let commit: String = str_replace(fleet_text(sys_exec(p, "env", "HOME=" + e.home, "git", "-C", repo, "commit-tree", tree, "-p", "HEAD", "-m", msg)), "\n", "");
-    let pushed: Result[String, String] = sys_exec(p, "env", "HOME=" + e.home, "git", "-C", repo, "push", "-q", "-f", rem, commit + ":" + ref);
+    let commit: String = str_replace(fleet_text(sys_exec(p, "env", "HOME=" + e.home, "git", "-C", repo, "commit-tree", tree,
+        "-p", "HEAD", "-m", msg)), "\n", "");
+    let pushed: Result[String, String] = sys_exec(p, "env", "HOME=" + e.home, "git", "-C", repo, "push", "-q", "-f", rem,
+        commit + ":" + ref);
     if !fleet_ok(pushed) { return "FAIL  " + repo + " " + fleet_text(pushed); }
     return "SNAP  " + repo + " " + str_sub(commit, 0, 7);
 }

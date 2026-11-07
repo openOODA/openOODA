@@ -29,11 +29,21 @@ import "parity/mapping.oo";
 import "fleetfix/fix_flow.oo";
 
 // Repair one branch of one tool. The answer is zero when the repair landed.
-pub fn ff_fix_tool(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String, branch: String, src: String, push: String, rows: List[String]) -> Int {
+type BagFfFixTool = struct {
+    branch: String,
+    src: String,
+    push: String,
+    rows: List[String],
+};
+
+pub fn ff_fix_tool(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String,
+    tool: String, bag: BagFfFixTool) -> Int {
     let repo: String = ff_clone(sys, fs_r, fs_w, cache, work, org, tool);
-    if repo == "" { println(tool + " CLONE-FAIL"); return 1; }
-    let n: Int = ff_fix_branch(sys, fs_r, fs_w, cache, repo, tool, branch, src, push, rows);
-    println(tool + " " + branch + " REPAIRED files=" + int_to_str(n));
+    if repo == "" { println(tool + " CLONE-FAIL");
+    return 1; }
+    let n: Int = ff_fix_branch(sys, fs_r, fs_w, cache, repo, tool, bag.branch, BagFfFixBranch { src: bag.src, push: bag.push,
+        rows: bag.rows });
+    println(tool + " " + bag.branch + " REPAIRED files=" + int_to_str(n));
     return 0;
 }
 
@@ -76,7 +86,8 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     let src: String = if list_len(args) > 2 { list_get(args, 2) } else { "origin/main" };
     let push: String = if list_len(args) > 3 { list_get(args, 3) } else { branch };
     let rows: List[String] = ff_rows(fs_r, profile, backlog);
-    let rc: Int = ff_fix_tool(sys, fs_r, fs_w, cache, work, org, tool, branch, src, push, rows);
+    let rc: Int = ff_fix_tool(sys, fs_r, fs_w, cache, work, org, tool, BagFfFixTool { branch: branch, src: src, push: push,
+        rows: rows });
     println("done tools=1 failed=" + int_to_str(rc));
     return rc;
 }

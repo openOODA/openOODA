@@ -129,7 +129,8 @@ fn lint_gather_all(fs_r: &FsReadCap, poly: String, roots: List[String], max_d: I
     while r_idx < list_len(roots) {
         let rt: String = list_get(roots, r_idx);
         let b0: String = if str_starts_with(rt, "/") { rt } else { poly + "/" + rt };
-        let base: String = if path_exists(fs_r, b0) { b0 } else if path_exists(fs_r, poly + "-core/" + rt) { poly + "-core/" + rt } else { b0 };
+        let base: String = if path_exists(fs_r, b0) { b0 } else if path_exists(fs_r, poly + "-core/" + rt) { poly + "-core/" +
+            rt } else { b0 };
         let sub_files: List[String] = lint_collect_root(fs_r, base, max_d);
         let n_sub: Int = list_len(sub_files);
         if n_sub > 0 {
@@ -146,18 +147,31 @@ fn lint_gather_all(fs_r: &FsReadCap, poly: String, roots: List[String], max_d: I
     return list_push(sorted, dense_str);
 }
 
-fn lint_scan_all_and_print(fs_r: &FsReadCap, poly: String, max_l: Int, max_fns: Int, max_fn: Int, max_d: Int, flagged_only: Bool, sorted_files: List[String], dense_str: String) -> Int {
-    let n_files: Int = list_len(sorted_files) - 1;
+type BagLintScanAllAndPrint = struct {
+    sorted_files: List[String],
+    dense_str: String,
+};
+
+fn lint_scan_all_and_print(fs_r: &FsReadCap, poly: String, max_l: Int, max_fns: Int, max_fn: Int, max_d: Int,
+    flagged_only: Bool, bag: BagLintScanAllAndPrint) -> Int {
+    let n_files: Int = list_len(bag.sorted_files) - 1;
     let mut rows: List[String] = list_new();
-    let mut c_big: Int = 0; let mut c_many: Int = 0; let mut c_long: Int = 0; let mut c_dense: Int = 0; let mut c_mix: Int = 0; let mut n_viol: Int = 0;
+    let mut c_big: Int = 0;
+    let mut c_many: Int = 0;
+    let mut c_long: Int = 0;
+    let mut c_dense: Int = 0;
+    let mut c_mix: Int = 0;
+    let mut n_viol: Int = 0;
     let mut f_idx: Int = 0;
     while f_idx < n_files {
-        let path: String = list_get(sorted_files, f_idx);
+        let path: String = list_get(bag.sorted_files, f_idx);
         f_idx = f_idx + 1;
         let fr: Result[String, String] = fs_read_file(fs_r, path);
         if fr.is_err() { continue; }
-        let rel: String = if str_starts_with(path, poly + "/") { str_slice(path, chars_len(poly) + 1, chars_len(path)) } else if str_starts_with(path, poly + "-core/") { str_slice(path, chars_len(poly) + 6, chars_len(path)) } else { path };
-        let is_d: Bool = str_contains(dense_str, "|" + lint_dirname(path) + "|");
+        let rel: String = if str_starts_with(path, poly + "/") { str_slice(path, chars_len(poly) + 1, chars_len(
+            path)) } else if str_starts_with(path, poly + "-core/") { str_slice(path, chars_len(poly) + 6, chars_len(
+                path)) } else { path };
+        let is_d: Bool = str_contains(bag.dense_str, "|" + lint_dirname(path) + "|");
         let rec: String = lint_scan_content(fr.val, rel, max_l, max_fns, max_fn, is_d);
         let flg: String = lint_extract_flag(rec);
         if str_contains(flg, "BIGFILE") { c_big = c_big + 1; }
@@ -165,12 +179,14 @@ fn lint_scan_all_and_print(fs_r: &FsReadCap, poly: String, max_l: Int, max_fns: 
         if str_contains(flg, "LONGFN") { c_long = c_long + 1; }
         if str_contains(flg, "DENSE") { c_dense = c_dense + 1; }
         if str_contains(flg, "MIX") { c_mix = c_mix + 1; }
-        if str_contains(flg, "BIGFILE") || str_contains(flg, "MANYFN") || str_contains(flg, "LONGFN") || str_contains(flg, "DENSE") { n_viol = n_viol + 1; }
+        if str_contains(flg, "BIGFILE") || str_contains(flg, "MANYFN") || str_contains(flg, "LONGFN") || str_contains(flg,
+            "DENSE") { n_viol = n_viol + 1; }
         if flagged_only && flg == "-" { continue; }
         rows = list_push(rows, rec);
     }
     let sorted_rows: List[String] = lint_sort_strings(rows);
-    return lint_emit_report(poly, max_l, max_fns, max_fn, max_d, n_files, sorted_rows, c_big, c_many, c_long, c_dense, c_mix, n_viol);
+    return lint_emit_report(poly, max_l, max_fns, max_fn, max_d, n_files, sorted_rows, BagLintEmitReport { c_big: c_big,
+        c_many: c_many, c_long: c_long, c_dense: c_dense, c_mix: c_mix, n_viol: n_viol });
 }
 
 pub fn main(_sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, args: List[String]) -> Int {
@@ -190,19 +206,22 @@ pub fn main(_sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap
         else if !str_starts_with(a, "--") && text_trim(a) != "" { arg_roots = list_push(arg_roots, text_trim(a)); }
     }
     let rr: Result[String, String] = env_get(env, "OO_LINT_ROOTS");
-    let rstr: String = if rr.is_ok() && text_trim(rr.val) != "" { text_trim(rr.val) } else { "oodac,oodar,std,std-hw,openOODA" };
+    let rstr: String = if rr.is_ok() && text_trim(rr.val) != "" { text_trim(
+        rr.val) } else { "oodac,oodar,std,std-hw,openOODA" };
     let mut roots: List[String] = if list_len(arg_roots) > 0 { arg_roots } else { lint_split_comma(rstr) };
     let mut any_root: Bool = false;
     let mut ri: Int = 0;
     while ri < list_len(roots) {
         let rt0: String = list_get(roots, ri);
         let rb: String = if str_starts_with(rt0, "/") { rt0 } else { poly + "/" + rt0 };
-        if path_exists(fs_r, rb) || (!str_starts_with(rt0, "/") && path_exists(fs_r, poly + "-core/" + rt0)) { any_root = true; }
+        if path_exists(fs_r, rb) || (!str_starts_with(rt0, "/") && path_exists(fs_r, poly + "-core/" +
+            rt0)) { any_root = true; }
         ri = ri + 1;
     }
     if !any_root {
         if list_len(arg_roots) > 0 {
-            println("ERR\tlint-oo-size\tno lint root is readable under " + poly + "; set OODA_FS_READDIR to cover the target tree or run with OODA_NO_JAIL=1");
+            println("ERR\tlint-oo-size\tno lint root is readable under " + poly +
+                "; set OODA_FS_READDIR to cover the target tree or run with OODA_NO_JAIL=1");
             return 2;
         }
         roots = list_new();
@@ -210,5 +229,6 @@ pub fn main(_sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap
     }
     let gathered: List[String] = lint_gather_all(fs_r, poly, roots, max_d);
     let dense_str: String = list_get(gathered, list_len(gathered) - 1);
-    return lint_scan_all_and_print(fs_r, poly, max_l, max_fns, max_fn, max_d, flagged_only, gathered, dense_str);
+    return lint_scan_all_and_print(fs_r, poly, max_l, max_fns, max_fn, max_d, flagged_only,
+        BagLintScanAllAndPrint { sorted_files: gathered, dense_str: dense_str });
 }

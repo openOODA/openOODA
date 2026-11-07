@@ -75,7 +75,13 @@ pub fn fc_catalog_set(fs_r: &FsReadCap, fs_w: &FsWriteCap, path: String, tool: S
 }
 
 // Put the new entry of a tool on a documentation branch and push the branch.
-fn fc_catalog_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, site: String, branch: String, tool: String, version: String, desc: String) -> Bool {
+type BagFcCatalogBranch = struct {
+    version: String,
+    desc: String,
+};
+
+fn fc_catalog_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, site: String, branch: String,
+    tool: String, bag: BagFcCatalogBranch) -> Bool {
     let mut f: List[String] = list_new();
     f = list_push(f, "fetch");
     f = list_push(f, "-q");
@@ -88,7 +94,7 @@ fn fc_catalog_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cach
     b = list_push(b, branch);
     b = list_push(b, "origin/main");
     fc_git(sys, fs_r, cache, site, b);
-    if !fc_catalog_set(fs_r, fs_w, site + "/data/tools.json", tool, version, desc) { return false; }
+    if !fc_catalog_set(fs_r, fs_w, site + "/data/tools.json", tool, bag.version, bag.desc) { return false; }
     let mut a: List[String] = list_new();
     a = list_push(a, "add");
     a = list_push(a, "-A");
@@ -111,16 +117,23 @@ fn fc_catalog_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cach
 
 // Set the version of a tool in the catalog of the organization and merge the
 // change through a pull request.
-pub fn fc_catalog_release(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, tool: String, version: String, desc: String, tries: Int) -> Int {
+type BagFcCatalogRelease = struct {
+    desc: String,
+    tries: Int,
+};
+
+pub fn fc_catalog_release(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, tool: String,
+    version: String, bag: BagFcCatalogRelease) -> Int {
     let site: String = fleet + "/openOODA-tools.github.io";
     if !path_exists(fs_r, site) { return 0; }
     let slug: String = "openOODA-tools/openOODA-tools.github.io";
     let branch: String = "docs/" + tool + "-" + version;
-    if !fc_catalog_branch(sys, fs_r, fs_w, cache, site, branch, tool, version, desc) { return 0; }
+    if !fc_catalog_branch(sys, fs_r, fs_w, cache, site, branch, tool, BagFcCatalogBranch { version: version,
+        desc: bag.desc }) { return 0; }
     let pr: String = fc_open_pr(sys, fs_r, cache, slug, branch,
         "docs(catalog): the entry of " + tool, "The catalog entry of " + tool + " names the new release.");
     if pr == "" { return 0; }
-    let v: String = fc_merge_pr(sys, fs_r, cache, slug, pr, tries);
+    let v: String = fc_merge_pr(sys, fs_r, cache, slug, pr, bag.tries);
     println("catalog " + tool + " PR#" + pr + " " + v);
     if str_contains(v, " MERGED") { return 0; }
     return 1;

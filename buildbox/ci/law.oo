@@ -35,26 +35,36 @@ import "ci/parts/law_check.oo";
 // hold, the documents that only the readme may hold, and the page names that
 // no tool of the fleet may use.
 pub fn ci_law_file_law() -> List[String] {
-    let skip: String = " -not -path \"./.git/*\" -not -path \"./.github/*\" -not -path \"./dist/*\" -not -path \"./.ooda-cache/*\" -not -path \"./.blackbox/*\" -not -path \"./.agents/*\" -not -path \"./bin/*\"";
+    let q: String = "\"";
+    let skip: String = " -not -path \"./.git/*\" -not -path \"./.github/*\" -not -path \"./dist/*\" -not -path \"./.ooda-cach" +
+        "e/*\" -not -path \"./.blackbox/*\" -not -path \"./.agents/*\" -not -path \"./bin/*\"";
     let mut l: List[String] = list_new();
     l = list_push(l, "file-law:");
     l = list_push(l, "\t@forbidden=\"py rs js ts rb pl json yaml toml\"; \\");
     l = list_push(l, "\tviolations=0; \\");
     l = list_push(l, "\tfor ext in $$forbidden; do \\");
     l = list_push(l, "\t\tfound=$$(find . -name \"*.$$ext\"" + skip + " 2>/dev/null | head -3); \\");
-    l = list_push(l, "\t\tif [ -n \"$$found\" ]; then echo \"VIOLATION: .$$ext forbidden:\"; echo \"$$found\"; violations=$$((violations+1)); fi; \\");
+    l = list_push(l,
+        "\t\tif [ -n \"$$found\" ]; then echo \"VIOLATION: .$$ext forbidden:\"; echo \"$$found\"; violations=$$((violations+1" +
+            ")); fi; \\");
     l = list_push(l, "\tdone; \\");
     l = list_push(l, "\tfor f in $$(find . -name \"*.sh\"" + skip + " 2>/dev/null); do \\");
     l = list_push(l, "\t\tb=$$(basename \"$$f\"); \\");
-    l = list_push(l, "\t\tif [ \"$$b\" != \"install.sh\" ] && [ \"$$b\" != \"uninstall.sh\" ]; then echo \"VIOLATION: .sh forbidden outside install.sh and uninstall.sh: $$f\"; violations=$$((violations+1)); fi; \\");
+    l = list_push(l,
+        "\t\tif [ \"$$b\" != \"install.sh\" ] && [ \"$$b\" != \"uninstall.sh\" ]; then echo \"VIOLATION: .sh forbidden outsid" +
+            "e install.sh and uninstall.sh: $$f" + q + "; violations=$$((violations+1)); fi; \\");
     l = list_push(l, "\tdone; \\");
     l = list_push(l, "\tfor f in $$(find . -name \"*.md\"" + skip + " 2>/dev/null); do \\");
     l = list_push(l, "\t\tb=$$(basename \"$$f\"); \\");
-    l = list_push(l, "\t\tif [ \"$$b\" != \"README.md\" ] && [ \"$$b\" != \"AGENTS.md\" ]; then echo \"VIOLATION: .md forbidden outside README.md and AGENTS.md: $$f\"; violations=$$((violations+1)); fi; \\");
+    l = list_push(l,
+        "\t\tif [ \"$$b\" != \"README.md\" ] && [ \"$$b\" != \"AGENTS.md\" ]; then echo \"VIOLATION: .md forbidden outside RE" +
+            "ADME.md and AGENTS.md: $$f" + q + "; violations=$$((violations+1)); fi; \\");
     l = list_push(l, "\tdone; \\");
     l = list_push(l, "\tfor nm in util utils helper helpers common misc shared base core; do \\");
     l = list_push(l, "\t\tfound=$$(find . -name \"$$nm.oo\"" + skip + " 2>/dev/null | head -3); \\");
-    l = list_push(l, "\t\tif [ -n \"$$found\" ]; then echo \"VIOLATION: banned page name $$nm.oo:\"; echo \"$$found\"; violations=$$((violations+1)); fi; \\");
+    l = list_push(l,
+        "\t\tif [ -n \"$$found\" ]; then echo \"VIOLATION: banned page name $$nm.oo:\"; echo \"$$found\"; violations=$$((viol" +
+            "ations+1)); fi; \\");
     l = list_push(l, "\tdone; \\");
     l = list_push(l, "\tif [ $$violations -gt 0 ]; then echo \"FAIL: file-law violations\"; exit 1; fi; \\");
     l = list_push(l, "\techo \"PASS: file law holds\"");
@@ -68,7 +78,10 @@ pub fn ci_law_file_law() -> List[String] {
 pub fn ci_law_vocab() -> List[String] {
     let mut l: List[String] = list_new();
     l = list_push(l, "vocab:");
-    l = list_push(l, "\t@if grep -riE \"" + "sover" + "eign|pillar [0-9]|stage [0-9]|" + "boot" + "strap|" + "moon" + "shot|" + "dog" + "fight|combat|fighter|missile|drone|stealth|swarm|hypervisor|supervisor\" --include=\"*.oo\" --include=\"*.oot\" --include=\"*.md\" --include=\"*.pkg\" --include=\"*.yml\" . | grep -v \"/.git/\" | grep -v \"/.ooda-cache/\" | grep -v \"/bin/\" | grep -v \"/dist/\" ; then \\");
+    l = list_push(l, "\t@if grep -riE \"" + "sover" + "eign|pillar [0-9]|stage [0-9]|" + "boot" + "strap|" + "moon" + "shot|" +
+        "dog" + "fight|combat|fighter|missile|drone|stealth|swarm|hypervisor|supervisor\" --include=\"*.oo\" --include=\"*.oo" +
+            "t\" --include=\"*.md\" --include=\"*.pkg\" --include=\"*.yml\" . | grep -v \"/.git/\" | grep -v \"/.ooda-cache/" +
+                "\" | grep -v \"/bin/\" | grep -v \"/dist/\" ; then \\");
     l = list_push(l, "\t\techo \"FAIL: banned vocabulary found\"; exit 1; \\");
     l = list_push(l, "\tfi; \\");
     l = list_push(l, "\techo \"PASS: vocabulary check holds\"");
@@ -81,24 +94,38 @@ pub fn ci_law_vocab() -> List[String] {
 // when a violation is new or when a violation grew. The violations that are
 // already there are named in the variable SIZE_BASELINE of the Makefile.
 pub fn ci_law_shape() -> List[String] {
+    let q: String = "\"";
     let mut l: List[String] = list_new();
     l = list_push(l, "shape:");
     l = list_push(l, "\t@mkdir -p .ooda-cache; : > .ooda-cache/shape.now; \\");
-    l = list_push(l, "\tfor f in $$(find . -name \"*.oo\" -not -path \"./.git/*\" -not -path \"./dist/*\" -not -path \"./.ooda-cache/*\" -not -path \"./bin/*\"); do \\");
-    l = list_push(l, "\t\tawk '/^[[:space:]]*(pub[[:space:]]+)?fn[[:space:]]/ { if (started) { len = NR - start; if (len > 64) print \"FNLEN|\" FILENAME \"|\" fn \"|\" len } started = 1; start = NR; if ($$1 == \"pub\") fn = $$3; else fn = $$2; gsub(/\\(.*/, \"\", fn) } END { if (started) { len = NR - start + 1; if (len > 64) print \"FNLEN|\" FILENAME \"|\" fn \"|\" len } }' \"$$f\" >> .ooda-cache/shape.now; \\");
+    l = list_push(l,
+        "\tfor f in $$(find . -name \"*.oo\" -not -path \"./.git/*\" -not -path \"./dist/*\" -not -path \"./.ooda-cache/*\" -" +
+            "not -path \"./bin/*\"); do \\");
+    l = list_push(l,
+        "\t\tawk '/^[[:space:]]*(pub[[:space:]]+)?fn[[:space:]]/ { if (started) { len = NR - start; if (len > 64) print \"FNL" +
+            "EN|" + q + " FILENAME " + q + "|" + q + " fn " + q + "|" + q + " len } started = 1; start = NR; if ($$1 == " + q +
+                "pub" + q + ") fn = $$3; else fn = $$2; gsub(/" +
+                "\\(.*/, \"\", fn) } END { if (started) { len = NR - start + 1; if (len > 64) print \"FNLEN|\" FILENAME \"|\"" +
+                    " fn \"|\" len } }' \"$$f\" >> .ooda-cache/shape.now; \\");
     l = list_push(l, "\t\tn=$$(grep -cE \"^[[:space:]]*(pub[[:space:]]+)?fn \" \"$$f\" || true); \\");
     l = list_push(l, "\t\tif [ \"$$n\" -gt 8 ]; then echo \"SHAPE|$$f|-|$$n\" >> .ooda-cache/shape.now; fi; \\");
     l = list_push(l, "\tdone; \\");
     l = list_push(l, "\tviolations=0; \\");
     l = list_push(l, "\twhile IFS='|' read -r kind path name value; do \\");
     l = list_push(l, "\t\t[ -z \"$$kind\" ] && continue; \\");
-    l = list_push(l, "\t\tbase=$$(printf '%s' \"$(SIZE_BASELINE)\" | tr ';' '\\n' | grep -F \"$$kind|$$path|$$name|\" | head -1); \\");
-    l = list_push(l, "\t\tif [ -z \"$$base\" ]; then echo \"VIOLATION: new size violation $$kind|$$path|$$name|$$value\"; violations=$$((violations+1)); \\");
+    l = list_push(l,
+        "\t\tbase=$$(printf '%s' \"$(SIZE_BASELINE)\" | tr ';' '\\n' | grep -F \"$$kind|$$path|$$name|\" | head -1); \\");
+    l = list_push(l,
+        "\t\tif [ -z \"$$base\" ]; then echo \"VIOLATION: new size violation $$kind|$$path|$$name|$$value\"; violations=$$((v" +
+            "iolations+1)); \\");
     l = list_push(l, "\t\telse max=$$(printf '%s' \"$$base\" | awk -F'|' '{print $$NF}'); \\");
-    l = list_push(l, "\t\t\tif [ \"$$value\" -gt \"$$max\" ]; then echo \"VIOLATION: size violation grew $$kind|$$path|$$name|$$value > $$max\"; violations=$$((violations+1)); fi; \\");
+    l = list_push(l,
+        "\t\t\tif [ \"$$value\" -gt \"$$max\" ]; then echo \"VIOLATION: size violation grew $$kind|$$path|$$name|$$value > $$" +
+            "max" + q + "; violations=$$((violations+1)); fi; \\");
     l = list_push(l, "\t\tfi; \\");
     l = list_push(l, "\tdone < .ooda-cache/shape.now; \\");
-    l = list_push(l, "\tif [ $$violations -gt 0 ]; then echo \"FAIL: $$violations new or grown size violations\"; exit 1; fi; \\");
+    l = list_push(l,
+        "\tif [ $$violations -gt 0 ]; then echo \"FAIL: $$violations new or grown size violations\"; exit 1; fi; \\");
     l = list_push(l, "\techo \"PASS: shape law holds (no new size violations)\"");
     l = list_push(l, "");
     return l;
@@ -112,7 +139,8 @@ pub fn ci_law_det() -> List[String] {
     l = list_push(l, "\t@mkdir -p .ooda-cache");
     l = list_push(l, "\t@$(OODA_COMPILER) build main.oo -o .ooda-cache/det_a > /dev/null");
     l = list_push(l, "\t@$(OODA_COMPILER) build main.oo -o .ooda-cache/det_b > /dev/null");
-    l = list_push(l, "\t@cmp -s .ooda-cache/det_a .ooda-cache/det_b && sha256sum .ooda-cache/det_a && echo \"PASS: deterministic build\"");
+    l = list_push(l, "\t@cmp -s .ooda-cache/det_a .ooda-cache/det_b && " + "sha" + "256sum" +
+        " .ooda-cache/det_a && echo \"PASS: deterministic build\"");
     l = list_push(l, "");
     return l;
 }
@@ -141,7 +169,6 @@ pub fn ci_law_target_span(lines: List[String], name: String) -> List[Int] {
     out = list_push(out, -1);
     return out;
 }
-
 // Put the given body into the lines of a Makefile. A target that is already
 // there is replaced, and a target that is not there is added before the
 // target of the check. The answer holds the lines.
@@ -155,14 +182,16 @@ pub fn ci_law_replace(lines: List[String], name: String, block: List[String]) ->
     while i < list_len(lines) {
         if start >= 0 && i == start {
             let mut j: Int = 0;
-            while j < list_len(block) { out = list_push(out, list_get(block, j)); j = j + 1; }
+            while j < list_len(block) { out = list_push(out, list_get(block, j));
+            j = j + 1; }
             i = stop;
             placed = true;
             continue;
         }
         if start < 0 && !placed && str_starts_with(list_get(lines, i), "check:") {
             let mut j: Int = 0;
-            while j < list_len(block) { out = list_push(out, list_get(block, j)); j = j + 1; }
+            while j < list_len(block) { out = list_push(out, list_get(block, j));
+            j = j + 1; }
             placed = true;
         }
         out = list_push(out, list_get(lines, i));
@@ -170,11 +199,11 @@ pub fn ci_law_replace(lines: List[String], name: String, block: List[String]) ->
     }
     if !placed {
         let mut j: Int = 0;
-        while j < list_len(block) { out = list_push(out, list_get(block, j)); j = j + 1; }
+        while j < list_len(block) { out = list_push(out, list_get(block, j));
+        j = j + 1; }
     }
     return out;
 }
-
 // Wire the gates into the target of the verification. The answer holds the
 // lines. Every canonical gate always runs, and a gate that the tool held and
 // that the canonical set does not name keeps running too. A target of the
@@ -194,7 +223,8 @@ pub fn ci_law_verify_deps(lines: List[String]) -> List[String] {
             let mut j: Int = 0;
             while j < list_len(parts) {
                 let p: String = text_trim(list_get(parts, j));
-                if p != "" && !str_contains(" " + canon + " ", " " + p + " ") && !str_contains(gone, " " + p + " ") && !str_contains(" " + keep + " ", " " + p + " ") {
+                if p != "" && !str_contains(" " + canon + " ", " " + p + " ") && !str_contains(gone, " " + p + " ") &&
+                    !str_contains(" " + keep + " ", " " + p + " ") {
                     keep = keep + " " + p;
                 }
                 j = j + 1;
@@ -208,7 +238,6 @@ pub fn ci_law_verify_deps(lines: List[String]) -> List[String] {
     }
     return out;
 }
-
 // Put every canonical gate into the Makefile of one tool and wire the gates
 // into the target of the verification. The answer holds the lines. The gates
 // of the old shape and of the old length are removed, because the gate of the

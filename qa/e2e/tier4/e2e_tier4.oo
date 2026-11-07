@@ -20,20 +20,26 @@ fn run_apps(sys: &ProcessCap, fs_r: &FsReadCap) -> Int {
     let env_pfx: String = "OODA_NO_JAIL=1 OODA_FS_READDIR=/Projects:/tmp OODA_FS_WRITEDIR=/Projects:/tmp ";
     let mut a1: List[String] = list_new();
     a1 = list_push(a1, "-c");
-    a1 = list_push(a1, "printf '// # Svc\\n// Logline: t.\\n// Setup: n.\\n// Beats: r.\\npub fn main" + "() -> Int { println(\"SVC_OK\"); return 0; }\\n' > /tmp/e2e_svc.oo && "
-        + env_pfx + oodac + " build /tmp/e2e_svc.oo -o /tmp/e2e_svc.bin >/dev/null 2>&1 && /tmp/e2e_svc.bin | grep -q SVC_OK && rm -f /tmp/e2e_svc.oo /tmp/e2e_svc.bin");
+    a1 = list_push(a1, "printf '// # Svc\\n// Logline: t.\\n// Setup: n.\\n// Beats: r.\\npub fn main" +
+        "() -> Int { println(\"SVC_OK\"); return 0; }\\n' > /tmp/e2e_svc.oo && "
+        + env_pfx + oodac +
+            " build /tmp/e2e_svc.oo -o /tmp/e2e_svc.bin >/dev/null 2>&1 && /tmp/e2e_svc.bin | grep -q SVC_OK && rm -f /tmp/e2" +
+                "e_svc.oo /tmp/e2e_svc.bin");
     let r1: Result[Int, String] = sys_exec_wait(sys, "bash", a1);
     p = p + e2e_check("T4.APP1", "Full application lifecycle (author -> build -> run)", r1.is_ok() && r1.val == 0);
     let mut a2: List[String] = list_new();
     a2 = list_push(a2, "-c");
-    a2 = list_push(a2, "printf '// # Det\\n// Logline: d.\\n// Setup: n.\\n// Beats: r.\\npub fn main" + "() -> Int { return 0; }\\n' > /tmp/e2e_det.oo && "
+    a2 = list_push(a2, "printf '// # Det\\n// Logline: d.\\n// Setup: n.\\n// Beats: r.\\npub fn main" +
+        "() -> Int { return 0; }\\n' > /tmp/e2e_det.oo && "
         + env_pfx + oodac + " build /tmp/e2e_det.oo -o /tmp/e2e_det1.bin >/dev/null 2>&1 && "
         + env_pfx + oodac + " build /tmp/e2e_det.oo -o /tmp/e2e_det2.bin >/dev/null 2>&1 && "
         + "cmp -s /tmp/e2e_det1.bin /tmp/e2e_det2.bin && rm -f /tmp/e2e_det.oo /tmp/e2e_det1.bin /tmp/e2e_det2.bin");
     let r2: Result[Int, String] = sys_exec_wait(sys, "bash", a2);
     p = p + e2e_check("T4.APP2", "Bit-identical deterministic double compilation", r2.is_ok() && r2.val == 0);
-    p = p + e2e_check("T4.APP3", "Buildbox selftest binary exists", path_exists(fs_r, "/var/lib/ooda-buildbox/build/bin/selftest"));
-    p = p + e2e_check("T4.APP4", "Root Umbrella catalog, install, and website repos exist", path_exists(fs_r, uroot + "/catalog/VERSION") && path_exists(fs_r, uroot + "/install/VERSION") && path_exists(fs_r, uroot + "/website/VERSION"));
+    p = p + e2e_check("T4.APP3", "Buildbox selftest binary exists", path_exists(fs_r,
+        "/var/lib/ooda-buildbox/build/bin/selftest"));
+    p = p + e2e_check("T4.APP4", "Root Umbrella catalog, install, and website repos exist", path_exists(fs_r, uroot +
+        "/catalog/VERSION") && path_exists(fs_r, uroot + "/install/VERSION") && path_exists(fs_r, uroot + "/website/VERSION"));
     let mut a5: List[String] = list_new();
     a5 = list_push(a5, "-c");
     a5 = list_push(a5, "test -z \"$(find /Projects/openOODA/openOODA/qa/e2e -name '*.py' 2>/dev/null)\"");

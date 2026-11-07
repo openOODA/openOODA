@@ -31,13 +31,15 @@ import "fleettick/fix/fixcheck.oo";
 import "std/fs/os/fs.oo";
 
 fn ts_expect(name: String, got: String, want: String) -> Int {
-    if got == want { println("PASS\t" + name); return 0; }
+    if got == want { println("PASS\t" + name);
+    return 0; }
     println("FAIL\t" + name + "\twant=" + want + "\tgot=" + got);
     return 1;
 }
 
 fn ts_expect_bool(name: String, got: Bool, want: Bool) -> Int {
-    if got == want { println("PASS\t" + name); return 0; }
+    if got == want { println("PASS\t" + name);
+    return 0; }
     let ws: String = if want { "true" } else { "false" };
     let gs: String = if got { "true" } else { "false" };
     println("FAIL\t" + name + "\twant=" + ws + "\tgot=" + gs);
@@ -48,7 +50,8 @@ fn ts_expect_has(name: String, hay: List[String], needle: String) -> Int {
     let n: Int = list_len(hay);
     let mut i: Int = 0;
     while i < n {
-        if list_get(hay, i) == needle { println("PASS\t" + name); return 0; }
+        if list_get(hay, i) == needle { println("PASS\t" + name);
+        return 0; }
         i = i + 1;
     }
     println("FAIL\t" + name + "\tmissing=" + needle + "\tn=" + n.to_string());
@@ -61,7 +64,8 @@ fn ts_copy(list: List[String]) -> List[String] {
     let n: Int = list_len(list);
     let mut out: List[String] = list_new();
     let mut i: Int = 0;
-    while i < n { out = list_push(out, list_get(list, i)); i = i + 1; }
+    while i < n { out = list_push(out, list_get(list, i));
+    i = i + 1; }
     return out;
 }
 
@@ -76,12 +80,14 @@ fn ts_sweep_checks(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap) -> Int {
     fails = fails + ts_expect_bool("locked_oohat", sweep_locked("/Projects/openOODA-agents/oohat"), true);
     fails = fails + ts_expect_bool("unlocked_install", sweep_locked("/Projects/openOODA/install"), false);
     fails = fails + ts_expect_bool("unlocked_sibling", sweep_locked("/Projects/openOODA-core/stdc"), false);
-    fails = fails + ts_expect("summary_counts", sweep_summary(list_push(list_push(list_push(list_push(list_new(), "DIRTY /a"), "CLEAN /b"), "ERR /c"), "LOCKED /d")), "repos=4 dirty=1 clean=1 err=1 locked=1");
+    fails = fails + ts_expect("summary_counts", sweep_summary(list_push(list_push(list_push(list_push(list_new(), "DIRTY /a"),
+        "CLEAN /b"), "ERR /c"), "LOCKED /d")), "repos=4 dirty=1 clean=1 err=1 locked=1");
     let repos: List[String] = ts_copy(sweep_repos(fr, "/Projects/openOODA"));
     let rn: Int = list_len(repos);
     fails = fails + ts_expect("enum_count", rn.to_string(), "6");
     fails = fails + ts_expect_has("enum_finds_governance_repo", repos, "/Projects/openOODA/openOODA");
-    fails = fails + ts_expect("enum_file_root_empty", list_len(sweep_repos(fr, "/Projects/openOODA/openOODA/VERSION")).to_string(), "0");
+    fails = fails + ts_expect("enum_file_root_empty", list_len(sweep_repos(fr,
+        "/Projects/openOODA/openOODA/VERSION")).to_string(), "0");
     let _m1: Result[Void, String] = fs_mkdir_p(fw, "/tmp/fleettick-fix/err-repo/.git");
     let _m2: Result[Void, String] = fs_mkdir_p(fw, "/tmp/fleettick-fix/wt-repo");
     let _gf: Result[Void, String] = fs_write_file(fw, "/tmp/fleettick-fix/wt-repo/.git", "gitdir: /nonexistent-gitdir\n");
@@ -89,9 +95,11 @@ fn ts_sweep_checks(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap) -> Int {
     let frep: List[String] = ts_copy(sweep_report(fr, p, "/tmp/fleettick-fix"));
     fails = fails + ts_expect_has("fixture_err_detected", frepos, "/tmp/fleettick-fix/err-repo")
         + ts_expect_has("fixture_gitfile_detected", frepos, "/tmp/fleettick-fix/wt-repo");
-    fails = fails + ts_expect_has("fixture_err_classified", frep, "ERR /tmp/fleettick-fix/err-repo") + ts_expect_has("fixture_gitfile_classified", frep, "ERR /tmp/fleettick-fix/wt-repo");
+    fails = fails + ts_expect_has("fixture_err_classified", frep, "ERR /tmp/fleettick-fix/err-repo") + ts_expect_has(
+        "fixture_gitfile_classified", frep, "ERR /tmp/fleettick-fix/wt-repo");
     let alines: List[String] = list_push(list_push(list_new(), "HEALTH proc herdr DOWN"), "CLEAN /a");
-    fails = fails + ts_expect("snap_line", snap_write(fw, "/tmp/fleettick-state.txt", alines), "SNAP /tmp/fleettick-state.txt lines=2");
+    fails = fails + ts_expect("snap_line", snap_write(fw, "/tmp/fleettick-state.txt", alines),
+        "SNAP /tmp/fleettick-state.txt lines=2");
     let ae1: List[String] = ts_copy(alert_emit(fw, fr, "/tmp/fleettick-alerts", alines));
     fails = fails + ts_expect_has("alert_count", ae1, "alerts=1");
     fails = fails + ts_expect_bool("alert_file_written", fs_path_exists(fr, "/tmp/fleettick-alerts/ALERT-down-0.txt"), true);
@@ -120,7 +128,8 @@ fn ts_meter_checks() -> Int {
     fails = fails + ts_expect("classify_throttle", meter_classify(91, 9), "THROTTLE");
     fails = fails + ts_expect("classify_ok", meter_classify(50, 50), "OK");
     fails = fails + ts_expect("classify_unknown", meter_classify(-1, -1), "UNKNOWN");
-    let led: String = "{\n  \"agents\": {\n    \"devin\": {\n      \"used_pct\": 0,\n      \"remaining_pct\": 100\n    },\n    \"vibe\": {\n      \"used_pct\": 90,\n      \"remaining_pct\": 10\n    }\n  }\n}\n";
+    let led: String = "{\n  \"agents\": {\n    \"devin\": {\n      \"used_pct\": 0,\n      \"remaining_pct\": 100\n    },\n  " +
+        "  \"vibe\": {\n      \"used_pct\": 90,\n      \"remaining_pct\": 10\n    }\n  }\n}\n";
     fails = fails + ts_expect("entries_count", list_len(meter_entries(led)).to_string(), "2");
     fails = fails + ts_expect("entry_devin", list_get(meter_entries(led), 0), "devin|0|100");
     fails = fails + ts_expect_has("report_vibe_throttle", meter_report(led), "QUOTA vibe THROTTLE used=90 rem=10");
@@ -128,17 +137,22 @@ fn ts_meter_checks() -> Int {
     fails = fails + ts_expect("conf_disk_warn", host_conf_int(conf, "disk_warn").to_string(), "85");
     fails = fails + ts_expect("conf_missing", host_conf_int(conf, "swap_warn").to_string(), "-1");
     fails = fails + ts_expect("conf_str_proc", host_conf_str(conf, "proc"), "herdr");
-    fails = fails + ts_expect("disk_pct", host_disk_pct("Filesystem 1K-blocks Used Available Capacity Mounted on\n/dev/sda 1000 450 550 45% /\n").to_string(), "45");
-    fails = fails + ts_expect("disk_pct_hdr_pct", host_disk_pct("Filesystem Use% Mounted\n/dev/sda 1000 450 550 67% /\n").to_string(), "67");
-    fails = fails + ts_expect("mem_pct", host_mem_pct("MemTotal:       1000 kB\nMemFree:         100 kB\nMemAvailable:    250 kB\n").to_string(), "75");
+    fails = fails + ts_expect("disk_pct", host_disk_pct(
+        "Filesystem 1K-blocks Used Available Capacity Mounted on\n/dev/sda 1000 450 550 45% /\n").to_string(), "45");
+    fails = fails + ts_expect("disk_pct_hdr_pct", host_disk_pct(
+        "Filesystem Use% Mounted\n/dev/sda 1000 450 550 67% /\n").to_string(), "67");
+    fails = fails + ts_expect("mem_pct", host_mem_pct(
+        "MemTotal:       1000 kB\nMemFree:         100 kB\nMemAvailable:    250 kB\n").to_string(), "75");
     fails = fails + ts_expect("health_ok", host_class(80, 85), "OK");
     fails = fails + ts_expect("health_warn", host_class(85, 85), "WARN");
     fails = fails + ts_expect("health_unknown", host_class(-1, 85), "UNKNOWN");
     fails = fails + ts_expect("snap_pack_two", snap_pack(list_push(list_push(list_new(), "a"), "b")), "a\nb\n")
         + ts_expect("snap_pack_empty", snap_pack(list_new()), "");
-    let lsr: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/heads/ooda\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\trefs/heads/master\n";
+    let lsr: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/heads/ooda\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\tr" +
+        "efs/heads/master\n";
     fails = fails + ts_expect("forge_parse_n", list_len(forge_parse(lsr)).to_string(), "2");
-    fails = fails + ts_expect("forge_tip", forge_tip(forge_parse(lsr), "refs/heads/ooda"), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    fails = fails + ts_expect("forge_tip", forge_tip(forge_parse(lsr), "refs/heads/ooda"),
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     fails = fails + ts_expect("forge_tip_missing", forge_tip(forge_parse(lsr), "refs/heads/nope"), "");
     fails = fails + ts_expect("forge_drift_sync", forge_drift("aaa", "aaa"), "SYNC")
         + ts_expect("forge_drift_diff", forge_drift("aaa", "bbb"), "DRIFT")
@@ -149,7 +163,9 @@ fn ts_meter_checks() -> Int {
 
 fn ts_agent_checks(p: &ProcessCap) -> Int {
     let mut fails: Int = 0;
-    let js: String = "{\"result\":{\"agents\":[{\"agent_status\":\"idle\",\"pane_id\":\"w3:p1\",\"workspace_id\":\"w3\"},{\"agent_status\":\"working\",\"pane_id\":\"w4:p1\",\"workspace_id\":\"w4\"},{\"agent_status\":\"blocked\",\"pane_id\":\"w4:p2\",\"workspace_id\":\"w4\"}]}}";
+    let js: String = "{\"result\":{\"agents\":[{\"agent_status\":\"idle\",\"pane_id\":\"w3:p1\",\"workspace_id\":\"w3\"},{\"a" +
+        "gent_status\":\"working\",\"pane_id\":\"w4:p1\",\"workspace_id\":\"w4\"},{\"agent_status\":\"blocked\",\"pane_id\":" +
+            "\"w4:p2\",\"workspace_id\":\"w4\"}]}}";
     fails = fails + ts_expect("panes_count", list_len(agents_panes(js)).to_string(), "3");
     fails = fails + ts_expect("pane_first", list_get(agents_panes(js), 0), "w3|w3:p1|idle");
     fails = fails + ts_expect_has("ws_idle_w3", agents_report(js), "IDLE-WS w3 blocked=0 working=0 idle=1 other=0");
@@ -172,7 +188,8 @@ fn ts_agent_checks(p: &ProcessCap) -> Int {
     fails = fails + ts_expect("recon_sync", recon_counts("0\t0\n"), "SYNC");
     fails = fails + ts_expect("recon_garbage", recon_counts("no numbers"), "ERR");
     fails = fails + ts_expect_bool("gate_open", recon_gate(list_push(list_new(), "FORGE ooda SYNC")), true);
-    fails = fails + ts_expect_bool("gate_err_closed", recon_gate(list_push(list_push(list_new(), "FORGE ooda SYNC"), "FORGE_ERR no github remote")), false);
+    fails = fails + ts_expect_bool("gate_err_closed", recon_gate(list_push(list_push(list_new(), "FORGE ooda SYNC"),
+        "FORGE_ERR no github remote")), false);
     fails = fails + ts_expect_bool("gate_empty_closed", recon_gate(list_new()), false);
     let skip: List[String] = ts_copy(recon_report(p, list_push(list_new(), "/tmp/fleettick-fix/err-repo"), false));
     fails = fails + ts_expect_has("recon_gate_skip", skip, "RECON /tmp/fleettick-fix/err-repo GATE-SKIP");
@@ -188,7 +205,8 @@ fn ts_agent_checks(p: &ProcessCap) -> Int {
 
 pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, _args: List[String]) -> Int {
     let fails: Int = ts_sweep_checks(p, fr, fw) + ts_meter_checks() + ts_agent_checks(p) + fx_checks(p, fr, fw);
-    if fails > 0 { println("FAIL\ttest_sweep\t" + fails.to_string() + " check(s) failed"); return 1; }
+    if fails > 0 { println("FAIL\ttest_sweep\t" + fails.to_string() + " check(s) failed");
+    return 1; }
     println("Ran 104 checks in pure .oo — OK");
     return 0;
 }

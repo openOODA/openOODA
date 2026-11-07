@@ -30,7 +30,8 @@ import "fleetsync/sync_ref.oo";
 // branch. The blocks of the branch are the truth and the blocks of the
 // default branch come back where the branch lost a part of the build. The
 // gate of the drop-in property is wired in again afterwards.
-pub fn sy_merge_makefile(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, src: String) -> Bool {
+pub fn sy_merge_makefile(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String,
+    src: String) -> Bool {
     let main_mk: String = sy_read_ref(sys, fs_r, cache, repo, src, "Makefile");
     if main_mk == "" { return false; }
     let r: Result[String, String] = fs_read_file(fs_r, repo + "/Makefile");
@@ -86,7 +87,8 @@ pub fn sy_file_law(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo: String) -> Int {
 //
 // The version of the ref comes back with the file, moved to the version of
 // the tree, so that the file that comes back names the release of the tree.
-pub fn sy_restore_assets(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, src: String) -> Int {
+pub fn sy_restore_assets(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String,
+    src: String) -> Int {
     let lost: List[String] = ff_lost(sys, fs_r, cache, repo, src, "HEAD");
     let entries: List[String] = ff_tree(sys, fs_r, cache, repo, src);
     let old: String = sy_ref_version(sys, fs_r, cache, repo, src);
@@ -98,7 +100,8 @@ pub fn sy_restore_assets(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
         i = i + 1;
         if str_ends_with(p, ".oo") || str_ends_with(p, ".oot") { continue; }
         let mode: String = ff_mode_of(entries, p);
-        if ff_restore_one(sys, fs_r, fs_w, cache, repo, src, p, mode, old, new) { n = n + 1; }
+        if ff_restore_one(sys, fs_r, fs_w, cache, repo, src, p, BagFfRestoreOne { mode: mode, old: old, fresh: new }) { n = n +
+            1; }
     }
     return n;
 }
@@ -110,19 +113,25 @@ pub fn sy_restore_assets(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, 
 // branch, so that the newest tool of the fleet is released as well. A tool
 // whose installers live in a branch of a repair gets them back from there,
 // because the default branch lost them as well.
-pub fn sy_prepare(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, tool: String, branch: String, src: String, rows: List[String]) -> Int {
+type BagSyPrepare = struct {
+    src: String,
+    rows: List[String],
+};
+
+pub fn sy_prepare(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, tool: String,
+    branch: String, bag: BagSyPrepare) -> Int {
     let base: String = branch;
     if !sy_checkout(sys, fs_r, cache, repo, base) {
         if !sy_checkout(sys, fs_r, cache, repo, "main") { return 0; }
     }
-    let mut n: Int = sy_restore_assets(sys, fs_r, fs_w, cache, repo, src);
+    let mut n: Int = sy_restore_assets(sys, fs_r, fs_w, cache, repo, bag.src);
     let repair: String = "origin/fix/" + tool + "-installers";
     if sy_has_ref(sys, fs_r, cache, repo, repair) {
         n = n + sy_restore_assets(sys, fs_r, fs_w, cache, repo, repair);
     }
-    let _m: Bool = sy_merge_makefile(sys, fs_r, fs_w, cache, repo, src);
+    let _m: Bool = sy_merge_makefile(sys, fs_r, fs_w, cache, repo, bag.src);
     let _l: Int = sy_file_law(fs_r, fs_w, repo);
-    let upstream: String = ff_upstream(fs_r, rows, tool);
+    let upstream: String = ff_upstream(fs_r, bag.rows, tool);
     if ff_has_contract(fs_r, repo) {
         let _w: Bool = ff_write_workflows(fs_r, fs_w, repo, tool, upstream);
     }

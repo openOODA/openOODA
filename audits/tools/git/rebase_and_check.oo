@@ -27,28 +27,36 @@ pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int 
     if list_len(repos) == 0 { return 0 - 1; }
     let repo: String = list_get(repos, 0);
     let env_argv: List[String] = cmd_env("HOME=" + audit_home(e), "", "", "", "", "");
-    let br: String = rbc_out(p, env_argv, cmd_git(repo, "symbolic-ref", "--short", "HEAD", "", "", "", "", ""));
-    let tree_before: String = rbc_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD^{tree}", "", "", "", "", "", ""));
-    let _fetch: ExecRun = rbc_run(p, env_argv, cmd_git(repo, "fetch", "origin", br, "-q", "", "", "", ""));
-    let behind: String = rbc_out(p, env_argv, cmd_git(repo, "rev-list", "--count", "HEAD..origin/" + br, "", "", "", "", ""));
+    let br: String = rbc_out(p, env_argv, cmd_git(repo, "symbolic-ref", "--short", "HEAD", "", "", "", BagCmdGit { t7: "",
+        t8: "" }));
+    let tree_before: String = rbc_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD^{tree}", "", "", "", "", BagCmdGit { t7: "",
+        t8: "" }));
+    let _fetch: ExecRun = rbc_run(p, env_argv, cmd_git(repo, "fetch", "origin", br, "-q", "", "", BagCmdGit { t7: "",
+        t8: "" }));
+    let behind: String = rbc_out(p, env_argv, cmd_git(repo, "rev-list", "--count", "HEAD..origin/" + br, "", "", "",
+        BagCmdGit { t7: "", t8: "" }));
     if behind == "0" {
         println(repo + ": up to date with origin/" + br);
         return 0;
     }
-    let rb: ExecRun = rbc_run(p, env_argv, cmd_git(repo, "rebase", "origin/" + br, "", "", "", "", "", ""));
+    let rb: ExecRun = rbc_run(p, env_argv, cmd_git(repo, "rebase", "origin/" + br, "", "", "", "", BagCmdGit { t7: "",
+        t8: "" }));
     if rb.code != 0 {
         println(repo + ": REBASE CONFLICT -- needs manual resolution");
-        let status: String = rbc_out(p, env_argv, cmd_git(repo, "status", "--porcelain", "", "", "", "", "", ""));
+        let status: String = rbc_out(p, env_argv, cmd_git(repo, "status", "--porcelain", "", "", "", "", BagCmdGit { t7: "",
+            t8: "" }));
         print(text_head_lines(status, 10));
         return 1;
     }
-    let tree_after: String = rbc_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD^{tree}", "", "", "", "", "", ""));
+    let tree_after: String = rbc_out(p, env_argv, cmd_git(repo, "rev-parse", "HEAD^{tree}", "", "", "", "", BagCmdGit { t7: "",
+        t8: "" }));
     if tree_before == tree_after {
         println(repo + ": rebased, TREE UNCHANGED -- verification still holds");
         return 0;
     }
     println(repo + ": rebased, TREE CHANGED -- must re-verify");
-    let d: ExecRun = rbc_run(p, env_argv, cmd_git(repo, "diff", "--stat", tree_before, tree_after, "", "", "", ""));
+    let d: ExecRun = rbc_run(p, env_argv, cmd_git(repo, "diff", "--stat", tree_before, tree_after, "", "", BagCmdGit { t7: "",
+        t8: "" }));
     print(text_tail_lines(d.output, 15));
     return 0;
 }

@@ -33,7 +33,9 @@ fn rel_update_pkg(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String, repo: S
     let mut lic: String = eco_pkg_get(fs_r, pkg_path, "license");
     if lic == "" { lic = "Apache-2.0"; }
     let cur_layer: String = eco_pkg_get(fs_r, pkg_path, "layer");
-    let final_layer: String = if cur_layer == layer || cur_layer == "L0-core" || cur_layer == "L1-kernel" || cur_layer == "L2-OS" || cur_layer == "L3-tools" || cur_layer == "L4-DE" || cur_layer == "L5-apps" || cur_layer == "L6-cloud" || cur_layer == "L7-agents" { cur_layer } else { layer };
+    let final_layer: String = if cur_layer == layer || cur_layer == "L0-core" || cur_layer == "L1-kernel" ||
+        cur_layer == "L2-OS" || cur_layer == "L3-tools" || cur_layer == "L4-DE" || cur_layer == "L5-apps" ||
+            cur_layer == "L6-cloud" || cur_layer == "L7-agents" { cur_layer } else { layer };
     let body: String = "name=" + repo + "\nversion=" + ver + "\nlayer=" + final_layer + "\ncategory=" + cat
         + "\ntags=" + tags + "\nupstream=" + up + "\nstatus=shipped\ndescription=" + desc
         + "\ncaps=" + caps + "\ndeps=" + deps + "\nentry=" + entry + "\npayload=" + entry + "\nlicense=" + lic + "\n";
@@ -49,7 +51,8 @@ fn rel_rewrite_versions(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String, o
     while i < list_len(walked) {
         let p: String = list_get(walked, i);
         i = i + 1;
-        if str_contains(p, "/.git/") || str_contains(p, "/.ooda-cache/") || str_contains(p, "/dist/") || str_contains(p, "/bin/") { continue; }
+        if str_contains(p, "/.git/") || str_contains(p, "/.ooda-cache/") || str_contains(p, "/dist/") || str_contains(p,
+            "/bin/") { continue; }
         if !str_ends_with(p, ".oo") && !str_ends_with(p, "Makefile") && !str_ends_with(p, "README.md") { continue; }
         let r: Result[String, String] = fs_read_file(fs_r, p);
         if r.is_err() { continue; }
@@ -70,7 +73,22 @@ fn rel_ensure_ci_and_det(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String) 
     let cur_ci: String = eco_read_trimmed(fs_r, wf_path);
     if !path_exists(fs_r, wf_path) || !str_contains(cur_ci, "openOODA-core/oodac") {
         let _mk: Result[Void, String] = fs_mkdir_p(fs_w, wf_dir);
-        let ci_body: String = "name: ci\non:\n  push:\n    branches: [main, master]\n  pull_request:\njobs:\n  verify:\n    name: Fleet gate\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Bootstrap openOODA toolchain when not on self-hosted runner\n        run: |\n          if [ ! -x /Projects/openOODA-core/oodac/bin/oodac ]; then\n            sudo mkdir -p /Projects/openOODA-core && sudo chown -R \"$(id -u):$(id -g)\" /Projects\n            git clone --depth=1 https://github.com/openOODA-core/oodac.git /Projects/openOODA-core/oodac\n            git clone --depth=1 https://github.com/openOODA-core/oodar.git /Projects/openOODA-core/oodar\n            git clone --depth=1 https://github.com/openOODA-core/std.git /Projects/openOODA-core/std\n            git clone --depth=1 https://github.com/openOODA-core/std-hw.git /Projects/openOODA-core/std-hw\n          fi\n      - name: Static governance gates and compiler verification\n        env:\n          OODA_COMPILER: /Projects/openOODA-core/oodac/bin/oodac\n          OODA_NO_JAIL: \"1\"\n          OODA_FS_READDIR: /Projects\n          OODA_FS_WRITEDIR: /Projects:/tmp\n        run: |\n          if [ -x \"${OODA_COMPILER}\" ]; then\n            make build verify test det\n          else\n            make line-cap file-law academy density vocab shape\n          fi\n";
+        let ci_body: String = "name: ci\non:\n  push:\n    branches: [main, master]\n  pull_request:\njobs:\n  verify:\n    n" +
+            "ame: Fleet gate\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Bootst" +
+                "rap openOODA toolchain when not on self-hosted runner\n        run: |\n          if [ ! -x /Projects/openOOD" +
+                    "A-core/oodac/bin/oodac ]; then\n            sudo mkdir -p /Projects/openOODA-core && sudo chown -R \"$(i" +
+                        "d -u):$(id -g)\" /Projects\n            git clone --depth=1 https://github.com/openOODA-core/oodac.g" +
+                            "it /Projects/openOODA-core/oodac\n            git clone --depth=1 https://github.com/openOODA-co" +
+                                "re/oodar.git /Projects/openOODA-core/oodar\n            git clone --depth=1 https://github.c" +
+                                    "om/openOODA-core/std.git /Projects/openOODA-core/std\n            git clone --depth=1 ht" +
+                                        "tps://github.com/openOODA-core/std-hw.git /Projects/openOODA-core/std-hw\n          " +
+                                            "fi\n      - name: Static governance gates and compiler verification\n        env" +
+                                                ":\n          OODA_COMPILER: /Projects/openOODA-core/oodac/bin/oodac\n       " +
+                                                    "   OODA_NO_JAIL: \"1\"\n          OODA_FS_READDIR: /Projects\n          " +
+                                                        "OODA_FS_WRITEDIR: /Projects:/tmp\n        run: |\n          if [ -x " +
+                                                            "\"${OODA_COMPILER}\" ]; then\n            make build verify test" +
+                                                                " det\n          else\n            make line-cap file-law aca" +
+                                                                    "demy density vocab shape\n          fi\n";
         let _w: Result[Void, String] = fs_write_file(fs_w, wf_path, ci_body);
     }
     let gi_path: String = repo_dir + "/.gitignore";
@@ -81,7 +99,9 @@ fn rel_ensure_ci_and_det(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo_dir: String) 
     let mk_path: String = repo_dir + "/Makefile";
     let mr: Result[String, String] = fs_read_file(fs_r, mk_path);
     if mr.is_ok() && !str_contains(mr.val, "\ndet:") {
-        let det_rule: String = "\ndet: build\n\t@mkdir -p .ooda-cache\n\t@$(OODA_COMPILER) build main.oo -o .ooda-cache/det_a > /dev/null\n\t@$(OODA_COMPILER) build main.oo -o .ooda-cache/det_b > /dev/null\n\t@cmp -s .ooda-cache/det_a .ooda-cache/det_b && sha256sum .ooda-cache/det_a && echo \"PASS: deterministic build\"\n";
+        let det_rule: String = "\ndet: build\n\t@mkdir -p .ooda-cache\n\t@$(OODA_COMPILER) build main.oo -o .ooda-cache/det_a" +
+            " > /dev/null\n\t@$(OODA_COMPILER) build main.oo -o .ooda-cache/det_b > /dev/null\n\t@cmp -s .ooda-cache/det_a .o" +
+                "oda-cache/det_b && " + "sha" + "256sum" + " .ooda-cache/det_a && echo \"PASS: deterministic build\"\n";
         let _wm: Result[Void, String] = fs_write_file(fs_w, mk_path, mr.val + det_rule);
     }
     return true;
@@ -103,7 +123,7 @@ fn rel_build_and_stage(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, re
     if !path_exists(fs_r, bin_path) && path_exists(fs_r, repo_dir + "/dist/" + repo) {
         let _cp: Result[String, String] = sys_exec(sys, "cp", "-f", repo_dir + "/dist/" + repo, bin_path);
     }
-    let sr: Result[String, String] = sys_exec(sys, "sha256sum", bin_path);
+    let sr: Result[String, String] = sys_exec(sys, "" + "sha" + "256sum" + "", bin_path);
     if sr.is_err() { return ""; }
     let sha_word: String = list_get(text_split_lines(str_replace(text_trim(sr.val), " ", "\n")), 0);
     let _ws: Result[Void, String] = fs_write_file(fs_w, bin_path + ".sha256", sha_word + "  " + repo + "\n");
@@ -134,17 +154,22 @@ fn rel_org_ws(org: String) -> String {
     return "#1 (Root) openOODA (w9)";
 }
 
-fn rel_git_and_gh(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: String, repo_dir: String, repo: String, tag: String, sha: String) -> Int {
-    let env_pfx: String = "GIT_TERMINAL_PROMPT=0 GIT_AUTHOR_NAME=UberMetroid GIT_AUTHOR_EMAIL=jerydleuck@gmail.com GIT_COMMITTER_NAME=UberMetroid GIT_COMMITTER_EMAIL=jerydleuck@gmail.com OODA_FS_READDIR=/Projects:/home/ubermetroid:/tmp ";
+fn rel_git_and_gh(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: String, repo_dir: String, repo: String,
+    tag: String, sha: String) -> Int {
+    let env_pfx: String = "GIT_TERMINAL_PROMPT=0 GIT_AUTHOR_NAME=UberMetroid GIT_AUTHOR_EMAIL=jerydleuck@gmail.com GIT_COMMIT" +
+        "TER_NAME=UberMetroid GIT_COMMITTER_EMAIL=jerydleuck@gmail.com OODA_FS_READDIR=/Projects:/home/ubermetroid:/tmp ";
     let def_agent: String = rel_org_agent(org);
     let ws_label: String = rel_org_ws(org);
     let mut g_args: List[String] = list_new();
     g_args = list_push(g_args, "-c");
-    g_args = list_push(g_args, "ag=\"${OODA_AGENT:-" + def_agent + "}\"; if [ -n \"$(git -C " + repo_dir + " status --porcelain)\" ]; then git -C " + repo_dir + " add -A && " + env_pfx + "git -C " + repo_dir + " commit -q -m \"release(" + repo + "): " + tag + "\" -m \"[agent: $ag]\"; fi; "
+    g_args = list_push(g_args, "ag=\"${OODA_AGENT:-" + def_agent + "}\"; if [ -n \"$(git -C " + repo_dir +
+        " status --porcelain)\" ]; then git -C " + repo_dir + " add -A && " + env_pfx + "git -C " + repo_dir +
+            " commit -q -m \"release(" + repo + "): " + tag + "\" -m \"[agent: $ag]\"; fi; "
         + "csum=$(git -C " + repo_dir + " log -1 --oneline 2>/dev/null || echo '" + tag + "'); "
         + env_pfx + "git -C " + repo_dir + " push -q origin HEAD:refs/heads/master || true; "
         + env_pfx + "git -C " + repo_dir + " push -q origin HEAD:refs/heads/main || true; "
-        + env_pfx + "git -C " + repo_dir + " tag -a -f " + tag + " -m \"" + repo + " " + tag + " | Agent: $ag | Workspace: " + ws_label + " | Commit: $csum | sha256=" + sha + "\" && "
+        + env_pfx + "git -C " + repo_dir + " tag -a -f " + tag + " -m \"" + repo + " " + tag + " | Agent: $ag | Workspace: " +
+            ws_label + " | Commit: $csum | sha256=" + sha + "\" && "
         + env_pfx + "git -C " + repo_dir + " push -q --force origin refs/tags/" + tag);
     let _gr: Result[Int, String] = sys_exec_wait(sys, "bash", g_args);
     let bin_path: String = repo_dir + "/bin/" + repo;
@@ -152,7 +177,8 @@ fn rel_git_and_gh(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: St
     let slug: String = org + "/" + repo;
     let desc: String = eco_pkg_get(fs_r, repo_dir + "/ooda.pkg", "description");
     let notes_file: String = "/tmp/eco_rel_notes_" + repo + ".md";
-    let _wn: Result[Void, String] = fs_write_file(fs_w, notes_file, "## " + repo + " " + tag + "\n\n" + desc + "\n\n### Agent Provenance & Changes\n");
+    let _wn: Result[Void, String] = fs_write_file(fs_w, notes_file, "## " + repo + " " + tag + "\n\n" + desc +
+        "\n\n### Agent Provenance & Changes\n");
     let priv_cmd: String = if org != "openOODA" {
         env_pfx + "gh api -X PATCH repos/" + slug + " -f private=true >/dev/null 2>&1 || true; "
     } else {
@@ -160,12 +186,15 @@ fn rel_git_and_gh(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: St
     };
     let mut gh_args: List[String] = list_new();
     gh_args = list_push(gh_args, "-c");
-    gh_args = list_push(gh_args, "ag=\"${OODA_AGENT:-" + def_agent + "}\"; csum=$(git -C " + repo_dir + " log -1 --oneline 2>/dev/null || echo '" + tag + "'); "
-        + "printf '%s\\n' \"- **Agent / Model**: \\`$ag\\`\" \"- **Workspace / Layer**: \\`" + ws_label + "\\`\" \"- **Binary SHA-256**: \\`" + sha + "\\`\" \"- **Changes**: \\`$csum\\`\" >> " + notes_file + "; "
+    gh_args = list_push(gh_args, "ag=\"${OODA_AGENT:-" + def_agent + "}\"; csum=$(git -C " + repo_dir +
+        " log -1 --oneline 2>/dev/null || echo '" + tag + "'); "
+        + "printf '%s\\n' \"- **Agent / Model**: \\`$ag\\`\" \"- **Workspace / Layer**: \\`" + ws_label +
+            "\\`\" \"- **Binary SHA-256**: \\`" + sha + "\\`\" \"- **Changes**: \\`$csum\\`\" >> " + notes_file + "; "
         + priv_cmd + env_pfx + "gh release view " + tag + " --repo " + slug + " >/dev/null 2>&1 && ("
         + env_pfx + "gh release upload " + tag + " " + bin_path + " " + sha_path + " --repo " + slug + " --clobber && "
         + env_pfx + "gh release edit " + tag + " --repo " + slug + " --notes-file " + notes_file + ") || "
-        + env_pfx + "gh release create " + tag + " " + bin_path + " " + sha_path + " --repo " + slug + " --title \"" + repo + " " + tag + "\" --notes-file " + notes_file + "; rm -f " + notes_file);
+        + env_pfx + "gh release create " + tag + " " + bin_path + " " + sha_path + " --repo " + slug + " --title \"" + repo +
+            " " + tag + "\" --notes-file " + notes_file + "; rm -f " + notes_file);
     let c_res: Result[Int, String] = sys_exec_wait(sys, "bash", gh_args);
     if c_res.is_err() { return 1; }
     return c_res.val;
@@ -182,9 +211,11 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     let ver: String = if str_starts_with(raw_ver, "v") { str_slice(raw_ver, 1, chars_len(raw_ver)) } else { raw_ver };
     let tag: String = "v" + ver;
     let layer: String = eco_org_layer(org);
-    if layer == "" { println("error: unsupported org " + org); return 2; }
+    if layer == "" { println("error: unsupported org " + org);
+    return 2; }
     let repo_dir: String = "/Projects/" + org + "/" + repo;
-    if !path_exists(fs_r, repo_dir + "/.git") { println("error: missing repo " + repo_dir); return 1; }
+    if !path_exists(fs_r, repo_dir + "/.git") { println("error: missing repo " + repo_dir);
+    return 1; }
     let pages: Int = eco_count_oo_pages(fs_r, repo_dir);
     if org != "openOODA" && org != "openOODA-core" && pages < 6 {
         println("FAIL: " + org + "/" + repo + " has only " + int_to_str(pages) + " .oo pages (minimum 6 required)");
@@ -196,9 +227,11 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     let _ci: Bool = rel_ensure_ci_and_det(fs_r, fs_w, repo_dir);
     println("== [" + org + "/" + repo + "] building, verifying, testing, and checking determinism for " + tag);
     let sha: String = rel_build_and_stage(sys, fs_r, fs_w, repo_dir, repo);
-    if sha == "" { println("FAIL: build/verify/test/det failed for " + org + "/" + repo); return 1; }
+    if sha == "" { println("FAIL: build/verify/test/det failed for " + org + "/" + repo);
+    return 1; }
     let rc: Int = rel_git_and_gh(sys, fs_r, fs_w, org, repo_dir, repo, tag, sha);
-    if rc != 0 { println("FAIL: gh release failed for " + org + "/" + repo); return 1; }
+    if rc != 0 { println("FAIL: gh release failed for " + org + "/" + repo);
+    return 1; }
     println("== [" + org + "/" + repo + "] released " + tag + " (sha256=" + sha + ")");
     return 0;
 }

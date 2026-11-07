@@ -15,23 +15,47 @@ import "std/fs/process/process.oo";
 
 fn redteam_gates_1_to_3_sh() -> String {
     return "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
-        + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
+        + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case" +
+            " \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "echo '[REDTEAM FAIL] OODA_REPO_ROOT must be set to an absolute path free of ..'; exit 1; fi; "
         + "cd \"$src_root\" || { echo '[REDTEAM FAIL] cannot cd to '$src_root; exit 1; }; "
         + "fails=0; total=0; "
         + "echo '=== redteam_orchestrate (7 automated gates; 8-axis doctrine is manual) ==='; "
         + "total=$((total + 1)); "
-        + "slots=$(python3 -c 'import json,sys; print(len(json.load(open(\"oodar/sec/cap/cap_table.json\")).get(\"caps\", [])))' || echo 0); "
-        + "if [ \"$slots\" -lt 20 ]; then fails=$((fails + 1)); echo \"  FAIL D1: cap_table slots=$slots (need ≥ 20, RULES §1.18)\"; else echo \"  PASS D1: cap_table slots=$slots\"; fi; "
+        + "slots=$(python3 -c 'import json,sys; print(len(json.load(open(\"oodar/sec/cap/cap_table.json\")).get(\"caps\", [])" +
+            "))' || echo 0); "
+        + "if [ \"$slots\" -lt 20 ]; then fails=$((fails + 1)); echo \"  FAIL D1: cap_table slots=$slots (need ≥ 20, RULES §1" +
+            ".18)" +
+                "\"" +
+                "; else echo " +
+                "\"" +
+                "  PASS D1: cap_table slots=$slots" +
+                "\"" +
+                "; fi; "
         + "total=$((total + 1)); "
         + "smt_harnesses=$(find oodac/check -name 'smt_*.oo' -type f | wc -l); "
-        + "if [ \"$smt_harnesses\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D2: SMT harness count=$smt_harnesses (need ≥ 1, RFC 0002)\"; else echo \"  PASS D2: SMT harnesses=$smt_harnesses\"; fi; "
+        + "if [ \"$smt_harnesses\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D2: SMT harness count=$smt_harnesses (ne" +
+            "ed ≥ 1, RFC 0002)" +
+                "\"" +
+                "; else echo " +
+                "\"" +
+                "  PASS D2: SMT harnesses=$smt_harnesses" +
+                "\"" +
+                "; fi; "
         + "total=$((total + 1)); "
         + "pinned=0; "
         + "for r in oodar ooda opm install mcp lsp catalog website cli tui std oodac; do "
-        + "  if grep -qE 'uses: openOODA/openOODA/\\.github/workflows/auto-release\.yml@[^m]' $r/.github/workflows/ci.yml; then pinned=$((pinned + 1)); fi; "
+        + "  if grep -qE 'uses: openOODA/openOODA/\\.github/workflows/auto-release\.yml@[^m]' $r/.github/workflows/ci.yml; th" +
+            "en pinned=$((pinned + 1)); fi; "
         + "done; "
-        + "if [ \"$pinned\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D3: zero consumer ci.yml pin a tag (need >= 1, RFC 0006 s4)\"; else echo \"  PASS D3: pinned consumers=$pinned/12\"; fi; ";
+        + "if [ \"$pinned\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D3: zero consumer ci.yml pin a tag (need >= 1, " +
+            "RFC 0006 s4)" +
+                "\"" +
+                "; else echo " +
+                "\"" +
+                "  PASS D3: pinned consumers=$pinned/12" +
+                "\"" +
+                "; fi; ";
 }
 
 fn redteam_gates_4_to_7_sh() -> String {
@@ -40,15 +64,46 @@ fn redteam_gates_4_to_7_sh() -> String {
         + "for r in oodar ooda opm install mcp lsp catalog website cli tui std oodac; do "
         + "  if grep -qE '(determinism|blackbox|bb)-gate:' $r/.github/workflows/ci.yml; then gated=$((gated + 1)); fi; "
         + "done; "
-        + "if [ \"$gated\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D4: zero consumer ci.yml has determinism-gate (need >= 1, RULES s1.10)\"; else echo \"  PASS D4: determinism-gated consumers=$gated/12\"; fi; "
+        + "if [ \"$gated\" -lt 1 ]; then fails=$((fails + 1)); echo \"  FAIL D4: zero consumer ci.yml has determinism-gate (n" +
+            "eed >= 1, RULES s1.10)" +
+                "\"" +
+                "; else echo " +
+                "\"" +
+                "  PASS D4: determinism-gated consumers=$gated/12" +
+                "\"" +
+                "; fi; "
         + "total=$((total + 1)); "
-        + "if [ ! -x oodac/boot" + "strap/oodac_pure_build ]; then fails=$((fails + 1)); echo \"  FAIL D5: oodac_pure_build not executable\"; elif ! head -1 oodac/boot" + "strap/oodac_pure_build | grep -q \"^#!/\"; then fails=$((fails + 1)); echo \"  FAIL D5: oodac_pure_build has no host-script header\"; else echo \"  PASS D5: oodac_pure_build executable host script\"; fi; "
+        + "if [ ! -x oodac/boot" +
+            "strap/oodac_pure_build ]; then fails=$((fails + 1)); echo \"  FAIL D5: oodac_pure_build not executable\"; elif !" +
+                " head -1 oodac/boot" +
+                    "strap/oodac_pure_build | grep -q \"^#!/\"; then fails=$((fails + 1)); echo \"  FAIL D5: oodac_pure_build" +
+                        " has no host-script header" +
+                            "\"" +
+                            "; else echo " +
+                            "\"" +
+                            "  PASS D5: oodac_pure_build executable host script" +
+                            "\"" +
+                            "; fi; "
         + "total=$((total + 1)); "
         + "backends=0; "
         + "for be in llvm elf wasm; do [ -d oodac/emit/$be ] && backends=$((backends + 1)); done; "
-        + "if [ \"$backends\" -lt 3 ]; then fails=$((fails + 1)); echo \"  FAIL D6: emit/ floor=$backends (need 3: llvm + elf + wasm)\"; else echo \"  PASS D6: emit/ backends=$backends (llvm + elf + wasm)\"; fi; "
+        + "if [ \"$backends\" -lt 3 ]; then fails=$((fails + 1)); echo \"  FAIL D6: emit/ floor=$backends (need 3: llvm + elf" +
+            " + wasm)" +
+                "\"" +
+                "; else echo " +
+                "\"" +
+                "  PASS D6: emit/ backends=$backends (llvm + elf + wasm)" +
+                "\"" +
+                "; fi; "
         + "total=$((total + 1)); "
-        + "if [ ! -f openOODA/scripts/governance_verify.oo ]; then fails=$((fails + 1)); echo \"  FAIL D7: governance_verify.oo missing\"; else echo \"  PASS D7: governance_verify.oo present (run separately)\"; fi; "
+        + "if [ ! -f openOODA/scripts/governance_verify.oo ]; then fails=$((fails + 1)); echo \"  FAIL D7: governance_verify." +
+            "oo missing" +
+                "\"" +
+                "; else echo " +
+                "\"" +
+                "  PASS D7: governance_verify.oo present (run separately)" +
+                "\"" +
+                "; fi; "
         + "echo; "
         + "echo \"Total gates: $total  Fails: $fails\"; "
         + "if [ \"$fails\" -gt 0 ]; then echo '[REDTEAM FAIL]'; exit 1; fi; "

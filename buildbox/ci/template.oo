@@ -22,7 +22,9 @@ pub fn ci_build(repo: String, big: Bool) -> List[String] {
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
     l = list_push(l, "        run: |");
     l = list_push(l, "          if ! grep -qE '^build[[:space:]]*:' Makefile; then");
-    l = list_push(l, "            echo \"::error::This repository has no build target. The tool is a stub and is tracked in the fleet backlog.\"");
+    l = list_push(l,
+        "            echo \"::error::This repository has no build targ" +
+            "et. The tool is a stub and is tracked in the fleet backlog.\"");
     l = list_push(l, "            exit 1");
     l = list_push(l, "          fi");
     l = list_push(l, "");
@@ -43,7 +45,8 @@ pub fn ci_build(repo: String, big: Bool) -> List[String] {
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
     l = list_push(l, "        run: |");
     l = list_push(l, "          if [ ! -x \"dist/" + repo + "\" ]; then");
-    l = list_push(l, "            echo \"::error::dist/" + repo + " was not produced. The tool is not implemented and is tracked in the fleet backlog.\"");
+    l = list_push(l, "            echo \"::error::dist/" + repo +
+        " was not produced. The tool is not implemented and is tracked in the fleet backlog.\"");
     l = list_push(l, "            exit 1");
     l = list_push(l, "          fi");
     l = list_push(l, "");
@@ -56,10 +59,12 @@ pub fn ci_verify(repo: String, big: Bool) -> List[String] {
     let mut l: List[String] = list_new();
     let mut part: List[String] = ci_step_make(repo, "Verify", "make verify", big);
     let mut i: Int = 0;
-    while i < list_len(part) { l = list_push(l, list_get(part, i)); i = i + 1; }
+    while i < list_len(part) { l = list_push(l, list_get(part, i));
+    i = i + 1; }
     part = ci_step_make(repo, "Test", "make test", big);
     i = 0;
-    while i < list_len(part) { l = list_push(l, list_get(part, i)); i = i + 1; }
+    while i < list_len(part) { l = list_push(l, list_get(part, i));
+    i = i + 1; }
     l = list_push(l, "      - name: Pure test audit");
     l = list_push(l, "        if: steps.toolchain.outputs.present == 'true'");
     l = list_push(l, "        working-directory: ${{ github.workspace }}/" + repo);
@@ -76,7 +81,11 @@ pub fn ci_verify(repo: String, big: Bool) -> List[String] {
     l = list_push(l, "          mkdir -p .ooda-cache");
     l = list_push(l, "          ./dist/" + repo + " --version > .ooda-cache/run1.txt 2>&1 || true");
     l = list_push(l, "          ./dist/" + repo + " --version > .ooda-cache/run2.txt 2>&1 || true");
-    l = list_push(l, "          cmp -s .ooda-cache/run1.txt .ooda-cache/run2.txt || { echo \"::error::the tool is not deterministic across two runs\"; exit 1; }");
+    l = list_push(l,
+        "          cmp -s .ooda-cache/run1.txt .ooda-cache/run2.txt || { echo \"::error::the tool is not deterministic across" +
+            " two runs" +
+                "\"" +
+                "; exit 1; }");
     l = list_push(l, "");
     return l;
 }
@@ -117,9 +126,16 @@ pub fn ci_install_upstream(upstream: String, package: String, binary: String) ->
     l = list_push(l, "            done");
     l = list_push(l, "          fi");
     if install != "" {
-        l = list_push(l, "          command -v " + upstream + " >/dev/null 2>&1 || { echo \"::error::the upstream tool " + upstream + " is required for the parity gate and the install command did not put it on this runner\"; exit 1; }");
+        l = list_push(l, "          command -v " + upstream + " >/dev/null 2>&1 || { echo \"::error::the upstream tool " +
+            upstream + " is required for the parity gate and the install command did not put it on this runner" +
+                "\"" +
+                "; exit 1; }");
     } else {
-        l = list_push(l, "          command -v " + upstream + " >/dev/null 2>&1 || { echo \"::error::the upstream tool " + upstream + " is required for the parity gate and the package " + package + " does not put it on this runner\"; exit 1; }");
+        l = list_push(l, "          command -v " + upstream + " >/dev/null 2>&1 || { echo \"::error::the upstream tool " +
+            upstream + " is required for the parity gate and the package " + package +
+                " does not put it on this runner" +
+                    "\"" +
+                    "; exit 1; }");
     }
     l = list_push(l, "");
     return l;
@@ -159,29 +175,36 @@ pub fn ci_parity(repo: String, upstream: String, target: String, big: Bool) -> L
 // The upstream is installed right after the build, before the verify and the
 // test steps, because the test target depends on the parity target and the
 // parity target needs the upstream.
-pub fn ci_workflow(repo: String, upstream: String, package: String, target: String, binary: String, has_build: Bool, big: Bool) -> String {
+pub fn ci_workflow(repo: String, upstream: String, package: String, target: String, binary: String, has_build: Bool,
+    big: Bool) -> String {
     let mut all: List[String] = ci_head(repo);
     let mut part: List[String] = ci_checkout(repo);
     let mut i: Int = 0;
-    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    while i < list_len(part) { all = list_push(all, list_get(part, i));
+    i = i + 1; }
     part = ci_build(repo, big);
     i = 0;
-    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    while i < list_len(part) { all = list_push(all, list_get(part, i));
+    i = i + 1; }
     if has_build && upstream != "" {
         part = ci_install_upstream(upstream, package, binary);
         i = 0;
-        while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+        while i < list_len(part) { all = list_push(all, list_get(part, i));
+        i = i + 1; }
     }
     part = ci_verify(repo, big);
     i = 0;
-    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    while i < list_len(part) { all = list_push(all, list_get(part, i));
+    i = i + 1; }
     if has_build {
         part = ci_parity(repo, upstream, target, big);
         i = 0;
-        while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+        while i < list_len(part) { all = list_push(all, list_get(part, i));
+        i = i + 1; }
     }
     part = ci_static_gates(repo);
     i = 0;
-    while i < list_len(part) { all = list_push(all, list_get(part, i)); i = i + 1; }
+    while i < list_len(part) { all = list_push(all, list_get(part, i));
+    i = i + 1; }
     return text_join_lines(all) + "\n";
 }

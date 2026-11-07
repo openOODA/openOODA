@@ -85,7 +85,8 @@ fn nw_dirty(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String) -> 
     a = list_push(a, "-C");
     a = list_push(a, repo);
     let mut i: Int = 0;
-    while i < list_len(s) { a = list_push(a, list_get(s, i)); i = i + 1; }
+    while i < list_len(s) { a = list_push(a, list_get(s, i));
+    i = i + 1; }
     let _o: String = fc_run(sys, fs_r, cache, "git", a);
     return text_trim(fc_all(fs_r, cache)) != "";
 }
@@ -112,9 +113,12 @@ fn nw_land(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, tool
     c = list_push(c, "-m");
     c = list_push(c, nw_body());
     let _o2: String = fc_run(sys, fs_r, cache, "git", c);
-    if fc_code(fs_r, cache) != 0 { println(tool + " COMMIT-FAIL"); return 1; }
-    if !nw_push_branch(sys, fs_r, cache, repo, "main", "main") { println(tool + " PUSH-FAIL"); return 1; }
-    if !nw_push_branch(sys, fs_r, cache, repo, "main", "master") { println(tool + " PUSH-FAIL"); return 1; }
+    if fc_code(fs_r, cache) != 0 { println(tool + " COMMIT-FAIL");
+    return 1; }
+    if !nw_push_branch(sys, fs_r, cache, repo, "main", "main") { println(tool + " PUSH-FAIL");
+    return 1; }
+    if !nw_push_branch(sys, fs_r, cache, repo, "main", "master") { println(tool + " PUSH-FAIL");
+    return 1; }
     println(tool + " REPAIRED");
     return 0;
 }
@@ -122,10 +126,13 @@ fn nw_land(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, tool
 // Write the workflow of the gate of one tool, put the canonical static
 // governance gates in its Makefile, and land the repair on both default
 // branches. The answer holds zero when the repair landed.
-pub fn nw_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, parity_dir: String, tool: String, rows: List[String]) -> Int {
+pub fn nw_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, parity_dir: String,
+    tool: String, rows: List[String]) -> Int {
     let repo: String = fleet + "/" + tool;
-    if !path_exists(fs_r, repo + "/.git") { println(tool + " NO-REPO"); return 1; }
-    if !nw_checkout(sys, fs_r, cache, repo) { println(tool + " CHECKOUT-FAIL"); return 1; }
+    if !path_exists(fs_r, repo + "/.git") { println(tool + " NO-REPO");
+    return 1; }
+    if !nw_checkout(sys, fs_r, cache, repo) { println(tool + " CHECKOUT-FAIL");
+    return 1; }
     let upstream: String = parity_map_lookup(rows, tool);
     let _v: Int = nw_fix_vocab(fs_r, fs_w, repo);
     let _d: Int = nw_remove_dead(fs_r, fs_w, repo);
@@ -135,6 +142,7 @@ pub fn nw_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: Stri
     let _r: Bool = ci_apply_release(fs_r, fs_w, repo, tool, upstream);
     let _m: Bool = ci_mk_patch(fs_r, fs_w, repo + "/Makefile");
     let _l: Bool = nw_law_patch(sys, fs_r, fs_w, cache, repo);
-    if !nw_dirty(sys, fs_r, cache, repo) { println(tool + " NO-CHANGE"); return 0; }
+    if !nw_dirty(sys, fs_r, cache, repo) { println(tool + " NO-CHANGE");
+    return 0; }
     return nw_land(sys, fs_r, cache, repo, tool);
 }

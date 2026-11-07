@@ -47,32 +47,29 @@ fn fc_status(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, org: String, too
 
 // Run one command of the orchestrator for one tool. The extra word carries
 // the version of the catalog command and is empty for the other commands.
-fn fc_run_one(
-    sys: &ProcessCap,
-    fs_r: &FsReadCap,
-    fs_w: &FsWriteCap,
-    cache: String,
-    fleet: String,
-    org: String,
-    tool: String,
+type BagFcRunOne = struct {
     extra: String,
     cmd: String,
-    tries: Int
-) -> Int {
-    if cmd == "land" {
-        return fc_land(sys, fs_r, cache, fleet, org, tool, tries);
+    tries: Int,
+};
+
+fn fc_run_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, org: String, tool: String,
+    bag: BagFcRunOne) -> Int {
+    if bag.cmd == "land" {
+        return fc_land(sys, fs_r, cache, fleet, org, tool, bag.tries);
     }
-    if cmd == "release" {
-        return fc_release(sys, fs_r, fs_w, cache, fleet, org, tool, "", tries);
+    if bag.cmd == "release" {
+        return fc_release(sys, fs_r, fs_w, cache, fleet, org, tool, BagFcRelease { desc: "", tries: bag.tries });
     }
-    if cmd == "status" {
+    if bag.cmd == "status" {
         println(tool + " " + fc_status(sys, fs_r, cache, org, tool));
         return 0;
     }
-    if cmd == "catalog" {
-        return fc_catalog_release(sys, fs_r, fs_w, cache, fleet, tool, extra, "", tries);
+    if bag.cmd == "catalog" {
+        return fc_catalog_release(sys, fs_r, fs_w, cache, fleet, tool, bag.extra, BagFcCatalogRelease { desc: "",
+            tries: bag.tries });
     }
-    println("unknown command: " + cmd);
+    println("unknown command: " + bag.cmd);
     return 2;
 }
 
@@ -108,7 +105,7 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
             if i < list_len(args) { extra = list_get(args, i); }
             i = i + 1;
         }
-        let r: Int = fc_run_one(sys, fs_r, fs_w, cache, fleet, org, tool, extra, cmd, tries);
+        let r: Int = fc_run_one(sys, fs_r, fs_w, cache, fleet, org, tool, BagFcRunOne { extra: extra, cmd: cmd, tries: tries });
         if r != 0 { rc = r; }
     }
     return rc;

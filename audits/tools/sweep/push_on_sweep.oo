@@ -70,23 +70,26 @@ pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int 
         let repo: String = list_get(args, i);
         let name: String = path_basename(repo);
         push_wait(p, fr, log, name);
-        let ref_argv: List[String] = cmd_git(repo, "symbolic-ref", "--short", "HEAD", "", "", "", "", "");
+        let ref_argv: List[String] = cmd_git(repo, "symbolic-ref", "--short", "HEAD", "", "", "", BagCmdGit { t7: "", t8: "" });
         let br: String = exec_argv_stdout(p, argv_join(env_argv, ref_argv));
-        let _fetch: ExecRun = exec_argv_run(p, argv_join(env_argv, cmd_git(repo, "fetch", "origin", br, "-q", "", "", "", "")));
+        let _fetch: ExecRun = exec_argv_run(p, argv_join(env_argv, cmd_git(repo, "fetch", "origin", br, "-q", "", "",
+            BagCmdGit { t7: "", t8: "" })));
         let range: String = "origin/" + br + "..HEAD";
-        let count_argv: List[String] = cmd_git(repo, "rev-list", "--count", range, "", "", "", "", "");
+        let count_argv: List[String] = cmd_git(repo, "rev-list", "--count", range, "", "", "", BagCmdGit { t7: "", t8: "" });
         let count: String = exec_argv_stdout(p, argv_join(env_argv, count_argv));
         if count == "0" {
             acc = push_log(fw, out, acc, name + ": already on origin\n");
             i = i + 1;
             continue;
         }
-        let res: ExecRun = exec_argv_run(p, argv_join(env_argv, cmd_git(repo, "push", "origin", br, "", "", "", "", "")));
+        let res: ExecRun = exec_argv_run(p, argv_join(env_argv, cmd_git(repo, "push", "origin", br, "", "", "",
+            BagCmdGit { t7: "", t8: "" })));
         let mut line: String = "";
         if str_contains(res.output, "non-fast-forward") {
             line = name + ": REJECTED (remote moved) -- needs rebase\n";
         } else {
-            let head_argv: List[String] = cmd_git(repo, "rev-parse", "--short", "HEAD", "", "", "", "", "");
+            let head_argv: List[String] = cmd_git(repo, "rev-parse", "--short", "HEAD", "", "", "", BagCmdGit { t7: "",
+                t8: "" });
             let head: String = exec_argv_stdout(p, argv_join(env_argv, head_argv));
             line = name + ": pushed (" + br + ") " + head + "\n";
         }

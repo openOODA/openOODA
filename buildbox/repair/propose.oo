@@ -119,12 +119,18 @@ pub fn repair_push(sys: &ProcessCap, dir: String, branch: String, org: String, r
 
 // Open the pull request. The body travels in a file, so the request never
 // carries the secret, and the answer of the server is the exit code.
-pub fn repair_pr(sys: &ProcessCap, fs_w: &FsWriteCap, cache_dir: String, token: String, org: String, repo: String, branch: String, title: String, body: String) -> Int {
+type BagRepairPr = struct {
+    title: String,
+    body: String,
+};
+
+pub fn repair_pr(sys: &ProcessCap, fs_w: &FsWriteCap, cache_dir: String, token: String, org: String, repo: String,
+    branch: String, bag: BagRepairPr) -> Int {
     let path: String = cache_dir + "/repair_pr_body.json";
-    let doc: String = "{\"title\":" + json_str(title)
+    let doc: String = "{\"title\":" + json_str(bag.title)
         + ",\"head\":" + json_str(branch)
         + ",\"base\":\"main\""
-        + ",\"body\":" + json_str(body) + "}";
+        + ",\"body\":" + json_str(bag.body) + "}";
     let _w: Result[Void, String] = fs_write_file(fs_w, path, doc);
     let url: String = "https://api.github.com/repos/" + org + "/" + repo + "/pulls";
     let code: Int = gh_api_call(sys, fs_w, cache_dir, token, "POST", url, path, "");

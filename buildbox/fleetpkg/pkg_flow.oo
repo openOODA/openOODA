@@ -41,7 +41,8 @@ fn fp_clone(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, work: String, org
 }
 
 // Put the new version of the packaging files on a branch and push the branch.
-fn fp_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, tool: String, old: String, new: String) -> Bool {
+fn fp_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, tool: String, old: String,
+    new: String) -> Bool {
     let mut b: List[String] = list_new();
     b = list_push(b, "-C");
     b = list_push(b, repo);
@@ -81,16 +82,26 @@ fn fp_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: Strin
 
 // Move the version of the packaging files of one tool and merge the change
 // through a pull request. The answer is zero when the change is merged.
-pub fn fp_fix_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String, old: String, new: String, tries: Int) -> Int {
+type BagFpFixOne = struct {
+    old: String,
+    fresh: String,
+    tries: Int,
+};
+
+pub fn fp_fix_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String,
+    bag: BagFpFixOne) -> Int {
     let repo: String = fp_clone(sys, fs_r, cache, work, org, tool);
-    if repo == "" { println(tool + " CLONE-FAIL"); return 1; }
-    if !fp_branch(sys, fs_r, fs_w, cache, repo, tool, old, new) { println(tool + " BUMP-FAIL"); return 1; }
+    if repo == "" { println(tool + " CLONE-FAIL");
+    return 1; }
+    if !fp_branch(sys, fs_r, fs_w, cache, repo, tool, bag.old, bag.fresh) { println(tool + " BUMP-FAIL");
+    return 1; }
     let slug: String = org + "/" + tool;
     let pr: String = fc_open_pr(sys, fs_r, cache, slug, fp_branch_name(tool),
-        "fix(packaging): the version of " + tool + " is " + new,
-        "The packaging files of " + tool + " carry the version of its tree: " + new + ".");
-    if pr == "" { println(tool + " PR-FAIL"); return 1; }
-    let v: String = fc_merge_pr(sys, fs_r, cache, slug, pr, tries);
+        "fix(packaging): the version of " + tool + " is " + bag.fresh,
+        "The packaging files of " + tool + " carry the version of its tree: " + bag.fresh + ".");
+    if pr == "" { println(tool + " PR-FAIL");
+    return 1; }
+    let v: String = fc_merge_pr(sys, fs_r, cache, slug, pr, bag.tries);
     println(tool + " PR#" + pr + " " + v);
     if !str_contains(v, " MERGED") { return 1; }
     return 0;

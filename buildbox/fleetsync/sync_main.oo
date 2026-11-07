@@ -75,18 +75,27 @@ fn sy_split(arg: String) -> List[String] {
 
 // Land the release of one tool on both default branches of the origin. The
 // answer is zero when the release landed.
-pub fn sy_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String, branch: String, src: String, ver: String, rows: List[String]) -> Int {
+type BagSyOne = struct {
+    branch: String,
+    src: String,
+    ver: String,
+    rows: List[String],
+};
+
+pub fn sy_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tool: String,
+    bag: BagSyOne) -> Int {
     let repo: String = sy_clone(sys, fs_r, fs_w, cache, work, org, tool);
-    if repo == "" { println(tool + " CLONE-FAIL"); return 1; }
+    if repo == "" { println(tool + " CLONE-FAIL");
+    return 1; }
     let _f: Bool = sy_fetch(sys, fs_r, cache, repo);
-    let n: Int = sy_prepare(sys, fs_r, fs_w, cache, repo, tool, branch, src, rows);
+    let n: Int = sy_prepare(sys, fs_r, fs_w, cache, repo, tool, bag.branch, BagSyPrepare { src: bag.src, rows: bag.rows });
     let old: String = sy_tree_version(fs_r, repo);
-    let b: Int = sy_bump(fs_r, fs_w, repo, old, ver);
-    if !sy_land(sys, fs_r, fs_w, cache, repo, tool, ver) {
+    let b: Int = sy_bump(fs_r, fs_w, repo, old, bag.ver);
+    if !sy_land(sys, fs_r, fs_w, cache, repo, tool, bag.ver) {
         println(tool + " LAND-FAIL files=" + int_to_str(n));
         return 1;
     }
-    println(tool + " " + ver + " LANDED files=" + int_to_str(n) + " bumped=" + int_to_str(b));
+    println(tool + " " + bag.ver + " LANDED files=" + int_to_str(n) + " bumped=" + int_to_str(b));
     return 0;
 }
 
@@ -112,7 +121,8 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
             i = i + 1;
             if list_len(pair) == 0 { continue; }
             tools = list_push(tools, list_get(pair, 0));
-            if list_len(pair) > 1 { vers = list_push(vers, list_get(pair, 1)); } else { vers = list_push(vers, ver); }
+            if list_len(pair) > 1 { vers = list_push(vers, list_get(pair, 1));
+            } else { vers = list_push(vers, ver); }
         }
     } else {
         tools = sy_tools(fs_r, fleet);
@@ -123,21 +133,31 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
         }
     }
     println("tools=" + int_to_str(list_len(tools)) + " version=" + ver + " branch=" + branch);
-    let rc: Int = sy_run_all(sys, fs_r, fs_w, cache, work, org, tools, vers, branch, src, rows);
+    let rc: Int = sy_run_all(sys, fs_r, fs_w, cache, work, org, tools, BagSyRunAll { vers: vers, branch: branch, src: src,
+        rows: rows });
     println("done tools=" + int_to_str(list_len(tools)) + " failed=" + int_to_str(rc));
     return rc;
 }
 
 // Run the sync of every tool of the list. The answer holds the exit code of
 // the last tool that failed.
-fn sy_run_all(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String, tools: List[String], vers: List[String], branch: String, src: String, rows: List[String]) -> Int {
+type BagSyRunAll = struct {
+    vers: List[String],
+    branch: String,
+    src: String,
+    rows: List[String],
+};
+
+fn sy_run_all(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, work: String, org: String,
+    tools: List[String], bag: BagSyRunAll) -> Int {
     let mut rc: Int = 0;
     let mut i: Int = 0;
     while i < list_len(tools) {
         let t: String = list_get(tools, i);
-        let v: String = list_get(vers, i);
+        let v: String = list_get(bag.vers, i);
         i = i + 1;
-        let r: Int = sy_one(sys, fs_r, fs_w, cache, work, org, t, branch, src, v, rows);
+        let r: Int = sy_one(sys, fs_r, fs_w, cache, work, org, t, BagSyOne { branch: bag.branch, src: bag.src, ver: v,
+            rows: bag.rows });
         if r != 0 { rc = r; }
     }
     return rc;

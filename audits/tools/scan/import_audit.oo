@@ -74,6 +74,37 @@ pub fn audit_resolve(fr: &FsReadCap, page_dir: String, imp: String, core: String
     return false;
 }
 
+type AuditPage = struct {
+    total: Int,
+    bad_count: Int,
+    bad: List[String]
+};
+
+fn audit_page(fr: &FsReadCap, root: String, core: String, dir: String, p: String, total: Int, bad_count: Int,
+    prior: List[String]) -> AuditPage {
+    let src: String = match fs_read_file(fr, p) { Ok(s) => s, Err(_) => "" };
+    let lines: List[String] = text_lines(src);
+    let mut j: Int = 0;
+    let mut tot: Int = total;
+    let mut bc: Int = bad_count;
+    let mut found: List[String] = prior;
+    while j < list_len(lines) {
+        let ln: String = text_trim(list_get(lines, j));
+        if starts_with(ln, "import ") && str_contains(ln, "\"") {
+            let imp: String = audit_quoted(ln);
+            tot = tot + 1;
+            if !audit_resolve(fr, dir, imp, core) {
+                bc = bc + 1;
+                let rel: String = str_replace(p, root + "/", "");
+                let entry: String = rel + "\t" + imp;
+                if !text_list_contains(found, entry) { found = list_push(found, entry); }
+            }
+        }
+        j = j + 1;
+    }
+    return AuditPage { total: tot, bad_count: bc, bad: found };
+}
+
 fn audit_scan_root(fr: &FsReadCap, root: String, core: String) -> Int {
     let mut total: Int = 0;
     let mut bad_count: Int = 0;
@@ -94,23 +125,10 @@ fn audit_scan_root(fr: &FsReadCap, root: String, core: String) -> Int {
                 if name == ".ooda-cache" || name == ".blackbox" { skip = true; }
                 if !skip { queue = list_push(queue, p); }
             } else if ends_with(name, ".oo") {
-                let src: String = match fs_read_file(fr, p) { Ok(s) => s, Err(_) => "" };
-                let lines: List[String] = text_lines(src);
-                let mut j: Int = 0;
-                while j < list_len(lines) {
-                    let ln: String = text_trim(list_get(lines, j));
-                    if starts_with(ln, "import ") && str_contains(ln, "\"") {
-                        let imp: String = audit_quoted(ln);
-                        total = total + 1;
-                        if !audit_resolve(fr, dir, imp, core) {
-                            bad_count = bad_count + 1;
-                            let rel: String = str_replace(p, root + "/", "");
-                            let entry: String = rel + "\t" + imp;
-                            if !text_list_contains(bad, entry) { bad = list_push(bad, entry); }
-                        }
-                    }
-                    j = j + 1;
-                }
+                let hit: AuditPage = audit_page(fr, root, core, dir, p, total, bad_count, bad);
+                total = hit.total;
+                bad_count = hit.bad_count;
+                bad = hit.bad;
             }
             i = i + 1;
         }

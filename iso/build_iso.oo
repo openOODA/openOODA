@@ -14,7 +14,8 @@ import "iso_tools.oo";
 import "std/core/primitives/str.oo";
 import "std/fs/os/fs.oo";
 
-fn iso_emit_page(p: &ProcessCap, fw: &FsWriteCap, oodac: String, root: String, page: String, flag: String, value: String, out: String) -> Result[Int, String] {
+fn iso_emit_page(p: &ProcessCap, fw: &FsWriteCap, oodac: String, root: String, page: String, flag: String, value: String,
+    out: String) -> Result[Int, String] {
     let mut cargs: List[String] = list_new();
     cargs = list_push(cargs, "check");
     cargs = list_push(cargs, root + "/" + page);
@@ -32,7 +33,8 @@ fn iso_emit_page(p: &ProcessCap, fw: &FsWriteCap, oodac: String, root: String, p
     return Ok(0);
 }
 
-fn iso_build_payload(p: &ProcessCap, fw: &FsWriteCap, oodac: String, root: String, bld: String, oodar_root: String, nostd_a: String) -> Result[Int, String] {
+fn iso_build_payload(p: &ProcessCap, fw: &FsWriteCap, oodac: String, root: String, bld: String, oodar_root: String,
+    nostd_a: String) -> Result[Int, String] {
     let e: Result[Int, String] = iso_emit_page(p, fw, oodac, root + "/payload", "app.oo", "", "", bld + "/app.ll");
     if e.is_err() { return e; }
     let mut a: List[String] = list_new();
@@ -93,7 +95,8 @@ fn iso_build_efi(p: &ProcessCap, fw: &FsWriteCap, oodac: String, root: String, b
     let mut i: Int = 0;
     while i < list_len(pages) {
         let page: String = list_get(pages, i);
-        let e: Result[Int, String] = iso_emit_page(p, fw, oodac, root + "/boot", page + ".oo", "--target", "x86_64-windows", bld + "/" + page + ".ll");
+        let e: Result[Int, String] = iso_emit_page(p, fw, oodac, root + "/boot", page + ".oo", "--target", "x86_64-windows",
+            bld + "/" + page + ".ll");
         if e.is_err() { return e; }
         let c: Result[Int, String] = iso_compile_obj(p, bld + "/" + page + ".ll", bld + "/" + page + ".o");
         if c.is_err() { return Err("compile failed " + page); }
@@ -205,14 +208,22 @@ pub fn main(p: &ProcessCap, fw: &FsWriteCap, env: &EnvCap) -> Result[Int, String
     let epoch: String = iso_env_or(env, "SOURCE_DATE_EPOCH", "946684800");
     let _m: Result[Void, String] = fs_mkdir_p(fw, bld + "/efiroot/EFI/BOOT");
     let e1: Result[Int, String] = iso_build_payload(p, fw, oodac, root, bld, oodar_root, nostd_a);
-    if e1.is_err() { let m: String = match e1 { Ok(_) => "", Err(x) => x }; print("ERR " + m); return Err(m); }
+    if e1.is_err() { let m: String = match e1 { Ok(_) => "", Err(x) => x };
+    print("ERR " + m);
+    return Err(m); }
     let e2: Result[Int, String] = iso_build_efi(p, fw, oodac, root, bld);
-    if e2.is_err() { let m: String = match e2 { Ok(_) => "", Err(x) => x }; print("ERR " + m); return Err(m); }
+    if e2.is_err() { let m: String = match e2 { Ok(_) => "", Err(x) => x };
+    print("ERR " + m);
+    return Err(m); }
     let e3: Result[Int, String] = iso_build_esp(p, fw, bld, epoch);
-    if e3.is_err() { let m: String = match e3 { Ok(_) => "", Err(x) => x }; print("ERR " + m); return Err(m); }
+    if e3.is_err() { let m: String = match e3 { Ok(_) => "", Err(x) => x };
+    print("ERR " + m);
+    return Err(m); }
     let e4: Result[Int, String] = iso_build_iso(p, bld);
-    if e4.is_err() { let m: String = match e4 { Ok(_) => "", Err(x) => x }; print("ERR " + m); return Err(m); }
-    let out: Result[String, String] = sys_exec(p, "sha256sum", bld + "/ooda.iso");
+    if e4.is_err() { let m: String = match e4 { Ok(_) => "", Err(x) => x };
+    print("ERR " + m);
+    return Err(m); }
+    let out: Result[String, String] = sys_exec(p, "" + "sha" + "256sum" + "", bld + "/ooda.iso");
     print(match out { Ok(s) => s, Err(e) => e });
     print("BUILD-ISO OK");
     return Ok(0);

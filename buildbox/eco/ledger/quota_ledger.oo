@@ -18,7 +18,8 @@ import "hst_stamp.oo";
 
 fn ql_probe_host(sys: &ProcessCap, host: String) -> String {
     if host == "" { return ""; }
-    let r: Result[String, String] = sys_exec(sys, "ssh", "-o", "ConnectTimeout=2", host, "/home/ubermetroid/.local/bin/herdr workspace list");
+    let r: Result[String, String] = sys_exec(sys, "ssh", "-o", "ConnectTimeout=2", host,
+        "/home/ubermetroid/.local/bin/herdr workspace list");
     if r.is_ok() { return text_trim(r.val); }
     return "";
 }
@@ -32,7 +33,15 @@ fn ql_fleet_host(env: &EnvCap, key: String) -> String {
     return text_trim(v);
 }
 
-fn ql_agent_entry(id: String, bin: String, models_json: String, inv: String, win: String, used: String, rem: String, m_rm: String, m_sp: String, st: String, comma: String) -> String {
+type BagQlAgentEntry = struct {
+    m_rm: String,
+    m_sp: String,
+    st: String,
+    comma: String,
+};
+
+fn ql_agent_entry(id: String, bin: String, models_json: String, inv: String, win: String, used: String, rem: String,
+    bag: BagQlAgentEntry) -> String {
     let q: String = "\"";
     return "    " + q + id + q + ": {\n"
         + "      " + q + "binary" + q + ": " + q + bin + q + ",\n"
@@ -41,10 +50,10 @@ fn ql_agent_entry(id: String, bin: String, models_json: String, inv: String, win
         + "      " + q + "quota_window" + q + ": " + q + win + q + ",\n"
         + "      " + q + "used_pct" + q + ": " + used + ",\n"
         + "      " + q + "remaining_pct" + q + ": " + rem + ",\n"
-        + "      " + q + "max_panes_builder" + q + ": " + m_rm + ",\n"
-        + "      " + q + "max_panes_reviewer" + q + ": " + m_sp + ",\n"
-        + "      " + q + "status" + q + ": " + q + st + q + "\n"
-        + "    }" + comma + "\n";
+        + "      " + q + "max_panes_builder" + q + ": " + bag.m_rm + ",\n"
+        + "      " + q + "max_panes_reviewer" + q + ": " + bag.m_sp + ",\n"
+        + "      " + q + "status" + q + ": " + q + bag.st + q + "\n"
+        + "    }" + bag.comma + "\n";
 }
 
 fn ql_agents_part1() -> String {
@@ -53,9 +62,18 @@ fn ql_agents_part1() -> String {
     let m_m: String = "        " + q + "MiniMax-M3.1-Flash" + q;
     let v_m: String = "        " + q + "GLM-5.3 [high]" + q;
     return "  " + q + "agents" + q + ": {\n"
-        + ql_agent_entry("devin", "/home/ubermetroid/.local/bin/devin", d_m, "devin --permission-mode bypass --model <swe-2-max|swe-2-flash-max> -- \\\"<PROMPT>\\\"", "5h rolling (resets every 5h; Pro 100% remaining) + 100% FREE UNLIMITED PROMO THRU NOV 30, 2026", "0", "100", "9", "4", "UNLIMITED_FREE_PROMO_THRU_NOV_30", ",")
-        + ql_agent_entry("mcode", "/home/ubermetroid/.local/bin/mcode-review", m_m, "mcode-review \\\"<PROMPT>\\\" (runs mcode --model minimax/MiniMax-M3.1-Flash --append-system-prompt-file ~/.minimax/ooda-code-review-prompt.md with the 2-axis code-review skill enabled)", "5h rolling window (resets every 5h; 512K context) -> MAX OUT CODE REVIEW SPACES", "12", "88", "5", "6", "MAX_BURN_MULTI_PANE_CODE_REVIEW", ",")
-        + ql_agent_entry("vibe", "/home/ubermetroid/.local/bin/vibe", v_m, "vibe --auto-approve \\\"<PROMPT>\\\"", "Monthly (resets Dec 1, 2026) -> MAX OUT ON BARE-METAL & WINDOWS PE32+ .EXE", "90", "10", "2", "1", "MAX_BURN_HARDWARE_AND_WIN64_EXE", ",");
+        + ql_agent_entry("devin", "/home/ubermetroid/.local/bin/devin", d_m,
+            "devin --permission-mode bypass --model <swe-2-max|swe-2-flash-max> -- \\\"<PROMPT>\\\"",
+                "5h rolling (resets every 5h; Pro 100% remaining) + 100% FREE UNLIMITED PROMO THRU NOV 30, 2026", "0", "100",
+                    BagQlAgentEntry { m_rm: "9", m_sp: "4", st: "UNLIMITED_FREE_PROMO_THRU_NOV_30", comma: "," })
+        + ql_agent_entry("mcode", "/home/ubermetroid/.local/bin/mcode-review", m_m,
+            "mcode-review \\\"<PROMPT>\\\" (runs mcode --model minimax/MiniMax-M3.1-Flash --append-system-prompt-file ~/.mini" +
+                "max/ooda-code-review-prompt.md with the 2-axis code-review skill enabled)",
+                    "5h rolling window (resets every 5h; 512K context) -> MAX OUT CODE REVIEW SPACES", "12", "88",
+                        BagQlAgentEntry { m_rm: "5", m_sp: "6", st: "MAX_BURN_MULTI_PANE_CODE_REVIEW", comma: "," })
+        + ql_agent_entry("vibe", "/home/ubermetroid/.local/bin/vibe", v_m, "vibe --auto-approve \\\"<PROMPT>\\\"",
+            "Monthly (resets Dec 1, 2026) -> MAX OUT ON BARE-METAL & WINDOWS PE32+ .EXE", "90", "10",
+                BagQlAgentEntry { m_rm: "2", m_sp: "1", st: "MAX_BURN_HARDWARE_AND_WIN64_EXE", comma: "," });
 }
 
 fn ql_agents_part2() -> String {
@@ -63,9 +81,16 @@ fn ql_agents_part2() -> String {
     let g_m: String = "        " + q + "grok-code-fast-1" + q + ",\n        " + q + "grok-4" + q;
     let a_m: String = "        " + q + "Gemini 4 Argon (Low)" + q + ",\n        " + q + "Gemini 4 Argon (Pro / Max)" + q;
     let o_m: String = "        " + q + "local-ooaid-11435" + q + ",\n        " + q + "swe-2-flash-max" + q;
-    return ql_agent_entry("grok", "/home/ubermetroid/.local/bin/grok", g_m, "grok --permission-mode bypassPermissions -- \\\"<PROMPT>\\\"", "API credits / rolling -> MAX OUT ON BARE-METAL & WINDOWS PE32+ .EXE", "15", "85", "4", "2", "MAX_BURN_HARDWARE_AND_WIN64_EXE", ",")
-        + ql_agent_entry("agy", "/home/ubermetroid/.local/bin/agy", a_m, "agy (Head Commander in w2 + invoke_subagent)", "Weekly rolling (just reset Nov 4 19:35 HST -> 100% fresh weekly pool!)", "2", "98", "1", "1", "FRESH_WEEKLY_RESET_ZERO_TASKS_ON_CONTROL", ",")
-        + ql_agent_entry("oopi", "/Projects/openOODA-agents/oocoder/bin/oopi", o_m, "/Projects/openOODA-agents/oocoder/bin/oopi", "Unlimited local 5-GPU cluster (:11435)", "0", "100", "9", "4", "UNLIMITED_LOCAL_GPU", "")
+    return ql_agent_entry("grok", "/home/ubermetroid/.local/bin/grok", g_m,
+        "grok --permission-mode bypassPermissions -- \\\"<PROMPT>\\\"",
+            "API credits / rolling -> MAX OUT ON BARE-METAL & WINDOWS PE32+ .EXE", "15", "85", BagQlAgentEntry { m_rm: "4",
+                m_sp: "2", st: "MAX_BURN_HARDWARE_AND_WIN64_EXE", comma: "," })
+        + ql_agent_entry("agy", "/home/ubermetroid/.local/bin/agy", a_m, "agy (Head Commander in w2 + invoke_subagent)",
+            "Weekly rolling (just reset Nov 4 19:35 HST -> 100% fresh weekly pool!)", "2", "98", BagQlAgentEntry { m_rm: "1",
+                m_sp: "1", st: "FRESH_WEEKLY_RESET_ZERO_TASKS_ON_CONTROL", comma: "," })
+        + ql_agent_entry("oopi", "/Projects/openOODA-agents/oocoder/bin/oopi", o_m,
+            "/Projects/openOODA-agents/oocoder/bin/oopi", "Unlimited local 5-GPU cluster (:11435)", "0", "100",
+                BagQlAgentEntry { m_rm: "9", m_sp: "4", st: "UNLIMITED_LOCAL_GPU", comma: "" })
         + "  }\n}\n";
 }
 
@@ -80,12 +105,15 @@ fn ql_build_json(epoch_s: String, hst_s: String) -> String {
         + "    " + q + "min_reserve_pct" + q + ": 0,\n"
         + "    " + q + "target_cycle_burn_pct" + q + ": 100,\n"
         + "    " + q + "check_in_interval_seconds" + q + ": 600,\n"
-        + "    " + q + "split_budget_rule" + q + ": " + q + "MAX OUT mcode (multi-pane code review on the reviewer host), grok & vibe (bare-metal hardware optimization + Windows PE32+ .exe toolchain on the builder host) alongside unlimited devin." + q + "\n"
+        + "    " + q + "split_budget_rule" + q + ": " + q +
+            "MAX OUT mcode (multi-pane code review on the reviewer host), grok & vibe (bare-metal hardware optimization + Win" +
+                "dows PE32+ .exe toolchain on the builder host) alongside unlimited devin." + q + "\n"
         + "  },\n";
     return hdr + ql_agents_part1() + ql_agents_part2();
 }
 
-pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, time_cap: &TimeCap, _args: List[String]) -> Int {
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, time_cap: &TimeCap,
+    _args: List[String]) -> Int {
     let _rm: String = ql_probe_host(sys, ql_fleet_host(env, "OODA_FLEET_HOST_A"));
     let _sp: String = ql_probe_host(sys, ql_fleet_host(env, "OODA_FLEET_HOST_B"));
     let now_ms: Int = time_mod_chrono_now_ms(time_cap);

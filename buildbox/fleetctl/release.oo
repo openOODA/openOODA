@@ -97,7 +97,13 @@ fn fc_bump_files(fs_r: &FsReadCap, fs_w: &FsWriteCap, repo: String, old: String,
 }
 
 // Put the new version of a tool on a release branch and push the branch.
-fn fc_release_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, branch: String, tool: String, old: String, new: String) -> Bool {
+type BagFcReleaseBranch = struct {
+    old: String,
+    fresh: String,
+};
+
+fn fc_release_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, branch: String,
+    tool: String, bag: BagFcReleaseBranch) -> Bool {
     let mut f: List[String] = list_new();
     f = list_push(f, "fetch");
     f = list_push(f, "-q");
@@ -110,8 +116,8 @@ fn fc_release_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cach
     b = list_push(b, branch);
     b = list_push(b, "origin/main");
     fc_git(sys, fs_r, cache, repo, b);
-    let _w: Result[Void, String] = fs_write_file(fs_w, repo + "/VERSION", new + "\n");
-    let _n: Int = fc_bump_files(fs_r, fs_w, repo, old, new);
+    let _w: Result[Void, String] = fs_write_file(fs_w, repo + "/VERSION", bag.fresh + "\n");
+    let _n: Int = fc_bump_files(fs_r, fs_w, repo, bag.old, bag.fresh);
     let mut a: List[String] = list_new();
     a = list_push(a, "add");
     a = list_push(a, "-A");
@@ -120,7 +126,7 @@ fn fc_release_branch(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cach
     c = list_push(c, "commit");
     c = list_push(c, "-q");
     c = list_push(c, "-m");
-    c = list_push(c, "release(" + tool + "): " + new);
+    c = list_push(c, "release(" + tool + "): " + bag.fresh);
     fc_git(sys, fs_r, cache, repo, c);
     let mut p: List[String] = list_new();
     p = list_push(p, "push");
@@ -163,22 +169,30 @@ fn fc_release_tag(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: Strin
 
 // Release one tool: the version moves, the pull request is merged, the tag is
 // pushed and the catalog of the organization names the new release.
-pub fn fc_release(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, org: String, tool: String, desc: String, tries: Int) -> Int {
+type BagFcRelease = struct {
+    desc: String,
+    tries: Int,
+};
+
+pub fn fc_release(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, fleet: String, org: String,
+    tool: String, bag: BagFcRelease) -> Int {
     let repo: String = fleet + "/" + tool;
     let slug: String = org + "/" + tool;
     let old: String = fc_read_trim(fs_r, repo + "/VERSION");
     let new: String = fc_next_version(old);
     let branch: String = "release/" + tool + "-" + new;
-    let _b: Bool = fc_release_branch(sys, fs_r, fs_w, cache, repo, branch, tool, old, new);
+    let _b: Bool = fc_release_branch(sys, fs_r, fs_w, cache, repo, branch, tool, BagFcReleaseBranch { old: old, fresh: new });
     let pr: String = fc_open_pr(sys, fs_r, cache, slug, branch, "release(" + tool + "): " + new,
         "The version of " + tool + " moves from " + old + " to " + new + ". The README of the tool names the new release.");
-    if pr == "" { println(tool + " RELEASE-FAIL no pull request"); return 1; }
-    let v: String = fc_merge_pr(sys, fs_r, cache, slug, pr, tries);
+    if pr == "" { println(tool + " RELEASE-FAIL no pull request");
+    return 1; }
+    let v: String = fc_merge_pr(sys, fs_r, cache, slug, pr, bag.tries);
     println(tool + " release PR#" + pr + " " + v);
     if !str_contains(v, " MERGED") { return 1; }
     let _t: Bool = fc_release_tag(sys, fs_r, cache, repo, new);
     println(tool + " tagged v" + new);
-    let rc: Int = fc_catalog_release(sys, fs_r, fs_w, cache, fleet, tool, new, desc, tries);
+    let rc: Int = fc_catalog_release(sys, fs_r, fs_w, cache, fleet, tool, new, BagFcCatalogRelease { desc: bag.desc,
+        tries: bag.tries });
     println(tool + " released " + new);
     return rc;
 }

@@ -83,7 +83,7 @@ fn commit_msg_deck() -> String {
 
 fn commit_one(p: &ProcessCap, env: &EnvCap, repo: String, msg: String, files: List[String]) -> String {
     let env_argv: List[String] = cmd_env("HOME=" + audit_home(env), "", "", "", "", "");
-    let mut add_argv: List[String] = cmd_git(repo, "add", "", "", "", "", "", "", "");
+    let mut add_argv: List[String] = cmd_git(repo, "add", "", "", "", "", "", BagCmdGit { t7: "", t8: "" });
     let mut i: Int = 0;
     while i < list_len(files) {
         add_argv = list_push(add_argv, list_get(files, i));
@@ -92,11 +92,11 @@ fn commit_one(p: &ProcessCap, env: &EnvCap, repo: String, msg: String, files: Li
     let _add: ExecRun = exec_argv_run(p, argv_join(env_argv, add_argv));
     let name: String = audit_env_or(env, "OODA_AUDIT_GIT_NAME", "reviewer");
     let mail: String = audit_env_or(env, "OODA_AUDIT_GIT_EMAIL", "reviewer@openooda.org");
-    let commit_argv: List[String] = cmd_git(repo, "-c", "user.name=" + name, "-c", "user.email=" + mail,
-        "commit", "-q", "-m", msg);
+    let commit_argv: List[String] = cmd_git(repo, "-c", "user.name=" + name, "-c", "user.email=" + mail, "commit", "-q",
+        BagCmdGit { t7: "-m", t8: msg });
     let c: ExecRun = exec_argv_run(p, argv_join(env_argv, commit_argv));
     if c.code != 0 { return "FAIL " + repo + ": " + c.output; }
-    let head_argv: List[String] = cmd_git(repo, "rev-parse", "--short", "HEAD", "", "", "", "", "");
+    let head_argv: List[String] = cmd_git(repo, "rev-parse", "--short", "HEAD", "", "", "", BagCmdGit { t7: "", t8: "" });
     let head: String = exec_argv_stdout(p, argv_join(env_argv, head_argv));
     println("  " + path_basename(repo) + " -> " + head);
     return "";
@@ -117,17 +117,23 @@ pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int 
     deck = list_push(deck, "sec/pqcseal.oo");
     deck = list_push(deck, "ui/view.oo");
     let mut fail: String = commit_one(p, e, apps + "/ooflash", commit_msg_flash(), flash);
-    if fail != "" { println(fail); return 1; }
+    if fail != "" { println(fail);
+    return 1; }
     fail = commit_one(p, e, apps + "/oobrowser", commit_msg_state(), state);
-    if fail != "" { println(fail); return 1; }
+    if fail != "" { println(fail);
+    return 1; }
     fail = commit_one(p, e, apps + "/oocanvas", commit_msg_state(), state);
-    if fail != "" { println(fail); return 1; }
+    if fail != "" { println(fail);
+    return 1; }
     fail = commit_one(p, e, apps + "/oochat", commit_msg_state(), state);
-    if fail != "" { println(fail); return 1; }
+    if fail != "" { println(fail);
+    return 1; }
     fail = commit_one(p, e, apps + "/oodaw", commit_msg_state(), state);
-    if fail != "" { println(fail); return 1; }
+    if fail != "" { println(fail);
+    return 1; }
     fail = commit_one(p, e, apps + "/oodeck", commit_msg_deck(), deck);
-    if fail != "" { println(fail); return 1; }
+    if fail != "" { println(fail);
+    return 1; }
     println("== done ==");
     return 0;
 }

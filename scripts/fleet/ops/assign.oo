@@ -47,15 +47,21 @@ fn as_now(p: &ProcessCap) -> String {
     return str_replace(match d { Ok(s) => s, Err(_) => "" }, "\n", "");
 }
 
-fn as_assign(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, doc: String, queue: String, prompts: String, pane: String, id: String) -> Result[Int, String] {
-    let task: String = pf_find(doc, id);
-    if task == "" { return Err("assign: no task " + id); }
+type BagAsAssign = struct {
+    pane: String,
+    id: String,
+};
+
+fn as_assign(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, doc: String, queue: String, prompts: String,
+    bag: BagAsAssign) -> Result[Int, String] {
+    let task: String = pf_find(doc, bag.id);
+    if task == "" { return Err("assign: no task " + bag.id); }
     let kind: String = jt_text(task, "kind");
-    if !pf_allowed(pane, kind) { return Err("assign: " + pane + " may not take " + kind); }
-    let text: String = pf_render(fr, prompts, task, pane);
-    let next: String = pf_claim(doc, id, pane, as_now(p));
+    if !pf_allowed(bag.pane, kind) { return Err("assign: " + bag.pane + " may not take " + kind); }
+    let text: String = pf_render(fr, prompts, task, bag.pane);
+    let next: String = pf_claim(doc, bag.id, bag.pane, as_now(p));
     let _w: Result[Void, String] = fs_write_file(fw, queue, next);
-    return as_submit(p, env, pane, text);
+    return as_submit(p, env, bag.pane, text);
 }
 
 pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args: List[String]) -> Result[Int, String] {
@@ -66,15 +72,18 @@ pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, args:
     let prompts: String = "/Projects/openOODA/openOODA/scripts/fleet/prompts";
     let doc: String = as_read(fr, queue);
     if doc == "" { return Err("assign: no work queue at " + queue); }
-    if cmd == "status" { println(pf_status(doc)); return Ok(0); }
-    if cmd == "next" { println(pf_next(doc, as_arg(args, 1))); return Ok(0); }
+    if cmd == "status" { println(pf_status(doc));
+    return Ok(0); }
+    if cmd == "next" { println(pf_next(doc, as_arg(args, 1)));
+    return Ok(0); }
     if cmd == "render" {
         let task: String = pf_find(doc, as_arg(args, 2));
         if task == "" { return Err("assign: no task " + as_arg(args, 2)); }
         println(pf_render(fr, prompts, task, as_arg(args, 1)));
         return Ok(0);
     }
-    if cmd == "assign" { return as_assign(p, fr, fw, env, doc, queue, prompts, as_arg(args, 1), as_arg(args, 2)); }
+    if cmd == "assign" { return as_assign(p, fr, fw, env, doc, queue, prompts, BagAsAssign { pane: as_arg(args, 1), id: as_arg(
+        args, 2) }); }
     if cmd == "resume" {
         let pane: String = as_arg(args, 1);
         let repo: String = as_arg(args, 2);

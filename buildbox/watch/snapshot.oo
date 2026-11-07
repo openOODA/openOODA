@@ -17,8 +17,13 @@ import "fleetctl/shell.oo";
 // List every repository root under /Projects, at most four levels deep.
 pub fn ws_repos(sys: &ProcessCap, fs_r: &FsReadCap, cache: String) -> List[String] {
     let mut a: List[String] = list_new();
-    a = list_push(a, "/Projects"); a = list_push(a, "-maxdepth"); a = list_push(a, "4");
-    a = list_push(a, "-name"); a = list_push(a, ".git"); a = list_push(a, "-type"); a = list_push(a, "d");
+    a = list_push(a, "/Projects");
+    a = list_push(a, "-maxdepth");
+    a = list_push(a, "4");
+    a = list_push(a, "-name");
+    a = list_push(a, ".git");
+    a = list_push(a, "-type");
+    a = list_push(a, "d");
     let out: String = fc_run(sys, fs_r, cache, "find", a);
     let lines: List[String] = text_split_lines(out);
     let mut repos: List[String] = list_new();
@@ -34,24 +39,33 @@ pub fn ws_repos(sys: &ProcessCap, fs_r: &FsReadCap, cache: String) -> List[Strin
 // True when the repository has an origin and holds work Forgejo does not have.
 pub fn ws_needs_backup(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String) -> Bool {
     let mut o: List[String] = list_new();
-    o = list_push(o, "remote"); o = list_push(o, "get-url"); o = list_push(o, "origin");
+    o = list_push(o, "remote");
+    o = list_push(o, "get-url");
+    o = list_push(o, "origin");
     let _u: String = fc_git(sys, fs_r, cache, repo, o);
     if fc_code(fs_r, cache) != 0 { return false; }
     let mut s: List[String] = list_new();
-    s = list_push(s, "status"); s = list_push(s, "--porcelain");
+    s = list_push(s, "status");
+    s = list_push(s, "--porcelain");
     if text_trim(fc_git(sys, fs_r, cache, repo, s)) != "" { return true; }
     let mut b: List[String] = list_new();
-    b = list_push(b, "branch"); b = list_push(b, "-r"); b = list_push(b, "--contains"); b = list_push(b, "HEAD");
+    b = list_push(b, "branch");
+    b = list_push(b, "-r");
+    b = list_push(b, "--contains");
+    b = list_push(b, "HEAD");
     return !str_contains(fc_git(sys, fs_r, cache, repo, b), "origin/");
 }
 
 // Run git with a private index file so the real index and tree stay untouched.
 fn ws_git_idx(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, idx: String, args: List[String]) -> String {
     let mut a: List[String] = list_new();
-    a = list_push(a, "GIT_INDEX_FILE=" + idx); a = list_push(a, "git");
-    a = list_push(a, "-C"); a = list_push(a, repo);
+    a = list_push(a, "GIT_INDEX_FILE=" + idx);
+    a = list_push(a, "git");
+    a = list_push(a, "-C");
+    a = list_push(a, repo);
     let mut i: Int = 0;
-    while i < list_len(args) { a = list_push(a, list_get(args, i)); i = i + 1; }
+    while i < list_len(args) { a = list_push(a, list_get(args, i));
+    i = i + 1; }
     return fc_run(sys, fs_r, cache, "env", a);
 }
 
@@ -59,20 +73,32 @@ fn ws_git_idx(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, i
 pub fn ws_snapshot_one(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String, stamp: String) -> Bool {
     let idx: String = cache + "/watch.index";
     let mut c: List[String] = list_new();
-    c = list_push(c, "-f"); c = list_push(c, repo + "/.git/index"); c = list_push(c, idx);
+    c = list_push(c, "-f");
+    c = list_push(c, repo + "/.git/index");
+    c = list_push(c, idx);
     let _c: String = fc_run(sys, fs_r, cache, "cp", c);
-    let mut ad: List[String] = list_new(); ad = list_push(ad, "add"); ad = list_push(ad, "-A");
+    let mut ad: List[String] = list_new();
+    ad = list_push(ad, "add");
+    ad = list_push(ad, "-A");
     let _a: String = ws_git_idx(sys, fs_r, cache, repo, idx, ad);
-    let mut wt: List[String] = list_new(); wt = list_push(wt, "write-tree");
+    let mut wt: List[String] = list_new();
+    wt = list_push(wt, "write-tree");
     let tree: String = text_trim(ws_git_idx(sys, fs_r, cache, repo, idx, wt));
     if fc_code(fs_r, cache) != 0 || tree == "" { return false; }
     let mut ct: List[String] = list_new();
-    ct = list_push(ct, "commit-tree"); ct = list_push(ct, tree); ct = list_push(ct, "-p"); ct = list_push(ct, "HEAD");
-    ct = list_push(ct, "-m"); ct = list_push(ct, "WIP snapshot " + stamp + " (token-free safety backup; working tree untouched)");
+    ct = list_push(ct, "commit-tree");
+    ct = list_push(ct, tree);
+    ct = list_push(ct, "-p");
+    ct = list_push(ct, "HEAD");
+    ct = list_push(ct, "-m");
+    ct = list_push(ct, "WIP snapshot " + stamp + " (token-free safety backup; working tree untouched)");
     let commit: String = text_trim(fc_git(sys, fs_r, cache, repo, ct));
     if fc_code(fs_r, cache) != 0 || commit == "" { return false; }
     let mut p: List[String] = list_new();
-    p = list_push(p, "push"); p = list_push(p, "-q"); p = list_push(p, "-f"); p = list_push(p, "origin");
+    p = list_push(p, "push");
+    p = list_push(p, "-q");
+    p = list_push(p, "-f");
+    p = list_push(p, "origin");
     p = list_push(p, commit + ":refs/heads/wip/head-latest");
     let _p: String = fc_git(sys, fs_r, cache, repo, p);
     return fc_code(fs_r, cache) == 0;
@@ -81,7 +107,9 @@ pub fn ws_snapshot_one(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: 
 // Back up every repository. The answer is the summary line followed by any FAIL lines.
 pub fn ws_snapshot_all(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, stamp: String) -> String {
     let repos: List[String] = ws_repos(sys, fs_r, cache);
-    let mut ok: Int = 0; let mut clean: Int = 0; let mut fails: String = "";
+    let mut ok: Int = 0;
+    let mut clean: Int = 0;
+    let mut fails: String = "";
     let mut i: Int = 0;
     while i < list_len(repos) {
         let r: String = list_get(repos, i);

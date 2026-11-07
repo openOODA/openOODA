@@ -16,31 +16,44 @@ import "eco/manifest_exec.oo";
 
 fn rs_json_body(mode: String, require_gate: Bool) -> String {
     if mode == "--allow-direct" {
-        return "{\"name\":\"Fleet gate\",\"target\":\"branch\",\"enforcement\":\"active\",\"bypass_actors\":[{\"actor_id\":5,\"actor_type\":\"RepositoryRole\",\"bypass_mode\":\"always\"}],\"conditions\":{\"ref_name\":{\"include\":[\"~DEFAULT_BRANCH\"],\"exclude\":[]}},\"rules\":[{\"type\":\"deletion\"},{\"type\":\"non_fast_forward\"}]}\n";
+        return "{\"name\":\"Fleet gate\",\"target\":\"branch\",\"enforcement\":\"active\",\"bypass_actors\":[{\"actor_id\":5," +
+            "\"actor_type\":\"RepositoryRole\",\"bypass_mode\":\"always\"}],\"conditions\":{\"ref_name\":{\"include\":[\"~DEF" +
+                "AULT_BRANCH\"],\"exclude\":[]}},\"rules\":[{\"type\":\"deletion\"},{\"type\":\"non_fast_forward\"}]}\n";
     }
     let mut chk: String = "";
     if require_gate {
-        chk = "{\"type\":\"required_status_checks\",\"parameters\":{\"required_status_checks\":[{\"context\":\"Fleet gate\"}],\"strict_required_status_checks_policy\":false,\"do_not_enforce_on_create\":false}},";
+        chk = "{\"type\":\"required_status_checks\",\"parameters\":{\"required_status_checks\":[{\"context\":\"Fleet gate\"}]" +
+            ",\"strict_required_status_checks_policy\":false,\"do_not_enforce_on_create\":false}},";
     }
-    return "{\"name\":\"Fleet gate\",\"target\":\"branch\",\"enforcement\":\"active\",\"bypass_actors\":[],\"conditions\":{\"ref_name\":{\"include\":[\"~DEFAULT_BRANCH\"],\"exclude\":[]}},\"rules\":[" + chk + "{\"type\":\"pull_request\",\"parameters\":{\"required_approving_review_count\":0,\"dismiss_stale_reviews_on_push\":false,\"required_reviewers\":[],\"require_code_owner_review\":false,\"dismissal_restriction\":{\"enabled\":false,\"allowed_actors\":[]},\"require_last_push_approval\":false,\"required_review_thread_resolution\":false,\"require_extra_approval_for_unattributed_changes\":true,\"allowed_merge_methods\":[\"merge\",\"squash\",\"rebase\"]}},{\"type\":\"deletion\"},{\"type\":\"non_fast_forward\"}]}\n";
+    return "{\"name\":\"Fleet gate\",\"target\":\"branch\",\"enforcement\":\"active\",\"bypass_actors\":[],\"conditions\":{\"" +
+        "ref_name\":{\"include\":[\"~DEFAULT_BRANCH\"],\"exclude\":[]}},\"rules\":[" + chk +
+            "{\"type\":\"pull_request\",\"parameters\":{\"required_approving_review_count\":0,\"dismiss_stale_reviews_on_push" +
+                "\":false,\"required_reviewers\":[],\"require_code_owner_review\":false,\"dismissal_restriction\":{\"enabled" +
+                    "\":false,\"allowed_actors\":[]},\"require_last_push_approval\":false,\"required_review_thread_resolution" +
+                        "\":false,\"require_extra_approval_for_unattributed_changes\":true,\"allowed_merge_methods\":[\"merge" +
+                            "\",\"squash\",\"rebase\"]}},{\"type\":\"deletion\"},{\"type\":\"non_fast_forward\"}]}\n";
 }
 
 fn rs_delete_existing(sys: &ProcessCap, org: String, repo: String) -> Int {
     let env_pfx: String = "OODA_FS_READDIR=/Projects:/home/ubermetroid:/tmp ";
     let mut a: List[String] = list_new();
     a = list_push(a, "-c");
-    a = list_push(a, "for id in $(" + env_pfx + "gh api repos/" + org + "/" + repo + "/rulesets --jq '.[] | select(.name==\"Fleet gate\") | .id' 2>/dev/null); do "
+    a = list_push(a, "for id in $(" + env_pfx + "gh api repos/" + org + "/" + repo +
+        "/rulesets --jq '.[] | select(.name==\"Fleet gate\") | .id' 2>/dev/null); do "
         + env_pfx + "gh api --method DELETE repos/" + org + "/" + repo + "/rulesets/$id >/dev/null 2>&1; done");
     let _r: Result[Int, String] = sys_exec_wait(sys, "bash", a);
     return 1;
 }
 
-fn rs_verify_repo(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: String, repo: String, has_wf: Bool, has_gate: Bool) -> Bool {
+fn rs_verify_repo(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: String, repo: String, has_wf: Bool,
+    has_gate: Bool) -> Bool {
     let env_pfx: String = "OODA_FS_READDIR=/Projects:/home/ubermetroid:/tmp ";
     let tmp_q: String = "/tmp/eco_rs_q_" + repo + ".txt";
     let mut qa: List[String] = list_new();
     qa = list_push(qa, "-c");
-    qa = list_push(qa, env_pfx + "gh api repos/" + org + "/" + repo + "/rulesets --jq '.[] | select(.name==\"Fleet gate\") | \"\\(.id):\\(.enforcement)\"' > " + tmp_q + " 2>/dev/null || true");
+    qa = list_push(qa, env_pfx + "gh api repos/" + org + "/" + repo +
+        "/rulesets --jq '.[] | select(.name==\"Fleet gate\") | \"\\(.id):\\(.enforcement)\"' > " + tmp_q +
+            " 2>/dev/null || true");
     let _qr: Result[Int, String] = sys_exec_wait(sys, "bash", qa);
     let qval: String = eco_read_trimmed(fs_r, tmp_q);
     let _rmq: Result[Void, String] = fs_remove_file(fs_w, tmp_q);
@@ -60,7 +73,8 @@ fn rs_handle_repo(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: St
         return rs_verify_repo(sys, fs_r, fs_w, org, repo, has_wf, has_gate);
     }
     if mode == "--dry" {
-        println("  DRY " + org + "/" + repo + ": ci_yml=" + (if has_wf { "yes" } else { "no" }) + " gate_job=" + (if has_gate { "yes" } else { "no" }));
+        println("  DRY " + org + "/" + repo + ": ci_yml=" + (if has_wf { "yes" } else { "no" }) + " gate_job=" + (
+            if has_gate { "yes" } else { "no" }));
         return true;
     }
     if mode == "--disable" {
@@ -75,7 +89,8 @@ fn rs_handle_repo(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, org: St
     let env_pfx: String = "OODA_FS_READDIR=/Projects:/home/ubermetroid:/tmp ";
     let mut a: List[String] = list_new();
     a = list_push(a, "-c");
-    a = list_push(a, env_pfx + "gh api --method POST repos/" + org + "/" + repo + "/rulesets --input " + tmp_json + " >/dev/null 2>&1");
+    a = list_push(a, env_pfx + "gh api --method POST repos/" + org + "/" + repo + "/rulesets --input " + tmp_json +
+        " >/dev/null 2>&1");
     let pr: Result[Int, String] = sys_exec_wait(sys, "bash", a);
     let _rm: Result[Void, String] = fs_remove_file(fs_w, tmp_json);
     if pr.is_ok() && pr.val == 0 {
@@ -93,7 +108,8 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     while i < list_len(args) {
         let a: String = list_get(args, i);
         i = i + 1;
-        if str_starts_with(a, "--") { mode = a; } else { orgs = list_push(orgs, a); }
+        if str_starts_with(a, "--") { mode = a;
+        } else { orgs = list_push(orgs, a); }
     }
     if list_len(orgs) == 0 {
         orgs = list_push(list_push(list_push(orgs, "openOODA-kernel"), "openOODA-OS"), "openOODA-DE");
@@ -113,7 +129,8 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
             let r: String = list_get(entries, k);
             k = k + 1;
             if r == ".github" || !path_exists(fs_r, org_dir + "/" + r + "/.git") { continue; }
-            if rs_handle_repo(sys, fs_r, fs_w, org, r, mode) { ok = ok + 1; } else { fail = fail + 1; }
+            if rs_handle_repo(sys, fs_r, fs_w, org, r, mode) { ok = ok + 1;
+            } else { fail = fail + 1; }
         }
     }
     println("summary: mode=" + mode + " ok=" + int_to_str(ok) + " failed=" + int_to_str(fail));

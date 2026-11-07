@@ -63,7 +63,8 @@ fn ff_write_mode(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String
     a = list_push(a, "-C");
     a = list_push(a, repo);
     a = list_push(a, "update-index");
-    if mode == "100755" { a = list_push(a, "--chmod=+x"); } else { a = list_push(a, "--chmod=-x"); }
+    if mode == "100755" { a = list_push(a, "--chmod=+x");
+    } else { a = list_push(a, "--chmod=-x"); }
     a = list_push(a, "--");
     a = list_push(a, path);
     let _o: String = fc_run(sys, fs_r, cache, "git", a);
@@ -76,14 +77,22 @@ fn ff_write_mode(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, repo: String
 fn ff_chmod(sys: &ProcessCap, fs_r: &FsReadCap, cache: String, path: String, mode: String) -> Bool {
     if mode == "" { return false; }
     let mut a: List[String] = list_new();
-    if mode == "100755" { a = list_push(a, "+x"); } else { a = list_push(a, "-x"); }
+    if mode == "100755" { a = list_push(a, "+x");
+    } else { a = list_push(a, "-x"); }
     a = list_push(a, path);
     let _o: String = fc_run(sys, fs_r, cache, "chmod", a);
     return fc_code(fs_r, cache) == 0;
 }
 
 // Write one file of one ref into the working tree of the repository.
-pub fn ff_restore_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, src: String, path: String, mode: String, old: String, new: String) -> Bool {
+type BagFfRestoreOne = struct {
+    mode: String,
+    old: String,
+    fresh: String,
+};
+
+pub fn ff_restore_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, src: String,
+    path: String, bag: BagFfRestoreOne) -> Bool {
     let mut a: List[String] = list_new();
     a = list_push(a, "-C");
     a = list_push(a, repo);
@@ -97,21 +106,27 @@ pub fn ff_restore_one(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cac
     if r.is_ok() {
         let body: String = r.val;
         if body != "" {
-            let _w: Result[Void, String] = fs_write_file(fs_w, repo + "/" + path, ff_move_ver(body, old, new));
+            let _w: Result[Void, String] = fs_write_file(fs_w, repo + "/" + path, ff_move_ver(body, bag.old, bag.fresh));
         }
     }
-    if mode != "" {
-        let _c: Bool = ff_chmod(sys, fs_r, cache, repo + "/" + path, mode);
-        let _m: Bool = ff_write_mode(sys, fs_r, cache, repo, path, mode);
+    if bag.mode != "" {
+        let _c: Bool = ff_chmod(sys, fs_r, cache, repo + "/" + path, bag.mode);
+        let _m: Bool = ff_write_mode(sys, fs_r, cache, repo, path, bag.mode);
     }
-    println("  put back " + path + " mode=" + mode);
+    println("  put back " + path + " mode=" + bag.mode);
     return true;
 }
 
 // Put every file that one ref holds and another ref lost, and every file
 // whose rights differ, back into the working tree of the repository. The
 // answer holds the number of the files that were put back.
-pub fn ff_restore(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, src: String, dst: String, old: String, new: String) -> Int {
+type BagFfRestore = struct {
+    old: String,
+    fresh: String,
+};
+
+pub fn ff_restore(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: String, repo: String, src: String, dst: String,
+    bag: BagFfRestore) -> Int {
     let lost: List[String] = ff_lost(sys, fs_r, cache, repo, src, dst);
     let moved: List[String] = ff_moved(sys, fs_r, cache, repo, src, dst);
     let entries: List[String] = ff_tree(sys, fs_r, cache, repo, src);
@@ -127,7 +142,8 @@ pub fn ff_restore(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, cache: 
         let p: String = list_get(all, i);
         i = i + 1;
         let mode: String = ff_mode_of(entries, p);
-        if ff_restore_one(sys, fs_r, fs_w, cache, repo, src, p, mode, old, new) { n = n + 1; }
+        if ff_restore_one(sys, fs_r, fs_w, cache, repo, src, p, BagFfRestoreOne { mode: mode, old: bag.old,
+            fresh: bag.fresh }) { n = n + 1; }
     }
     return n;
 }

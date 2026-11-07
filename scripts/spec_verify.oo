@@ -13,7 +13,8 @@ import "std/fs/process/process.oo";
 
 fn spec_prelude_sh() -> String {
     return "src_root=\"${OODA_REPO_ROOT:-$(pwd)}\"; "
-        + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case \"$src_root\" in *..*) true ;; *) false ;; esac; then "
+        + "if [ -z \"$src_root\" ] || [ \"$src_root\" = \".\" ] || case \"$src_root\" in /*) false ;; *) true ;; esac || case" +
+            " \"$src_root\" in *..*) true ;; *) false ;; esac; then "
         + "printf 'ERR\\tenv\\tOODA_REPO_ROOT must be an absolute path free of ..\\n'; exit 2; fi; "
         + "cd \"$src_root\" || { printf 'ERR\\tfs\\tcannot cd to %s\\n' \"$src_root\"; exit 2; }; ";
 }
@@ -49,7 +50,8 @@ fn spec_targets_sh() -> String {
         + "      case \"$f\" in "
         + "        *.oo) "
         + "          hdr=$(head -n 1 \"$f\"); "
-        + "          if echo \"$hdr\" | grep -qE '^// # ' && grep -q 'Logline:' \"$f\" && grep -q 'Setup:' \"$f\" && grep -q 'Beats:' \"$f\"; then "
+        + "          if echo \"$hdr\" | grep -qE '^// # ' && grep -q 'Logline:' \"$f\" && grep -q 'Setup:' \"$f\" && grep -q " +
+            "'Beats:' \"$f\"; then "
         + "            printf 'OK\\theader\\t%s valid 4-element Academy header\\n' \"$f\"; "
         + "          else "
         + "            printf 'ERR\\theader\\t%s malformed Academy header\\n' \"$f\"; "
@@ -75,7 +77,11 @@ fn spec_tokparity_sh() -> String {
     return "  tok_src='oodac/types/token_typed.oo'; "
         + "  if [ -f \"$tok_src\" ]; then "
         + "    tok_err=0; "
-        + "    for tok in IDENT INT FLOAT STRING LINEFILE SRC_PATH KW_FN KW_LET KW_PUB KW_MUT KW_IMPORT KW_REQUIRES KW_ENSURES KW_VERIFY KW_IF KW_ELSE KW_MATCH KW_FOR KW_IN KW_WHILE KW_RETURN KW_TYPE KW_WHERE KW_TRUE KW_FALSE KW_GPU KW_BREAK KW_CONTINUE KW_TRAIT KW_IMPL KW_EXPORT PLUS MINUS STAR PERCENT SLASH EQEQ FATARROW EQ NEQ LSHIFT RSHIFT LTE LT GTE GT ANDAND AMP OROR PIPE CARET COLON SEMI COMMA DOTDOTEQ DOTDOT DOT LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET QUESTION AT BANG EOF; do "
+        + "    for tok in IDENT INT FLOAT STRING LINEFILE SRC_PATH KW_FN KW_LET KW_PUB KW_MUT KW_IMPORT KW_REQUIRES KW_ENSURE" +
+            "S KW_VERIFY KW_IF KW_ELSE KW_MATCH KW_FOR KW_IN KW_WHILE KW_RETURN KW_TYPE KW_WHERE KW_TRUE KW_FALSE KW_GPU KW_B" +
+                "REAK KW_CONTINUE KW_TRAIT KW_IMPL KW_EXPORT PLUS MINUS STAR PERCENT SLASH EQEQ FATARROW EQ NEQ LSHIFT RSHIFT" +
+                    " LTE LT GTE GT ANDAND AMP OROR PIPE CARET COLON SEMI COMMA DOTDOTEQ DOTDOT DOT LPAREN RPAREN LBRACE RBRA" +
+                        "CE LBRACKET RBRACKET QUESTION AT BANG EOF; do "
         + "      if ! grep -q \"\\\"$tok\\\"\" \"$tok_src\"; then "
         + "        printf 'ERR\\tbit_parity\\t%s missing token mapping %s\\n' \"$tok_src\" \"$tok\"; "
         + "        tok_err=$((tok_err + 1)); "
@@ -87,7 +93,8 @@ fn spec_tokparity_sh() -> String {
         + "      fails=$((fails + tok_err)); "
         + "    fi; "
         + "    if [ -f 'openOODA/docs/spec/01_lexical.oot' ]; then "
-        + "      if grep -q 'IDENT' 'openOODA/docs/spec/01_lexical.oot' && grep -q 'KW_FN' 'openOODA/docs/spec/01_lexical.oot' && grep -q 'FATARROW' 'openOODA/docs/spec/01_lexical.oot'; then "
+        + "      if grep -q 'IDENT' 'openOODA/docs/spec/01_lexical.oot' && grep -q 'KW_FN' 'openOODA/docs/spec/01_lexical.oot" +
+            "' && grep -q 'FATARROW' 'openOODA/docs/spec/01_lexical.oot'; then "
         + "        printf 'OK\\tbit_parity\\t01_lexical.oot matches token_typed.oo\\n'; "
         + "      else "
         + "        printf 'ERR\\tbit_parity\\t01_lexical.oot token definitions incomplete\\n'; "
@@ -119,7 +126,8 @@ fn spec_capparity_sh() -> String {
     return "  cap_src='oodar/sec/cap/caps.h'; "
         + "  if [ -f \"$cap_src\" ]; then "
         + "    cap_err=0; "
-        + "    for cap in NET FS SYS ENV TIME RAND ARENA ALLOC FFI THREAD GPU METRICS SIGN MMIO DMA IRQ PCI COMPILER_READ TCP UDP BIND FSREAD FSWRITE PROCESS AUDIO CAMERA USB HID WINDOW FRAME BLOCK TPM; do "
+        + "    for cap in NET FS SYS ENV TIME RAND ARENA ALLOC FFI THREAD GPU METRICS SIGN MMIO DMA IRQ PCI COMPILER_READ TCP" +
+            " UDP BIND FSREAD FSWRITE PROCESS AUDIO CAMERA USB HID WINDOW FRAME BLOCK TPM; do "
         + "      if ! grep -q \"OODAR_CAP_$cap\" \"$cap_src\"; then "
         + "        printf 'ERR\\tbit_parity\\t%s missing capability %s\\n' \"$cap_src\" \"$cap\"; "
         + "        cap_err=$((cap_err + 1)); "
@@ -137,7 +145,8 @@ fn spec_capparity_sh() -> String {
         + "      fails=$((fails + cap_err)); "
         + "    fi; "
         + "    if [ -f 'openOODA/docs/spec/04_capabilities.oot' ]; then "
-        + "      if grep -q 'FsReadCap' 'openOODA/docs/spec/04_capabilities.oot' && grep -q 'MmioCap' 'openOODA/docs/spec/04_capabilities.oot' && grep -q 'TpmCap' 'openOODA/docs/spec/04_capabilities.oot'; then "
+        + "      if grep -q 'FsReadCap' 'openOODA/docs/spec/04_capabilities.oot' && grep -q 'MmioCap' 'openOODA/docs/spec/04_" +
+            "capabilities.oot' && grep -q 'TpmCap' 'openOODA/docs/spec/04_capabilities.oot'; then "
         + "        printf 'OK\\tbit_parity\\t04_capabilities.oot matches caps.h\\n'; "
         + "      else "
         + "        printf 'ERR\\tbit_parity\\t04_capabilities.oot capability definitions incomplete\\n'; "
