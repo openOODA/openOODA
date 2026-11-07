@@ -41,7 +41,3 @@ At its core, **openOODA** fuses three paradigms into a single computing substrat
 | **Layer 5 (`L5`)** | **Native Applications** | Productivity, creative, communication, and engineering applications with zero ambient tracking |
 | **Layer 6 (`L6`)** | **Distributed Cloud Grid** | Content-addressed storage, encrypted mesh networking, cluster scheduling, and distributed compute |
 | **Layer 7 (`L7`)** | **Autonomous OODA Loops** | Capability-bounded Observe–Orient–Decide–Act engines, formal verification workflows, and fleet governance |
-
-## License
-
-Apache-2.0. See [LICENSE](LICENSE) for full text.
