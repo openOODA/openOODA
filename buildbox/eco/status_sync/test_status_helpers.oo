@@ -81,19 +81,33 @@ pub fn ts_check_gpu_seg_bars(html: String) -> Bool {
     return cnt == 10;
 }
 
+fn ts_strip_span(doc: String, open_s: String, close_s: String) -> String {
+    let i1: Int = str_index_of(doc, open_s);
+    if i1 < 0 { return doc; }
+    let rest: String = byte_slice(doc, i1, bytes_len(doc));
+    let i2: Int = str_index_of(rest, close_s);
+    if i2 < 0 { return doc; }
+    let end: Int = i1 + i2;
+    return byte_slice(doc, 0, i1) + byte_slice(doc, end, bytes_len(doc));
+}
+
 pub fn ts_has_privacy_leak(html: String) -> String {
     let low: String = to_lowercase(html);
     let pfx: String = "100.";
     let mut bad: List[String] = list_new();
     bad = list_push(list_push(list_push(list_push(bad, pfx + "102."), pfx + "88."), pfx + "66."), "ze" + "bes");
     bad = list_push(list_push(list_push(list_push(bad, "ring" + "master"), "starjammer"), "11435"), "/home/" + "ubermetroid");
-    bad = list_push(list_push(list_push(bad, "~04:00"), "04:30"), "$");
+    bad = list_push(list_push(bad, "~04:00"), "04:30");
     let mut i: Int = 0;
     while i < list_len(bad) {
         let tok: String = list_get(bad, i);
         i = i + 1;
         if str_contains(low, tok) { return tok; }
     }
+    // The [06] OOBENCH leaderboard intentionally publishes plan pricing ($/pane);
+    // dollar signs are only leaks outside that section.
+    let no_oob: String = ts_strip_span(low, "[06] oobench", "[07] sanitized");
+    if str_contains(no_oob, "$") { return "$"; }
     let cleaned: String = str_replace(low, "review-canvas", "");
     if str_contains(cleaned, "spot" + "light") { return "spot" + "light"; }
     return "";
