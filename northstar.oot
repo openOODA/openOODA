@@ -18,6 +18,7 @@ No trust without proof, on any hardware.
 Capabilities replace trusted programs. Code touches only what it is handed.
 Contracts replace trusted behavior. Functions state what they guarantee.
 Reproducible builds replace trusted binaries. The artifact is what the source says.
+A 256-byte Stage0 seed and a Stage A / Stage B digest match are that proof (section 5.3).
 Double-run tests and flight records replace trusted test results. Even evidence is verified.
 Self-hosting replaces trusted vendors. The toolchain builds itself.
 Multi-target (CPU, AMD/NVIDIA/Intel GPUs, WASM) replaces trusted hardware.
@@ -140,6 +141,14 @@ CallExpr          ::= PrimaryExpr "(" [ ArgList ] ")" [ "?" ] ;
 - 64-bit capability register (`32 + 32 = 64`): lower 32 bits encode the 32 root capabilities (`WHAT`, matching a 32-lane GPU warp); upper 32 bits encode 16-bit OODA Epoch + 8-bit Rights Mask + 8-bit Scope Badge (`HOW & WHEN`).
 - Functions accept borrowed capability references (`&FsReadCap`) without taking ownership.
 - Capability attenuation allows capability holders to derive strictly narrowed subsets.
+- `oo_cap_privacy_attenuate(parent_reg64, child_badge)` in `std/sec/capreg.oo`
+  packs a child register. The epoch stays. badge8 becomes `child_badge`
+  masked to 8 bits. Rights are the parent rights with bits 64 and 128 set.
+  Bit 64 is RIGHT_PRIVACY_REDACT. Bit 128 is RIGHT_ZERO_TELEMETRY.
+  The substrate macros at those values are SEAL and IMMUTABLE.
+  The child mask clears NetCap (0), MetricsCap (11), TcpCap (17),
+  UdpCap (18), AudioCap (20), CameraCap (21), HidCap (23), and
+  FrameCap (25). TlsCap shares bit 17 with TcpCap.
 - Calling privileged functions without valid capabilities fails compilation (`E_CAP`).
 
 ### 4.3 Typestate Protocol Verification
@@ -173,6 +182,37 @@ CallExpr          ::= PrimaryExpr "(" [ ArgList ] ")" [ "?" ] ;
 - Bit-identical compilation produces reproducible binaries with normalized paths and sorted symbols.
 - Support for Struct-of-Arrays (SoA) layout enables high-throughput vector processing.
 
+### 5.3 Stage0 seed and Diverse Double-Compilation
+
+`std/sec/ddc_seed.oo` is the Stage0 seed and Diverse Double-Compilation
+gate. `oodac/check/ddc_seed.oo` forwards the same four checks.
+`oo_ddc_req_caps` requires CompilerReadCap, SignCap, and TpmCap.
+
+`oo_hex0_seed_verify(seed_bytes, seed_digest, elf_init_array_cnt)`
+returns -13 when `seed_bytes` is not 256, `seed_digest` is not
+positive, or `elf_init_array_cnt` is not 0. A pass returns
+`seed_digest`. The bound is one 256-byte hex0 page. A non-zero
+`.init_array` count is a pre-main hook and returns -13.
+
+`oo_ddc_compare(stage_a_digest, stage_b_digest, std_merkle)` returns
+-13 when either digest is not positive, the std/sec Merkle root is
+not positive, or the two digests differ. Stage A is the self-hosted
+binary. Stage B is the hex0-seeded binary. A match returns
+`oo_pqc_sha3_round(stage_a_digest, std_merkle)`.
+
+`oo_ddc_seal_gated` calls `oo_cap_reg64_check` for that mask. A failed
+check returns status -13, binary digest 0, and seal 0, and it keeps
+the caller seed length and Merkle root. The seal calls
+`oo_hex0_seed_verify` with `elf_init_array_cnt` 0. A failed seed
+check or a failed compare returns that status, binary digest 0, and
+seal 0. A pass sets status 0, `seed_bytes` 256, and `binary_digest`
+to the Stage A digest. `ddc` is the compare result. The seal is
+`oo_pqc_sha3_round(oo_pqc_sha3_round(seed_digest, ddc), reg64 ^ epoch)`.
+
+`oodac_hex0_seed_verify`, `oodac_ddc_compare`, and `oodac_ddc_seal_gated`
+return the std results. The init-array count is visible on
+`oodac_hex0_seed_verify`. The review record is `qa/review-queue.oot`.
+
 ## 6. Cross References
 Paths below are from this repo root:
 - Ecosystem Requirements: `requirements.oot`
@@ -185,3 +225,5 @@ Paths below are from this repo root:
 - Unix Less-Is-More Consolidation & Multi-Call Persona Dispatch: `rfcs/0012-unix-less-is-more-consolidation.oot`
 - 8D Red Team: `practices/8d-red-team.oot`
 - OODA Workflow: `practices/ooda-workflow.oot`
+- Privacy law: `spec/security.oot`
+- Stage0 seed and privacy-attenuation review: `qa/review-queue.oot`

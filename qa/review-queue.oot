@@ -1,0 +1,68 @@
+# Review queue — Stage0 seed, DDC, and privacy attenuation
+File: openOODA/qa/review-queue.oot
+
+This page records two L0 gates from openOODA-core.
+northstar.oot section 4.2 and section 5.3 point here.
+The record is the source contract. It is not a test log.
+
+## 1. Stage0 256-byte seed and Diverse Double-Compilation
+
+Sources:
+
+- openOODA-core/std/sec/ddc_seed.oo
+- openOODA-core/oodac/check/ddc_seed.oo
+
+The std page is the predicate. The oodac page forwards it.
+`oo_ddc_req_caps` and `oodac_ddc_req_caps` require CompilerReadCap,
+SignCap, and TpmCap.
+
+`oo_hex0_seed_verify(seed_bytes, seed_digest, elf_init_array_cnt)`
+returns -13 when any of these hold:
+
+- `seed_bytes` is not 256.
+- `seed_digest` is not positive.
+- `elf_init_array_cnt` is not 0.
+
+A pass returns `seed_digest`. The size bound is one 256-byte hex0
+page. A non-zero `.init_array` count is a pre-main hook.
+`oodac_hex0_seed_verify` forwards the caller count.
+
+`oo_ddc_compare(stage_a_digest, stage_b_digest, std_merkle)` returns
+-13 when either digest is not positive, the std/sec Merkle root is
+not positive, or the two digests differ. Stage A is the self-hosted
+binary. Stage B is the hex0-seeded binary. A match returns
+`oo_pqc_sha3_round(stage_a_digest, std_merkle)`.
+`oodac_ddc_compare` forwards those three arguments.
+
+`oo_ddc_seal_gated` calls `oo_cap_reg64_check` before it seals.
+A failed check returns status -13, binary digest 0, and seal 0.
+It keeps the caller seed length and the caller Merkle root.
+The seal then calls `oo_hex0_seed_verify` with `elf_init_array_cnt`
+0. A failed seed check or a failed compare returns that status,
+binary digest 0, and seal 0. A pass sets status 0, `seed_bytes`
+256, and `binary_digest` to the Stage A digest. `ddc` is the
+compare result. The seal is `oo_pqc_sha3_round(oo_pqc_sha3_round(
+seed_digest, ddc), reg64 ^ epoch)`. `oodac_ddc_seal_gated` returns
+that attest.
+
+## 2. oo_cap_privacy_attenuate
+
+Source: openOODA-core/std/sec/capreg.oo.
+`oo_cap_privacy_attenuate(parent_reg64, child_badge)` packs a child
+register with `oo_cap_reg64_pack`.
+
+- The epoch is the parent epoch.
+- badge8 is `child_badge` masked to 8 bits.
+- Rights are the parent rights with bits 64 and 128 set.
+  Bit 64 is RIGHT_PRIVACY_REDACT. Bit 128 is RIGHT_ZERO_TELEMETRY.
+  The substrate macros at those values are SEAL and IMMUTABLE.
+- The child mask clears eight capability bits from the parent:
+  NetCap (0), MetricsCap (11), TcpCap (17), UdpCap (18),
+  AudioCap (20), CameraCap (21), HidCap (23), and FrameCap (25).
+  TlsCap shares bit 17 with TcpCap, so that clear covers TlsCap.
+
+## 3. Queue disposition
+
+Both items are recorded from the source pages named above.
+A later review repeats the predicates in sections 1 and 2.
+spec/security.oot remains the privacy law for layers L0 through L7.
