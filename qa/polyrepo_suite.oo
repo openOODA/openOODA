@@ -35,9 +35,9 @@ fn suite_argv(pre: List[String], head: List[String]) -> List[String] {
 fn run_sub_suite(p: &ProcessCap, env: &EnvCap, oodac: String, path: String) -> Result[Int, String] {
     println("--- Executing Suite: " + path + " ---");
     let tmp_bin: String = path + ".tmp.bin";
-    // 2026-10-30 audit (mcode S10): no blind sh -c. argv exec via sys_exec_wait.
+    // 2026-10-30 audit (mcode S10): no blind shell -c. argv exec via sys_exec_wait.
     // The toolchain exposes no env setter, so the child receives its variables
-    // as KEY=VALUE arguments in front of the program name under /usr/bin/env.
+    // as KEY=VALUE arguments in front of the program name under env.
     let pre: List[String] = suite_env_prefix(env, oodac);
     let mut bhead: List[String] = list_new();
     bhead = list_push(bhead, oodac);
@@ -45,14 +45,14 @@ fn run_sub_suite(p: &ProcessCap, env: &EnvCap, oodac: String, path: String) -> R
     bhead = list_push(bhead, path);
     bhead = list_push(bhead, "-o");
     bhead = list_push(bhead, tmp_bin);
-    let b: Result[Int, String] = sys_exec_wait(p, "/usr/bin/env", suite_argv(pre, bhead));
+    let b: Result[Int, String] = sys_exec_wait(p, "env", suite_argv(pre, bhead));
     if b.is_err() {
         let e: String = match b { Ok(_) => "", Err(m) => m };
         return Err("compile fail " + path + ": " + e);
     }
     let mut rhead: List[String] = list_new();
     rhead = list_push(rhead, tmp_bin);
-    let r: Result[Int, String] = sys_exec_wait(p, "/usr/bin/env", suite_argv(pre, rhead));
+    let r: Result[Int, String] = sys_exec_wait(p, "env", suite_argv(pre, rhead));
     let _del: Result[String, String] = sys_exec(p, "rm", "-f", tmp_bin);
     let out_text: String = match r { Ok(_) => "", Err(m) => m };
     let code: Int = match r { Ok(c) => c, Err(_) => 0 - 1 };

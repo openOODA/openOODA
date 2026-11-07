@@ -65,7 +65,7 @@ fn iso_build_payload(p: &ProcessCap, fw: &FsWriteCap, oodac: String, root: Strin
     a = list_push(a, bld + "/payload.elf");
     let mut envs: List[String] = list_new();
     envs = list_push(envs, "OODA_LLVM_TRIPLE=x86_64-unknown-none");
-    return iso_run_env(p, envs, "/usr/bin/clang", a);
+    return iso_run_env(p, envs, "clang", a);
 }
 
 fn iso_compile_obj(p: &ProcessCap, src: String, out: String) -> Result[Int, String] {
@@ -84,7 +84,7 @@ fn iso_compile_obj(p: &ProcessCap, src: String, out: String) -> Result[Int, Stri
     a = list_push(a, src);
     a = list_push(a, "-o");
     a = list_push(a, out);
-    return iso_run(p, "/usr/bin/clang", a);
+    return iso_run(p, "clang", a);
 }
 
 fn iso_build_efi(p: &ProcessCap, fw: &FsWriteCap, oodac: String, root: String, bld: String) -> Result[Int, String] {
@@ -119,7 +119,7 @@ fn iso_build_efi(p: &ProcessCap, fw: &FsWriteCap, oodac: String, root: String, b
     }
     a = list_push(a, "-o");
     a = list_push(a, bld + "/BOOTX64.EFI");
-    return iso_run(p, "/usr/bin/clang", a);
+    return iso_run(p, "clang", a);
 }
 
 fn iso_mcopy(p: &ProcessCap, src: String, img: String, dest: String) -> Result[Int, String] {
@@ -129,7 +129,7 @@ fn iso_mcopy(p: &ProcessCap, src: String, img: String, dest: String) -> Result[I
     a = list_push(a, img);
     a = list_push(a, src);
     a = list_push(a, dest);
-    return iso_run(p, "/usr/bin/mcopy", a);
+    return iso_run(p, "mcopy", a);
 }
 
 fn iso_build_esp(p: &ProcessCap, fw: &FsWriteCap, bld: String, epoch: String) -> Result[Int, String] {
@@ -137,13 +137,13 @@ fn iso_build_esp(p: &ProcessCap, fw: &FsWriteCap, bld: String, epoch: String) ->
     rm = list_push(rm, "-f");
     rm = list_push(rm, bld + "/esp.img");
     rm = list_push(rm, bld + "/ooda.iso");
-    let _r: Result[Int, String] = iso_run(p, "/usr/bin/rm", rm);
+    let _r: Result[Int, String] = iso_run(p, "rm", rm);
     let mut tp: List[String] = list_new();
     tp = list_push(tp, "-d");
     tp = list_push(tp, "@" + epoch);
     tp = list_push(tp, bld + "/BOOTX64.EFI");
     tp = list_push(tp, bld + "/payload.elf");
-    let _t: Result[Int, String] = iso_run(p, "/usr/bin/touch", tp);
+    let _t: Result[Int, String] = iso_run(p, "touch", tp);
     let mut mk: List[String] = list_new();
     mk = list_push(mk, "-C");
     mk = list_push(mk, "-F");
@@ -153,25 +153,25 @@ fn iso_build_esp(p: &ProcessCap, fw: &FsWriteCap, bld: String, epoch: String) ->
     mk = list_push(mk, "OODAESP");
     mk = list_push(mk, bld + "/esp.img");
     mk = list_push(mk, "1440");
-    let m: Result[Int, String] = iso_run(p, "/usr/bin/mkfs.fat", mk);
+    let m: Result[Int, String] = iso_run(p, "mkfs.fat", mk);
     if m.is_err() { return Err("mkfs.fat failed"); }
     let mut md: List[String] = list_new();
     md = list_push(md, "-i");
     md = list_push(md, bld + "/esp.img");
     md = list_push(md, "::/EFI");
     md = list_push(md, "::/EFI/BOOT");
-    let _d: Result[Int, String] = iso_run(p, "/usr/bin/mmd", md);
+    let _d: Result[Int, String] = iso_run(p, "mmd", md);
     let _c1: Result[Int, String] = iso_mcopy(p, bld + "/BOOTX64.EFI", bld + "/esp.img", "::/EFI/BOOT/BOOTX64.EFI");
     let _c2: Result[Int, String] = iso_mcopy(p, bld + "/payload.elf", bld + "/esp.img", "::/KERNEL.ELF");
     let mut cp: List[String] = list_new();
     cp = list_push(cp, bld + "/esp.img");
     cp = list_push(cp, bld + "/efiroot/esp.img");
-    let _cp: Result[Int, String] = iso_run(p, "/usr/bin/cp", cp);
+    let _cp: Result[Int, String] = iso_run(p, "cp", cp);
     let mut tp2: List[String] = list_new();
     tp2 = list_push(tp2, "-d");
     tp2 = list_push(tp2, "@" + epoch);
     tp2 = list_push(tp2, bld + "/efiroot/esp.img");
-    let _t2: Result[Int, String] = iso_run(p, "/usr/bin/touch", tp2);
+    let _t2: Result[Int, String] = iso_run(p, "touch", tp2);
     return Ok(0);
 }
 
@@ -193,7 +193,7 @@ fn iso_build_iso(p: &ProcessCap, bld: String) -> Result[Int, String] {
     a = list_push(a, "/esp.img");
     a = list_push(a, "-no-emul-boot");
     a = list_push(a, bld + "/efiroot");
-    return iso_run(p, "/usr/bin/xorriso", a);
+    return iso_run(p, "xorriso", a);
 }
 
 pub fn main(p: &ProcessCap, fw: &FsWriteCap, env: &EnvCap) -> Result[Int, String] {
@@ -212,7 +212,7 @@ pub fn main(p: &ProcessCap, fw: &FsWriteCap, env: &EnvCap) -> Result[Int, String
     if e3.is_err() { let m: String = match e3 { Ok(_) => "", Err(x) => x }; print("ERR " + m); return Err(m); }
     let e4: Result[Int, String] = iso_build_iso(p, bld);
     if e4.is_err() { let m: String = match e4 { Ok(_) => "", Err(x) => x }; print("ERR " + m); return Err(m); }
-    let out: Result[String, String] = sys_exec(p, "/usr/bin/sha256sum", bld + "/ooda.iso");
+    let out: Result[String, String] = sys_exec(p, "sha256sum", bld + "/ooda.iso");
     print(match out { Ok(s) => s, Err(e) => e });
     print("BUILD-ISO OK");
     return Ok(0);

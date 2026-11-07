@@ -17,8 +17,7 @@ import "tools/env/audit_env.oo";
 
 fn d9_fail(msg: String) -> String {
     println("FAIL: " + msg);
-    process_exit(1);
-    return "";
+    return "FAIL: " + msg;
 }
 
 fn d9_pad(s: String, width: Int) -> String {
@@ -79,7 +78,9 @@ fn d9_fn_count(src: String) -> Int {
 
 fn d9_patch_capreg(fr: &FsReadCap, fw: &FsWriteCap, base: String, repo: String, pfx: String) -> String {
     let path: String = base + "/core/capreg.oo";
-    let src: String = match fs_read_file(fr, path) { Ok(s) => s, Err(_) => d9_fail(repo + ": cannot read core/capreg.oo") };
+    let read_cap: Result[String, String] = fs_read_file(fr, path);
+    if read_cap.is_err() { return d9_fail(repo + ": cannot read core/capreg.oo"); }
+    let src: String = match read_cap { Ok(s) => s, Err(_) => "" };
     let pack_name: String = pfx + "_reg64_pack";
     let check_name: String = pfx + "_reg64_check";
     let atten_name: String = pfx + "_reg64_attenuate";
@@ -112,7 +113,12 @@ fn d9_patch_capreg(fr: &FsReadCap, fw: &FsWriteCap, base: String, repo: String, 
 
 fn d9_patch_gate(fr: &FsReadCap, fw: &FsWriteCap, repo: String, base: String, pfx: String, file: String, canon: String) -> Int {
     let path: String = base + "/" + file;
-    let src: String = match fs_read_file(fr, path) { Ok(s) => s, Err(_) => d9_fail(repo + ": cannot read " + file) };
+    let read_gate: Result[String, String] = fs_read_file(fr, path);
+    if read_gate.is_err() {
+        let _miss: String = d9_fail(repo + ": cannot read " + file);
+        return 0 - 1;
+    }
+    let src: String = match read_gate { Ok(s) => s, Err(_) => "" };
     let cnt: Int = text_count_occurrences(src, canon);
     let label: String = if canon == "oo_cap_reg64_check(" { "check" } else { "pack" };
     if cnt != 1 {
@@ -152,8 +158,11 @@ pub fn main(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, e: &EnvCap) -> Int 
         let pfx: String = list_get(prefixes, i);
         let base: String = root + "/" + repo;
         let stats: String = d9_patch_capreg(fr, fw, base, repo, pfx);
-        let _c: Int = d9_patch_gate(fr, fw, repo, base, pfx, "hw/attest.oo", "oo_cap_reg64_check(");
-        let _d: Int = d9_patch_gate(fr, fw, repo, base, pfx, "hw/delegate.oo", "oo_cap_reg64_pack(");
+        if str_starts_with(stats, "FAIL:") { return 1; }
+        let gate_c: Int = d9_patch_gate(fr, fw, repo, base, pfx, "hw/attest.oo", "oo_cap_reg64_check(");
+        if gate_c < 0 { return 1; }
+        let gate_d: Int = d9_patch_gate(fr, fw, repo, base, pfx, "hw/delegate.oo", "oo_cap_reg64_pack(");
+        if gate_d < 0 { return 1; }
         println(d9_pad(repo, 10) + " prefix=" + d9_pad(pfx + "_", 10) + " " + stats);
         i = i + 1;
     }

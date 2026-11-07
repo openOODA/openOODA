@@ -17,7 +17,7 @@ import "std/fs/os/fs.oo";
 fn iso_boot(p: &ProcessCap, iso: String, log: String, ovmf: String, timeout: String) -> Void {
     let mut a: List[String] = list_new();
     a = list_push(a, timeout);
-    a = list_push(a, "/usr/bin/qemu-kvm");
+    a = list_push(a, "qemu-kvm");
     a = list_push(a, "-drive");
     a = list_push(a, "if=pflash,format=qcow2,readonly=on,file=" + ovmf);
     a = list_push(a, "-cdrom");
@@ -30,7 +30,7 @@ fn iso_boot(p: &ProcessCap, iso: String, log: String, ovmf: String, timeout: Str
     a = list_push(a, "isa-debugcon,iobase=0x402,chardev=dbg");
     a = list_push(a, "-chardev");
     a = list_push(a, "file,id=dbg,path=" + log);
-    let _r: Result[Int, String] = iso_run(p, "/usr/bin/timeout", a);
+    let _r: Result[Int, String] = iso_run(p, "timeout", a);
     return;
 }
 
@@ -40,7 +40,7 @@ fn iso_log_has(fr: &FsReadCap, log: String, marker: String) -> Bool {
 }
 
 fn iso_sha(p: &ProcessCap, path: String) -> String {
-    let out: Result[String, String] = sys_exec(p, "/usr/bin/sha256sum", path);
+    let out: Result[String, String] = sys_exec(p, "sha256sum", path);
     let text: String = match out { Ok(s) => s, Err(e) => e };
     let parts: List[String] = str_split(str_replace(text, "\n", ""), " ");
     if list_len(parts) == 0 { return ""; }
@@ -62,7 +62,7 @@ fn iso_copy(p: &ProcessCap, src: String, dst: String) -> Void {
     let mut c: List[String] = list_new();
     c = list_push(c, src);
     c = list_push(c, dst);
-    let _r: Result[Int, String] = iso_run(p, "/usr/bin/cp", c);
+    let _r: Result[Int, String] = iso_run(p, "cp", c);
     return;
 }
 
@@ -75,11 +75,11 @@ fn iso_corrupt_case(p: &ProcessCap, fw: &FsWriteCap, bld: String) -> Result[Int,
     mc = list_push(mc, bld + "/esp_bad.img");
     mc = list_push(mc, bld + "/junk.efi");
     mc = list_push(mc, "::/EFI/BOOT/BOOTX64.EFI");
-    let _m: Result[Int, String] = iso_run(p, "/usr/bin/mcopy", mc);
+    let _m: Result[Int, String] = iso_run(p, "mcopy", mc);
     let mut mk: List[String] = list_new();
     mk = list_push(mk, "-p");
     mk = list_push(mk, bld + "/badroot");
-    let _mk: Result[Int, String] = iso_run(p, "/usr/bin/mkdir", mk);
+    let _mk: Result[Int, String] = iso_run(p, "mkdir", mk);
     iso_copy(p, bld + "/esp_bad.img", bld + "/badroot/esp.img");
     let mut x: List[String] = list_new();
     x = list_push(x, "-as");
@@ -95,7 +95,7 @@ fn iso_corrupt_case(p: &ProcessCap, fw: &FsWriteCap, bld: String) -> Result[Int,
     x = list_push(x, "/esp.img");
     x = list_push(x, "-no-emul-boot");
     x = list_push(x, bld + "/badroot");
-    let _x: Result[Int, String] = iso_run(p, "/usr/bin/xorriso", x);
+    let _x: Result[Int, String] = iso_run(p, "xorriso", x);
     return Ok(0);
 }
 

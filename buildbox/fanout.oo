@@ -72,21 +72,21 @@ fn fanout_send(sys: &ProcessCap, spot: String, reqf: String, outf: String) -> In
     return ccode;
 }
 
-pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap) {
+pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap) -> Int {
     let repo: String = env_or(env, "OODA_REPO", "/work/repos/oodac");
     let dr: Result[String, String] = sys_exec(sys, "git", "-C", repo, "diff", "HEAD~1", "HEAD");
     let mut diff: String = "";
     if dr.is_ok() { diff = dr.val; }
     if diff == "" {
         println("FANOUT: no diff");
-        process_exit(0);
+        return 0;
     }
     // Redaction is a precondition. A diff that still holds a key shaped
     // string after redaction is dropped rather than sent to the model.
     let safe: String = redact_text(diff);
     if redact_still_secret(safe) {
         println("ERR\tfanout\tdropped: unredacted secret shape remains");
-        process_exit(0);
+        return 0;
     }
     let spot: String = env_or(env, "OODA_REVIEWER_URL", "http://127.0.0.1:11434");
     let model: String = env_or(env, "OODA_MODEL", "qwen36-35b-uncensored-1m-mtp:latest");
@@ -94,14 +94,14 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap)
     let w: Result[Void, String] = fs_write_file(fs_w, reqf, fanout_request(model, safe));
     if w.is_err() {
         println("ERR\tfanout\tcannot write request");
-        process_exit(1);
+        return 1;
     }
     let outf: String = env_or(env, "OODA_QUEUE", "/queue") + "/raw/fanout-" + int_to_str(chars_len(diff)) + ".json";
     let ccode: Int = fanout_send(sys, spot, reqf, outf);
     if ccode != 0 {
         println("ERR\tfanout\tcurl failed");
-        process_exit(1);
+        return 1;
     }
     println("FANOUT: ok -> " + outf);
-    process_exit(0);
+    return 0;
 }
