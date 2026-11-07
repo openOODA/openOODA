@@ -2,8 +2,8 @@
 File: openOODA/spec/security.oot
 
 This page is the normative privacy law for layers L0 through L7.
-Rule 1.5 in rules.oot points here. Three gates are installed today.
-Every other layer obeys the same sensor and sink split.
+Rule 1.5 in rules.oot points here. Section 6 adds four hardware
+and desktop boundaries beside the gates in sections 1 through 3.
 
 ## 1. CapReg64 sensor and sink split (L0)
 
@@ -133,13 +133,15 @@ admits the pair.
 - L0 (@openOODA-core): mint CapReg64. oo_cap_bit_index and
   oo_cap_reg64_check are the only bit authority.
 - L1 (@openOODA-kernel): do not place NetCap or ProcessCap on a
-  kernel page. A driver takes one sensor bit, not a sink.
+  kernel page. A driver takes one sensor bit, not a sink. DRAM,
+  the memory controller, and USB enumeration follow section 6.
 - L2 (@openOODA-OS): a daemon that holds AudioCap does not open
   NetCap on the same page without oo_cap_reg64_check.
 - L3 (@openOODA-tools): EnvCap reads stay inside the OODA_* names.
   Do not copy the environment into a network payload.
 - L4 (@openOODA-DE): run the blackout redaction and the wl_seat
-  focus guard in section 2 before any remote frame leaves.
+  focus guard in section 2 before any remote frame leaves. The
+  blackout clipboard lease follows section 6.4.
 - L5 (@openOODA-apps): accept only an attenuated child register.
 - L6 (@openOODA-cloud): carry frames that section 2 already redacted.
   Do not reattach a PRIVACY_BLACKOUT surface on the mesh.
@@ -149,6 +151,101 @@ admits the pair.
 ## 5. Fail closed
 
 A missing register check, a remote blackout surface, an unfocused
-seat read, a telemetry needle, or a key needle each stop the
-operation. The refused path exports nothing. No ambient sensor is
-valid. No partial frame is a success.
+seat read, a telemetry needle, a key needle, a missing DRAM lock
+bit, a memory-controller write, a locked-screen USB hotplug, or a
+spent blackout paste stops the operation. The refused path exports
+nothing. No ambient sensor is valid. No partial frame is a success.
+
+## 6. Hardware and desktop privacy boundaries
+
+Four gates call oo_cap_reg64_check before they admit work. A
+failed check returns a zero seal. locked or admitted is false.
+
+### 6.1 Boot DRAM lock (L1 ooboot)
+
+Source: openOODA-kernel/ooboot/bootenv/dram_lock.oo.
+boot_dram_lock_req_caps requires MmioCap, PciCap, and TpmCap.
+The lock mask is 15: bit 1 BIT_TOM_LOCK (top of memory), bit 2
+BIT_REMAP_LOCK (DRAM hole remap), bit 4 BIT_INTERLEAVE_LOCK
+(channel and rank interleave XOR), bit 8 BIT_SMRAM_DLCK (SMRAM
+D_LCK).
+boot_dram_lock_verify_mask is true only when (lock_bits & 15) == 15.
+boot_dram_lock_seal_gated refuses on two paths. A failed register
+check, tom_mb < 16, remap_base_mb < 0, or interleave_xor <= 0
+returns an all-zero state. locked is false and seal is 0. A mask
+other than 15 keeps tom_mb and the caller lock_bits. It sets
+interleave_hash to 0, locked to false, and seal to 0. A full mask
+sets lock_mask to 15 and locked to true. The interleave hash is
+oo_pqc_sha3_round(tom_mb * 131 + remap_base_mb,
+interleave_xor ^ 15). The seal is oo_pqc_sha3_round(reg64 ^ ih,
+(tom_mb << 4) ^ lock_bits ^ epoch).
+
+### 6.2 Post-boot MCT guard (L1 ookernel)
+
+Source: openOODA-kernel/ookernel/mm/dram_mct_guard.oo.
+mct_guard_req_caps requires FrameCap, MmioCap, and PciCap.
+pci_mct_bdf_write_gate returns -22 when bus is outside 0..255,
+dev is outside 0..31, or func is outside 0..7. It returns -13 on
+a write when bus is 0 and dev is 0, 24, or 25. Any func in range
+matches. Those devices are the host bridge, the data fabric, and
+the memory controller. A read returns 0. A write to any other
+BDF in range returns 0.
+iommu_acs_subpage_guard is the 4 KiB bounce check. It returns
+-22 when iova_addr < 4096, iova_addr is not a multiple of 4096,
+dma_len <= 0, or dma_len is not a multiple of 4096. It returns
+-13 when is_p2p is true and (acs_ctrl_bits & 1) == 0. The source
+names that tested mask the ACS upstream-redirection bit. A good
+bounce returns 1.
+tcb_uarch_isolation_barrier compares badge8 at bits [39:32].
+Different badges return 7. Equal badges return 0. Mask 7 names
+IBPB, VERW, and L1D_FLUSH. The barrier result is 7 or 0.
+dram_row_canary_expected returns 0 when the page is below 4096,
+the page is not 4 KiB aligned, or boot_nonce <= 0. A valid page
+returns oo_pqc_sha3_round(phys_page_addr, boot_nonce ^ 7919).
+dram_mct_scrub_gated admits a scrub when the register check
+passes, the BDF gate returns 0, the bounce returns a positive
+code, and the observed canary equals the expected canary. The
+canary nonce is the epoch. The scrub calls the BDF gate with
+func 0, the bounce guard with length 4096, acs_ctrl_bits 1, and
+is_p2p true, and the barrier with badge bit 32 flipped. A scrub
+past the cap check carries uarch_flush_mask 7. A refusal keeps
+the partial flags, with admitted false and seal 0. The seal is
+oo_pqc_sha3_round(reg64 ^ exp_c ^ fl_m, (bus << 8) ^ dev ^ epoch).
+
+### 6.3 USB class firewall (L1 oodrv-io)
+
+Source: openOODA-kernel/oodrv-io/usb/usb_class_firewall.oo.
+usb_firewall_req_caps requires UsbCap and HidCap.
+usb_composite_class_guard returns -22 when base_class <= 0 or
+iface_class_mask <= 0. screen_locked returns -13 and freezes
+hotplug for every class. base_class == 8 with interface mask
+bit 4 or bit 8 and seat_approved false returns -13. Bit 4 is
+USB class 2 (network). Bit 8 is USB class 3 (HID). The source
+comment names a charger with those hidden interfaces. The
+refusal keys on base class 8. Any other in-range input returns
+1. usb_firewall_admit_gated returns zeros, admitted false, and
+seal 0 when the register check fails or dev_id <= 0. A negative
+class guard keeps the device fields with admitted false and
+seal 0. The admit seal is oo_pqc_sha3_round(reg64 ^ (dev_id <<
+4) ^ base_class, (iface_mask << 8) ^ epoch).
+
+### 6.4 Clipboard burn (L4 ooclip)
+
+Source: openOODA-DE/ooclip/core/ttl_burn.oo.
+ooclip_ttl_req_caps requires WindowCap and HidCap.
+PRIVACY_BLACKOUT remains surface flag bit 16 from section 2.
+ooclip_ttl_check returns -22 when any argument is negative. A
+blackout source (flag bit 16) returns -13 when paste_count >= 1
+or elapsed_sec > 30. elapsed_sec == 30 stays admitted.
+paste_count 0 is the one admitted read. That lease records
+max_pastes 1 and ttl_sec 30. A source with the flag clear
+returns -13 when elapsed_sec > 3600. elapsed_sec == 3600 stays
+admitted. That lease records max_pastes 64 and ttl_sec 3600.
+The refusal keys on elapsed time. A live lease returns 1.
+ooclip_paste_burn_gated returns max_pastes 0, ttl_sec 0, zeroed
+true, admitted false, and seal 0 on a failed register check or
+payload_hash <= 0. A negative TTL check is the same zeroed
+refusal and keeps that source paste limit and TTL. A live lease
+has zeroed false, admitted true, and seal
+oo_pqc_sha3_round(reg64 ^ payload_hash ^ max_p, (ttl_s << 8) ^
+paste_count ^ epoch).
