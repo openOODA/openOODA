@@ -1,0 +1,155 @@
+# Two-Axis Code Review: L3 Tools Layer and L4 Desktop Environment Hosts
+File: openOODA/audits/nextgen/axis/l3_l4_findings.oot
+
+Provenance: Batch 8 two-axis review. Part 1 of 2 (see `l3_l4_evidence.oot` for the raw evidence).
+
+Scope: 8 canonical `openOODA-DE` repositories and 8 consolidated `openOODA-tools` hosts, all reviewed
+at `origin/master`: `oocomp oopanel ooportal ooterm oofiles oosettings oobazaar ooagent-hud` and
+`oocap oorepl oosemanticdiff oocsplit oobinview oohexdump oostrdiff oosqlite`.
+
+Redaction note: fleet host names and tailnet addresses are written as generic placeholders.
+
+Axes applied: **Standards** (the shape law of rules.oot 1.8, the single-owner persona law of
+`persona-ownership.oot`, the layer-honest I/O rule of RFC 0012, and the Fowler code smells) and
+**Spec** (the `anchor.oo` contract of each repository, the `oohat cycle` quorum, `lint-oo-size`, the
+negative-trust refusal of the exit code 2, and `make build` / `make verify` / `make test`).
+
+Review method: the tools hosts were reviewed from clean clones of `origin/master`, because the live
+trees carry uncommitted work of a concurrent session. Every change was made in the clone, verified
+there, and pushed from there.
+
+## 3. Defects found and fixed
+
+Table columns: ID | Defect | Where | Repair
+
+- **D1** | The shape law of rules.oot 1.8 was broken across the pages of the host: several lines
+  carried more than one statement, two lines ran past the 128 column bound, the main entry point
+  carried 84 lines of code against the bound of 64 (`LONGFN`), and the JSON field parser nested
+  eight blocks deep against the bound of four (`DEEP`). The gate answered with `quorum_mask=104`,
+  missing the white and the yellow hats, with 8 to 9 standards findings.
+  | `openOODA-tools/oocap` | Every page is reshaped into one statement per line. The entry point
+  gives its six actions to helpers of their own, and the field parser gives the value search to two
+  helpers. The token stream of every page is unchanged, so the tool answers exactly as before.
+  Committed `f1f742b`.
+
+- **D2** | The shape law was broken across the pages of the host, and the tool answered every
+  unknown option with the exit code 0 and the banner of the default mode, so a mistyped switch
+  looked like a successful run.
+  | `openOODA-tools/oorepl` | The pages are reshaped into one statement per line, and the CLI now
+  names the switches it answers and refuses the first option it does not answer, with the exit
+  code 2 and the name of the offending option. Committed `f1915c5`.
+
+- **D3** | The shape law was broken across the pages of the host, and the tool answered every
+  unknown option with the exit code 0 and the banner of the default mode.
+  | `openOODA-tools/oosemanticdiff` | The pages are reshaped into one statement per line, and the
+  CLI refuses the first option it does not answer, with the exit code 2. Committed `59cac6d`.
+
+- **D4** | The option parser already found the options the tool does not know, but the run answered
+  them with the exit code 1, the code of a failed read, while a usage error is the exit code 2 of
+  the fleet contract.
+  | `openOODA-tools/oocsplit` | The run answers an unknown option with the exit code 2 and keeps
+  the message that names the option. Committed `2d0a43b`.
+
+- **D5** | The host answered a `--persona` flag pair and picked the persona from its value.
+  Rule 1.25 of rules.oot bans the persona flags of the consolidated tools, and RFC 0012 section 2.2
+  (amendment `702649a`) bans the flag family fleet-wide. The repository's own Makefile asserted the
+  banned behaviour with four test targets.
+  | `openOODA-tools/oosqlite` | The flag pair and the code that read it are gone. The host now
+  refuses the first option it does not answer, with the exit code 2, and the gate tests hold the
+  refusal of the persona flags and of an unknown option. Committed `a950381`.
+
+- **D6** | The host answered the `--personas` option with the table of its personas, the same flag
+  family that Rule 1.25 bans. The byte comparison engine also swallowed every option it did not
+  know without a word.
+  | `openOODA-tools/oostrdiff` | The table and the option are gone. The host refuses the first
+  option it does not answer, with the exit code 2, and the byte comparison engine refuses the
+  options it does not answer the same way. Committed `be41a07`.
+
+- **D7** | The tool was a wrapper. Its POSIX surface handed the arguments to the host `od` and
+  printed what the host printed, so the tool did no work of its own and it failed under the empty
+  path, where the host binary is not found. The parity gate did not see it either: it compared the
+  tool with the upstream tool, and the tool was the upstream tool. The native engine was also lossy
+  at the byte level: it read the file as a string and stopped at the first byte that is not valid
+  text, so a file with a high byte lost everything behind it.
+  | `openOODA-tools/oohexdump` | The engine is native now. It reads the file under the capability
+  token and renders the dump from the bytes of the file, and it answers the eight formats of the
+  `od` surface, the four address radixes, the read window, the width and the duplicate marker. The
+  reading is at the byte level, so a file of any bytes is dumped whole. The parity gate grew
+  eleven match cases that hold the engine against the upstream tool byte for byte. Committed
+  `1d0aa90`.
+
+- **D8** | The test of the component name held the name of the host before the rename and failed on
+  `origin/master`: `23/24 assertions`. The repository could not pass `make test` before this batch.
+  | `openOODA-tools/oostrdiff` | The assertion holds the name of the host now. Fixed in the same
+  commit as D6, `be41a07`.
+
+## 4. Findings reported, not repaired
+
+These are ecosystem-wide policy, ownership, or tooling questions. Each one crosses more than one
+repository or one layer, so fixing it inside a single repo would create a divergent fork of the
+fleet. They are recorded here for the maintainers.
+
+- **F1** | The gate does not catch a shell-out to the tool a host replaces. The red hat counts a
+  host binary leak when the source holds a `sys_exec` call and one of ` dd `, ` tar `, ` gzip `,
+  ` openssl ` or ` sha256sum `, or when the source holds a hardcoded path. A call to ` od `, the
+  very tool `oohexdump` replaces, is not on that list, so the host reported
+  `host_bin_leaks=0` while it was a wrapper. The same hat reports `path_nonexistent_ok=1` after
+  checking only that the `PATH` variable is set and holds no newline; it never runs the binary
+  under an empty path.
+  | `openOODA-agents/oohat` | Not repaired here: the gate belongs to another repository and the
+  finding list is its own. The defect was found by running the binary under `PATH=/nonexistent`
+  and comparing the output with the upstream tool, which is the check the hat claims to make.
+
+- **F2** | The language has no lowering for the error stream. `eprintln` is a known name but the
+  compiler refuses a call that carries a string, and the runtime exposes only a newline to the
+  error stream. The tools that must write to the error stream shell out to `sh -c printf`, which is
+  the last host binary call left in the production paths of the tools layer: `oocap/ipc/diag.oo`
+  and `oostrdiff/persona/bindiff/main.oo`. The diagnostic of `oohexdump` therefore goes to the
+  standard output, while the upstream tool writes it to the error stream.
+  | `openOODA-core/oodac`, `openOODA-core/oodar` | Not repaired here: the language is the holder of
+  the capability. The deviation of `oohexdump` is declared in its own `qa/parity/deviations.oot`.
+
+- **F3** | The tools layer is the only layer that answers the retired repository names as the
+  subcommands of its hosts: `oostrdiff astdiff`, `oostrdiff bindiff`, `oosqlite ooquery`,
+  `oosqlite sqlite`. The apps and DE layers accept the retired names too and the cloud layer
+  refuses them, so the reading of the clause of Rule 1.25 that bans the retired names is not the
+  same across the fleet.
+  | `openOODA/openOODA` | Not repaired here. The persona table of `persona-ownership.oot` lists
+  the tokens `ooastdiff`, `oobindiff` and `ooquery` as the owned personas of `oostrdiff` and
+  `oosqlite`, so the ownership is recorded and the reading of the clause is a policy question.
+
+- **F4** | The ownership table does not carry six of the eight hosts of this batch. The L3 table of
+  `persona-ownership.oot` names `oostrdiff` and `oosqlite`, but `oocap`, `oorepl`,
+  `oosemanticdiff`, `oocsplit`, `oobinview` and `oohexdump` are absent, so their persona tokens are
+  unrecorded.
+  | `openOODA/openOODA` | Not repaired here: the ownership table is the holder of the ownership.
+
+- **F5** | The catalog index still carries the entries of the hosts before the rename, and they
+  name products that no longer exist: `oobiew`, `oocsplt`, `oostructureddiff` and `ooquery`. Six of
+  the eight hosts of this batch have no entry at all: `oorepl`, `oocsplit`, `oobinview`,
+  `oohexdump`, `oostrdiff` and `oosqlite`.
+  | `openOODA/catalog` | Not repaired here: the catalog is the holder of the catalogue.
+
+- **F6** | The gate of `oosqlite` creates a symbolic link inside its own build cache to test the
+  dispatch on the name of the binary, and the rule of the zero symlinks directive bans the symbolic
+  links anywhere in the repository trees. The link is created and removed inside the test, so no
+  artefact is shipped, but the pattern is written in a Makefile of the fleet.
+  | `openOODA-tools/oosqlite` | Not repaired here. The test needs the dispatch on the name of the
+  binary, and the mechanism has no other way to be tested without a link.
+
+- **F7** | The findings of the earlier batches are still open: the contradiction of RFC 0012
+  between section 2.2 and section 4.5 on `--list-personas`, the `--mode` selector of the DE layer,
+  the release workflow that is absent in the DE layer, the `ooflash` release that is missing, the
+  `E_PERSONA_DUP` of the twelve absorbed repositories of the DE layer, the nine of the seventeen
+  applications that ship a standalone `ooda.pkg` while the hosts `oooffice` and `oohostmon` do not
+  exist, and the thirty-seven repositories over the bound of thirty-two pages of rules.oot 1.8.
+  | `openOODA/openOODA` | Not repaired here: each one crosses more than one repository.
+
+## 5. Result
+
+All 16 repositories of this batch answer with `quorum_mask=255`, zero standards findings and zero
+spec findings. The eight tools hosts answer with `lint-oo-size` exit 0, with `make build`,
+`make verify` and `make test` at exit 0 and `ALL TESTS PASSED`, with the shape law free of
+violations, with every page passing `oodac check`, and with the exit code 2 for an unknown option,
+for `--persona`, for `--persona=` and for `--list-personas`. The eight DE hosts were re-verified at
+`quorum_mask=255` and needed no change.
