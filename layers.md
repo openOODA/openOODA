@@ -7,9 +7,9 @@
    - `ooboot` (UEFI), `oohal` (x86_64/ARM64/RISC-V), `ookernel` (sched/mm/ipc/iommu), `oodrv-storage` (NVMe/VirtIO-Blk), `oodrv-io` (GOP/PCIe/USB/HID/MIPI-CSI/IIO-IMU/WWAN/Wi-Fi/BT), `oodrv-virt`.
 4. **`L2` `@openOODA-OS` (Zero-Root System Daemons across Desktop, Server & Mobile — `9` Repos)**:
    - `ooinit` (PID 1 & services), `oovfs` (CoW pools, LUKS, mounts), `oonetd` (Wi-Fi WPA3, BT, WireGuard, BGP/OSPF/VLAN), `oosysbus` (devd, wakelocks, sensors, IPP print, A/V graph), `ooauthd`, `oohealthd`, `oocontainer`, `oollama`, `oomodemd` (Mobile 5G/LTE/eSIM).
-5. **`L3` `@openOODA-tools` (Capability-Sandboxed Unix, System & Security Multi-Call Utilities — `37` Repos)**:
+5. **`L3` `@openOODA-tools` (Capability-Sandboxed Unix, System & Security Multi-Call Utilities — `38` Repos)**:
    - Security/Defense (`7`): `oodefense`, `oosandbox`, `ooprovenance`, `ooredact`, `oosign`, `oofirewall`, `oovault`.
-   - Core/System (`30`): `oofs`, `ooperm`, `oopath`, `oomount`, `ools`, `oocat`, `oosort`, `ootext`, `oogrep`, `oodiff`, `oojq`, `oocodec`, `oosh`, `ooproc`, `oohw`, `oopower`, `oocron`, `oonet`, `oocurl`, `oossh`, `ootty`, `ootheme`, `ooarchive`, `ooawk`, `oofind`, `oofzf`, `oohash`, `ooless`, `oosed`, `oosqlite`.
+   - Core/System (`31`): `oofs`, `ooperm`, `oopath`, `oomount`, `ools`, `oocat`, `oosort`, `ootext`, `oogrep`, `oodiff`, `oojq`, `oocodec`, `oosh`, `ooproc`, `oohw`, `oopower`, `oocron`, `oonet`, `oocurl`, `oossh`, `ootty`, `ootheme`, `oorgb` (hardware RGB peripheral controller synced to `ootheme`), `ooarchive`, `ooawk`, `oofind`, `oofzf`, `oohash`, `ooless`, `oosed`, `oosqlite`.
 6. **`L4` `@openOODA-DE` (Wayland Desktop & Mobile Touch Environment — `8` Repos)**:
    - `oocomp` (compositor + touch gestures/autorotate), `oopanel` (bar/launcher + `osk` virtual keyboard), `ooportal` (clipboard TTL burn, cast, a11y, USB guard), `ooterm`, `oofiles`, `oosettings`, `oobazaar`, `ooagent-hud`.
 7. **`L5` `@openOODA-apps` (Flagship Desktop & Mobile Applications — `11` Repos)**:
