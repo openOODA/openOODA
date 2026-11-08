@@ -9,11 +9,11 @@
    - `ooinit` (PID 1 & services), `oovfs` (CoW pools, LUKS, mounts), `oonetd` (Wi-Fi WPA3, BT, WireGuard, BGP/OSPF/VLAN), `oosysbus` (devd, wakelocks, sensors, IPP print, A/V graph), `ooauthd`, `oohealthd`, `oocontainer`, `oollama`, `oomodemd` (Mobile 5G/LTE/eSIM).
 5. **`L3` `@openOODA-tools` (Capability-Sandboxed Unix, System & Security Multi-Call Utilities — `38` Repos)**:
    - Security/Defense (`7`): `oodefense`, `oosandbox`, `ooprovenance`, `ooredact`, `oosign`, `oofirewall`, `oovault`.
-   - Core/System (`31`): `oofs`, `ooperm`, `oopath`, `oomount`, `ools`, `oocat`, `oosort`, `ootext`, `oogrep`, `oodiff`, `oojq`, `oocodec`, `oosh`, `ooproc`, `oohw`, `oopower`, `oocron`, `oonet`, `oocurl`, `oossh`, `ootty`, `ootheme`, `oorgb` (hardware RGB peripheral controller synced to `ootheme`), `ooarchive`, `ooawk`, `oofind`, `oofzf`, `oohash`, `ooless`, `oosed`, `oosqlite`.
+   - Core/System (`31`): `oofs`, `ooperm` (`+elevate`), `oopath`, `oomount` (`+crypt`), `ools`, `oocat`, `oosort`, `ootext`, `oogrep`, `oodiff`, `oojq`, `oocodec`, `oosh`, `ooproc`, `oohw` (`+bt|audio`), `oopower`, `oocron`, `oonet` (`+vpn`), `oocurl`, `oossh`, `ootty`, `ootheme`, `oorgb` (RGB controller), `ooarchive`, `ooawk`, `oofind`, `oofzf`, `oohash`, `ooless`, `oosed`, `oosqlite`.
 6. **`L4` `@openOODA-DE` (Wayland Desktop & Mobile Touch Environment — `8` Repos)**:
    - `oocomp` (compositor + touch gestures/autorotate), `oopanel` (bar/launcher + `osk` virtual keyboard), `ooportal` (clipboard TTL burn, cast, a11y, USB guard), `ooterm`, `oofiles`, `oosettings`, `oobazaar`, `ooagent-hud`.
 7. **`L5` `@openOODA-apps` (Flagship Desktop & Mobile Applications — `11` Repos)**:
-   - `oobrowser`, `oostudio`, `oooffice` (`docs|sheet|deck|notes|pdf`), `oocanvas` (`draw|paint|cad`), `oomedia`, `ooflash`, `oodaw`, `oochat`, `oopass`, `ookvm`, `oocamera` (`photo|video|qr|isp`).
+   - `oobrowser`, `oostudio`, `oooffice` (`docs|sheet|deck|notes|pdf`), `oocanvas` (`draw|paint|cad`), `oomedia`, `ooflash` (`+pack-iso`), `oodaw`, `oochat`, `oopass`, `ookvm`, `oocamera` (`photo|video|qr|isp`).
 8. **`L6` `@openOODA-cloud` (`8` Repos) & `L7` `@openOODA-agents` (`10` Repos)**:
    - `L6`: `oomesh`, `oostore`, `oodeploy` (`pxe|bmc|vm-fleet`), `oogateway`, `ooidentity`, `oodb`, `ootelemetry`, `oobilling`.
    - `L7`: `ooloop`, `ooswarm`, `oobench`, `ooquota`, `oofalsify`, `ooconsensus`, `oocode`, `oohat`, `oomemory`, `oogovern`.
