@@ -20,7 +20,8 @@ pass() { echo "  PASS: $1"; }
 
 need() {
   # need <file> <fixed-string> <label>
-  local f="$ROOT/$1" s="$2" label="$3"
+  local f="$ROOT/cards/$1" s="$2" label="$3"
+  [ -f "$f" ] || f="$ROOT/$1"
   if [ ! -f "$f" ]; then fail "$1 missing"; return; fi
   if grep -qF -- "$s" "$f"; then pass "$label"; else fail "$1 lacks: $s"; fi
 }
@@ -31,7 +32,7 @@ echo "=== Testing Quick Cards under: $ROOT ==="
 echo "Test 1 [Card Presence & Page Law]:"
 CARDS=(ooda.md layers.md spec.md rules.md ui.md security.md privacy.md defense.md)
 for c in "${CARDS[@]}"; do
-  f="$ROOT/$c"
+  f="$ROOT/cards/$c"; [ -f "$f" ] || f="$ROOT/$c"
   if [ ! -f "$f" ]; then fail "missing card $c"; continue; fi
   n=$(wc -l < "$f")
   if [ "$n" -eq 0 ]; then fail "$c is empty"; continue; fi
@@ -86,9 +87,11 @@ need defense.md 'oodefense' 'active defense engine'
 need defense.md 'oofirewall' 'firewall engine'
 
 # --- Test 7: layers.md maps the 8 layers and layers.md/ooda.md front doors ---
+# --- Test 7: layers.md & ooda.md Front Doors ---
 echo "Test 7 [layers.md & ooda.md Front Doors]:"
+LAYERS_FILE="$ROOT/cards/layers.md"; [ -f "$LAYERS_FILE" ] || LAYERS_FILE="$ROOT/layers.md"
 for l in L0 L1 L2 L3 L4 L5 L6 L7; do
-  if grep -q "\`$l\`" "$ROOT/layers.md"; then pass "layers.md maps $l"; else fail "layers.md misses $l"; fi
+  if grep -q "\`$l\`" "$LAYERS_FILE"; then pass "layers.md maps $l"; else fail "layers.md misses $l"; fi
 done
 need ooda.md 'ooda about' 'about discovery front door'
 need ooda.md '`--mode`/`--persona`' 'forbidden flag front door'
@@ -99,14 +102,14 @@ for c in "${CARDS[@]}"; do
   if grep -q "$c" "$ROOT/AGENTS.md"; then pass "AGENTS.md names $c"; else fail "AGENTS.md misses $c"; fi
 done
 
-# --- Test 9: layers.md fleet census — 39 L3 tools, exact 10 L7 agents, 93/99 totals ---
+# --- Test 9: layers.md fleet census — 39 L3 tools, exact 10 L7 agents, 93/98 totals ---
 echo "Test 9 [Fleet Census & Roster]:"
-if grep -q '`39` Repos' "$ROOT/layers.md" && grep -q 'oosandbox' "$ROOT/layers.md"; then
+if grep -q '`39` Repos' "$LAYERS_FILE" && grep -q 'oosandbox' "$LAYERS_FILE"; then
   pass "layers.md L3 census is 39 with oosandbox"
 else
   fail "layers.md L3 census missing 39/oosandbox"
 fi
-L7_LINE=$(grep 'L7`:' "$ROOT/layers.md" || true)
+L7_LINE=$(grep 'L7`:' "$LAYERS_FILE" || true)
 L7_OK=1
 for r in oobench oocode ooconsensus oofalsify oogovern oohat ooloop oomemory ooquota ooswarm; do
   if ! grep -q "$r" <<< "$L7_LINE"; then L7_OK=0; fi
@@ -115,8 +118,8 @@ for stale in ooagent oocoder oorag omem ooeval ooevolve; do
   if grep -q "\`$stale\`" <<< "$L7_LINE"; then L7_OK=0; fi
 done
 if [ "$L7_OK" -eq 1 ]; then pass "layers.md L7 roster is the exact 10 on-disk repos"; else fail "layers.md L7 roster mismatch"; fi
-if grep -q '`93` total product binaries' "$ROOT/layers.md" && grep -q '`99` total repos' "$ROOT/layers.md"; then
-  pass "layers.md census reads 93 product + 6 governance = 99 repos"
+if grep -q '`93` total product binaries' "$LAYERS_FILE" && grep -q '`98` total repos' "$LAYERS_FILE"; then
+  pass "layers.md census reads 93 product + 5 governance = 98 repos"
 else
   fail "layers.md census counts stale"
 fi

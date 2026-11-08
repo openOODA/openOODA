@@ -1,7 +1,7 @@
 # layers.md — The 8-Layer Architecture Map (`L0`–`L7`, `ooda layers`)
 
-1. **Root Umbrella (`@openOODA`)**: Governance Cards (`ooda.md`, `layers.md`, `spec.md`, `rules.md`, `ui.md`, `security.md`, `privacy.md`, `defense.md`), `catalog`, `install`, `website`, `status`, `bench`.
-2. **`L0` `@openOODA-core` (Compiler, Runtime & Stdlib)**:
+1. **Root Umbrella (`@openOODA`)**: Governance Cards (`cards/ooda.md`, `cards/layers.md`, `cards/spec.md`, `cards/rules.md`, `cards/ui.md`, `cards/security.md`, `cards/privacy.md`, `cards/defense.md`), `openOODA`, `catalog`, `install`, `website`, `.github`.
+2. **`L0` `@openOODA-core` (Compiler, Runtime & Stdlib — `7` Repos)**:
    - `ooda` (flagship master CLI), `oodac` (`.oo` compiler), `oodar` (native runtime `liboodar.a`), `oostd` (standard library + `oostd/hw/*`), `oopm` (package solver), `oolsp` (LSP), `oomcp` (MCP broker).
 3. **`L1` `@openOODA-kernel` (Bare-Metal Microkernel, HAL & Ring-3 Drivers — `6` Repos)**:
    - `ooboot` (UEFI), `oohal` (x86_64/ARM64/RISC-V), `ookernel` (sched/mm/ipc/iommu), `oodrv-storage` (NVMe/VirtIO-Blk), `oodrv-io` (GOP/PCIe/USB/HID/MIPI-CSI/IIO-IMU/WWAN/Wi-Fi/BT), `oodrv-virt`.
@@ -17,4 +17,4 @@
 8. **`L6` `@openOODA-cloud` (`8` Repos) & `L7` `@openOODA-agents` (`10` Repos)**:
    - `L6`: `oomesh`, `oostore`, `oodeploy` (`pxe|bmc|vm-fleet`), `oogateway`, `ooidentity`, `oodb` (`sql|local|btree|wal|kv|dump`), `ootelemetry`, `oobilling`.
    - `L7`: `ooloop`, `ooswarm`, `oobench`, `ooquota`, `oofalsify`, `ooconsensus`, `oocode`, `oohat`, `oomemory`, `oogovern`.
-9. **Fleet Census**: `93` total product binaries across `L1`–`L7` + `6` `@openOODA` governance repos (`openOODA`, `catalog`, `install`, `status`, `website`, `bench`) = `99` total repos.
+9. **Fleet Census**: `93` total product binaries across `L1`–`L7` (`100` across `L0`–`L7`) + `5` `@openOODA` governance repos (`openOODA`, `catalog`, `install`, `website`, `.github`) = `98` total repos.
