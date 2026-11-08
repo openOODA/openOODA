@@ -18,9 +18,13 @@ cd <repo> && OODA_COMPILER=/Projects/openOODA-core/oodac/bin/oodac make verify
 cd <repo> && OODA_COMPILER=/Projects/openOODA-core/oodac/bin/oodac make test
 ```
 
-Result: 35 of 37 repositories pass `build`, `verify` and `test` with exit code 0. The two
-exceptions are `ootaskmgr` and `ooterm`, both of which pass standalone and both of which pass
-`make verify` from a fresh clone of `origin/master`. See section 5.
+Result: **37 of 37 repositories pass `build`, `verify` and `test` with exit code 0**, and every test
+binary reports `ALL TESTS PASSED`. This is the final sweep, run against clean working trees at
+`origin/master` with two repositories in flight at a time.
+
+The first sweep, run three repositories in parallel during a period of heavy contention, reported
+`ootaskmgr` and `ooterm` as failing. Both were traced to the environment rather than to the source
+and both pass in the final sweep. See section 5.
 
 Table columns: Repository | build | verify | test | test outcome
 
@@ -38,8 +42,8 @@ Table columns: Repository | build | verify | test | test outcome
 | `openOODA-DE/oosettings` | 0 | 0 | 0 | ALL TESTS PASSED |
 | `openOODA-DE/ooshelf` | 0 | 0 | 0 | ALL TESTS PASSED |
 | `openOODA-DE/ooshot` | 0 | 0 | 0 | ALL TESTS PASSED |
-| `openOODA-DE/ootaskmgr` | 0 | 2 | 2 | contention only, see section 5 |
-| `openOODA-DE/ooterm` | 0 | 2 | 2 | contention only, see section 5 |
+| `openOODA-DE/ootaskmgr` | 0 | 0 | 0 | ALL TESTS PASSED |
+| `openOODA-DE/ooterm` | 0 | 0 | 0 | ALL TESTS PASSED |
 | `openOODA-DE/ootoast` | 0 | 0 | 0 | ALL TESTS PASSED |
 | `openOODA-DE/ooview` | 0 | 0 | 0 | ALL TESTS PASSED |
 | `openOODA-DE/oowall` | 0 | 0 | 0 | ALL TESTS PASSED |
@@ -124,7 +128,7 @@ export of `std/core/primitives/str.oo`.
 
 ## 5. Contention analysis for the two reported failures
 
-`ootaskmgr` and `ooterm` were reported by the sweep as failing `make verify` and `make test` with
+The first sweep reported `ootaskmgr` and `ooterm` as failing `make verify` and `make test` with
 exit code 2. Both were traced to the environment, not to the source:
 
 1. `make verify` reaches the `check` target at `Makefile:124`, which runs `oodac check` once per
@@ -140,6 +144,9 @@ exit code 2. Both were traced to the environment, not to the source:
    exit code 0, which proves the committed tree is sound independently of the local working copy.
 6. The same pattern reproduced with `oomail`: `make build` failed with `emit-llvm failed` at load
    average 26, and the identical command succeeded with exit code 0 once the load fell to 5.8.
+7. The final sweep, run with two repositories in flight and a load average between 4 and 8, reports
+   `build=0 verify=0 test=0` for `ootaskmgr` and `ooterm` like every other repository, and both
+   test binaries report `ALL TESTS PASSED`.
 
 No repair was made to either repository, because there is nothing to repair.
 
@@ -187,8 +194,35 @@ After the sweep, all 37 repositories report zero commits ahead of and zero commi
 (`8ca0b07 test: extend device-safety negative-trust coverage`). That commit passes `make verify`
 from a fresh clone of `origin/master` with exit code 0.
 
-The local working copies carry an uncommitted fleet-wide rename from `std` to `oostd` that landed
-at 12:56 during the sweep. It is the work of a concurrent session, not of this review, and it is
-backward compatible: the compiler resolves both the `std/` and `oostd/` prefixes
-(`openOODA-core/oodac/ast/load_import_parse.oo:194`, `:204`, `:222`). The committed `origin/master`
-trees still import `std/...` and build cleanly.
+### 9.1 The concurrent `std` to `oostd` rename
+
+At 12:56, during the sweep, a fleet-wide rename from `std` to `oostd` landed in the working trees
+of every repository in both layers. The on-disk directory `/Projects/openOODA-core/std` was renamed
+to `/Projects/openOODA-core/oostd`, and every `.oo` import in the DE and apps layers was rewritten
+from `import "std/..."` to `import "oostd/..."`. The rename is uncommitted in the consumer
+repositories and is the work of a concurrent session, not of this review.
+
+The committed state on `origin/master` is unaffected and is the state this review verified. Two
+facts make the committed state the correct one to keep:
+
+1. The GitHub repository is still `openOODA-core/std`; there is no `openOODA-core/oostd` repository
+   (`gh repo view openOODA-core/oostd` returns "Could not resolve to a Repository"). A consumer
+   repository that committed `import "oostd/..."` would break every CI runner, which clones
+   `openOODA-core/std.git` into `/Projects/openOODA-core/std`.
+2. The compiler's `oostd/` prefix fallback is itself an uncommitted working-tree change in
+   `openOODA-core/oodac` (`ast/load_import_parse.oo`, modified but not committed; the committed
+   `origin/master` of `oodac` contains no `oostd` reference at all). The local `oodac` binary
+   resolves both prefixes, which is why the local tree builds either way.
+
+The committed `origin/master` trees import `std/...`, and they build and verify cleanly against
+both the old and the new on-disk layout. Verified after the rename: `oowm` builds with exit code 0
+and `make verify` passes with exit code 0 from a fresh clone of `origin/master`.
+
+### 9.2 Upstream movement during the review
+
+The concurrent session pushed four commits to every DE repository while this review was in
+progress (`8245c75`, `41c0a19`, `445d1b1`, `b8d6a2a` — the theme wiring and its merges). These
+were re-verified after the fact: `oowm` at the new `origin/master` passes `make verify` with exit
+code 0, and the Batch 4 theme import fix is still present at `origin/master` (`theme/ootheme.oo`
+carries no `std/core/primitives/str.oo` import).
+
