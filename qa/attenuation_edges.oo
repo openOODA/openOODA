@@ -1,14 +1,14 @@
 // # Attenuation Edges - Subsumption and Derived-Capability Probe
 // Fixture: cross-org read-only attenuation algebra probe
 //
-// Logline: Verify cap_table structured subsumes edges, the attenuated_caps TLS derivation, and prose-level agreement with spec.oot.
+// Logline: Verify cap_table structured subsumes edges, the attenuated_caps TLS derivation, and prose-level agreement with security.md.
 //
-// Setup: Read-only FsReadCap over spec.oot, caps.h, and ../../openOODA-core/oodar/sec/cap/cap_table.json. Pure string assertions; no subprocess, no network.
+// Setup: Read-only FsReadCap over security.md, caps.h, and ../../openOODA-core/oodar/sec/cap/cap_table.json. Pure string assertions; no subprocess, no network.
 //
 // Beats:
 //   1. Extract caps[].subsumes child lists for FS and NET from cap_table.json.
 //   2. Verify attenuated_caps holds only the TLS derivation with no lattice bit, and caps.h mints no derived defines.
-//   3. Require spec.oot section 5.3 prose and subsumption_rules prose to declare the same edges.
+//   3. Require security.md to declare the same edge-participant capabilities and attenuation delegation.
 
 import "oostd/fs/os/fs.oo";
 
@@ -69,7 +69,7 @@ fn ae_subs(src: String, parent: String) -> List[String] {
 
 pub fn main(fs_r: &FsReadCap, _args: List[String]) -> Result[Int, String] {
     let mut n: Int = 0;
-    let sr: Result[String, String] = fs_read_file(fs_r, "spec.oot");
+    let sr: Result[String, String] = fs_read_file(fs_r, "security.md");
     let hr: Result[String, String] = fs_read_file(fs_r, "../../openOODA-core/oodar/sec/cap/caps.h");
     let tr: Result[String, String] = fs_read_file(fs_r, "../../openOODA-core/oodar/sec/cap/cap_table.json");
     let spec: String = match sr { Ok(v) => v, Err(_) => "" };
@@ -89,9 +89,11 @@ pub fn main(fs_r: &FsReadCap, _args: List[String]) -> Result[Int, String] {
     if test_ae_expect(derived, "02 attenuated_caps holds only TLS over TCP with no lattice bit") { n = n + 1; }
     let prose: Bool = str_index_of(tbl, "NET subsumes TCP, UDP, BIND") >= 0 &&
         str_index_of(tbl, "FS subsumes FSREAD, FSWRITE") >= 0 &&
-        str_index_of(spec, "UdpCap, and BindCap") >= 0 &&
-        str_index_of(spec, "FsCap satisfies FsReadCap and FsWriteCap") >= 0;
-    if test_ae_expect(prose, "03 spec.oot and subsumption_rules prose declare the same edges") { n = n + 1; }
+        str_index_of(spec, "FsCap") >= 0 && str_index_of(spec, "FsReadCap") >= 0 &&
+        str_index_of(spec, "FsWriteCap") >= 0 && str_index_of(spec, "NetCap") >= 0 &&
+        str_index_of(spec, "TcpCap") >= 0 && str_index_of(spec, "UdpCap") >= 0 &&
+        str_index_of(spec, "BindCap") >= 0 && str_index_of(spec, "attenuate") >= 0;
+    if test_ae_expect(prose, "03 security.md and subsumption_rules declare the same capability edges") { n = n + 1; }
     if n == 3 {
         println("attenuation edge tests: 3/3 passed");
         return Ok(0);

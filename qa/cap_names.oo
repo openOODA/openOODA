@@ -1,12 +1,12 @@
 // # Cap Names - Three-Source Capability Lattice Probe
 // Fixture: cross-org read-only capability name parity probe
 //
-// Logline: Prove spec.oot section 5.1, oodar caps.h, and cap_table.json caps[] agree on all 32 capability names.
+// Logline: Prove security.md, oodar caps.h, and cap_table.json caps[] agree on all 32 capability names.
 //
-// Setup: Read-only FsReadCap over spec.oot and ../../openOODA-core/oodar/sec/cap sources. Pure string assertions; no subprocess, no network.
+// Setup: Read-only FsReadCap over security.md and ../../openOODA-core/oodar/sec/cap sources. Pure string assertions; no subprocess, no network.
 //
 // Beats:
-//   1. Extract the 32 *Cap names from spec.oot and map them to runtime cap names.
+//   1. Extract the 32 *Cap names from security.md and map them to runtime cap names.
 //   2. Extract OODAR_CAP_* defines from caps.h and name entries from the cap_table caps array only.
 //   3. Require three-way set equality plus consistent cap_count fields.
 
@@ -30,23 +30,32 @@ fn cn_in(list: List[String], nm: String) -> Bool {
 }
 
 fn cn_spec_caps(src: String) -> List[String] {
-    let lines: List[String] = str_split(src, "\n");
+    let parts: List[String] = str_split(src, "`");
     let mut out: List[String] = list_new();
     let mut i: Int = 0;
-    while i < list_len(lines) {
-        let ln: String = list_get(lines, i);
+    while i < list_len(parts) {
+        let tok: String = list_get(parts, i);
         i = i + 1;
-        let cp: Int = str_index_of(ln, "Cap:");
-        if cp >= 0 {
-            let mut st: Int = cp;
-            while st > 0 {
-                let pb: Int = byte_at(ln, st - 1);
-                if !(pb >= 65 && pb <= 90) && !(pb >= 97 && pb <= 122) { break; }
-                st = st - 1;
-            }
-            let nm: String = byte_slice(ln, st, cp + 3);
-            if !cn_in(out, nm) { out = list_push(out, nm); }
+        let cp: Int = str_index_of(tok, ":");
+        if cp <= 0 || cp + 4 > bytes_len(tok) { continue; }
+        let pre: String = byte_slice(tok, 0, cp);
+        let nm: String = byte_slice(tok, cp + 1, bytes_len(tok));
+        let ln: Int = bytes_len(nm);
+        let mut digits: Bool = bytes_len(pre) > 0;
+        let mut j: Int = 0;
+        while j < bytes_len(pre) {
+            let b: Int = byte_at(pre, j);
+            if b < 48 || b > 57 { digits = false; }
+            j = j + 1;
         }
+        let mut ok: Bool = digits && ln > 3 && byte_slice(nm, ln - 3, ln) == "Cap";
+        j = 0;
+        while j < ln - 3 {
+            let b: Int = byte_at(nm, j);
+            if !(b >= 65 && b <= 90) && !(b >= 97 && b <= 122) { ok = false; }
+            j = j + 1;
+        }
+        if ok && !cn_in(out, nm) { out = list_push(out, nm); }
     }
     return out;
 }
@@ -102,7 +111,7 @@ fn cn_table_names(src: String) -> List[String] {
 
 pub fn main(fs_r: &FsReadCap, _args: List[String]) -> Result[Int, String] {
     let mut n: Int = 0;
-    let sr: Result[String, String] = fs_read_file(fs_r, "spec.oot");
+    let sr: Result[String, String] = fs_read_file(fs_r, "security.md");
     let hr: Result[String, String] = fs_read_file(fs_r, "../../openOODA-core/oodar/sec/cap/caps.h");
     let tr: Result[String, String] = fs_read_file(fs_r, "../../openOODA-core/oodar/sec/cap/cap_table.json");
     let spec: String = match sr { Ok(v) => v, Err(_) => "" };
@@ -130,7 +139,7 @@ pub fn main(fs_r: &FsReadCap, _args: List[String]) -> Result[Int, String] {
         if !cn_in(tn, list_get(hn, i)) { par = false; }
         i = i + 1;
     }
-    if test_cn_expect(par, "01 spec.oot, caps.h, and cap_table caps[] agree on all 32 capability names") { n = n + 1; }
+    if test_cn_expect(par, "01 security.md, caps.h, and cap_table caps[] agree on all 32 capability names") { n = n + 1; }
     let cnt: Bool = str_index_of(tbl, "\"cap_count\": 32") >= 0 &&
         str_index_of(tbl, "\"cap_count_implemented\": 32") >= 0 &&
         str_index_of(tbl, "\"cap_count_future_state\": 0") >= 0;
