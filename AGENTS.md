@@ -1,12 +1,13 @@
 # openOODA (.oo) Agent Quick Card
-1. **Discover & Learn On-Demand** (Zero-bloat ~24-line cards built into `ooda`):
-   - `ooda ooda`     -> How to quickly build, adapt, and verify openOODA software
-   - `ooda about [x]`-> Explain any layer (`L0`–`L7`), canonical binary, or subcommand
-   - `ooda spec`     -> `.oo` syntax, types, structs, `match`, and `oostd` builtins
-   - `ooda rules`    -> Power-of-2 Shape Ladder (`1/2/4/8/16/32/64/128/256`) & CLI laws
-   - `ooda security` -> Zero-Trust `CapReg64` (`0..31` capabilities), `oosandbox`, `oosign`, `ooprovenance`
-   - `ooda privacy`  -> Zero-telemetry, PII/EXIF/SECRET scrubbing (`ooredact`), LED & clipboard TTL gates
-   - `ooda defense`  -> Active defense (`oodefense` IDS/canary/honeypot), `oofirewall`, DMA/DRAM/USB guards
+1. **The 8 Canonical Quick Cards** (Zero-bloat ~24-line cards built into `ooda`):
+   - `ooda ooda`     -> `ooda.md`     (How to rapidly build, test, and adapt openOODA software)
+   - `ooda layers`   -> `layers.md`   (The 8-Layer Architecture Map `L0`–`L7` across Desktop, Server & Mobile)
+   - `ooda spec`     -> `spec.md`     (`.oo` syntax, types, structs, `match`, and `oostd` builtins)
+   - `ooda rules`    -> `rules.md`    (Power-of-2 Shape Ladder `1/2/4/8/16/32/64/128/256` & CLI laws)
+   - `ooda ui`       -> `ui.md`       (CLI, TUI, Desktop & Mobile UI + `ootheme` 25 presets & 34 tokens)
+   - `ooda security` -> `security.md` (Zero-Trust `CapReg64` `0..31` caps, `oosandbox`, `oosign`, `ooprovenance`, `oovault`)
+   - `ooda privacy`  -> `privacy.md`  (Zero-telemetry, PII/EXIF/SECRET scrubbing `ooredact`, LED & clipboard TTL gates)
+   - `ooda defense`  -> `defense.md`  (Active defense `oodefense` IDS/canary/honeypot, `oofirewall`, DMA/DRAM/USB guards)
 2. **Power-of-2 Shape Ladder (`1/2/4/8/16/32/64/128/256`)**:
    - `1`: Link count == 1 (0 symlinks/hardlinks) & max 1 statement/line. `2`: Min 2 tests (functional + negative-trust exit != 0).
    - `4`: Max 4 nesting depth. `8`: Max 8 files/dir, 8 fns/file, 8 params/fn. `16`: Min 16 lines/file.
