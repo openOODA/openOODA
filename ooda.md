@@ -2,6 +2,7 @@
 
 1. **Find Where Code Belongs (Never Duplicate Repos)**:
    - Run `ooda about` (lists all layers `L0`–`L7`) or `ooda search <keyword>` before writing code.
+   - Route UI/scene work to `ooui` (`.oot` scene tree -> `tui|gui|wui|vui`), simulation/game work to `ooengine` (4 pipelines + `oomesh` netlock), and original games to the `L5` `@openOODA-apps` titles (`ooemu`, `ooarcade`, `oocommand`, `oostrike`, `oovoxel`).
    - Add new features as clean subcommands inside the canonical domain binary (`<binary> <subcommand>`), never via `--mode`/`--persona` flags or symlinks.
 
 2. **Standard Repository Anatomy (`<= 32` `.oo` Pages, `<= 8` Entries/Dir)**:
