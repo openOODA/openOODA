@@ -1,39 +1,28 @@
 // # Eco VM Test - Merkle System Image Assembler & Local VM Boot Validator
 //
-// Logline: Assembles a verified Merkle system image from every canonical core subsystem binary listed in persona-ownership.oot and validates the boot->init chain locally in pure .oo.
+// Logline: Assembles a verified Merkle system image from every canonical core subsystem binary under /Projects/openOODA-* and validates the boot->init chain locally in pure .oo.
 //
-// Setup: Needs ProcessCap for executing verified subsystem binaries and QEMU/KVM probes, FsReadCap to inspect /Projects/openOODA-* and persona-ownership.oot, and FsWriteCap to stage /tmp/openooda-vm-root.
+// Setup: Needs ProcessCap for executing verified subsystem binaries and QEMU/KVM probes, FsReadCap to inspect /Projects/openOODA-*, and FsWriteCap to stage /tmp/openooda-vm-root.
 //
 // Beats:
-//   1. Resolve canonical host repos per layer from persona-ownership.oot (SSoT) and stage each verified binary into /tmp/openooda-vm-root.
+//   1. Resolve canonical host repos per layer directly from /Projects/<org> and stage each verified binary into /tmp/openooda-vm-root.
 //   2. Invoke each staged binary's status and --self-test, Merkle-hash the set, and boot the initramfs in QEMU/KVM.
 //   3. Probe the live microVM serial log for the N/N verified result and emit a deterministic manifest.
 
 import "eco/manifest_exec.oo";
 import "text/lines.oo";
 
-fn vm_ownership_path() -> String {
-    return "/Projects/openOODA/openOODA/persona-ownership.oot";
-}
-
-fn vm_ssot_hosts(fs_r: &FsReadCap, org: String) -> List[String] {
+fn vm_ssot_hosts(sys: &ProcessCap, fs_r: &FsReadCap, org: String) -> List[String] {
     let mut hosts: List[String] = list_new();
-    let rd: Result[String, String] = read_file(fs_r, vm_ownership_path());
-    if rd.is_err() {
-        println("  FAIL: cannot read " + vm_ownership_path());
-        return hosts;
-    }
-    let body: String = match rd { Ok(s) => s, Err(_) => "" };
-    let lines: List[String] = text_split_lines(body);
+    let org_dir: String = "/Projects/" + org;
+    let lr: Result[String, String] = sys_exec(sys, "ls", "-1", org_dir);
+    if lr.is_err() { return hosts; }
+    let lines: List[String] = text_split_lines(lr.val);
     let mut i: Int = 0;
     while i < list_len(lines) {
-        let f: List[String] = str_split(list_get(lines, i), "|");
-        if list_len(f) >= 2 {
-            let owner: String = text_trim(list_get(f, 0));
-            let host: String = text_trim(list_get(f, 1));
-            if owner == org && host != "" && host != "-" && host != "CANONICAL_HOST" {
-                hosts = list_push(hosts, host);
-            }
+        let repo: String = text_trim(list_get(lines, i));
+        if repo != "" && str_slice(repo, 0, 1) != "." && path_exists(fs_r, org_dir + "/" + repo + "/ooda.pkg") {
+            hosts = list_push(hosts, repo);
         }
         i = i + 1;
     }
@@ -79,7 +68,7 @@ fn vm_stage_component(sys: &ProcessCap, fs_r: &FsReadCap, org: String, repo: Str
 
 fn vm_verify_layer(sys: &ProcessCap, fs_r: &FsReadCap, org: String, repos: List[String], root: String) -> Bool {
     if list_len(repos) == 0 {
-        println("  FAIL: persona-ownership.oot lists no canonical hosts for " + org);
+        println("  FAIL: no canonical hosts found in /Projects/" + org);
         return false;
     }
     let mut i: Int = 0;
@@ -165,9 +154,9 @@ pub fn main(sys: &ProcessCap, fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap,
     while i < list_len(orgs) {
         let org: String = list_get(orgs, i);
         i = i + 1;
-        let repos: List[String] = vm_ssot_hosts(fs_r, org);
+        let repos: List[String] = vm_ssot_hosts(sys, fs_r, org);
         println("== [eco-vm-test] staging " + list_len(repos).to_string() +
-            " canonical " + org + " subsystems (persona-ownership.oot) ==");
+            " canonical " + org + " subsystems ==");
         all = vm_extend(all, repos);
         if !vm_verify_layer(sys, fs_r, org, repos, root) { ok_all = false; }
     }
