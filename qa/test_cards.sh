@@ -99,6 +99,28 @@ for c in "${CARDS[@]}"; do
   if grep -q "$c" "$ROOT/AGENTS.md"; then pass "AGENTS.md names $c"; else fail "AGENTS.md misses $c"; fi
 done
 
+# --- Test 9: layers.md fleet census — 39 L3 tools, exact 10 L7 agents, 93/99 totals ---
+echo "Test 9 [Fleet Census & Roster]:"
+if grep -q '`39` Repos' "$ROOT/layers.md" && grep -q 'oosandbox' "$ROOT/layers.md"; then
+  pass "layers.md L3 census is 39 with oosandbox"
+else
+  fail "layers.md L3 census missing 39/oosandbox"
+fi
+L7_LINE=$(grep 'L7`:' "$ROOT/layers.md" || true)
+L7_OK=1
+for r in oobench oocode ooconsensus oofalsify oogovern oohat ooloop oomemory ooquota ooswarm; do
+  if ! grep -q "$r" <<< "$L7_LINE"; then L7_OK=0; fi
+done
+for stale in ooagent oocoder oorag omem ooeval ooevolve; do
+  if grep -q "\`$stale\`" <<< "$L7_LINE"; then L7_OK=0; fi
+done
+if [ "$L7_OK" -eq 1 ]; then pass "layers.md L7 roster is the exact 10 on-disk repos"; else fail "layers.md L7 roster mismatch"; fi
+if grep -q '`93` total product binaries' "$ROOT/layers.md" && grep -q '`99` total repos' "$ROOT/layers.md"; then
+  pass "layers.md census reads 93 product + 6 governance = 99 repos"
+else
+  fail "layers.md census counts stale"
+fi
+
 echo "=============================================="
 if [ "$FAILS" -ne 0 ]; then
   echo "RESULT: FAIL ($FAILS failed assertions)"

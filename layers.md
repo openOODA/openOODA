@@ -17,4 +17,4 @@
 8. **`L6` `@openOODA-cloud` (`8` Repos) & `L7` `@openOODA-agents` (`10` Repos)**:
    - `L6`: `oomesh`, `oostore`, `oodeploy` (`pxe|bmc|vm-fleet`), `oogateway`, `ooidentity`, `oodb` (`sql|local|btree|wal|kv|dump`), `ootelemetry`, `oobilling`.
    - `L7`: `ooloop`, `ooswarm`, `oobench`, `ooquota`, `oofalsify`, `ooconsensus`, `oocode`, `oohat`, `oomemory`, `oogovern`.
-9. **Fleet Census**: `92` total product binaries across `L1`–`L7` + `6` `@openOODA` governance repos (`openOODA`, `catalog`, `install`, `status`, `website`, `bench`) = `98` total repos.
+9. **Fleet Census**: `93` total product binaries across `L1`–`L7` + `6` `@openOODA` governance repos (`openOODA`, `catalog`, `install`, `status`, `website`, `bench`) = `99` total repos.
