@@ -15,6 +15,6 @@
 7. **`L5` `@openOODA-apps` (Flagship Desktop & Mobile Applications — `16` Repos)**:
    - `oobrowser`, `oostudio`, `oooffice` (`docs|sheet|deck|notes|pdf`), `oocanvas` (`draw|paint|cad`), `oomedia`, `ooflash` (`+pack-iso`), `oodaw`, `oochat`, `oopass`, `ookvm`, `oocamera` (`photo|video|qr|isp`), `ooemu` (multi-core emulator), `ooarcade` (arcade suite), `oocommand` (strategy suite), `oostrike` (6-DoF space combat sim), `oovoxel` (voxel sandbox).
 8. **`L6` `@openOODA-cloud` (`8` Repos) & `L7` `@openOODA-agents` (`10` Repos)**:
-   - `L6`: `oomesh`, `oostore`, `oodeploy` (`pxe|bmc|vm-fleet`), `oogateway`, `ooidentity`, `oodb` (`sql|btree|wal|kv|dump`, `+oosqlite` fold-in), `ootelemetry`, `oobilling`.
+   - `L6`: `oomesh`, `oostore`, `oodeploy` (`pxe|bmc|vm-fleet`), `oogateway`, `ooidentity`, `oodb` (`sql|local|btree|wal|kv|dump`), `ootelemetry`, `oobilling`.
    - `L7`: `ooloop`, `ooswarm`, `oobench`, `ooquota`, `oofalsify`, `ooconsensus`, `oocode`, `oohat`, `oomemory`, `oogovern`.
 9. **Fleet Census**: `92` total product binaries across `L1`–`L7` + `6` `@openOODA` governance repos (`openOODA`, `catalog`, `install`, `status`, `website`, `bench`) = `98` total repos.
