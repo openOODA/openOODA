@@ -36,16 +36,16 @@ fn audit_quoted(line: String) -> String {
 }
 
 pub fn audit_resolve(fr: &FsReadCap, page_dir: String, imp: String, core: String) -> Bool {
-    let is_std: Bool = starts_with(imp, "std/");
-    let is_std_hw: Bool = starts_with(imp, "std-hw/");
+    let is_std: Bool = starts_with(imp, "std/") || starts_with(imp, "oostd/");
+    let is_std_hw: Bool = starts_with(imp, "std-hw/") || starts_with(imp, "oostd-hw/");
     let is_oodac: Bool = starts_with(imp, "oodac/");
     let is_sibling: Bool = is_std || is_std_hw || is_oodac;
     if !is_sibling {
         if audit_is_file(fr, audit_join(page_dir, imp)) { return true; }
     } else {
         let mut cut: Int = 6;
-        if is_std { cut = 4; }
-        else if is_std_hw { cut = 7; }
+        if is_std { cut = if starts_with(imp, "oostd/") { 6 } else { 4 }; }
+        else if is_std_hw { cut = if starts_with(imp, "oostd-hw/") { 9 } else { 7 }; }
         let sub: String = str_sub(imp, cut, byte_len(imp));
         if audit_is_file(fr, sub) { return true; }
     }
