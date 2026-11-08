@@ -1,11 +1,11 @@
 // # Rebase - Replay The Review Commits On The Remote Head
 //
-// Logline: Rebase the review commits onto the concurrently pushed remote head and keep the review version of every conflict.
+// Logline: Rebase the review commits onto the concurrently pushed remote head and resolve every conflict in favor of the remote head.
 //
 // Setup: ProcessCap for git, FsReadCap and FsWriteCap for the touched pages, EnvCap for the roots.
 //
 // Beats:
-//   1. Rebase the repository and resolve every conflict with the review version.
+//   1. Rebase the repository and resolve every conflict with the remote head version.
 //   2. De duplicate the imports of every file the replay touched.
 //   3. Report the new head and the working tree state.
 
@@ -104,8 +104,8 @@ fn rebase_loop(p: &ProcessCap, fr: &FsReadCap, fw: &FsWriteCap, env: &EnvCap, lo
         let mut i: Int = 0;
         while i < list_len(names) {
             let f: String = list_get(names, i);
-            acc = rebase_emit(fw, acc, path, "  conflict: " + f + " -> review version\n");
-            let _co: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "checkout", "--theirs", "--", f, "", "",
+            acc = rebase_emit(fw, acc, path, "  conflict: " + f + " -> remote head version\n");
+            let _co: ExecRun = rebase_run(p, env_argv, cmd_git(repo, "checkout", "--ours", "--", f, "", "",
                 BagCmdGit { t7: "", t8: "" }));
             i = i + 1;
         }
