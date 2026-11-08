@@ -85,8 +85,7 @@ Before any commit or release is certified, the codebase must pass the verificati
 The N-Binary ecosystem strictly separates domains:
 - **`oodac`**: Direct LLVM IR compiler (AST, mem2reg, IR emission).
 - **`oodar`**: C runtime substrate, Landlock sandboxing, and OCap primitives.
-- **`ooda`**: Canonical L0 flagship CLI repository and binary (`build`, `run`, `test`, `fmt`, `install`, `qa`, `fix`, `about`, plus command routing to `opm`, `lsp`, `mcp`, `tui`); absorbs `oocli`.
-- **`oocli`**: Retired CLI repository; its capability surface is absorbed into `ooda`.
+- **`ooda`**: Canonical L0 flagship CLI repository and binary (`build`, `run`, `test`, `fmt`, `install`, `qa`, `fix`, `about`, plus command routing to `opm`, `lsp`, `mcp`, `tui`); sole CLI driver of the ecosystem.
 - **`mcp`**: Model Context Protocol server, flight recording, telemetry, and fold protocol.
 - **`tui`**: Terminal interface and motor-reflex interactive shell ($\le 2\text{ms}$ keystroke SLA).
 - **`opm`**: Package manager and template code generator.
