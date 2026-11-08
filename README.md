@@ -91,7 +91,3 @@ Every developer and autonomous agent has instant offline access to the 8 canonic
 | `ooda security` | [`security.md`](security.md) | `CapReg64` (`0..31` capabilities), `oosandbox`, `oosign` (PQC/ZK), `ooprovenance`, and `oovault` |
 | `ooda privacy` | [`privacy.md`](privacy.md) | Kernel privacy attenuation, `SECRET:` IFC taint, `ooredact`, camera/mic LED gates, clipboard TTL burn |
 | `ooda defense` | [`defense.md`](defense.md) | CISA KEV Shield, `oodefense` (eBPF IDS, canary, honeypot, ELF `mutate`), `oofirewall`, IOMMU DMA guards |
-
----
-
-License: Apache-2.0.
