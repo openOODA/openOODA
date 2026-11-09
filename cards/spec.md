@@ -26,4 +26,5 @@
    - Always import `oostd` instead of rolling custom math/physics/crypto/collections:
      - Math & Proofs: `oostd/core/math/{exact,geometry,blas,fft,algebra,graph_topology}/...`, `oostd/core/proofs/...`
      - Physics & Science: `oostd/core/science/{phys,chem,bio,comm,econ}/...` (`classical/collision`, `integrators`, `relativistic`, `quantum`)
+     - Frontier AI-for-Science & Engine Physics: `oostd/core/app/ai/...` (`algo`, `deep`, `transformer`, `graph_gnn`, `gguf`, `quant`, `multimodal`), `oostd/core/app/ui/game_engine/...` (2D/3D `collision_{aabb,circle,gjk,sat}`, `ecs_*`, `camera_2d`/`camera_3d_follow`)
      - Security & Collections: `oostd/sec/{hash,capability,pqc,symmetric}/...`, `oostd/core/collection/...`, `oostd/core/app/ai/algo/...`

@@ -37,7 +37,7 @@ oopm install @all          # Complete L0–L7 stack
 | <img src="https://raw.githubusercontent.com/openOODA/.github/master/brand/option-b/openOODA-cloud.svg" width="28"> | **L6** | [`@openOODA-cloud`](https://github.com/openOODA-cloud) | Mesh (`oomesh`), Object Store (`oostore`), Bare-Metal Deploy (`oodeploy`), Gateway (`oogateway`), Identity, DB (`oodb`), Telemetry, Billing |
 | <img src="https://raw.githubusercontent.com/openOODA/.github/master/brand/option-b/openOODA-agents.svg" width="28"> | **L7** | [`@openOODA-agents`](https://github.com/openOODA-agents) | Autonomous OODA Loops (`ooloop`, `ooswarm`), Falsification (`oofalsify`), Consensus (`ooconsensus`), Code (`oocode`), Memory, Quota, Govern |
 
-`oostd` (L0) ships the expanded scientific & mathematical discovery library: `oostd/core/math/{exact,geometry,blas,fft,algebra,graph_topology}/...`, `oostd/core/proofs/...`, `oostd/core/science/{phys,chem,bio,comm,econ}/...`, `oostd/core/app/ai/algo/...`, `oostd/core/collection/...`, and `oostd/sec/{hash,capability,pqc,symmetric}/...`.
+`oostd` (L0) ships the expanded scientific & mathematical discovery library: `oostd/core/math/{exact,geometry,blas,fft,algebra,graph_topology}/...`, `oostd/core/proofs/...`, `oostd/core/science/{phys,chem,bio,comm,econ}/...`, frontier AI-for-science `oostd/core/app/ai/...`, 2D/3D engine physics `oostd/core/app/ui/game_engine/...` (`collision_{aabb,circle,gjk,sat}` + `ecs_*`), `oostd/core/collection/...`, and `oostd/sec/{hash,capability,pqc,symmetric}/...`.
 
 ## The 8 Quick Cards (`cards/`)
 

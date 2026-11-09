@@ -14,5 +14,5 @@
 2. **CLI, Theme, `oostd` Reuse & Zero-Trust Laws**:
    - Subcommand dispatch only (`<binary> <subcommand>`); `--persona`, `--mode`, and `--personas` flags are forbidden and must exit `2`.
    - Every canonical binary MUST implement `<binary> about`, connect output to `ootheme`, and refuse unknown flags (`--unknown-flag-zzz`) with exit `2`.
-   - **Mandatory `oostd` Standard Library Reuse**: Never hand-roll custom hashing, crypto, fixed-point/interval math, 2D/3D collision/physics, graph algorithms, or collections when `oostd` provides them (`oostd/core/math/`, `oostd/core/science/phys/`, `oostd/core/collection/`, `oostd/sec/`, `oostd/net/`, `oostd/fs/`).
+   - **Mandatory `oostd` Standard Library Reuse**: Never hand-roll custom hashing, crypto, fixed-point/interval math, 2D/3D collision/physics/engine wiring, frontier AI-for-science/graph algorithms, or collections when `oostd` provides them (`oostd/core/math/`, `oostd/core/science/phys/`, `oostd/core/app/ai/`, `oostd/core/app/ui/game_engine/`, `oostd/core/collection/`, `oostd/sec/`, `oostd/net/`, `oostd/fs/`).
    - Zero `/usr/bin/*` host shell-out relays; all personas must run native `.oo` engines.
