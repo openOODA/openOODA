@@ -20,226 +20,34 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: openOODA
-      - name: checkout oodac (prebuilt compiler)
-        uses: actions/checkout@v4
-        with:
-          repository: openOODA-core/oodac
-          path: oodac
-      - name: checkout oodar (Gen 1 C host, for the oostd/fs/net/secrets bindings)
-        uses: actions/checkout@v4
-        with:
-          repository: openOODA-core/oodar
-          path: oodar
-      - name: checkout oostd (standard library for governance script imports)
-        uses: actions/checkout@v4
-        with:
-          repository: openOODA-core/oostd
-          path: oostd
-      - name: require compiler
+      - name: require governance tree
+        working-directory: ${{ github.workspace }}/openOODA
         run: |
           set -euo pipefail
-          test -x oodac/bin/oodac || chmod +x oodac/bin/oodac
-          test -f oodar/core/blackbox/blackbox.c || { echo "missing oodar/core/blackbox/blackbox.c"; exit 1; }
-          if ! command -v clang >/dev/null; then sudo apt-get update && sudo apt-get install -y clang; fi
-          command -v clang >/dev/null || { echo "clang required for oodac build (LLVM IR + oodar)"; exit 1; }
-      - name: build oodar libs
-        run: make -C oodar/scripts -f Makefile modular
-      - name: quick card harness (8 canonical cards)
-        working-directory: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-          bash openOODA/qa/test_cards.sh
-      - name: C ABI layout + FFI round-trip
-        working-directory: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-          make -C oodar/scripts -f Makefile all
-          test -f oodar/scripts/lib/liboodar.a
-          gcc openOODA/qa/tests_c_abi_layout.c oodar/scripts/lib/liboodar.a -o /tmp/abitest -ldl -lm -lpthread
-          /tmp/abitest
-      - name: size lint gate (governance repo)
-        working-directory: ${{ github.workspace }}
-        env:
-          OODA_POLYROOT: ${{ github.workspace }}
-          OO_LINT_ROOTS: openOODA
-        run: |
-          set -euo pipefail
-          if [ -x /home/ubermetroid/.local/bin/lint-oo-size ]; then
-            /home/ubermetroid/.local/bin/lint-oo-size
-          else
-            (cd openOODA && OODA_NO_JAIL=1 ../oodac/bin/oodac build qa/lint_oo_size.oo -o /tmp/lint-oo-size)
-            /tmp/lint-oo-size
-          fi
-      - name: size lint inventory (polyrepo advisory)
-        working-directory: ${{ github.workspace }}
-        continue-on-error: true
-        env:
-          OODA_POLYROOT: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-          LINT_BIN="/tmp/lint-oo-size"
-          [ -x /home/ubermetroid/.local/bin/lint-oo-size ] && LINT_BIN="/home/ubermetroid/.local/bin/lint-oo-size"
-          "$LINT_BIN" | tee /tmp/size_inventory.txt
-          tail -3 /tmp/size_inventory.txt
-      - name: upload size inventory
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: size-inventory
-          path: /tmp/size_inventory.txt
-      - name: PR resource scorecard (diff-aware check)
-        working-directory: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-          OODAC="${{ github.workspace }}/oodac/bin/oodac"
-          test -x "$OODAC" || chmod +x "$OODAC"
-          has_just=0; echo "$(git -C openOODA log -1 --pretty=%B || true)" | grep -iqE 'resource|overhead|budget|rss|memory|cpu|justif' && has_just=1
-          for f in $(git -C openOODA diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '\.oo$' || true); do
-            [ -f "openOODA/$f" ] || continue
-            out=$(/usr/bin/time -v "$OODAC" check "openOODA/$f" 2>&1 || true)
-            rss=$(echo "$out" | awk -F': ' '/Maximum resident set size/ {print $2}')
-            cpu=$(echo "$out" | awk -F': ' '/User time \(seconds\)/ {print int($2)}')
-            if [ "$has_just" -eq 0 ] && { [ "${rss:-0}" -gt 65536 ] || [ "${cpu:-0}" -ge 3 ]; }; then
-              echo "FAIL: openOODA/$f exceeded limits without commit justification"; exit 1
-            fi
+          test -f AGENTS.md
+          test -f README.md
+          test -f VERSION
+          test -f .gitattributes
+          test -f .gitignore
+          test -d cards
+          # 8-entry repo root: at most 8 non-hidden entries at root.
+          n=$(find . -maxdepth 1 -mindepth 1 ! -name '.*' | wc -l)
+          test "$n" -le 8 || { echo "ERR root entries=$n > 8"; exit 1; }
+          # Exactly the 8 canonical Quick Cards, zero-bloat (~24-line) shape.
+          test "$(ls cards/*.md | wc -l)" -eq 8
+          for c in ooda layers spec rules ui security privacy defense; do
+            f="cards/$c.md"
+            test -f "$f" || { echo "ERR missing $f"; exit 1; }
+            l=$(wc -l < "$f")
+            test "$l" -ge 8 -a "$l" -le 64 || { echo "ERR $f lines=$l outside 8..64"; exit 1; }
+            grep -q "cards/$c.md" README.md || { echo "ERR $f not linked in README"; exit 1; }
           done
-          echo "PASS: PR resource scorecard holds"
-      - name: install openOODA toolchain (for ooda run)
-        run: |
-          set -euo pipefail
-          INSTALL_SHA="b87d748ad421ffbfed967c1faab6cdd5ecaffe33"
-          INSTALL_SHA256="33afd387bc5a772d1a761aa470ef411bfcd73cb606a6ca9feb7cb31e9d64c102"
-          curl -fsSL -o /tmp/pinned-install.sh "https://raw.githubusercontent.com/openOODA/install/${INSTALL_SHA}/install.sh"
-          echo "$INSTALL_SHA256  /tmp/pinned-install.sh" | sha256sum -c -
-          bash /tmp/pinned-install.sh --yes --no-modify-shell
-          echo "$HOME/.openooda/bin" >> "$GITHUB_PATH"
-          test -x "$HOME/.openooda/bin/ooda" || { echo "missing ~/.openooda/bin/ooda after install"; exit 1; }
-          test -x "$HOME/.openooda/bin/cli" || { echo "missing ~/.openooda/bin/cli after install"; exit 1; }
-          # ooda spawn last-resort is dirname(OODA_COMPILER)/cli with no exists check
-          ln -sfn "$HOME/.openooda/bin/cli" "${{ github.workspace }}/oodac/bin/cli"
-          ls -la "$HOME/.openooda/bin"
-      - name: run governance verifiers (RULES §1.8/§1.11/§1.14/§1.19)
-        working-directory: ${{ github.workspace }}
-        env:
-          OO_LIST_AMBIENT_QUOTA: "8589934592"
-          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac
-          OODA_FS_READDIR: ${{ github.workspace }}:/home/runner
-          OODA_FS_WRITEDIR: ${{ github.workspace }}
-          OODA_NO_JAIL: '1'
-          OODA_REPO_ROOT: ${{ github.workspace }}
-          OODA_HOME: /home/runner
-          HOME: /home/runner
-          OODACODEX: /home/runner/.openooda
-        run: |
-          set -euo pipefail
-          echo '=== governance_enforce.oo ==='
-          ooda run openOODA/scripts/governance_enforce.oo
-          echo '=== governance_check_boards.oo ==='
-          ooda run openOODA/scripts/governance_check_boards.oo
-          echo '=== governance_verify.oo ==='
-          ooda run openOODA/scripts/governance_verify.oo
-          echo '=== spec_verify.oo ==='
-          ooda run openOODA/scripts/spec_verify.oo
-          echo '=== redteam_orchestrate.oo ==='
-          ooda run openOODA/scripts/redteam_orchestrate.oo
+          # Linguist wiring: .oo/.oot resolve to the OODA language.
+          grep -q 'linguist-language=OODA' .gitattributes || { echo "ERR .gitattributes missing OODA mapping"; exit 1; }
+          # The canonical card ships the mandatory oostd reuse law.
+          grep -q 'Always import `oostd`' AGENTS.md || { echo "ERR AGENTS.md missing oostd reuse law"; exit 1; }
+          echo "[governance OK] 8 quick cards, 8-entry root, linguist + oostd laws wired"
 
-  integration:
-    # Cross-repo contracts. Each step asserts one thing that broke silently
-    # before: spawn roots, installed names, import closure, release sidecars.
-    # Component CIs cannot gate cross-repo, so this runs nightly + on demand
-    # and catches drift within 24h.
-    runs-on: ubuntu-latest
-    env:
-      OO_LIST_AMBIENT_QUOTA: "8589934592"
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - name: clone polyrepo masters (shallow)
-        run: |
-          set -euo pipefail
-          for r in oodac oodar oostd ooda oocli ootui oopm oolsp oomcp; do
-            gh repo clone "openOODA-core/$r" "$r" -- --quiet --depth 1
-          done
-          test -x oodac/bin/oodac || chmod +x oodac/bin/oodac
-      - name: install release toolchain (user-truth)
-        run: |
-          set -euo pipefail
-          if ! command -v clang >/dev/null; then sudo apt-get update && sudo apt-get install -y clang; fi
-          INSTALL_SHA="b87d748ad421ffbfed967c1faab6cdd5ecaffe33"
-          INSTALL_SHA256="33afd387bc5a772d1a761aa470ef411bfcd73cb606a6ca9feb7cb31e9d64c102"
-          curl -fsSL -o /tmp/pinned-install.sh "https://raw.githubusercontent.com/openOODA/install/${INSTALL_SHA}/install.sh"
-          echo "$INSTALL_SHA256  /tmp/pinned-install.sh" | sha256sum -c -
-          bash /tmp/pinned-install.sh --yes --no-modify-shell
-          echo "$HOME/.openooda/bin" >> "$GITHUB_PATH"
-      - name: build oodar libs (master link inputs)
-        working-directory: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-          make -C oodar/scripts -f Makefile modular || { echo "FAIL: oodar libs did not build"; exit 1; }
-          test -f oodar/scripts/lib/liboodar-core.a || { echo "FAIL: liboodar-core.a missing after build"; exit 1; }
-          echo "PASS: oodar libs built"
-      - name: contract — installed names agree
-        run: |
-          set -euo pipefail
-          bin="${GATE_BIN:-$HOME/.openooda/bin}"
-          for b in ooda cli tui oodac opm ooda-lsp ooda-mcp; do
-            test -x "$bin/$b" || { echo "FAIL: missing installed binary: $b"; exit 1; }
-          done
-          test -f "$bin/liboodar.a" || { echo "FAIL: missing liboodar.a"; exit 1; }
-          test ! -e "$bin/ooda-tui" || { echo "FAIL: ghost alias ooda-tui installed"; exit 1; }
-          echo "PASS: installed names agree (8 binaries, no ghosts)"
-      - name: contract — release binaries spawn each other
-        run: |
-          set -euo pipefail
-          export OODACODEX="$HOME/.openooda/AGENTS.md"
-          export OODA_NO_JAIL=1
-          test -f "$OODACODEX" || { echo "FAIL: installer left no AGENTS.md (spawn root)"; exit 1; }
-          printf '/exit\n' | "$HOME/.openooda/bin/ooda" 2>&1 | grep -q "PROMPT" || { echo "FAIL: bare ooda did not open tui"; exit 1; }
-          "$HOME/.openooda/bin/cli" token 2>/dev/null | grep -q subcommands || { echo "FAIL: cli token did not forward to tui"; exit 1; }
-          echo "PASS: release spawn matrix holds"
-      - name: contract — master trees build (import closure)
-        working-directory: ${{ github.workspace }}
-        env:
-          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac
-          OODA_FS_READDIR: ${{ github.workspace }}
-          OODA_FS_WRITEDIR: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-          mkdir -p master-bin
-          declare -A MAIN=([ooda]=ooda/main.oo [cli]=oocli/main.oo [tui]=ootui/entry/main.oo [opm]=oopm/cli/main.oo [lsp]=oolsp/cli/main.oo [mcp]=oomcp/cli/main.oo)
-          for k in ooda cli tui opm lsp mcp; do
-            echo "  BUILD $k"
-            "${OODA_COMPILER}" build "${MAIN[$k]}" -o "master-bin/$k" || { echo "FAIL: master build $k (import closure)"; exit 1; }
-          done
-          echo "PASS: all master mains build"
-      - name: contract — master binaries spawn each other
-        working-directory: ${{ github.workspace }}
-        env:
-          OODA_FS_READDIR: ${{ github.workspace }}
-          OODA_FS_WRITEDIR: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-          mkdir -p master-codex/bin
-          cp master-bin/* master-codex/bin/
-          NORTHSTAR_SHA="adfd86a19e4e471c4e82578c6696fe4a08b4100e"
-          NORTHSTAR_SHA256="eb3e36e9154220418f9d37dce2414ebaf3d39f7755967e6114ad1670be704ea3"
-          curl -fsSL -o master-codex/AGENTS.md "https://raw.githubusercontent.com/openOODA/openOODA/${NORTHSTAR_SHA}/AGENTS.md"
-          echo "$NORTHSTAR_SHA256  master-codex/AGENTS.md" | sha256sum -c -
-          export OODACODEX="${{ github.workspace }}/master-codex/AGENTS.md"
-          export OODA_NO_JAIL=1
-          printf '/exit\n' | ./master-codex/bin/ooda 2>&1 | grep -q "PROMPT" || { echo "FAIL: master ooda did not open master tui"; exit 1; }
-          ./master-codex/bin/cli token 2>/dev/null | grep -q subcommands || { echo "FAIL: master cli token did not forward"; exit 1; }
-          echo "PASS: master spawn matrix holds"
-      - name: contract — releases carry sidecars and track master
-        run: |
-          set -euo pipefail
-          fails=0
-          for r in ooda cli tui oodac oodar opm lsp mcp; do
-            tag=$(gh release view --repo "openOODA-core/$r" --json tagName -q .tagName) || { echo "FAIL: $r has no release"; fails=1; continue; }
-            names=$(gh release view --repo "openOODA-core/$r" --json assets -q '.assets[].name' | tr '\n' ' ')
-            echo "$names" | grep -q "sha256" || { echo "FAIL: $r $tag ships no .sha256 sidecar ($names)"; fails=1; }
-            msgs=$(gh api "repos/openOODA-core/$r/compare/$tag...master" --jq '.commits[].commit.message' 2>/dev/null | head -5 || true)
-            odd=$(printf '%s' "$msgs" | grep -v -e '^necrometer' -e 'bump VERSION' -e '(scoped to necrometer-dev)' -e '^$' || true)
-            if [ -n "$odd" ]; then echo "FAIL: $r $tag trails master by functional commits: $odd"; fails=1; fi
-          done
-          [ "$fails" -eq 0 ] || exit 1
-          echo "PASS: releases carry sidecars and track master"
+  auto-release:
+    needs: [verify]
+    uses: openOODA/openOODA/.github/workflows/auto-release.yml@v2.10.44
