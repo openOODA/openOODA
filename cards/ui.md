@@ -27,5 +27,5 @@
 
 5. **CLI / TUI / Desktop / Mobile / Hardware RGB Surface Rules**:
    - **CLI / TUI (`ootheme`)**: Degrade gracefully from 24-bit TrueColor -> 256 -> 16 -> `NO_COLOR`; support `--json` for machine output; use `ootheme` subcommands (`table`, `dialog`, `prompt`, `progress`, `figure`, `glyph`, `mascot`).
-   - **Desktop (`openOODA-DE`) & Mobile Touch**: Require `WindowCap`/`FrameCap`; support responsive layout down to mobile viewports, `oopanel osk` virtual keyboard, `oocomp gesture`/`autorotate`, and `ooportal a11y` accessibility tree.
+   - **Desktop (`openOODA-DE`) & Mobile Touch**: Require `WindowCap`/`FrameCap`; support responsive layout down to mobile viewports, `oopanel osk` virtual keyboard (`+ooagent-hud`), `oocomp gesture`/`autorotate`, `oosaver` (51-scene Omarchy/ttfx screensaver & locker), and `ooportal a11y` accessibility tree.
    - **Hardware RGB Peripheral Sync (`openOODA-tools/oorgb`)**: Syncs RGB keyboards, mice, chassis LEDs, and `/sys/class/leds` (`HidCap` + `UsbCap`) to the active `ootheme` palette (`oorgb sync`, `devices`, `effect static|breathe|wave|reactive|status`, `set <token|hex>`, `brightness`, `off`).
