@@ -3,8 +3,8 @@
 1. **Root Umbrella (`@openOODA`)**: Governance Cards (`cards/ooda.md`, `cards/layers.md`, `cards/spec.md`, `cards/rules.md`, `cards/ui.md`, `cards/security.md`, `cards/privacy.md`, `cards/defense.md`), `openOODA`, `catalog`, `install`, `website`, `.github`.
 2. **`L0` `@openOODA-core` (Compiler, Runtime & Stdlib — `8` Repos)**:
    - `ooda` (flagship master CLI), `oodac` (`.oo` compiler), `oodar` (native runtime `liboodar.a`), `oostd` (standard library + `oostd/hw/*`), `oopm` (package solver), `oolsp` (LSP), `oomcp` (MCP broker), `oohat` (8-hat verifier & debugger).
-3. **`L1` `@openOODA-kernel` (Bare-Metal Microkernel, HAL & Ring-3 Drivers — `6` Repos)**:
-   - `ooboot` (UEFI), `oohal` (x86_64/ARM64/RISC-V), `ookernel` (sched/mm/ipc/iommu), `oodrv-storage` (NVMe/VirtIO-Blk), `oodrv-io` (GOP/PCIe/USB/HID/MIPI-CSI/IIO-IMU/WWAN/Wi-Fi/BT), `oodrv-virt`.
+3. **`L1` `@openOODA-kernel` (Bare-Metal Microkernel, HAL & Ring-3 Drivers — `8` Repos)**:
+   - `ooboot` (UEFI + TPM2/DICE/Caliptra), `oohal` (x86_64/ARM64/RISC-V + SEV-SNP/TDX/CCA + AMX/SVE2/RVV), `ookernel` (sched/mm/ipc/iommu + RDT/MPAM QoS + CXL 3.0), `oodrv-storage` (NVMe/ZNS/AHCI/SDHCI-eMMC/NOR), `oodrv-net` (NIC DMA/RDMA-RoCEv2-IB/Wi-Fi 802.11/BT/5G-WWAN/TSN-CAN-FD), `oodrv-io` (GOP/DRM/PCIe/USB4/HID/MIPI-CSI/V4L2/PCM/IIO-IMU), `oodrv-virt` (VirtIO/SR-IOV VF/VirtIO-GPU 3D/VirtIO-FS DAX), `oodrv-accel` (GPU compute queues, NPU/TPU matrix engines, CXL Type-2/3, PQC/QAT offload).
 4. **`L2` `@openOODA-OS` (Zero-Root System Daemons across Desktop, Server & Mobile — `9` Repos)**:
    - `ooinit` (PID 1 & services), `oovfs` (CoW pools, LUKS, mounts), `oonetd` (Wi-Fi WPA3, BT, WireGuard, BGP/OSPF/VLAN), `oosysbus` (devd, wakelocks, sensors, IPP print, A/V graph), `ooauthd`, `oohealthd`, `oocontainer`, `oollama`, `oomodemd` (Mobile 5G/LTE/eSIM).
 5. **`L3` `@openOODA-tools` (Capability-Sandboxed Unix, System & Security Multi-Call Utilities — `39` Repos)**:
