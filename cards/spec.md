@@ -20,7 +20,10 @@
    - Exhaustive `match`:
      `let msg: String = match res { Ok(v) => "ok", Err(e) => e };`
 
-4. **Core Builtins**:
-   - Strings: `chars_len(s)`, `char_at(s, i)`, `str_slice(s, start, end)`, `str_contains(s, sub)`, `str_starts_with(s, pre)`.
-   - Lists: `list_new()`, `list_len(xs)`, `list_get(xs, i)`, `list_push(xs, v)`, `list_slice(xs, start, end)`.
-   - Process/IO: `print(s)`, `println(s)`, `process_exit(code)`.
+4. **Core Builtins & `oostd` Standard Library Map**:
+   - Strings: `bytes_len(s)`, `byte_at(s, i)`, `byte_slice(s, lo, hi)`, `chars_len(s)`, `char_at(s, i)`, `str_slice(s, lo, hi)`.
+   - Lists: `list_new()`, `list_len(xs)`, `list_get(xs, i)`, `list_set(xs, i, v)`, `list_push(xs, v)`, `list_slice(xs, lo, hi)`.
+   - Always import `oostd` instead of rolling custom math/physics/crypto/collections:
+     - Math & Proofs: `oostd/core/math/{exact,geometry,blas,fft,algebra,graph_topology}/...`, `oostd/core/proofs/...`
+     - Physics & Science: `oostd/core/science/{phys,chem,bio,comm,econ}/...` (`classical/collision`, `integrators`, `relativistic`, `quantum`)
+     - Security & Collections: `oostd/sec/{hash,capability,pqc,symmetric}/...`, `oostd/core/collection/...`, `oostd/core/app/ai/algo/...`

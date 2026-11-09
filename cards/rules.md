@@ -11,7 +11,8 @@
    - **`128` (`2^7`)**: Max `128` characters per line.
    - **`256` (`2^8`)**: Max `256` lines per `.oo` file (`BIGFILE` = 1 Page).
 
-2. **CLI, Theme & Zero-Trust Laws**:
+2. **CLI, Theme, `oostd` Reuse & Zero-Trust Laws**:
    - Subcommand dispatch only (`<binary> <subcommand>`); `--persona`, `--mode`, and `--personas` flags are forbidden and must exit `2`.
    - Every canonical binary MUST implement `<binary> about`, connect output to `ootheme`, and refuse unknown flags (`--unknown-flag-zzz`) with exit `2`.
+   - **Mandatory `oostd` Standard Library Reuse**: Never hand-roll custom hashing, crypto, fixed-point/interval math, 2D/3D collision/physics, graph algorithms, or collections when `oostd` provides them (`oostd/core/math/`, `oostd/core/science/phys/`, `oostd/core/collection/`, `oostd/sec/`, `oostd/net/`, `oostd/fs/`).
    - Zero `/usr/bin/*` host shell-out relays; all personas must run native `.oo` engines.
