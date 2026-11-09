@@ -2,9 +2,9 @@
 
 1. **Canonical Power-of-2 Shape Ladder (`1 / 2 / 4 / 8 / 16 / 32 / 64 / 128 / 256`)**:
    - **`1` (`2^0`)**: Link count == `1` (ZERO symlinks or hardlinks anywhere) & max `1` statement per line.
-   - **`2` (`2^1`)**: Min `2` test axes per repo (`1` real functional I/O test + `1` negative-trust refusal test).
+   - **`2` (`2^1`)**: Lean `2`-file `tests/` suite per repo (`tests/test_functional.oo` + `tests/test_refusal.oo`, zero subdirectories, zero source-file grepping).
    - **`4` (`2^2`)**: Max `4` levels of block nesting depth inside a function (use early returns/guards) & **4-Axis Code Review** (`1. oohat Gate` + `2. Semantic Logic & Spec` + `3. Native Binary & Systems` + `4. Ecosystem & Registry`).
-   - **`8` (`2^3`)**: Max `8` entries per directory (`DENSE`), max `8` functions per file (`MANYFN`), max `8` parameters per function.
+   - **`8` (`2^3`)**: Max `8` entries per directory (`DENSE`), max `8` functions per file (`MANYFN`), max `8` parameters per function, & Canonical `8`-Entry Repo Root (`AGENTS.md`, `README.md`, `Makefile`, `ooda.pkg`, `anchor.oo`, `cli/`, `core/`, `tests/`).
    - **`16` (`2^4`)**: Min `16` lines per `.oo` file (`TINYFILE` — zero empty stub files).
    - **`32` (`2^5`)**: `32` explicit capabilities (`0..31`), max `32` chars per identifier/filename (ban `*_1.oo` / `*_part2.oo` / `*_more.oo` mechanical splits), target `<= 32` `.oo` pages per repo.
    - **`64` (`2^6`)**: Max `64` code lines per function (`LONGFN`, excluding comments and blank lines).
