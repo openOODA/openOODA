@@ -1,8 +1,8 @@
 # layers.md — The 8-Layer Architecture Map (`L0`–`L7`, `ooda layers`)
 
 1. **Root Umbrella (`@openOODA`)**: Governance Cards (`cards/ooda.md`, `cards/layers.md`, `cards/spec.md`, `cards/rules.md`, `cards/ui.md`, `cards/security.md`, `cards/privacy.md`, `cards/defense.md`), `openOODA`, `catalog`, `install`, `website`, `.github`.
-2. **`L0` `@openOODA-core` (Compiler, Runtime & Stdlib — `7` Repos)**:
-   - `ooda` (flagship master CLI), `oodac` (`.oo` compiler), `oodar` (native runtime `liboodar.a`), `oostd` (standard library + `oostd/hw/*`), `oopm` (package solver), `oolsp` (LSP), `oomcp` (MCP broker).
+2. **`L0` `@openOODA-core` (Compiler, Runtime & Stdlib — `8` Repos)**:
+   - `ooda` (flagship master CLI), `oodac` (`.oo` compiler), `oodar` (native runtime `liboodar.a`), `oostd` (standard library + `oostd/hw/*`), `oopm` (package solver), `oolsp` (LSP), `oomcp` (MCP broker), `oohat` (8-hat verifier & debugger).
 3. **`L1` `@openOODA-kernel` (Bare-Metal Microkernel, HAL & Ring-3 Drivers — `6` Repos)**:
    - `ooboot` (UEFI), `oohal` (x86_64/ARM64/RISC-V), `ookernel` (sched/mm/ipc/iommu), `oodrv-storage` (NVMe/VirtIO-Blk), `oodrv-io` (GOP/PCIe/USB/HID/MIPI-CSI/IIO-IMU/WWAN/Wi-Fi/BT), `oodrv-virt`.
 4. **`L2` `@openOODA-OS` (Zero-Root System Daemons across Desktop, Server & Mobile — `9` Repos)**:
@@ -14,7 +14,7 @@
    - `oocomp` (compositor + touch gestures/autorotate), `oopanel` (bar/launcher + `osk` virtual keyboard), `ooportal` (clipboard TTL burn, cast, a11y, USB guard), `ooterm`, `oofiles`, `oosettings`, `oobazaar`, `ooagent-hud`.
 7. **`L5` `@openOODA-apps` (Flagship Desktop & Mobile Applications — `16` Repos)**:
    - `oobrowser`, `oostudio`, `oooffice` (`docs|sheet|deck|notes|pdf`), `oocanvas` (`draw|paint|cad`), `oomedia`, `ooflash` (`+pack-iso`), `oodaw`, `oochat`, `oopass`, `ookvm`, `oocamera` (`photo|video|qr|isp`), `ooemu` (multi-core emulator), `ooarcade` (arcade suite), `oocommand` (strategy suite), `oostrike` (6-DoF space combat sim), `oovoxel` (voxel sandbox).
-8. **`L6` `@openOODA-cloud` (`8` Repos) & `L7` `@openOODA-agents` (`10` Repos)**:
+8. **`L6` `@openOODA-cloud` (`8` Repos) & `L7` `@openOODA-agents` (`9` Repos)**:
    - `L6`: `oomesh`, `oostore`, `oodeploy` (`pxe|bmc|vm-fleet`), `oogateway`, `ooidentity`, `oodb` (`sql|local|btree|wal|kv|dump`), `ootelemetry`, `oobilling`.
-   - `L7`: `ooloop`, `ooswarm`, `oobench`, `ooquota`, `oofalsify`, `ooconsensus`, `oocode`, `oohat`, `oomemory`, `oogovern`.
-9. **Fleet Census**: `93` total product binaries across `L1`–`L7` (`100` across `L0`–`L7`) + `5` `@openOODA` governance repos (`openOODA`, `catalog`, `install`, `website`, `.github`) = `98` total repos.
+   - `L7`: `ooloop`, `ooswarm`, `oobench`, `ooquota`, `oofalsify`, `ooconsensus`, `oocode`, `oomemory`, `oogovern`.
+9. **Fleet Census**: `92` total product binaries across `L1`–`L7` (`100` across `L0`–`L7`) + `5` `@openOODA` governance repos (`openOODA`, `catalog`, `install`, `website`, `.github`) = `98` total repos.
