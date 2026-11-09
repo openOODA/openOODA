@@ -9,8 +9,8 @@
    - `ooda privacy`  -> `privacy.md`  (Zero-telemetry, PII/EXIF/SECRET scrubbing `ooredact`, LED & clipboard TTL gates)
    - `ooda defense`  -> `defense.md`  (Active defense `oodefense` IDS/canary/honeypot, `oofirewall`, DMA/DRAM/USB guards)
 2. **Power-of-2 Shape Ladder (`1/2/4/8/16/32/64/128/256`)**:
-   - `1`: Link count == 1 (0 symlinks/hardlinks) & max 1 statement/line. `2`: Min 2 tests (functional + negative-trust exit != 0).
-   - `4`: Max 4 nesting depth. `8`: Max 8 files/dir, 8 fns/file, 8 params/fn. `16`: Min 16 lines/file.
+   - `1`: Link count == 1 (0 symlinks/hardlinks) & max 1 statement/line. `2`: Min 2 test axes per repo (1 real functional I/O test + 1 negative-trust refusal test).
+   - `4`: Max 4 nesting depth & **4-Axis Code Review** (`1. oohat Gate` + `2. Semantic Logic & Spec` + `3. Native Binary & Systems` + `4. Ecosystem & Registry`). `8`: Max 8 files/dir, 8 fns/file, 8 params/fn. `16`: Min 16 lines/file.
    - `32`: 32 explicit capabilities (`&FsReadCap`, `&FsWriteCap`, `&NetCap`, `&ProcessCap`, `&EnvCap`), max 32 chars/name (no `*_1.oo` splits), <=32 files/repo.
    - `64`: Max 64 code lines/fn. `128`: Max 128 chars/line. `256`: Max 256 lines/file.
 3. **Syntax & Workflow**:
