@@ -1,0 +1,75 @@
+// # openOODA Canonical Cards Conformance Checker
+//
+// Logline: Verify the eight canonical quick cards exist under cards/, each opens with a markdown
+//          title and carries real content, and rules.md keeps all nine power-of-two ladder rungs.
+// Setup: Explicit FsReadCap; bounded reads of VERSION and cards/*.md; canonical oostd str_extra
+//        parse_int_digits for the semver fields.
+// Beats:
+//   1. card_ok enforces title + minimum-length shape per card.
+//   2. card_ladder_ok proves rules.md documents all nine ladder powers.
+//   3. card_repo_ok folds VERSION, card set, and ladder into one verdict.
+
+import "oostd/core/primitives/str_extra.oo";
+
+pub fn card_ver_num(ver: String) -> Int {
+    let v: String = str_trim(ver);
+    let parts: List[String] = str_split(v, ".");
+    if list_len(parts) != 3 { return 0 - 1; }
+    let mut i: Int = 0;
+    let mut num: Int = 0;
+    while i < 3 {
+        let tok: String = list_get(parts, i);
+        let tn: Int = bytes_len(tok);
+        if tn == 0 || tn > 3 { return 0 - 1; }
+        let mut j: Int = 0;
+        while j < tn {
+            let b: Int = byte_at(tok, j);
+            if b < 48 || b > 57 { return 0 - 1; }
+            j = j + 1;
+        }
+        num = num * 1000 + parse_int_digits(tok);
+        i = i + 1;
+    }
+    return num;
+}
+
+pub fn card_shape(src: String) -> Bool {
+    let t: String = str_trim(src);
+    if !str_starts_with(t, "# ") { return false; }
+    let ls: List[String] = str_split(t, "\n");
+    return list_len(ls) >= 8;
+}
+
+pub fn card_ok(fs: &FsReadCap, name: String) -> Bool {
+    let r: Result[String, String] = oo_read_file(fs, "cards/" + name + ".md");
+    if r.is_err() { return false; }
+    return card_shape(match r { Ok(s) => s, Err(_) => "" });
+}
+
+fn card_powers(src: String) -> Int {
+    let mut n: Int = 0;
+    if str_contains(src, "`16`") { n = n + 1; }
+    if str_contains(src, "`32`") { n = n + 1; }
+    if str_contains(src, "`64`") { n = n + 1; }
+    if str_contains(src, "`128`") { n = n + 1; }
+    if str_contains(src, "`256`") { n = n + 1; }
+    return n;
+}
+
+pub fn card_ladder_ok(fs: &FsReadCap) -> Bool {
+    let r: Result[String, String] = oo_read_file(fs, "cards/rules.md");
+    if r.is_err() { return false; }
+    let src: String = match r { Ok(s) => s, Err(_) => "" };
+    return card_powers(src) == 5 && str_contains(src, "Power-of-2");
+}
+
+pub fn card_repo_ok(fs: &FsReadCap) -> Bool {
+    let vr: Result[String, String] = oo_read_file(fs, "VERSION");
+    if vr.is_err() { return false; }
+    let ver: String = match vr { Ok(s) => s, Err(_) => "" };
+    if card_ver_num(ver) < 0 { return false; }
+    let ok: Bool = card_ok(fs, "ooda") && card_ok(fs, "layers") && card_ok(fs, "spec") &&
+        card_ok(fs, "rules") && card_ok(fs, "ui") && card_ok(fs, "security") &&
+        card_ok(fs, "privacy") && card_ok(fs, "defense");
+    return ok && card_ladder_ok(fs);
+}

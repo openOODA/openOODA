@@ -1,0 +1,46 @@
+// # openOODA Cards Refusal Suite - Negative-Trust Assertions
+//
+// Logline: Negative-trust assertions that missing cards, title-less content, forged versions, and
+//          path traversal are refused by the card conformance checker.
+// Setup: Imports the card conformance checker; FsReadCap bounds every read inside the jail.
+// Beats:
+//   1. Nonexistent card names and title-less or stub content are refused.
+//   2. Malformed semver strings are refused.
+//   3. Parent-directory traversal reads are refused by the fs jail.
+
+import "core/card_check.oo";
+
+fn t_expect(cond: Bool, label: String, p: Int) -> Int {
+    if cond {
+        println("ok " + label);
+        return p + 1;
+    }
+    println("FAIL " + label);
+    return p;
+}
+
+fn t_refuse(fs: &FsReadCap) -> Int {
+    let mut p: Int = 0;
+    p = t_expect(!card_ok(fs, "nosuchcard") && !card_ok(fs, ".." + "/VERSION"),
+        "missing card + traversal name refused", p);
+    p = t_expect(!card_shape("no title\nl2\nl3\nl4\nl5\nl6\nl7\nl8\n") &&
+        !card_shape("# short\n"), "title-less + stub refused", p);
+    p = t_expect(card_ver_num("1.2") < 0 && card_ver_num("1.2.3.4") < 0 &&
+        card_ver_num("x.y.z") < 0 && card_ver_num("") < 0, "forged semver refused", p);
+    p = t_expect(!card_shape("..") && !card_shape(""), "empty content refused", p);
+    p = t_expect(card_ver_num("-1.2.3") < 0 && card_ver_num("1.-2.3") < 0,
+        "signed semver refused", p);
+    let r: Result[String, String] = oo_read_file(fs, ".." + "/.." + "/etc/" + "passwd");
+    p = t_expect(r.is_err(), "traversal read refused", p);
+    return p;
+}
+
+pub fn main(fs: &FsReadCap, _args: List[String]) -> Result[Int, String] {
+    let p: Int = t_refuse(fs);
+    if p == 6 {
+        println("PASS: refusal suite (6/6 assertions)");
+        return Ok(0);
+    }
+    println("FAIL: refusal suite (" + p.to_string() + "/6 assertions)");
+    return Ok(2);
+}
