@@ -86,6 +86,7 @@ Every agent (CLI, MCP, or LSP client) has direct access to `oolsp` and `oomcp` f
 
 | Action | CLI (`oolsp` / `oohat`) | MCP Tool (`oomcp`) | LSP Command (`oolsp`) |
 | :--- | :--- | :--- | :--- |
+| **Read this canonical `AGENTS.md` orientation** | `ooda card` / `cat ~/.openooda/AGENTS.md` | `get_orientation` | `ooda.about` |
 | **Search `oostd` for existing functions/types** | `oolsp search-std <query>` | `oolsp_search_std` | `ooda.search_std` |
 | **Find symbol definition, import & signature** | `oolsp def <sym> [dir]` | `oolsp_def` | `ooda.def` |
 | **List all call sites & references before editing** | `oolsp refs <sym> [dir]` | `oolsp_refs` | `ooda.refs` |
@@ -93,7 +94,9 @@ Every agent (CLI, MCP, or LSP client) has direct access to `oolsp` and `oomcp` f
 | **Inspect structural skeleton (Loglines, imports, `pub fn`)** | `oolsp outline <path>` | `oolsp_outline` | `ooda.outline` |
 | **Type-check `.oo` file with `oodac`** | `oodac check <file>` | `oodac_check` | `ooda.check` |
 | **Run 8-Hat verification cycle (`quorum_mask=255`)** | `oohat cycle <repo> --json` | `oohat_verify` | `ooda.oohat` |
+| **Run Zero-Trust binary & git falsification (`L7`)** | `oofalsify audit <repo>` | `oofalsify_audit` | `ooda.falsify` |
 | **Apply deterministic source fixer** | `ooda fix <file> --yes` | `ooda_fix` | `ooda.fix` |
 
+- **Native `L7` Agent Tools & Dynamic Host Agent Drop-Ins (`oomcp`)**: `oomcp serve` exposes 34 built-in ecosystem tools (including `get_orientation`, `oofalsify_audit`, `oocode_inspect`, `oomemory_query`, and `oogovern_audit`) and dynamically loads any `~/.openooda/agents/*.oot` descriptors as `agent_list` and `agent_run` (`OODA_MCP_AGENT_DEPTH=1` prevents recursion; stock `oomcp` hardcodes zero external agents). Register `oomcp` in any JSON MCP client config via `oomcp connect <config.json>`.
 - **Full Ecosystem LSP Commands**: `oolsp` also exposes the entire `L0`–`L7` tool suite via `workspace/executeCommand` (`ooda.oopm`, `ooda.about`, `ooda.diff`, `ooda.grep`, `ooda.find`, `ooda.jq`, `ooda.ls`, `ooda.tree`, `ooda.cat`, `ooda.sed`, `ooda.fzf`, `ooda.archive`, `ooda.hw`, `ooda.proc`, `ooda.cron`, `ooda.theme`, `ooda.sh`, `ooda.falsify`, `ooda.code`, `ooda.memory`, `ooda.govern`) and seeds all openOODA tools into the canonical LSP symbol index (`workspace/symbol`, `textDocument/completion`, `textDocument/hover`).
-- **Package, OS & Container Lifecycle (`oopm`)**: Always use `oopm` to install or remove openOODA and its parts (never manual `cp`): `oopm install openOODA -y` (9-part base platform: `@core` + `openooda` + codex), `oopm install @tools -y` (`@kernel`/`@os`/`@de`/`@apps`/`@cloud`/`@agents`/`@workstation`/`@all`), `oopm install ooda-os -y` (`ooflash` + `~/.openooda/images/ooda-os-x86_64.iso`), `oopm install ooda-container -y` (`oocontainer` + `~/.openooda/containers/ooda-buildbox/`), and `oopm remove <part|@group|ooda-os|ooda-container|openOODA> [--purge] -y`.
+- **Package, OS & Container Lifecycle (`oopm`)**: Always use `oopm` to install, update, or remove openOODA and its parts (never manual `cp`): `oopm install openOODA -y` (9-part base platform: `core` + `openooda` + codex), bare groups `oopm install core` / `oopm install tools` / `oopm remove apps` (`core`/`kernel`/`os`/`tools`/`de`/`apps`/`games`/`cloud`/`agents`/`workstation`/`all`, or `@group` aliases), fast SHA-256-diff `oopm update` (`oopm update` or `oopm update tools`), `oopm install ooda-os -y` (`ooflash` + `~/.openooda/images/ooda-os-x86_64.iso`), and `oopm install ooda-container -y` (`oocontainer` + `~/.openooda/containers/ooda-buildbox/`).
