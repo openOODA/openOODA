@@ -9,7 +9,7 @@
    - `ooinit` (PID 1 & services), `oovfs` (CoW pools, LUKS, mounts), `oonetd` (Wi-Fi WPA3, BT, WireGuard, BGP/OSPF/VLAN), `oosysbus` (devd, wakelocks, sensors, IPP print, A/V graph), `ooauthd`, `oohealthd`, `oocontainer`, `oollama`, `oomodemd` (Mobile 5G/LTE/eSIM).
 5. **`L3` `@openOODA-tools` (Capability-Sandboxed Unix, System & Security Multi-Call Utilities — `39` Repos)**:
    - Security/Defense (`7`): `oodefense`, `oosandbox`, `ooprovenance`, `ooredact`, `oosign`, `oofirewall`, `oovault`.
-   - Core/System (`32`): `oofs`, `ooperm` (`+elevate`), `oopath`, `oomount` (`+crypt`), `ools`, `oocat`, `oosort`, `ootext`, `oogrep`, `oodiff`, `oojq`, `oocodec`, `oosh`, `ooproc`, `oohw` (`+bt|audio`), `oopower`, `oocron`, `oonet` (`+vpn`), `oocurl`, `oossh`, `ootty`, `ootheme`, `oorgb` (RGB controller), `ooarchive`, `ooawk`, `oofind`, `oofzf`, `oohash`, `ooless`, `oosed`, `ooui`, `ooengine`.
+   - Core/System (`32`): `oofs`, `ooperm` (`+elevate`), `oopath`, `oomount` (`+crypt`), `ools`, `oocat`, `oosort`, `ootext`, `oogrep`, `oodiff`, `oojq`, `oocodec`, `oosh`, `ooproc`, `oohw` (`+bt|audio`), `oopower`, `oocron`, `oonet` (`+vpn`), `oocurl`, `ooh`, `ootty`, `ootheme`, `oorgb` (RGB controller), `ooarchive`, `ooawk`, `oofind`, `oofzf`, `oohash`, `ooless`, `oosed`, `ooui`, `ooengine`.
 6. **`L4` `@openOODA-DE` (Wayland Desktop & Mobile Touch Environment — `8` Repos)**:
    - `oocomp` (compositor + touch gestures/autorotate), `oopanel` (bar/launcher + `osk` virtual keyboard + `ooagent-hud`), `ooportal` (clipboard TTL burn, cast, a11y, USB guard), `ooterm`, `oofiles`, `oosettings`, `oobazaar`, `oosaver` (51-scene Omarchy screensaver & locker).
 7. **`L5` `@openOODA-apps` (Flagship Desktop & Mobile Applications — `16` Repos)**:
