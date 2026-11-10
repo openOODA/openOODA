@@ -79,3 +79,20 @@ Zero-bloat (~24-line) cards served live by the `ooda` master CLI (`ooda <verb>`)
   `capability/...`)—never re-implement duplicate local helpers!
 - Build & Verify: `make build && make test` (or `ooda build && ooda test`), then
   `ooda check && ooda audit` and `oohat cycle` (`quorum_mask=255`).
+
+## Agent Code Intelligence & Tooling (`oolsp` + `oomcp`)
+
+Every agent (CLI, MCP, or LSP client) has direct access to `oolsp` and `oomcp` for zero-grep structural navigation, `oostd` discovery, Power-of-2 headroom inspection, and full ecosystem tool execution:
+
+| Action | CLI (`oolsp` / `oohat`) | MCP Tool (`oomcp`) | LSP Command (`oolsp`) |
+| :--- | :--- | :--- | :--- |
+| **Search `oostd` for existing functions/types** | `oolsp search-std <query>` | `oolsp_search_std` | `ooda.search_std` |
+| **Find symbol definition, import & signature** | `oolsp def <sym> [dir]` | `oolsp_def` | `ooda.def` |
+| **List all call sites & references before editing** | `oolsp refs <sym> [dir]` | `oolsp_refs` | `ooda.refs` |
+| **Check Power-of-2 shape headroom (`lines/256`, `fns/8`, `sloc/64`)** | `oolsp shape <path>` | `oolsp_shape` | `ooda.shape` |
+| **Inspect structural skeleton (Loglines, imports, `pub fn`)** | `oolsp outline <path>` | `oolsp_outline` | `ooda.outline` |
+| **Type-check `.oo` file with `oodac`** | `oodac check <file>` | `oodac_check` | `ooda.check` |
+| **Run 8-Hat verification cycle (`quorum_mask=255`)** | `oohat cycle <repo> --json` | `oohat_verify` | `ooda.oohat` |
+| **Apply deterministic source fixer** | `ooda fix <file> --yes` | `ooda_fix` | `ooda.fix` |
+
+- **Full Ecosystem LSP Commands**: `oolsp` also exposes the entire `L0`–`L7` tool suite via `workspace/executeCommand` (`ooda.oopm`, `ooda.about`, `ooda.diff`, `ooda.grep`, `ooda.find`, `ooda.jq`, `ooda.ls`, `ooda.tree`, `ooda.cat`, `ooda.sed`, `ooda.fzf`, `ooda.archive`, `ooda.hw`, `ooda.proc`, `ooda.cron`, `ooda.theme`, `ooda.sh`, `ooda.falsify`, `ooda.code`, `ooda.memory`, `ooda.govern`) and seeds all openOODA tools into the canonical LSP symbol index (`workspace/symbol`, `textDocument/completion`, `textDocument/hover`).
