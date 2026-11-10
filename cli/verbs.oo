@@ -1,0 +1,152 @@
+// # openOODA Governance Verbs — check/audit/status/cards/about/theme Renderers
+//
+// Logline: Render the self-verification verbs over the real repository tree — every verdict
+//          comes from core/card_check.oo + core/card_law.oo; zero stubs, zero host relays.
+// Setup: Explicit FsReadCap + EnvCap; oostd ootheme palette resolves the theme verb.
+// Beats:
+//   1. openooda_report runs the full constitutional verdict (version+cards+ladder+census+root+docs).
+//   2. openooda_status prints the folded PASS/FAIL line; openooda_cards lists live card titles.
+//   3. openooda_about prints the canonical binary card; openooda_theme resolves an oostd palette.
+
+import "core/card_check.oo";
+import "core/card_law.oo";
+import "oostd/fs/process/env.oo";
+import "oostd/core/app/ui/ootheme.oo";
+
+pub fn openooda_ver(fs: &FsReadCap) -> String {
+    let r: Result[String, String] = oo_read_file(fs, "VERSION");
+    if r.is_err() { return "?"; }
+    return str_trim(match r { Ok(s) => s, Err(_) => "?" });
+}
+
+pub fn openooda_report(fs: &FsReadCap, json: Bool, deep: Bool) -> Int {
+    let ver: String = openooda_ver(fs);
+    let v_ok: Bool = card_version_ok(fs);
+    let c_ok: Bool = card_set_ok(fs);
+    let l_ok: Bool = card_ladder_ok(fs);
+    let z_ok: Bool = card_census_ok(fs);
+    let r_ok: Bool = card_root_ok(fs);
+    let d_ok: Bool = card_docs_ok(fs);
+    let ok: Bool = v_ok && c_ok && l_ok && z_ok && r_ok && d_ok;
+    if json {
+        let jp: String = if ok { "true" } else { "false" };
+        println("{\"component\":\"openooda\",\"check\":\"verify\",\"version\":\"" + ver +
+            "\",\"semver\":" + (if v_ok { "true" } else { "false" }) +
+            ",\"cards\":" + (if c_ok { "true" } else { "false" }) +
+            ",\"ladder\":" + (if l_ok { "true" } else { "false" }) +
+            ",\"census\":" + (if z_ok { "true" } else { "false" }) +
+            ",\"root\":" + (if r_ok { "true" } else { "false" }) +
+            ",\"docs\":" + (if d_ok { "true" } else { "false" }) +
+            ",\"pass\":" + jp + "}");
+        return if ok { 0 } else { 1 };
+    }
+    if deep {
+        println("  census: Root @openOODA = 5 governance repos (openOODA catalog install website .github)");
+        println("  census: L0 @openOODA-core = 8, L1 @openOODA-kernel = 8, L2 @openOODA-OS = 9");
+        println("  census: L3 @openOODA-tools = 39, L4 @openOODA-DE = 8, L5 @openOODA-apps = 16");
+        println("  census: L6 @openOODA-cloud = 8, L7 @openOODA-agents = 9");
+        println("  census: 97 product binaries L1-L7 / 105 L0-L7 / 110 total repos");
+    }
+    let vs: String = if v_ok { "ok" } else { "FAIL" };
+    let cs: String = if c_ok { "ok" } else { "FAIL" };
+    let ls: String = if l_ok { "ok" } else { "FAIL" };
+    let zs: String = if z_ok { "ok" } else { "FAIL" };
+    let rs: String = if r_ok { "ok" } else { "FAIL" };
+    let ds: String = if d_ok { "ok" } else { "FAIL" };
+    println("openooda check (v" + ver + ")");
+    println("  version : " + ver + " semver " + vs);
+    println("  cards   : 8 canonical quick cards " + cs);
+    println("  ladder  : 9 power-of-two rungs " + ls);
+    println("  census  : consolidated L0-L7 97/105/110 " + zs);
+    println("  root    : 10 constitutional entries " + rs);
+    println("  docs    : AGENTS title + README links " + ds);
+    if ok {
+        println("verify OK (all constitutional invariants hold)");
+        return 0;
+    }
+    println("verify FAIL (constitutional invariants violated)");
+    return 1;
+}
+
+pub fn openooda_status(fs: &FsReadCap) -> Int {
+    if card_repo_ok(fs) {
+        println("openooda status: PASS (constitutional verdict holds)");
+        return 0;
+    }
+    println("openooda status: FAIL (constitutional verdict violated)");
+    return 1;
+}
+
+pub fn openooda_cards(fs: &FsReadCap) -> Int {
+    let xs: List[String] = str_split("ooda layers spec rules ui security privacy defense", " ");
+    let mut i: Int = 0;
+    while i < list_len(xs) {
+        let n: String = list_get(xs, i);
+        let r: Result[String, String] = oo_read_file(fs, "cards/" + n + ".md");
+        if r.is_err() {
+            println("  " + n + " — MISSING");
+            return 1;
+        }
+        let src: String = match r { Ok(s) => s, Err(_) => "" };
+        let lines: List[String] = str_split(str_trim(src), "\n");
+        let title: String = list_get(lines, 0);
+        println("  " + str_slice(title, 2, chars_len(title)));
+        i = i + 1;
+    }
+    return 0;
+}
+
+pub fn openooda_about(fs: &FsReadCap) -> Int {
+    let ver: String = openooda_ver(fs);
+    println("Binary       : openooda (v" + ver + ")");
+    println("Organization : openOODA (https://github.com/openOODA/openOODA)");
+    println("Summary      : Constitutional governance root — canonical quick cards, census & law verification");
+    println("Subcommands  : check,audit,status,verify,cards,theme,about,--self-test");
+    println("Capabilities : FsRead,Env");
+    println("Cards        : ooda layers spec rules ui security privacy defense");
+    println("Census       : 97 product binaries L1-L7, 105 L0-L7, 110 total repos (5 governance)");
+    return 0;
+}
+
+pub fn openooda_theme(env: &EnvCap, args: List[String], ver: String) -> Int {
+    let mut tn: String = "";
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        let a: String = list_get(args, i);
+        if str_starts_with(a, "--tui=") { tn = str_slice(a, 6, chars_len(a)); }
+        if (a == "--tui" || a == "theme") && i + 1 < list_len(args) &&
+            !str_starts_with(list_get(args, i + 1), "-") {
+            tn = list_get(args, i + 1);
+        }
+        i = i + 1;
+    }
+    if tn == "" {
+        let et: String = match env_get(env, "OODA_THEME") { Ok(s) => str_trim(s), Err(_) => "" };
+        if et != "" && ootheme_known(et) { tn = et; }
+    }
+    if tn == "" {
+        let nc: String = match env_get(env, "NO_COLOR") { Ok(s) => str_trim(s), Err(_) => "" };
+        if nc != "" { tn = "no-color"; }
+    }
+    if tn == "" { tn = "ooda-dark"; }
+    if !ootheme_known(tn) {
+        println("openooda " + ver + ": unknown theme " + tn);
+        return 2;
+    }
+    let p: OoThemePalette = ootheme_resolve(tn);
+    if !ootheme_verify(p) {
+        println("openooda " + ver + ": theme checksum failed");
+        return 1;
+    }
+    println(ootheme_tui_frame(p, "openooda", ver, "Root", "pass"));
+    return 0;
+}
+
+pub fn openooda_help(ver: String) -> Int {
+    println("openooda " + ver + " — openOODA constitutional governance & quick-card self-verification");
+    println("usage: openooda <verb> [.] [--json]");
+    println("verbs: check|audit|status|verify  cards  theme <name>  about");
+    println("flags: --help --version --self-test --json (additive verdict envelope)");
+    println("refusals: --persona/--mode/--personas, unknown arguments, '..' operands -> exit 2");
+    return 0;
+}

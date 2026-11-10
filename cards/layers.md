@@ -14,7 +14,7 @@
    - `oocomp` (compositor + touch gestures/autorotate), `oopanel` (bar/launcher + `osk` virtual keyboard + `ooagent-hud`), `ooportal` (clipboard TTL burn, cast, a11y, USB guard), `ooterm`, `oofiles`, `oosettings`, `oobazaar`, `oosaver` (51-scene Omarchy screensaver & locker).
 7. **`L5` `@openOODA-apps` (Flagship Desktop & Mobile Applications — `16` Repos)**:
    - `oobrowser`, `oostudio`, `oooffice` (`docs|sheet|deck|notes|pdf`), `oocanvas` (`draw|paint|cad`), `oomedia`, `ooflash` (`+pack-iso`), `oodaw`, `oochat`, `oopass`, `ookvm`, `oocamera` (`photo|video|qr|isp`), `ooemu` (multi-core emulator), `ooarcade` (arcade suite), `oocommand` (strategy suite), `oostrike` (6-DoF space combat sim), `oovoxel` (voxel sandbox).
-8. **`L6` `@openOODA-cloud` (`8` Repos) & `L7` `@openOODA-agents` (`8` Repos)**:
+8. **`L6` `@openOODA-cloud` (`8` Repos) & `L7` `@openOODA-agents` (`9` Repos)**:
    - `L6`: `oomesh`, `oostore`, `oodeploy` (`pxe|bmc|vm-fleet`), `oogateway`, `ooidentity`, `oodb` (`sql|local|btree|wal|kv|dump`), `ootelemetry`, `oobilling`.
    - `L7`: `ooloop`, `ooswarm`, `oobench`, `oodream`, `oofalsify`, `ooconsensus`, `oocode`, `oomemory`, `oogovern` (`+ooquota`).
-9. **Fleet Census**: `92` total product binaries across `L1`–`L7` (`100` across `L0`–`L7`) + `5` `@openOODA` governance repos (`openOODA`, `catalog`, `install`, `website`, `.github`) = `98` total repos.
+9. **Fleet Census**: `97` total product binaries across `L1`–`L7` (`105` across `L0`–`L7`) + `5` `@openOODA` governance repos (`openOODA`, `catalog`, `install`, `website`, `.github`) = `110` total repos.

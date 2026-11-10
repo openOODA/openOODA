@@ -30,9 +30,13 @@ jobs:
           test -f .gitattributes
           test -f .gitignore
           test -d cards
-          # 8-entry repo root: at most 8 non-hidden entries at root.
-          n=$(find . -maxdepth 1 -mindepth 1 ! -name '.*' | wc -l)
-          test "$n" -le 8 || { echo "ERR root entries=$n > 8"; exit 1; }
+          # Constitutional root: canonical 8-entry blueprint + VERSION + cards/ = exactly 10 entries
+          # (generated bin/ and dist/ are gitignored build artifacts, not constitutional entries).
+          n=$(find . -maxdepth 1 -mindepth 1 ! -name '.*' ! -name 'bin' ! -name 'dist' | wc -l)
+          test "$n" -eq 10 || { echo "ERR root entries=$n != 10"; exit 1; }
+          for e in AGENTS.md README.md VERSION Makefile ooda.pkg anchor.oo cards cli core tests; do
+            test -e "$e" || { echo "ERR missing constitutional root entry $e"; exit 1; }
+          done
           # Exactly the 8 canonical Quick Cards, zero-bloat (~24-line) shape.
           test "$(ls cards/*.md | wc -l)" -eq 8
           for c in ooda layers spec rules ui security privacy defense; do

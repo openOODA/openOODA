@@ -1,17 +1,18 @@
 # ui.md — CLI, TUI, Desktop & Mobile UI + `ootheme` Quick Card (`ooda ui`)
 
-1. **`ootheme` Engine (25 Built-In Themes + Circadian Dark/Light Auto-Switching)**:
-   - **6 Classic Presets**: `minimax` (default studio slate), `1982` (retro CRT amber/green phosphor), `nord`, `dracula`, `cyberpunk`, `plain`.
+1. **`ootheme` Engine (26 Built-In Themes + Circadian Dark/Light Auto-Switching)**:
+   - **7 Classic Presets**: `ooda` (flagship Option-B palette, `ooda-dark` alias), `minimax` (default studio slate), `1982` (retro CRT amber/green phosphor), `nord`, `dracula`, `cyberpunk`, `plain`.
    - **12 Monthly + 7 Holiday Presets** (auto-selected via RTC when `theme = auto` in `~/.openooda/theme.oot`):
      `frost` `amethyst` `thaw` `bloom` `meadow` `solstice` `mirage` `amber` `equinox` `ember` `hearth` `solitude` + `nova` `lantern` `sakura` `sol` `spooky` `harvest` `yule`.
    - **Overrides**: `OODA_THEME=<name>`, `OODA_MODE=dark|light|auto`, `OODA_BORDER=round|sharp|double|ascii`, `NO_COLOR=1`.
 
-2. **34 Canonical Semantic Tokens (Never Hardcode Raw ANSI/Hex in Apps/Tools!)**:
+2. **48 Canonical Semantic Tokens (Never Hardcode Raw ANSI/Hex in Apps/Tools!)**:
    - **UI (`8`)**: `ui_bg`, `ui_fg`, `ui_surface`, `ui_border`, `ui_border_accent`, `ui_muted`, `ui_dim`, `ui_accent`.
    - **Status (`4`)**: `status_success`, `status_warning`, `status_error`, `status_info`.
    - **Syntax (`9`)**: `syntax_keyword`, `syntax_string`, `syntax_number`, `syntax_type`, `syntax_fn`, `syntax_var`, `syntax_comment`, `syntax_op`, `syntax_punct`.
    - **Diff (`4`) & Match (`4`)**: `diff_added`, `diff_removed`, `diff_context`, `diff_header`, `match_hit`, `match_path`, `match_line_num`, `match_col_num`.
    - **Shell (`5`) & Log (`5`)**: `shell_prompt`, `shell_builtin`, `shell_host_bin`, `shell_nav`, `shell_intent`, `log_trace`, `log_debug`, `log_info`, `log_warn`, `log_error`.
+   - **Layer (`9`)**: `layer_root`, `layer_l0`, `layer_l1`, `layer_l2`, `layer_l3`, `layer_l4`, `layer_l5`, `layer_l6`, `layer_l7`.
 
 3. **`ooui` Declarative Scene Tree (1 `.oot` Scene -> 4 Surfaces)**:
    - **Surfaces**: One declarative `.oot` scene tree renders to four backends: `tui` (terminal), `gui` (Wayland desktop), `wui` (wearable), `vui` (vehicle/head-up).

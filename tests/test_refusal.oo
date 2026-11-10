@@ -9,6 +9,7 @@
 //   3. Parent-directory traversal reads are refused by the fs jail.
 
 import "core/card_check.oo";
+import "core/card_law.oo";
 
 fn t_expect(cond: Bool, label: String, p: Int) -> Int {
     if cond {
@@ -32,15 +33,21 @@ fn t_refuse(fs: &FsReadCap) -> Int {
         "signed semver refused", p);
     let r: Result[String, String] = oo_read_file(fs, ".." + "/.." + "/etc/" + "passwd");
     p = t_expect(r.is_err(), "traversal read refused", p);
+    p = t_expect(card_census("# layers\n`L7` `@openOODA-agents` (`8` Repos)\n`92` `100` `98`\n") < 10,
+        "forged census refused", p);
+    p = t_expect(!card_title_ok("# openOODA (.oo) Agent Quick Card\n") &&
+        !card_title_ok("# other repo\n") &&
+        card_link_set("# readme\nno card links\n") < 8,
+        "stale title + missing links refused", p);
     return p;
 }
 
 pub fn main(fs: &FsReadCap, _args: List[String]) -> Result[Int, String] {
     let p: Int = t_refuse(fs);
-    if p == 6 {
-        println("PASS: refusal suite (6/6 assertions)");
+    if p == 8 {
+        println("PASS: refusal suite (8/8 assertions)");
         return Ok(0);
     }
-    println("FAIL: refusal suite (" + p.to_string() + "/6 assertions)");
+    println("FAIL: refusal suite (" + p.to_string() + "/8 assertions)");
     return Ok(2);
 }

@@ -1,0 +1,108 @@
+// # openOODA Governance CLI — Self-Verification Entrypoint
+//
+// Logline: Zero ambient authority CLI for the constitutional governance root — verifies the
+//          canonical quick cards, ladder, census, and law over real reads; fails closed.
+// Setup: Explicit FsReadCap + EnvCap; exact exit codes (0 pass, 1 failure, 2 refusal).
+// Beats:
+//   1. openooda_bad_arg refuses unknown flags, --persona/--mode personas, and '..' traversal.
+//   2. openooda_run_cli routes help/version/about/cards/theme/check/audit/status/self-test verbs.
+//   3. openooda_selftest re-verifies the pure checkers on literal fixtures.
+
+import "core/card_check.oo";
+import "core/card_law.oo";
+import "oostd/core/primitives/str_extra.oo";
+import "cli/verbs.oo";
+
+fn openooda_bad_arg(args: List[String]) -> Int {
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        let a: String = list_get(args, i);
+        if str_contains(a, "..") { return i; }
+        if a == "--persona" || a == "--personas" || a == "--mode" { return i; }
+        if str_starts_with(a, "--") && a != "--json" && a != "--help" &&
+            a != "--version" && a != "--self-test" && !str_starts_with(a, "--tui") { return i; }
+        i = i + 1;
+    }
+    return 0 - 1;
+}
+
+fn openooda_json(args: List[String]) -> Bool {
+    let mut i: Int = 0;
+    while i < list_len(args) {
+        if list_get(args, i) == "--json" { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+fn openooda_target_ok(args: List[String]) -> Bool {
+    let mut i: Int = 1;
+    while i < list_len(args) {
+        let a: String = list_get(args, i);
+        if !str_starts_with(a, "-") && a != "." { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+pub fn openooda_selftest(fs: &FsReadCap) -> Bool {
+    if !card_version_ok(fs) { return false; }
+    if card_ver_num("2.11.137") < 0 { return false; }
+    if !card_shape("# t\nl1\nl2\nl3\nl4\nl5\nl6\nl7\n") { return false; }
+    if card_powers("`1` `2` `4` `8` `16` `32` `64` `128` `256`") != 9 { return false; }
+    let zsrc: String = "`97` `105` `110` `39` `16` Repos `L7` `@openOODA-agents` (`9` Repos)" +
+        " ooagent-hud +ooquota ootheme oobench";
+    if card_census(zsrc) != 10 { return false; }
+    let title: String = "# openOODA (openOODA) — Constitutional Specification," +
+        " Quick Cards & Ecosystem Root";
+    if !card_title_ok(title) { return false; }
+    let links: String = "cards/ooda.md cards/layers.md cards/spec.md cards/rules.md" +
+        " cards/ui.md cards/security.md cards/privacy.md cards/defense.md";
+    return card_link_set(links) == 8;
+}
+
+pub fn openooda_run_cli(fs: &FsReadCap, env: &EnvCap, args: List[String]) -> Int {
+    let ver: String = openooda_ver(fs);
+    if list_len(args) == 0 { return openooda_help(ver); }
+    let a0: String = list_get(args, 0);
+    let bad: Int = openooda_bad_arg(args);
+    if bad >= 0 {
+        println("openooda " + ver + ": refused argument " + list_get(args, bad));
+        return 2;
+    }
+    let json: Bool = openooda_json(args);
+    if a0 == "-h" || a0 == "--help" { return openooda_help(ver); }
+    if a0 == "-v" || a0 == "--version" {
+        println("openooda " + ver);
+        return 0;
+    }
+    if a0 == "theme" || a0 == "--tui" || str_starts_with(a0, "--tui=") {
+        return openooda_theme(env, args, ver);
+    }
+    if a0 == "--self-test" {
+        if openooda_selftest(fs) {
+            println("openooda " + ver + ": PASS (self-test)");
+            return 0;
+        }
+        println("openooda " + ver + ": FAIL (self-test)");
+        return 1;
+    }
+    if a0 == "about" || a0 == "cards" || a0 == "status" ||
+        a0 == "check" || a0 == "verify" || a0 == "audit" {
+        if !openooda_target_ok(args) {
+            println("openooda " + ver + ": self-verification target must be the repository root '.'");
+            return 2;
+        }
+        if a0 == "about" { return openooda_about(fs); }
+        if a0 == "cards" { return openooda_cards(fs); }
+        if a0 == "status" { return openooda_status(fs); }
+        return openooda_report(fs, json, a0 == "audit");
+    }
+    if a0 == "--json" { return openooda_report(fs, true, false); }
+    println("openooda " + ver + ": unknown argument " + a0);
+    return 2;
+}
+
+pub fn main(fs_r: &FsReadCap, env: &EnvCap, args: List[String]) -> Int {
+    return openooda_run_cli(fs_r, env, args);
+}

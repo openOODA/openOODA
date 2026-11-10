@@ -1,0 +1,74 @@
+// # openOODA Constitutional Law Checker — Census, Root, Title & Link Invariants
+// Logline: Prove layers.md carries the exact consolidated census (97/105/110), the
+//          governance root holds ten constitutional entries, AGENTS.md opens with the
+//          canonical title, and README.md links all eight quick cards.
+// Setup: Explicit FsReadCap; bounded reads of layers.md, AGENTS.md, README.md + path probes.
+// Beats:
+//   1. card_census counts the ten consolidated-ecosystem needles inside layers.md.
+//   2. card_root_ok probes the constitutional root (8-entry blueprint + VERSION + cards/).
+//   3. card_docs_ok requires the AGENTS title + all eight README card links; card_law_ok folds.
+
+pub fn card_census(src: String) -> Int {
+    let mut n: Int = 0;
+    if str_contains(src, "`97`") { n = n + 1; }
+    if str_contains(src, "`105`") { n = n + 1; }
+    if str_contains(src, "`110`") { n = n + 1; }
+    if str_contains(src, "`39`") { n = n + 1; }
+    if str_contains(src, "`16` Repos") { n = n + 1; }
+    if str_contains(src, "`L7` `@openOODA-agents` (`9` Repos)") { n = n + 1; }
+    if str_contains(src, "ooagent-hud") { n = n + 1; }
+    if str_contains(src, "+ooquota") { n = n + 1; }
+    if str_contains(src, "ootheme") { n = n + 1; }
+    if str_contains(src, "oobench") { n = n + 1; }
+    return n;
+}
+
+pub fn card_census_ok(fs: &FsReadCap) -> Bool {
+    let r: Result[String, String] = oo_read_file(fs, "cards/layers.md");
+    if r.is_err() { return false; }
+    let src: String = match r { Ok(s) => s, Err(_) => "" };
+    return card_census(src) == 10;
+}
+
+pub fn card_title_ok(src: String) -> Bool {
+    let t: String = str_trim(src);
+    if !str_starts_with(t, "# openOODA (openOODA)") { return false; }
+    return str_contains(t, "Constitutional Specification");
+}
+
+pub fn card_link_set(src: String) -> Int {
+    let mut n: Int = 0;
+    if str_contains(src, "cards/ooda.md") { n = n + 1; }
+    if str_contains(src, "cards/layers.md") { n = n + 1; }
+    if str_contains(src, "cards/spec.md") { n = n + 1; }
+    if str_contains(src, "cards/rules.md") { n = n + 1; }
+    if str_contains(src, "cards/ui.md") { n = n + 1; }
+    if str_contains(src, "cards/security.md") { n = n + 1; }
+    if str_contains(src, "cards/privacy.md") { n = n + 1; }
+    if str_contains(src, "cards/defense.md") { n = n + 1; }
+    return n;
+}
+
+pub fn card_root_ok(fs: &FsReadCap) -> Bool {
+    if !path_exists(fs, "AGENTS.md") || !path_exists(fs, "README.md") { return false; }
+    if !path_exists(fs, "VERSION") || !path_exists(fs, "Makefile") { return false; }
+    if !path_exists(fs, "ooda.pkg") || !path_exists(fs, "anchor.oo") { return false; }
+    if !path_exists(fs, "cards") || !path_exists(fs, "cli") { return false; }
+    if !path_exists(fs, "core") || !path_exists(fs, "tests") { return false; }
+    return true;
+}
+
+pub fn card_docs_ok(fs: &FsReadCap) -> Bool {
+    let ar: Result[String, String] = oo_read_file(fs, "AGENTS.md");
+    if ar.is_err() { return false; }
+    let a: String = match ar { Ok(s) => s, Err(_) => "" };
+    if !card_title_ok(a) { return false; }
+    let rr: Result[String, String] = oo_read_file(fs, "README.md");
+    if rr.is_err() { return false; }
+    let r: String = match rr { Ok(s) => s, Err(_) => "" };
+    return card_link_set(r) == 8;
+}
+
+pub fn card_law_ok(fs: &FsReadCap) -> Bool {
+    return card_root_ok(fs) && card_docs_ok(fs) && card_census_ok(fs);
+}
