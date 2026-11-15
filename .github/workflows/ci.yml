@@ -1,10 +1,14 @@
 name: openOODA CI
 
 on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
     inputs:
       target_tag:
-        description: 'Specific release tag to target or rebuild (optional, e.g. v2.11.0)'
+        description: 'Specific release tag to target or rebuild (optional, e.g. v2.12.0)'
         required: false
         type: string
         default: ''
@@ -15,12 +19,15 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    outputs:
+      version_tag: ${{ steps.gov.outputs.version_tag }}
     steps:
       - name: checkout openOODA
         uses: actions/checkout@v4
         with:
           path: openOODA
       - name: require governance tree
+        id: gov
         working-directory: ${{ github.workspace }}/openOODA
         run: |
           set -euo pipefail
@@ -50,8 +57,47 @@ jobs:
           grep -q 'linguist-language=OODA' .gitattributes || { echo "ERR .gitattributes missing OODA mapping"; exit 1; }
           # The canonical card ships the mandatory oostd reuse law.
           grep -q 'Always import `oostd`' AGENTS.md || { echo "ERR AGENTS.md missing oostd reuse law"; exit 1; }
+          echo "version_tag=v$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
           echo "[governance OK] 8 quick cards, 8-entry root, linguist + oostd laws wired"
 
-  auto-release:
+  integration:
     needs: [verify]
-    uses: openOODA/openOODA/.github/workflows/auto-release.yml@v2.10.44
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout openOODA
+        uses: actions/checkout@v4
+        with:
+          path: openOODA
+      - name: install standalone @core toolchain from openOODA/install@hub
+        run: |
+          set -euo pipefail
+          git ls-remote https://github.com/openOODA-core/oodac.git HEAD | grep -q 'refs/heads\|HEAD'
+          command -v clang >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y clang)
+          mkdir -p "$HOME/.openooda/bin" "$HOME/.openooda/cards" /tmp/oo-hub
+          hub="https://github.com/openOODA/install/releases/download/hub"
+          curl -fsSL "$hub/SHA256SUMS" -o /tmp/oo-hub/SHA256SUMS
+          for f in oodac-linux-x86_64 liboodar.a oohat-linux-x86_64 oostd-linux-x86_64.tar.gz; do
+            curl -fsSL "$hub/$f" -o "/tmp/oo-hub/$f"
+            grep -E "  $f\$" /tmp/oo-hub/SHA256SUMS | (cd /tmp/oo-hub && sha256sum -c -)
+          done
+          cp -f /tmp/oo-hub/oodac-linux-x86_64 "$HOME/.openooda/bin/oodac"
+          cp -f /tmp/oo-hub/oohat-linux-x86_64 "$HOME/.openooda/bin/oohat"
+          cp -f /tmp/oo-hub/liboodar.a "$HOME/.openooda/bin/liboodar.a"
+          chmod +x "$HOME/.openooda/bin/oodac" "$HOME/.openooda/bin/oohat"
+          tar -xzf /tmp/oo-hub/oostd-linux-x86_64.tar.gz -C "$HOME/.openooda"
+          test -f "$HOME/.openooda/oostd/core/anchor.oo"
+          rm -rf /tmp/oo-hub
+      - name: build, verify, and run standalone test suites
+        working-directory: ${{ github.workspace }}/openOODA
+        run: |
+          set -euo pipefail
+          make build verify test
+          "$HOME/.openooda/bin/oohat" cycle --json . | tee /tmp/oohat.json
+          grep -q '"quorum_mask":255' /tmp/oohat.json
+
+  auto-release:
+    needs: [verify, integration]
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/auto-release.yml
+    with:
+      target_tag: ${{ inputs.target_tag || needs.verify.outputs.version_tag }}

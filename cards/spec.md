@@ -7,6 +7,7 @@
 2. **Types, Bindings & Data Structures**:
    - Primitives: `Int` (64-bit signed), `Float` (f64), `Bool` (`true`/`false`), `String`, `List[T]`, `Option[T]`, `Result[T, E]`.
    - Bindings are immutable by default (`let x: Int = 10;`); mutable bindings require `let mut y: Int = 0;`.
+   - Compile-time constants: `[pub] const NAME: Type = expr;` folds scalar literals (`Int`, `Float`, `Bool`, `String`) at compile time.
    - Structs (NO trailing comma on the final field!):
      `pub struct Item { pub id: Int, pub label: String }`
    - Sum Types (Algebraic Data Types):

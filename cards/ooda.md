@@ -15,4 +15,4 @@
 3. **3-Command Fast OODA Loop**:
    - `ooda build && ooda test` -> Compile (`main.oo -> dist/<bin>`) and run functional + negative-trust tests.
    - `ooda check && ooda audit` -> Verify `1/2/4/8/16/32/64/128/256` shape ladder and 8-hat `oohat cycle` (`quorum_mask=255`).
-   - `ooda sync` -> Pull latest GitHub commits across `/Projects/openOODA*` and rebuild changed binaries into `~/.openooda/bin/`.
+   - `ooda sync` -> Pull latest GitHub commits across `$OODA_POLYROOT/openOODA*` and rebuild changed binaries into `~/.openooda/bin/`.
