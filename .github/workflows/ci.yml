@@ -14,7 +14,7 @@ on:
         default: ''
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -71,20 +71,22 @@ jobs:
       - name: install standalone @core toolchain from openOODA/install@hub
         run: |
           set -euo pipefail
-          git ls-remote https://github.com/openOODA-core/oodac.git HEAD | grep -q 'refs/heads\|HEAD'
           command -v clang >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y clang)
-          mkdir -p "$HOME/.openooda/bin" "$HOME/.openooda/cards" /tmp/oo-hub
+          mkdir -p "$HOME/.openooda/bin" "$HOME/.openooda/cards" "$HOME/.openooda/oostd" /tmp/oo-hub
           hub="https://github.com/openOODA/install/releases/download/hub"
           curl -fsSL "$hub/SHA256SUMS" -o /tmp/oo-hub/SHA256SUMS
-          for f in oodac-linux-x86_64 liboodar.a oohat-linux-x86_64 oostd-linux-x86_64.tar.gz; do
+          for f in oodac-linux-x86_64 liboodar.a oohat-linux-x86_64 oostd-linux-x86_64.tar.gz cap_table.oot; do
             curl -fsSL "$hub/$f" -o "/tmp/oo-hub/$f"
             grep -E "  $f\$" /tmp/oo-hub/SHA256SUMS | (cd /tmp/oo-hub && sha256sum -c -)
           done
           cp -f /tmp/oo-hub/oodac-linux-x86_64 "$HOME/.openooda/bin/oodac"
           cp -f /tmp/oo-hub/oohat-linux-x86_64 "$HOME/.openooda/bin/oohat"
           cp -f /tmp/oo-hub/liboodar.a "$HOME/.openooda/bin/liboodar.a"
+          cp -f /tmp/oo-hub/cap_table.oot "$HOME/.openooda/cards/cap_table.oot"
+          cp -f "${{ github.workspace }}/openOODA/AGENTS.md" "$HOME/.openooda/AGENTS.md"
+          cp -f "${{ github.workspace }}"/openOODA/cards/*.md "$HOME/.openooda/cards/"
           chmod +x "$HOME/.openooda/bin/oodac" "$HOME/.openooda/bin/oohat"
-          tar -xzf /tmp/oo-hub/oostd-linux-x86_64.tar.gz -C "$HOME/.openooda"
+          tar -xzf /tmp/oo-hub/oostd-linux-x86_64.tar.gz -C "$HOME/.openooda/oostd"
           test -f "$HOME/.openooda/oostd/core/anchor.oo"
           rm -rf /tmp/oo-hub
       - name: build, verify, and run standalone test suites
@@ -92,12 +94,14 @@ jobs:
         run: |
           set -euo pipefail
           make build verify test
-          "$HOME/.openooda/bin/oohat" cycle --json . | tee /tmp/oohat.json
+          "$HOME/.openooda/bin/oohat" cycle . --json | tee /tmp/oohat.json
           grep -q '"quorum_mask":255' /tmp/oohat.json
 
   auto-release:
     needs: [verify, integration]
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     uses: ./.github/workflows/auto-release.yml
     with:
       target_tag: ${{ inputs.target_tag || needs.verify.outputs.version_tag }}
