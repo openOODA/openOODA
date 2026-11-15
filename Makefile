@@ -9,7 +9,7 @@ BIN := bin/openooda
 TESTBIN := bin/test_functional
 TESTBIN2 := bin/test_refusal
 REPO_NAME := openooda
-VER := 2.12.1
+VER := 2.12.2
 SRC := $(shell find . -name '*.oo' -not -path './.git/*' -not -path './bin/*' -not -path './dist/*' -not -path './.ooda-cache/*' | sort)
 
 OODA_OODAR_ROOT ?= $(HOME)/.openooda/bin
