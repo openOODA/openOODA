@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       target_tag:
-        description: 'Specific release tag to target or rebuild (optional, e.g. v2.12.2)'
+        description: 'Specific release tag to target or rebuild (optional, e.g. v3.0.0)'
         required: false
         type: string
         default: ''
@@ -55,10 +55,10 @@ jobs:
           done
           # Linguist wiring: .oo/.oot resolve to the OODA language.
           grep -q 'linguist-language=OODA' .gitattributes || { echo "ERR .gitattributes missing OODA mapping"; exit 1; }
-          # The canonical card ships the mandatory oostd reuse law.
-          grep -q 'Always import `oostd`' AGENTS.md || { echo "ERR AGENTS.md missing oostd reuse law"; exit 1; }
+          # The canonical card ships the mandatory ooda-standard reuse law.
+          grep -q 'Always import `ooda-standard`' AGENTS.md || { echo "ERR AGENTS.md missing ooda-standard reuse law"; exit 1; }
           echo "version_tag=v$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
-          echo "[governance OK] 8 quick cards, 8-entry root, linguist + oostd laws wired"
+          echo "[governance OK] 8 quick cards, 10-entry root, linguist + ooda-standard laws wired"
 
   integration:
     needs: [verify]
@@ -72,30 +72,30 @@ jobs:
         run: |
           set -euo pipefail
           command -v clang >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y clang)
-          mkdir -p "$HOME/.openooda/bin" "$HOME/.openooda/cards" "$HOME/.openooda/oostd" /tmp/oo-hub
+          mkdir -p "$HOME/.openooda/bin" "$HOME/.openooda/cards" "$HOME/.openooda/ooda-standard" /tmp/oo-hub
           hub="https://github.com/openOODA/install/releases/download/hub"
           curl -fsSL "$hub/SHA256SUMS" -o /tmp/oo-hub/SHA256SUMS
-          for f in oodac-linux-x86_64 liboodar.a oohat-linux-x86_64 oostd-linux-x86_64.tar.gz cap_table.oot; do
+          for f in ooda-compiler-linux-x86_64 liboodar.a ooda-verify-linux-x86_64 ooda-standard-linux-x86_64.tar.gz cap_table.oot; do
             curl -fsSL "$hub/$f" -o "/tmp/oo-hub/$f"
             grep -E "  $f\$" /tmp/oo-hub/SHA256SUMS | (cd /tmp/oo-hub && sha256sum -c -)
           done
-          cp -f /tmp/oo-hub/oodac-linux-x86_64 "$HOME/.openooda/bin/oodac"
-          cp -f /tmp/oo-hub/oohat-linux-x86_64 "$HOME/.openooda/bin/oohat"
+          cp -f /tmp/oo-hub/ooda-compiler-linux-x86_64 "$HOME/.openooda/bin/ooda-compiler"
+          cp -f /tmp/oo-hub/ooda-verify-linux-x86_64 "$HOME/.openooda/bin/ooda-verify"
           cp -f /tmp/oo-hub/liboodar.a "$HOME/.openooda/bin/liboodar.a"
           cp -f /tmp/oo-hub/cap_table.oot "$HOME/.openooda/cards/cap_table.oot"
           cp -f "${{ github.workspace }}/openOODA/AGENTS.md" "$HOME/.openooda/AGENTS.md"
           cp -f "${{ github.workspace }}"/openOODA/cards/*.md "$HOME/.openooda/cards/"
-          chmod +x "$HOME/.openooda/bin/oodac" "$HOME/.openooda/bin/oohat"
-          tar -xzf /tmp/oo-hub/oostd-linux-x86_64.tar.gz -C "$HOME/.openooda/oostd"
-          test -f "$HOME/.openooda/oostd/core/anchor.oo"
+          chmod +x "$HOME/.openooda/bin/ooda-compiler" "$HOME/.openooda/bin/ooda-verify"
+          tar -xzf /tmp/oo-hub/ooda-standard-linux-x86_64.tar.gz -C "$HOME/.openooda/ooda-standard"
+          test -f "$HOME/.openooda/ooda-standard/core/anchor.oo"
           rm -rf /tmp/oo-hub
       - name: build, verify, and run standalone test suites
         working-directory: ${{ github.workspace }}/openOODA
         run: |
           set -euo pipefail
           make build verify test
-          OODA_FS_READDIR="$PWD:$HOME/.openooda" "$HOME/.openooda/bin/oohat" cycle . --json | tee /tmp/oohat.json
-          grep -q '"quorum_mask":255' /tmp/oohat.json
+          OODA_FS_READDIR="$PWD:$HOME/.openooda" "$HOME/.openooda/bin/ooda-verify" cycle . --json | tee /tmp/ooda-verify.json
+          grep -q '"quorum_mask":255' /tmp/ooda-verify.json
           mkdir -p dist
           cp -f bin/openooda dist/openooda-linux-x86_64
           (cd dist && sha256sum openooda-linux-x86_64 > openooda-linux-x86_64.sha256)

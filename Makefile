@@ -1,4 +1,4 @@
-OODA_COMPILER ?= $(HOME)/.openooda/bin/oodac
+OODA_COMPILER ?= $(HOME)/.openooda/bin/ooda-compiler
 export OODA_COMPILER
 OODAC_BIN ?= $(OODA_COMPILER)
 export OODAC_BIN
@@ -9,14 +9,15 @@ BIN := bin/openooda
 TESTBIN := bin/test_functional
 TESTBIN2 := bin/test_refusal
 REPO_NAME := openooda
-VER := 2.12.2
+VER := 3.0.0
 SRC := $(shell find . -name '*.oo' -not -path './.git/*' -not -path './bin/*' -not -path './dist/*' -not -path './.ooda-cache/*' | sort)
 
 OODA_OODAR_ROOT ?= $(HOME)/.openooda/bin
 export OODA_OODAR_ROOT
-OODA_OOSTD_ROOT ?= $(HOME)/.openooda/oostd
-export OODA_OOSTD_ROOT
-ENV := OO_LIST_AMBIENT_QUOTA=$(OO_LIST_AMBIENT_QUOTA) OO_LINT_ROOTS=$(CURDIR) OODA_COMPILER=$(OODA_COMPILER) OODAC_BIN=$(OODAC_BIN) OODA_FS_READDIR=$(OODA_READDIR) OODA_FS_WRITEDIR=$(OODA_WRITEDIR) OODA_OODAR_ROOT=$(OODA_OODAR_ROOT) OODA_OOSTD_ROOT=$(OODA_OOSTD_ROOT) OODA_NO_JAIL=1
+OODA_STANDARD_ROOT ?= $(HOME)/.openooda/ooda-standard
+export OODA_STANDARD_ROOT
+unexport OODA_OOSTD_ROOT
+ENV := OO_LIST_AMBIENT_QUOTA=$(OO_LIST_AMBIENT_QUOTA) OO_LINT_ROOTS=$(CURDIR) OODA_COMPILER=$(OODA_COMPILER) OODAC_BIN=$(OODAC_BIN) OODA_FS_READDIR=$(OODA_READDIR) OODA_FS_WRITEDIR=$(OODA_WRITEDIR) OODA_OODAR_ROOT=$(OODA_OODAR_ROOT) OODA_STANDARD_ROOT=$(OODA_STANDARD_ROOT) OODA_NO_JAIL=1
 
 .PHONY: all build verify test check line-cap file-law academy density vocab shape link-law lint-oo-size clean
 
@@ -154,7 +155,7 @@ check:
 	@for f in $$(find . -name "*.oo" -not -path "./.git/*" -not -path "./bin/*" -not -path "./dist/*" -not -path "./.ooda-cache/*"); do \
 		$(ENV) $(OODA_COMPILER) check "$$f" > /dev/null || exit 1; \
 	done; \
-	echo "PASS: oodac check holds on all .oo files"
+	echo "PASS: ooda-compiler check holds on all .oo files"
 
 verify: line-cap file-law academy density vocab shape link-law lint-oo-size check
 

@@ -9,8 +9,8 @@
    - Upper 32 bits = `16-bit OODA Epoch` + `8-bit Rights Mask` + `8-bit Scope Badge`.
    - Functions receive borrowed capability tokens (`&FsReadCap`) from `main` and attenuate child masks before delegation.
 
-2. **Canonical Security Hosts (`openOODA-tools`)**:
-   - **`oosandbox`**: Capability + Landlock + seccomp-BPF + cgroupv2 containment (`run`, `landlock`, `seccomp`, `cgroup`, `limits`, `cap`, `policy`).
-   - **`oosign`**: Post-quantum (`ML-KEM-768`, `ML-DSA-65`), Ed25519, X.509/mTLS, and ZK proof verification (`sign`, `verify`, `keygen`, `token`, `ssl`, `pqc`, `zk`).
-   - **`ooprovenance`**: Hardware TPM2/SEV-SNP quotes, Stage0 256-byte `hex0` seed (`elf_init_array_cnt == 0`), Diverse Double-Compilation (`oo_ddc_seal_gated`), IMA, and Merkle audit logs.
-   - **`oovault`**: Hardware-sealed secret store (`TpmCap`), FIDO2, Shamir secret sharing, and verified zeroization (`shred`).
+2. **Canonical Security Hosts (`@openOODA-core` & `@openOODA-system`)**:
+   - **`ooda-sandbox`**: Capability + Landlock + seccomp-BPF + cgroupv2 containment (`run`, `landlock`, `seccomp`, `cgroup`, `limits`, `cap`, `policy`).
+   - **`ooda-sign`** (`@openOODA-core`): Post-quantum (`ML-KEM-768`, `ML-DSA-65`), Ed25519, X.509/mTLS, and ZK proof verification (`sign`, `verify`, `keygen`, `token`, `ssl`, `pqc`, `zk`).
+   - **`ooda-provenance`** (`@openOODA-core`): Hardware TPM2/SEV-SNP quotes, Stage0 256-byte `hex0` seed (`elf_init_array_cnt == 0`), Diverse Double-Compilation (`oo_ddc_seal_gated`), IMA, and Merkle audit logs.
+   - **`ooda-vault`**: Hardware-sealed secret store (`TpmCap`), FIDO2, Shamir secret sharing, and verified zeroization (`shred`).
