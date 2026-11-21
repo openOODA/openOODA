@@ -13,3 +13,8 @@
    - **Camera & Mic LED Gate (`ooda_compositor_seat_privacy_gate`)**: Refuses capture unless `CameraCap`/`AudioCap` is held AND the hardware privacy indicator LED is armed (`return 2`).
    - **Screen Share Blackout (`ooda_compositor_net_stream_gated`)**: Automatically blacks out windows tagged `PRIVACY_BLACKOUT` during screen recording/casting.
    - **Clipboard Auto-Burn (`ooda-portal/core/clip/ttl_burn.oo`)**: `PRIVACY_BLACKOUT` copies expire after **1 paste or 30 seconds** (default: 64 pastes / 3600s) and zeroize RAM.
+
+4. **Canonical Local-First Feedback & Opt-In Interaction Journal (`ooda-standard v2.14.0`)**:
+   - **Default-OFF Interaction Journal**: Controlled fail-closed by `~/.openooda/config/feedback.oot` (`journal_enabled=0` by default; toggled in `ooda-settings` Privacy & Caps or `<app> feedback journal on|off|clear`).
+   - **Strictly Anonymous `OOFEEDBACK 1` Bundles**: Maximum 16 KB, SHA-256 sealed (`~/.openooda/feedback/*.oot`); zero contact fields, zero raw keystrokes, zero unguarded background network calls.
+   - **Mandatory Scrubbing & Capabilities**: `fb_scrub_text` redacts home paths, emails, IPv4, PEM/API/bearer tokens, ANSI controls, and `SECRET:` lines before saving or opening GitHub Issue/Discussion URLs under `RIGHT_PRIVACY_REDACT | RIGHT_ZERO_TELEMETRY`.

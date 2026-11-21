@@ -13,7 +13,8 @@
 
 2. **CLI, Theme, `ooda-standard` Reuse & Zero-Trust Laws**:
    - Subcommand dispatch only (`<binary> <subcommand>`); `--persona`, `--mode`, and `--personas` flags are forbidden and must exit `2`.
-   - Every canonical binary MUST implement `<binary> about`, connect output to `ooda-theme`, and refuse unknown flags (`--unknown-flag-zzz`) with exit `2`.
+   - Every canonical binary MUST implement `<binary> about` and `<binary> feedback`, connect output to `ooda-theme`, and refuse unknown flags (`--unknown-flag-zzz`) with exit `2`.
+   - **Canonical Feedback Dispatch (`ooda-standard/core/app/feedback_grp/fb_cli.oo`)**: Wire `<binary> feedback` with zero capability creep (`fb_cli_run` / `fb_cli_run_fs` / `fb_cli_run_lite` / `fb_cli_run_pure` matching existing `main` caps) and split public routing in `openOODA/openOODA` (`bug`/`ux` -> Issues, `idea`/`praise` -> Discussions, keeping core/system/apps repos private).
    - **Mandatory `ooda-standard` Standard Library Reuse**: Never hand-roll custom hashing, crypto, fixed-point/interval math, 2D/3D collision/physics/engine wiring, frontier AI-for-science/graph algorithms, or collections when `ooda-standard` provides them (`ooda-standard/core/math/`, `ooda-standard/core/science/phys/`, `ooda-standard/core/app/ai/`, `ooda-standard/core/app/ui/game_engine/`, `ooda-standard/core/collection/`, `ooda-standard/sec/`, `ooda-standard/net/`, `ooda-standard/fs/`).
    - Zero `/usr/bin/*` host shell-out relays; all personas must run native `.oo` engines.
 
