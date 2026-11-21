@@ -92,6 +92,7 @@ full ecosystem tool execution:
 | **Inspect structural skeleton (Loglines, imports, `pub fn`)** | `ooda-language outline <path>` | `ooda_language_outline` | `ooda.outline` |
 | **Type-check `.oo` file with `ooda-compiler`** | `ooda-compiler check <file>` | `ooda_compiler_check` | `ooda.check` |
 | **Run 8-Hat verification cycle (`quorum_mask=255`)** | `ooda-verify cycle <repo> --json` | `ooda_verify` | `ooda.verify` |
+| **Audit host-OS adapter boundary (zero OS plumbing in apps)** | `ooda-verify portability <repo> --json` | `ooda_verify` | `ooda.verify` |
 | **Run Zero-Trust binary & git falsification** | `ooda-verify falsify <repo>` | `ooda_falsify_audit` | `ooda.falsify` |
 | **Run local/fleet GPU inference (`ooda-inference`)** | `ooda-inference run <prompt>` | `ooda_inference` / `ooda_inference_models` | — |
 | **Apply deterministic source fixer** | `ooda fix <file> --yes` | `ooda_fix` | `ooda.fix` |
@@ -115,3 +116,8 @@ full ecosystem tool execution:
   (`@core`/`@system`/`@apps`/`@games`/`@workstation`/`@all`), fast SHA-256-diff `ooda-package update`,
   `ooda-package install ooda-os -y` (`ooda-flasher` + `~/.openooda/images/ooda-os-x86_64.iso`), and
   `ooda-package install ooda-container -y` (`ooda-container` + `~/.openooda/containers/ooda-buildbox/`).
+- **Host-OS Adapter Boundary & Tier-1 Hosted Linux Dogfoodability (`host_os=hosted-linux-tier1`)**: Never let
+  Linux-specific plumbing (`/dev/ptmx`, `/etc/*`, `ioctl`/`termios`, `/proc/*`/`/sys/*`, GNU/desktop CLI tools) leak
+  into app business logic (`layer=apps` or `host_os=hosted-linux-tier1`). Keep all host-OS adapters isolated in
+  `ooda-runtime` and `ooda-standard` (verified uniformly by `ooda-verify cycle` and `ooda-verify portability`) so
+  Tier-1 apps that run and dogfood cleanly on hosted Linux today are ~95% ready for native openOODA OS.
