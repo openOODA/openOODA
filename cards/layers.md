@@ -2,7 +2,7 @@
 
 1. **Umbrella (`@openOODA` — `4` Repos + `.github` Org Profile)**: Constitutional governance & Quick Cards (`cards/`), `openOODA`, `catalog`, `install`, `website`.
 2. **`@openOODA-core` (Toolchain, Runtime, Engine & Provenance — `15` Packages)**:
-   - Toolchain (`8`): `ooda` (flagship master CLI), `ooda-compiler` (`.oo` compiler), `ooda-runtime` (native runtime `liboodar-core.a`), `ooda-standard` (standard library), `ooda-package` (package solver), `ooda-language` (LSP), `ooda-bridge` (MCP broker), `ooda-verify` (8-hat verifier & debugger).
+   - Toolchain (`8`): `ooda` (flagship master CLI), `ooda-compiler` (`.oo` compiler incl. `--target x86_64-openooda`), `ooda-runtime` (native runtime `libooda-runtime*.a` incl. `libooda-runtime-openooda.a` 27-syscall ABI via `OODA_RUNTIME_ROOT`), `ooda-standard` (standard library), `ooda-package` (package solver), `ooda-language` (LSP), `ooda-bridge` (MCP broker), `ooda-verify` (8-hat verifier & debugger).
    - Foundations (`7`): `ooda-binary` (ELF/PE/Mach-O tools), `ooda-build` (deterministic build driver), `ooda-engine` (game & sim runtime), `ooda-format` (wire/codec formats), `ooda-interface` (multi-surface scenes), `ooda-provenance` (TPM2/SEV-SNP/DDC/Merkle provenance), `ooda-sign` (PQC/Ed25519/mTLS signing).
 3. **`@openOODA-system` (Kernel, Boot, Daemons, Shell & Utilities — `37` Packages)**:
    - Kernel & Drivers (`10`): `ooda-archive`, `ooda-boot` (UEFI + TPM2/DICE/Caliptra), `ooda-container`, `ooda-data`, `ooda-drivers` (storage/net/io/virt/accel suites), `ooda-files`, `ooda-hardware`, `ooda-health`, `ooda-kernel` (capability microkernel + CXL 3.0), `ooda-machine`.
