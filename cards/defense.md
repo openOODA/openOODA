@@ -10,6 +10,6 @@
    - Per-badge (`badge8`) socket egress filtering, declarative `nft` zones, and post-quantum WireGuard (`ML-KEM-768` + ChaCha20-Poly1305) mesh tunnels.
 
 3. **Hardware & Memory Defense Boundaries (`@openOODA-system`)**:
-   - **IOMMU DMA Bounce Guard (`ooda-kernel/mm/dram_mct_guard.oo` & `ooda-modem`)**: Untrusted PCIe/Thunderbolt/WWAN baseband DMA is restricted to isolated 4 KiB bounce pages (`MmioCap` + `DmaCap`).
+   - **IOMMU DMA Bounce Guard (`ooda-kernel/mm/dram_mct_guard.oo` & `ooda-drivers`)**: Untrusted PCIe/Thunderbolt/WWAN baseband DMA is restricted to isolated 4 KiB bounce pages (`MmioCap` + `DmaCap`).
    - **DRAM MCT Zeroization**: Cryptographic memory scrub on arena reset and page free.
    - **Locked-Screen USB Firewall (`ooda-drivers/io/usb_class_firewall.oo`)**: Blocks new USB HID/Storage/Network device admission while the session seat is locked.

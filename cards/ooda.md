@@ -1,8 +1,8 @@
 # ooda.md — How to Quickly Build & Adapt openOODA Software (`ooda ooda`)
 
 1. **Find Where Code Belongs (Never Duplicate Repos)**:
-   - Run `ooda about` (lists the 4 canonical organizations) or `ooda search <keyword>` before writing code.
-   - Route UI/scene work to `ooda-interface` (`.oot` scene tree -> `tui|gui|wui|vui`), simulation/game work to `ooda-engine` (4 pipelines + `ooda-network` netlock), and original games to the `@openOODA-apps` titles (`ooda-emulator`, `ooda-arcade`, `ooda-commander`, `ooda-strike`, `ooda-voxel`).
+   - Run `ooda about` (lists the 5 canonical organizations) or `ooda search <keyword>` before writing code.
+   - Route UI/scene work to `ooda-interface` (`.oot` scene tree -> `tui|gui|wui|vui`), simulation/game work to `@openOODA-games/ooda-engine` (4 pipelines + `ooda-network` netlock), and original games to `@openOODA-games` (`ooda-arcade`, `ooda-capella`, `ooda-commander`, `ooda-island`, `ooda-retro`, `ooda-ski`, `ooda-strike`, `ooda-voxel`).
    - Add new features as clean subcommands inside the canonical domain binary (`<binary> <subcommand>`), never via `--mode`/`--persona` flags or symlinks.
 
 2. **Standard Repository Anatomy (`<= 32` `.oo` Pages, `<= 8` Entries/Dir)**:

@@ -1,7 +1,5 @@
 OODA_COMPILER ?= $(HOME)/.openooda/bin/ooda-compiler
 export OODA_COMPILER
-OODAC_BIN ?= $(OODA_COMPILER)
-export OODAC_BIN
 OODA_READDIR ?= $(HOME)/.openooda:$(CURDIR):/tmp:/usr:/lib:/lib64
 OODA_WRITEDIR ?= $(CURDIR):/tmp
 OO_LIST_AMBIENT_QUOTA ?= 8589934592
@@ -9,15 +7,14 @@ BIN := bin/openooda
 TESTBIN := bin/test_functional
 TESTBIN2 := bin/test_refusal
 REPO_NAME := openooda
-VER := 3.0.1
+VER := 3.1.0
 SRC := $(shell find . -name '*.oo' -not -path './.git/*' -not -path './bin/*' -not -path './dist/*' -not -path './.ooda-cache/*' | sort)
 
 OODA_RUNTIME_ROOT ?= $(HOME)/.openooda/bin
 export OODA_RUNTIME_ROOT
 OODA_STANDARD_ROOT ?= $(HOME)/.openooda/ooda-standard
 export OODA_STANDARD_ROOT
-unexport OODA_OOSTD_ROOT
-ENV := OO_LIST_AMBIENT_QUOTA=$(OO_LIST_AMBIENT_QUOTA) OO_LINT_ROOTS=$(CURDIR) OODA_COMPILER=$(OODA_COMPILER) OODAC_BIN=$(OODAC_BIN) OODA_FS_READDIR=$(OODA_READDIR) OODA_FS_WRITEDIR=$(OODA_WRITEDIR) OODA_RUNTIME_ROOT=$(OODA_RUNTIME_ROOT) OODA_STANDARD_ROOT=$(OODA_STANDARD_ROOT) OODA_NO_JAIL=1
+ENV := OO_LIST_AMBIENT_QUOTA=$(OO_LIST_AMBIENT_QUOTA) OO_LINT_ROOTS=$(CURDIR) OODA_COMPILER=$(OODA_COMPILER) OODA_FS_READDIR=$(OODA_READDIR) OODA_FS_WRITEDIR=$(OODA_WRITEDIR) OODA_RUNTIME_ROOT=$(OODA_RUNTIME_ROOT) OODA_STANDARD_ROOT=$(OODA_STANDARD_ROOT) OODA_NO_JAIL=1
 
 .PHONY: all build verify test check line-cap file-law academy density vocab shape link-law lint-oo-size clean
 
@@ -163,8 +160,8 @@ test: $(BIN)
 	@mkdir -p .ooda-cache
 	@$(ENV) $(OODA_COMPILER) build tests/test_functional.oo -o $(TESTBIN) > /dev/null
 	@$(ENV) $(OODA_COMPILER) build tests/test_refusal.oo -o $(TESTBIN2) > /dev/null
-	@PATH=/nonexistent $(ENV) ./$(TESTBIN) | grep -q "PASS: functional" && echo "PASS: functional suite under PATH=/nonexistent"
-	@PATH=/nonexistent $(ENV) ./$(TESTBIN2) | grep -q "PASS: refusal" && echo "PASS: refusal suite under PATH=/nonexistent"
+	@OODA_LEAK_CHECK=1 PATH=/nonexistent $(ENV) ./$(TESTBIN) | grep -q "PASS: functional" && echo "PASS: functional suite under PATH=/nonexistent + OODA_LEAK_CHECK=1"
+	@OODA_LEAK_CHECK=1 PATH=/nonexistent $(ENV) ./$(TESTBIN2) | grep -q "PASS: refusal" && echo "PASS: refusal suite under PATH=/nonexistent + OODA_LEAK_CHECK=1"
 	@PATH=/nonexistent $(ENV) ./$(BIN) check . | grep -q "verify OK" && echo "PASS: openooda check ."
 	@PATH=/nonexistent $(ENV) ./$(BIN) check | grep -q "verify OK" && echo "PASS: openooda check"
 	@PATH=/nonexistent $(ENV) ./$(BIN) verify | grep -q "verify OK" && echo "PASS: openooda verify"

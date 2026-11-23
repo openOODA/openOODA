@@ -24,7 +24,7 @@
    - **Pipelines**: `core-vm` (deterministic fixed-point VM), `2d-pixel` (true 2D fixed-point coordinates, parallax tiles, integer AABB hitbox/hurtbox solver), `grid-sim` (cellular/agent simulation), `3d-space`/`3d-voxel` (bounded volumetric scenes).
    - **Procgen**: Seeded procedural generation (`RandCap`) shared by all pipelines; identical seed -> bit-identical world.
    - **Netlock**: 3-tier lock over the `ooda-network` fabric — tier-1 state hash, tier-2 input ledger, tier-3 replay attestation — with `<50us` 8-frame arena rollback and a 4-layer zero-trust anti-cheat stack.
-   - **Mind Bridge**: Multimodal AI NPC bridge via `ooda-inference` (local inference), `ooda` (tool-using agents), and `ooda-audio` (digital-audio-workstation voice/MIDI surface).
+   - **Mind Bridge**: Multimodal AI NPC bridge via `ooda-inference` (local inference), `ooda` (tool-using agents), and `ooda-media` (audio/MIDI & media workspace).
 
 5. **CLI / TUI / Desktop / Mobile / Hardware RGB Surface Rules**:
    - **CLI / TUI (`ooda-theme`)**: Degrade gracefully from 24-bit TrueColor -> 256 -> 16 -> `NO_COLOR`; support `--json` for machine output; use `ooda-theme` subcommands (`table`, `dialog`, `prompt`, `progress`, `figure`, `glyph`, `mascot`).

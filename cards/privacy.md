@@ -7,7 +7,7 @@
 2. **Stream, Taint & Metadata Redaction (`@openOODA-system/ooda-vault` & `@openOODA-apps/ooda-camera`)**:
    - **Static & Dynamic IFC Taint (`SECRET:`)**: Values tagged `SECRET:` cannot flow to unencrypted network, log, or `process_exec` sinks.
    - **`ooda-vault`** (`redact`, `taint`, `guard`, `prompt-filter`, `pii`, `exif`): Scrubs PEM private keys, bearer/API tokens, PII, and prompt-injection payloads from streams and agent logs.
-   - **Default EXIF/GPS Stripping (`ooda-camera` & `ooda-player`)**: Strips GPS coordinates, serial numbers, and device timestamps on capture/export by default.
+   - **Default EXIF/GPS Stripping (`ooda-camera` & `ooda-media`)**: Strips GPS coordinates, serial numbers, and device timestamps on capture/export by default.
 
 3. **Hardware Privacy LED & Desktop Portal Gates (`@openOODA-system/ooda-compositor` & `ooda-portal`)**:
    - **Camera & Mic LED Gate (`ooda_compositor_seat_privacy_gate`)**: Refuses capture unless `CameraCap`/`AudioCap` is held AND the hardware privacy indicator LED is armed (`return 2`).

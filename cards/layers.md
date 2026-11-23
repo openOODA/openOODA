@@ -1,13 +1,15 @@
-# layers.md — The 4-Organization Architecture Map (`ooda layers`)
+# layers.md — The 5-Organization Architecture Map (`ooda layers`)
 
 1. **Umbrella (`@openOODA` — `4` Repos + `.github` Org Profile)**: Constitutional governance & Quick Cards (`cards/`), `openOODA`, `catalog`, `install`, `website`.
-2. **`@openOODA-core` (Toolchain, Runtime, Engine & Provenance — `15` Packages)**:
-   - Toolchain (`8`): `ooda` (flagship master CLI), `ooda-compiler` (`.oo` compiler incl. `--target x86_64-openooda`), `ooda-runtime` (native runtime `libooda-runtime*.a` incl. `libooda-runtime-openooda.a` 27-syscall ABI via `OODA_RUNTIME_ROOT`), `ooda-standard` (standard library), `ooda-package` (package solver), `ooda-language` (LSP), `ooda-bridge` (MCP broker), `ooda-verify` (8-hat verifier & debugger).
-   - Foundations (`7`): `ooda-binary` (ELF/PE/Mach-O tools), `ooda-build` (deterministic build driver), `ooda-engine` (game & sim runtime), `ooda-format` (wire/codec formats), `ooda-interface` (multi-surface scenes), `ooda-provenance` (TPM2/SEV-SNP/DDC/Merkle provenance), `ooda-sign` (PQC/Ed25519/mTLS signing).
-3. **`@openOODA-system` (Kernel, Boot, Daemons, Shell & Utilities — `37` Packages)**:
-   - Kernel & Drivers (`10`): `ooda-archive`, `ooda-boot` (UEFI + TPM2/DICE/Caliptra), `ooda-container`, `ooda-data`, `ooda-drivers` (storage/net/io/virt/accel suites), `ooda-files`, `ooda-hardware`, `ooda-health`, `ooda-kernel` (capability microkernel + CXL 3.0), `ooda-machine`.
-   - Daemons & Security (`11`): `ooda-authority`, `ooda-bus`, `ooda-connect`, `ooda-database`, `ooda-firewall`, `ooda-inference`, `ooda-modem`, `ooda-network`, `ooda-sandbox`, `ooda-shell`, `ooda-vault`.
-   - Shell & Utilities (`16`): `ooda-compositor`, `ooda-disk`, `ooda-edit`, `ooda-filesystem`, `ooda-list`, `ooda-panel`, `ooda-portal`, `ooda-read`, `ooda-screensaver`, `ooda-settings`, `ooda-start`, `ooda-terminal`, `ooda-text`, `ooda-theme`, `ooda-version`, `ooda-web`.
-4. **`@openOODA-apps` (Flagship Applications & Games — `18` Packages)**:
-   - `ooda-arcade`, `ooda-audio`, `ooda-browser`, `ooda-calculator`, `ooda-camera`, `ooda-canvas`, `ooda-chat`, `ooda-commander`, `ooda-emulator`, `ooda-flasher`, `ooda-office`, `ooda-passwords`, `ooda-player`, `ooda-remote`, `ooda-store`, `ooda-strike`, `ooda-studio`, `ooda-voxel`.
-5. **Fleet Census**: `70` product packages (`15` core + `37` system + `18` apps) + `4` `@openOODA` umbrella repos = `74` product+platform repos; plus `4` `.github` org-profile repos = `78` total repos across the 4 canonical organizations.
+2. **`@openOODA-core` (Toolchain, Runtime, Interface & Signing — `11` Packages)**:
+   - Toolchain (`8`): `ooda` (master CLI + build/format/binary), `ooda-compiler` (`.oo` compiler incl. `--target x86_64-openooda`), `ooda-runtime` (`libooda-runtime*.a` via `OODA_RUNTIME_ROOT`), `ooda-standard` (standard library), `ooda-package` (package solver), `ooda-language` (LSP), `ooda-bridge` (MCP broker), `ooda-verify` (8-hat verifier & debugger).
+   - Foundations (`3`): `ooda-interface` (multi-surface scenes), `ooda-sign` (PQC/Ed25519/mTLS/ZK + TPM2/SEV-SNP/DDC/Merkle provenance), `ooda-version` (workspace & release versions).
+3. **`@openOODA-system` (Kernel, Boot, Drivers, Daemons, Shell & Desktop — `26` Packages)**:
+   - Kernel & Hardware (`6`): `ooda-archive`, `ooda-boot` (UEFI + TPM2/DICE/Caliptra), `ooda-container` (realms + sandbox/caps), `ooda-drivers` (storage/net/io/modem/virt/accel), `ooda-hardware` (hw/audio/bt/sensors/rgb), `ooda-kernel` (capability microkernel + CXL 3.0).
+   - Daemons & Security (`9`): `ooda-authority`, `ooda-bus`, `ooda-connect`, `ooda-data` (data/text/read), `ooda-database`, `ooda-filesystem` (OOVFS + disk/list), `ooda-firewall`, `ooda-health` (ps/top/proc/units), `ooda-inference`.
+   - Network, Shell & Desktop (`11`): `ooda-compositor`, `ooda-network`, `ooda-panel`, `ooda-portal`, `ooda-screensaver`, `ooda-settings`, `ooda-shell` (shell/date/tty/mux), `ooda-start` (init/logs/cron/power), `ooda-theme`, `ooda-vault`, `ooda-web`.
+4. **`@openOODA-apps` (Flagship Native Applications — `19` Packages)**:
+   - `ooda-browser`, `ooda-calculator`, `ooda-calendar`, `ooda-camera`, `ooda-chat`, `ooda-clock`, `ooda-code`, `ooda-files`, `ooda-flasher`, `ooda-media`, `ooda-notepad`, `ooda-office`, `ooda-passwords`, `ooda-photos`, `ooda-remote`, `ooda-screenshot`, `ooda-software`, `ooda-studio`, `ooda-terminal`.
+5. **`@openOODA-games` (Deterministic Game Engine & Native Games — `9` Packages)**:
+   - `ooda-engine`, `ooda-arcade`, `ooda-capella`, `ooda-commander`, `ooda-island`, `ooda-retro`, `ooda-ski`, `ooda-strike`, `ooda-voxel`.
+6. **Fleet Census**: `65` product packages (`11` core + `26` system + `19` apps + `9` games) + `4` `@openOODA` umbrella repos = `69` product+platform repos; plus `5` `.github` org-profile repos = `74` total repos across the 5 canonical organizations.
