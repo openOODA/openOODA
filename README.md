@@ -35,9 +35,18 @@ ooda-package install @all          # Complete 5-organization stack (66 packages)
 | <img src="https://raw.githubusercontent.com/openOODA/.github/master/brand/option-b/openOODA-apps.svg" width="28"> | [`@openOODA-apps`](https://github.com/openOODA-apps) | `19` + `.github` | Flagship Native Applications (`ooda-browser`, `ooda-calculator`, `ooda-calendar`, `ooda-camera`, `ooda-chat`, `ooda-clock`, `ooda-code`, `ooda-files`, `ooda-flasher`, `ooda-media`, `ooda-notepad`, `ooda-office`, `ooda-passwords`, `ooda-photos`, `ooda-remote`, `ooda-screenshot`, `ooda-software`, `ooda-studio`, `ooda-terminal`) |
 | <img src="https://raw.githubusercontent.com/openOODA/.github/master/brand/option-b/openOODA-games.svg" width="28"> | [`@openOODA-games`](https://github.com/openOODA-games) | `9` + `.github` | Deterministic Game Engine & Native Games (`ooda-engine`, `ooda-arcade`, `ooda-capella`, `ooda-commander`, `ooda-island`, `ooda-retro`, `ooda-ski`, `ooda-strike`, `ooda-voxel`) |
 
-`ooda-standard` ships the expanded scientific & mathematical discovery library: `ooda-standard/core/math/{exact,geometry,blas,fft,algebra,graph_topology}/...`, `ooda-standard/core/proofs/...`, `ooda-standard/core/science/{phys,chem,bio,comm,econ}/...`, frontier AI-for-science `ooda-standard/core/app/ai/...`, 2D/3D engine physics `ooda-standard/core/app/ui/game_engine/...` (`collision_{aabb,circle,gjk,sat}` + `ecs_*`), `ooda-standard/core/collection/...`, and `ooda-standard/sec/{hash,capability,pqc,symmetric}/...`.
+`ooda-standard` organizes math, proofs, science, collections, and cryptography modules under [`ooda-standard`](https://github.com/openOODA-core/ooda-standard). See [`ROADMAP.md`](ROADMAP.md) and [`spec/01-lexical.md`](spec/01-lexical.md) for the active clean-break engineering specification and validation status.
 
-## The 8 Quick Cards (`cards/`)
+## Implementation Status & Active Roadmap
+
+| Capability Area | Live Today | Active Target ([`ROADMAP.md`](ROADMAP.md)) |
+| :--- | :--- | :--- |
+| **Compiler (`ooda-compiler`)** | Self-hosted `S1 == S2` fixed-point via LLVM/Clang (`ELF64`, `PE32+`, `nostd`, `openooda`, `uefi`, `wasm32`); `&*Cap` + `with_cap` + OODA phases + QF_LIA SMT bounds | Phase 1–2 & 4: Hex/bin literals, `[T; N]`, full ADTs, `@repr(C)`, `MmioPtr[T]`, `asm!`, generics/traits/closures, Typed AST → MIR, pure-`.oo` native x86_64/AArch64/RISC-V/WASM/GPU backends + linkers (`PATH=""` zero-Clang build) |
+| **Runtime (`ooda-runtime`)** | Pure-`.oo` zero-C static runtime (`15` archives), guarded Safe-Linking slabs, generational arenas, `AuditRing` traps, Landlock | Phase 3: 1-bit literal ARC fast path, 16B slab headers + TLS caches, real OS threads (`clone3`/`futex`), `Mutex`/`Atomic*`/`Channel`, 0 stub exports (`234` → `0`) |
+| **Stdlib (`ooda-standard`)** | Strings, paths, fs, hashes/AEAD/PQC (`SHA-2/3`, `ML-KEM-768`, `ML-DSA-65`), TUI/themes, foundational math/collection modules | Phase 5: Deduplicated generic collections (`Vec`, `HashMap`, O(log N) `BTreeMap`), multi-limb `U256`/`U384` ZK, full KAT + analytical/numerical validation of all science/AI modules |
+| **OS & System (`@openOODA-system`)** | Bare-metal `ooda-boot` + `ooda-kernel` (paging/SMEP/SMAP/KASLR) + VirtIO drivers + hosted Linux tools | Phase 6: `@repr(C)`/`MmioPtr[T]` kernel/drivers (no `oo_hw_op`), complete Ring-3 syscall ABI + SMP, Linux-decoupled daemons, `make qemu-smoke` native OS boot |
+
+## The 8 Quick Cards (`cards/`) & Spec (`spec/`)
 
 | Card | CLI Command | Description |
 | :--- | :--- | :--- |

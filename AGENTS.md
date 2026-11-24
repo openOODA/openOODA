@@ -6,11 +6,10 @@ the constitution: it holds the 8 canonical Quick Cards (`cards/`), the docs semv
 the consolidated 5-organization ecosystem census, and a native `.oo` self-verification surface
 (`bin/openooda`) that proves every card and invariant without stubs.
 
-## Constitutional Root (10 Entries)
+## Constitutional Root (10 Mandatory Entries + `ROADMAP.md` & `spec/`)
 
-`AGENTS.md` `README.md` `VERSION` `Makefile` `ooda.pkg` `anchor.oo` `cards/` `cli/` `core/` `tests/`
-= the canonical 8-entry product blueprint (`AGENTS.md`, `README.md`, `Makefile`, `ooda.pkg`,
-`anchor.oo`, `cli/`, `core/`, `tests/`) **plus** `VERSION` + `cards/` (governance-only).
+Mandatory 10 entries: `AGENTS.md` `README.md` `VERSION` `Makefile` `ooda.pkg` `anchor.oo` `cards/` `cli/` `core/` `tests/`
+(= the canonical 8-entry product blueprint **plus** `VERSION` + `cards/`), alongside [`ROADMAP.md`](ROADMAP.md) and [`spec/`](spec/01-lexical.md).
 
 ## The 8 Canonical Quick Cards (`cards/`)
 
@@ -43,11 +42,11 @@ repos across the 5 canonical organizations.
 
 ## Power-of-2 Shape Ladder (`1/2/4/8/16/32/64/128/256`)
 
-- `1`: Link count == 1 (0 symlinks/hardlinks) & max 1 statement/line.
+- `1`: Link count == 1 (0 symlinks/hardlinks), zero tabs, & max 1 statement/line.
 - `2`: Lean 2-file `tests/` suite (`test_functional.oo` + `test_refusal.oo`, 0 source-grepping).
 - `4`: Max 4 nesting depth & 4-Axis Code Review (`ooda-verify Gate` + `Semantic & Spec` + `Native Binary & Systems` + `Ecosystem & Registry`).
-- `8`: Max 8 entries/dir, 8 fns/file, 8 params/fn, 8-entry product repo root.
-- `16`: Min 16 lines/file. `32`: 32 explicit capabilities (`0..31`), max 32 chars/name, <=32 `.oo` pages/repo.
+- `8`: Max 8 params/fn, 8-entry product repo root.
+- `16`: Min 16 lines/file (`anchor.oo` exempt), max 16 entries/dir, max 16 fns/file. `32`: 32 explicit capabilities (`0..31`), max 32 chars/name, <=32 `.oo` pages/repo.
 - `64`: Max 64 code lines/fn. `128`: Max 128 chars/line. `256`: Max 256 lines/file.
 
 ## CLI Laws & Self-Verification Surface
@@ -89,7 +88,7 @@ full ecosystem tool execution:
 | **Search `ooda-standard` for existing functions/types** | `ooda-language search-std <query>` | `ooda_language_search_std` | `ooda.search_std` |
 | **Find symbol definition, import & signature** | `ooda-language def <sym> [dir]` | `ooda_language_def` | `ooda.def` |
 | **List all call sites & references before editing** | `ooda-language refs <sym> [dir]` | `ooda_language_refs` | `ooda.refs` |
-| **Check Power-of-2 shape headroom (`lines/256`, `fns/8`, `sloc/64`)** | `ooda-language shape <path>` | `ooda_language_shape` | `ooda.shape` |
+| **Check Power-of-2 shape headroom (`lines/256`, `fns/16`, `sloc/64`)** | `ooda-language shape <path>` | `ooda_language_shape` | `ooda.shape` |
 | **Inspect structural skeleton (Loglines, imports, `pub fn`)** | `ooda-language outline <path>` | `ooda_language_outline` | `ooda.outline` |
 | **Type-check `.oo` file with `ooda-compiler`** | `ooda-compiler check <file>` | `ooda_compiler_check` | `ooda.check` |
 | **Run 8-Hat verification cycle (`quorum_mask=255`)** | `ooda-verify cycle <repo> --json` | `ooda_verify` | `ooda.verify` |

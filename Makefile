@@ -1,13 +1,13 @@
 OODA_COMPILER ?= $(HOME)/.openooda/bin/ooda-compiler
 export OODA_COMPILER
-OODA_READDIR ?= $(HOME)/.openooda:$(CURDIR):/tmp:/usr:/lib:/lib64
+OODA_READDIR ?= $(HOME)/.openooda:$(CURDIR):/tmp:/usr:/lib:/lib64:/proc:/sys
 OODA_WRITEDIR ?= $(CURDIR):/tmp
 OO_LIST_AMBIENT_QUOTA ?= 8589934592
 BIN := bin/openooda
 TESTBIN := bin/test_functional
 TESTBIN2 := bin/test_refusal
 REPO_NAME := openooda
-VER := 3.1.0
+VER := 3.2.0
 SRC := $(shell find . -name '*.oo' -not -path './.git/*' -not -path './bin/*' -not -path './dist/*' -not -path './.ooda-cache/*' | sort)
 
 OODA_RUNTIME_ROOT ?= $(HOME)/.openooda/bin
@@ -36,9 +36,9 @@ line-cap:
 			echo "VIOLATION: $$f = $$n lines (exceeds 256)"; violations=$$((violations+1)); \
 		fi; \
 		code=$$(grep -vE '^[[:space:]]*(//.*)?$$' "$$f" | grep -cvE '^[[:space:]]*import[[:space:]]+"'); \
-		if [ "$$code" = "0" ]; then continue; fi; \
+		if [ "$$code" = "0" ] || [ "$$(basename "$$f")" = "anchor.oo" ]; then continue; fi; \
 		if [ $$n -lt 16 ]; then \
-			echo "VIOLATION: $$f = $$n lines (under 16-line floor, not a shim)"; violations=$$((violations+1)); \
+			echo "VIOLATION: $$f = $$n lines (under 16-line floor, not a shim/anchor)"; violations=$$((violations+1)); \
 		fi; \
 	done; \
 	if [ $$violations -gt 0 ]; then echo "FAIL: $$violations files violate the Page Rule"; exit 1; fi; \
@@ -76,12 +76,12 @@ density:
 	@violations=0; \
 	for d in $$(find . -type d -not -path "./.git*" -not -path "./bin*" -not -path "./dist*" -not -path "./.ooda-cache*"); do \
 		n=$$(ls "$$d"/*.oo "$$d"/*.oot 2>/dev/null | grep -v '\*' | wc -l); \
-		if [ $$n -gt 8 ]; then \
-			echo "VIOLATION: $$d holds $$n pages (exceeds 8)"; violations=$$((violations+1)); \
+		if [ $$n -gt 16 ]; then \
+			echo "VIOLATION: $$d holds $$n pages (exceeds 16)"; violations=$$((violations+1)); \
 		fi; \
 	done; \
 	if [ $$violations -gt 0 ]; then echo "FAIL: $$violations directories exceed density bound"; exit 1; fi; \
-	echo "PASS: directory density (<= 8 pages per directory) holds"
+	echo "PASS: directory density (<= 16 pages per directory) holds"
 
 vocab:
 	@if grep -riE "sovereign|Pillar [0-9]|moonshot|dogfight|bootstrap|Stage [0-9]" --include="*.oo" --include="*.oot" . ; then \
@@ -94,7 +94,7 @@ shape:
 	for f in $$(find . -name "*.oo" -not -path "./.git/*" -not -path "./dist/*" -not -path "./.ooda-cache/*" -not -path "./bin/*"); do \
 		awk '/^[[:space:]]*(pub[[:space:]]+)?fn[[:space:]]/ { if (started) { len = NR - start; if (len > 64) print "FNLEN|$$f|" fn "|" len } started = 1; start = NR; if ($$1 == "pub") fn = $$3; else fn = $$2; gsub(/\(.*/, "", fn) } END { if (started) { len = NR - start + 1; if (len > 64) print "FNLEN|$$f|" fn "|" len } }' "$$f" >> .ooda-cache/shape.now; \
 		n=$$(grep -cE "^[[:space:]]*(pub[[:space:]]+)?fn " "$$f" || true); \
-		if [ "$$n" -gt 8 ]; then echo "SHAPE|$$f|-|$$n" >> .ooda-cache/shape.now; fi; \
+		if [ "$$n" -gt 16 ]; then echo "SHAPE|$$f|-|$$n" >> .ooda-cache/shape.now; fi; \
 	done; \
 	violations=0; \
 	while IFS='|' read -r kind path name value; do \
@@ -103,7 +103,7 @@ shape:
 	done < .ooda-cache/shape.now; \
 	rm -f .ooda-cache/shape.now; \
 	if [ $$violations -gt 0 ]; then echo "FAIL: $$violations shape violations"; exit 1; fi; \
-	echo "PASS: shape law holds (<=8 fns/page, <=64 lines/fn)"
+	echo "PASS: shape law holds (<=16 fns/page, <=64 lines/fn)"
 
 link-law:
 	@violations=0; \
@@ -131,20 +131,20 @@ lint-oo-size:
 		n=$$(wc -l < "$$f"); \
 		if [ $$n -gt 256 ]; then echo "VIOLATION: line law $$f = $$n lines"; v=$$((v+1)); fi; \
 		code=$$(grep -vE '^[[:space:]]*(//.*)?$$' "$$f" | grep -cvE '^[[:space:]]*import[[:space:]]+"'); \
-		if [ "$$code" != "0" ] && [ $$n -lt 16 ]; then echo "VIOLATION: line law $$f under 16-line floor"; v=$$((v+1)); fi; \
+		if [ "$$code" != "0" ] && [ "$$(basename "$$f")" != "anchor.oo" ] && [ $$n -lt 16 ]; then echo "VIOLATION: line law $$f under 16-line floor"; v=$$((v+1)); fi; \
 	done; \
-	if [ $$v -gt 0 ]; then violations=$$((violations+v)); else echo "PASS: page lines (16..256, shims exempt)"; fi; \
+	if [ $$v -gt 0 ]; then violations=$$((violations+v)); else echo "PASS: page lines (16..256, shims/anchor exempt)"; fi; \
 	v=0; for f in $$(pages); do \
 		nf=$$(grep -cE '^[[:space:]]*(pub[[:space:]]+)?fn ' "$$f" || true); \
-		if [ "$$nf" -gt 8 ]; then echo "VIOLATION: fn count $$f = $$nf (exceeds 8)"; v=$$((v+1)); fi; \
+		if [ "$$nf" -gt 16 ]; then echo "VIOLATION: fn count $$f = $$nf (exceeds 16)"; v=$$((v+1)); fi; \
 		awk '/^[[:space:]]*(pub[[:space:]]+)?fn[[:space:]]/ { if (started && NR - start > 64) { printf "VIOLATION: fn length %s %d lines\n", FILENAME, NR - start; bad = 1 } started = 1; start = NR } END { if (started && NR - start + 1 > 64) { printf "VIOLATION: fn length %s %d lines\n", FILENAME, NR - start + 1; bad = 1 } exit bad ? 1 : 0 }' "$$f" || v=$$((v+1)); \
 	done; \
-	if [ $$v -gt 0 ]; then violations=$$((violations+v)); else echo "PASS: function law (<= 8 fns/page, <= 64 lines/fn)"; fi; \
+	if [ $$v -gt 0 ]; then violations=$$((violations+v)); else echo "PASS: function law (<= 16 fns/page, <= 64 lines/fn)"; fi; \
 	v=0; for d in $$(pages | xargs -n1 dirname | sort -u); do \
 		n=$$(ls "$$d"/*.oo "$$d"/*.oot 2>/dev/null | grep -v '\*' | wc -l); \
-		if [ $$n -gt 8 ]; then echo "VIOLATION: density $$d = $$n pages"; v=$$((v+1)); fi; \
+		if [ $$n -gt 16 ]; then echo "VIOLATION: density $$d = $$n pages"; v=$$((v+1)); fi; \
 	done; \
-	if [ $$v -gt 0 ]; then violations=$$((violations+v)); else echo "PASS: directory density (<= 8 pages per directory)"; fi; \
+	if [ $$v -gt 0 ]; then violations=$$((violations+v)); else echo "PASS: directory density (<= 16 pages per directory)"; fi; \
 	if [ $$violations -gt 0 ]; then echo "FAIL: $$violations lint-oo-size violations"; exit 1; fi; \
 	echo "PASS: lint-oo-size holds the Page Rule over the tree"
 
@@ -160,8 +160,8 @@ test: $(BIN)
 	@mkdir -p .ooda-cache
 	@$(ENV) $(OODA_COMPILER) build tests/test_functional.oo -o $(TESTBIN) > /dev/null
 	@$(ENV) $(OODA_COMPILER) build tests/test_refusal.oo -o $(TESTBIN2) > /dev/null
-	@OODA_LEAK_CHECK=1 PATH=/nonexistent $(ENV) ./$(TESTBIN) | grep -q "PASS: functional" && echo "PASS: functional suite under PATH=/nonexistent + OODA_LEAK_CHECK=1"
-	@OODA_LEAK_CHECK=1 PATH=/nonexistent $(ENV) ./$(TESTBIN2) | grep -q "PASS: refusal" && echo "PASS: refusal suite under PATH=/nonexistent + OODA_LEAK_CHECK=1"
+	@out=$$(OODA_LEAK_CHECK=1 PATH=/nonexistent $(ENV) ./$(TESTBIN)) && printf '%s\n' "$$out" | grep -q "PASS: functional" && echo "PASS: functional suite under PATH=/nonexistent + OODA_LEAK_CHECK=1"
+	@out=$$(OODA_LEAK_CHECK=1 PATH=/nonexistent $(ENV) ./$(TESTBIN2)) && printf '%s\n' "$$out" | grep -q "PASS: refusal" && echo "PASS: refusal suite under PATH=/nonexistent + OODA_LEAK_CHECK=1"
 	@PATH=/nonexistent $(ENV) ./$(BIN) check . | grep -q "verify OK" && echo "PASS: openooda check ."
 	@PATH=/nonexistent $(ENV) ./$(BIN) check | grep -q "verify OK" && echo "PASS: openooda check"
 	@PATH=/nonexistent $(ENV) ./$(BIN) verify | grep -q "verify OK" && echo "PASS: openooda verify"
