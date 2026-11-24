@@ -27,18 +27,18 @@ Zero-bloat (8..64-line) cards served live by the `ooda` master CLI (`ooda <verb>
 | `cards/privacy.md` | `ooda privacy` | Zero-telemetry, PII/EXIF/SECRET scrubbing `ooda-vault`, LED & clipboard TTL gates |
 | `cards/defense.md` | `ooda defense` | Active defense `ooda-firewall` IDS/canary/honeypot, DMA/DRAM/USB guards |
 
-## The Canonical 5-Organization Ecosystem (74 Repos)
+## The Canonical 5-Organization Ecosystem (75 Repos)
 
 | Organization | Packages | Repos | Members |
 | :--- | :---: | :---: | :--- |
 | **Umbrella** `@openOODA` | `4` + `1` | `5` | `openOODA`, `catalog`, `install`, `website` + `.github` |
 | **Core** `@openOODA-core` | `11` | `12` | `ooda`, `ooda-bridge`, `ooda-compiler`, `ooda-interface`, `ooda-language`, `ooda-package`, `ooda-runtime`, `ooda-sign`, `ooda-standard`, `ooda-verify`, `ooda-version` + `.github` |
-| **System** `@openOODA-system` | `26` | `27` | Kernel & Hardware (`6`): `ooda-archive`, `ooda-boot`, `ooda-container`, `ooda-drivers`, `ooda-hardware`, `ooda-kernel`; Daemons & Security (`9`): `ooda-authority`, `ooda-bus`, `ooda-connect`, `ooda-data`, `ooda-database`, `ooda-filesystem`, `ooda-firewall`, `ooda-health`, `ooda-inference`; Network, Shell & Desktop (`11`): `ooda-compositor`, `ooda-network`, `ooda-panel`, `ooda-portal`, `ooda-screensaver`, `ooda-settings`, `ooda-shell`, `ooda-start`, `ooda-theme`, `ooda-vault`, `ooda-web` + `.github` |
+| **System** `@openOODA-system` | `27` | `28` | Kernel & Hardware (`6`): `ooda-archive`, `ooda-boot`, `ooda-container`, `ooda-drivers`, `ooda-hardware`, `ooda-kernel`; Daemons & Security (`9`): `ooda-authority`, `ooda-bus`, `ooda-connect`, `ooda-data`, `ooda-database`, `ooda-filesystem`, `ooda-firewall`, `ooda-health`, `ooda-inference`; Network, Shell & Desktop (`12`): `ooda-compositor`, `ooda-dashboard`, `ooda-network`, `ooda-panel`, `ooda-portal`, `ooda-screensaver`, `ooda-settings`, `ooda-shell`, `ooda-start`, `ooda-theme`, `ooda-vault`, `ooda-web` + `.github` |
 | **Apps** `@openOODA-apps` | `19` | `20` | `ooda-browser`, `ooda-calculator`, `ooda-calendar`, `ooda-camera`, `ooda-chat`, `ooda-clock`, `ooda-code`, `ooda-files`, `ooda-flasher`, `ooda-media`, `ooda-notepad`, `ooda-office`, `ooda-passwords`, `ooda-photos`, `ooda-remote`, `ooda-screenshot`, `ooda-software`, `ooda-studio`, `ooda-terminal` + `.github` |
 | **Games** `@openOODA-games` | `9` | `10` | `ooda-arcade`, `ooda-capella`, `ooda-commander`, `ooda-engine`, `ooda-island`, `ooda-retro`, `ooda-ski`, `ooda-strike`, `ooda-voxel` + `.github` |
 
-**Fleet Census**: `65` product packages (`11` core + `26` system + `19` apps + `9` games) + `4` `@openOODA`
-umbrella repos = `69` product+platform repos; plus `5` `.github` org-profile repos = `74` total
+**Fleet Census**: `66` product packages (`11` core + `27` system + `19` apps + `9` games) + `4` `@openOODA`
+umbrella repos = `70` product+platform repos; plus `5` `.github` org-profile repos = `75` total
 repos across the 5 canonical organizations.
 
 ## Power-of-2 Shape Ladder (`1/2/4/8/16/32/64/128/256`)
@@ -60,7 +60,7 @@ repos across the 5 canonical organizations.
   `NO_COLOR` + `--json`, and refuses unknown flags (`--unknown-flag-zzz`) with exit `2`.
 - `core/card_check.oo` proves: all 8 cards exist with markdown titles and real content, `rules.md`
   documents all nine ladder rungs, `VERSION` parses as semver digits, and `layers.md` carries the
-  exact census (`65`/`69`/`74`, `11`/`26`/`19`/`9` packages, all 5 organizations, `ooda-verify`).
+  exact census (`66`/`70`/`75`, `11`/`27`/`19`/`9` packages, all 5 organizations, `ooda-verify`).
 - `core/card_law.oo` proves: the constitutional 10-entry root exists, `AGENTS.md` opens with the
   canonical constitutional title, and `README.md` links all eight cards.
 
