@@ -13,7 +13,7 @@
 - [x] **0.4** Write formal clean-break `.oo` Language Specification (`openOODA/spec/01..06.md`), align `openOODA/README.md` with verified reality, bump & release `openOODA` `v3.2.0`.
 
 ## Phase 1: Clean-Break `.oo` Language Core Upgrade (`ooda-compiler`)
-- [ ] **1.1** Hex (`0x`), binary (`0b`), octal (`0o`), `_` separators, byte literals (`b'x'`), typed suffixes, raw strings, trailing commas, clean `struct`/`enum`, labeled `break`/`continue`.
+- [x] **1.1** Hex (`0x`), binary (`0b`), octal (`0o`), `_` separators, byte literals (`b'x'`), typed suffixes, raw strings, trailing commas, clean `struct`/`enum`, labeled `break`/`continue`. (`ooda-compiler` v0.18.0)
 - [ ] **1.2** `usize`, `isize`, `f32`, explicit `as` casts, and true unsigned arithmetic/shifts/comparisons (`udiv`, `urem`, `lshr`, `icmp ult/ule/ugt/uge`).
 - [ ] **1.3** Stack arrays `[T; N]`, slices `&[T]`/`&mut [T]` with SMT bounds elision, and tuples `(A, B)`.
 - [ ] **1.4** Full arbitrary-payload sum types (ADTs) + `Box[T]` + tag-dispatched ARC drop + exhaustive `match` (delete legacy `{i64, i64, OoStr}` layout).
