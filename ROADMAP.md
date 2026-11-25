@@ -24,7 +24,7 @@
 - [x] **1.2** `usize`, `isize`, `f32`, explicit `as` casts, and true unsigned arithmetic/shifts/comparisons (`udiv`, `urem`, `lshr`, `icmp ult/ule/ugt/uge`) (`ooda-compiler` v0.19.0).
 - [x] **1.3** Stack arrays `[T; N]`, slices `&[T]`/`&mut [T]` with SMT bounds elision, and tuples `(A, B)` (`ooda-compiler` v0.20.0).
 - [x] **1.4** Full arbitrary-payload sum types (ADTs) + `Box[T]` + tag-dispatched ARC drop + exhaustive `match` (delete legacy `{i64, i64, OoStr}` layout) (`ooda-compiler` v0.21.0).
-- [ ] **1.5** `@repr(C)`/`@repr(packed)`/`@repr(align(N))` + `size_of`/`align_of`/`offset_of` + typed `static`/`static mut` globals.
+- [x] **1.5** `@repr(C)`/`@repr(packed)`/`@repr(align(N))` + `size_of`/`align_of`/`offset_of` + typed `static`/`static mut` globals (`ooda-compiler` v0.22.0).
 - [ ] **1.6** Capability-gated `MmioPtr[T]`/`RawPtr[T]` (volatile load/store), explicit `extern "C"` (delete name-prefix heuristics), and capability-gated inline `asm!`.
 - [ ] **1.7** Monomorphized user generics (`struct`/`enum`/`fn`) + static-dispatch `trait`/`impl` (`Eq`, `Ord`, `Hash`, `Read`, `Write`, `Drop`).
 - [ ] **1.8** First-class function pointers `fn(...) -> ...`, real capture-struct closures, and `?` error-propagation operator for `Result`/`Option` (L1 containment ergonomics).
