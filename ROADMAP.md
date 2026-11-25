@@ -25,18 +25,19 @@
 - [x] **1.3** Stack arrays `[T; N]`, slices `&[T]`/`&mut [T]` with SMT bounds elision, and tuples `(A, B)` (`ooda-compiler` v0.20.0).
 - [x] **1.4** Full arbitrary-payload sum types (ADTs) + `Box[T]` + tag-dispatched ARC drop + exhaustive `match` (delete legacy `{i64, i64, OoStr}` layout) (`ooda-compiler` v0.21.0).
 - [x] **1.5** `@repr(C)`/`@repr(packed)`/`@repr(align(N))` + `size_of`/`align_of`/`offset_of` + typed `static`/`static mut` globals (`ooda-compiler` v0.22.0).
-- [ ] **1.6** Capability-gated `MmioPtr[T]`/`RawPtr[T]` (volatile load/store), explicit `extern "C"` (delete name-prefix heuristics), and capability-gated inline `asm!`.
-- [ ] **1.7** Monomorphized user generics (`struct`/`enum`/`fn`) + static-dispatch `trait`/`impl` (`Eq`, `Ord`, `Hash`, `Read`, `Write`, `Drop`).
-- [ ] **1.8** First-class function pointers `fn(...) -> ...`, real capture-struct closures, and `?` error-propagation operator for `Result`/`Option` (L1 containment ergonomics).
-- [ ] **1.9** **Seed Bump Gate 1:** `S1 == S2` (`OK_FIXED_POINT`) across hosted + `nostd` + `openooda` + `uefi` + `wasm32`; release tagged `ooda-compiler`.
+- [x] **1.6** Capability-gated `MmioPtr[T]`/`RawPtr[T]` (volatile load/store), explicit `extern "C"` (delete name-prefix heuristics), and capability-gated inline `asm!` (`ooda-compiler` v0.23.0).
+- [ ] **1.7** Monomorphized user generics (`struct`/`enum`/`fn`, `const` generics) + static-dispatch `trait`/`impl` (`Eq`, `Ord`, `Hash`, `Read`, `Write`, `Drop`).
+- [ ] **1.8** First-class function pointers `fn(...) -> ...`, real capture-struct closures, `?` error-propagation for `Result`/`Option` (L1 containment ergonomics), tuple/struct/enum destructuring patterns, and compile-time capability bundles (`capset`) & scoped capability attenuation.
+- [ ] **1.9** Pure `const fn` compile-time evaluation and sandboxed `@derive(Eq, Clone, Debug, Hash, Serialize)` (zero ambient I/O / zero proc-macro RCE).
+- [ ] **1.10** **Seed Bump Gate 1:** `S1 == S2` (`OK_FIXED_POINT`) across hosted + `nostd` + `openooda` + `uefi` + `wasm32`; release tagged `ooda-compiler`.
 
 ## Phase 2: Typed AST → CFG/SSA MIR Compiler Rewrite (`ooda-compiler`)
 - [ ] **2.1** Replace string-tagged AST with real typed recursive AST (`Item`/`Stmt`/`Expr`/`Pat`/`TypeExpr` + `Span`); delete old string AST helpers.
 - [ ] **2.2** Replace delimited flat-string symbol/type tables with integer-ID interner + O(1) hash maps.
 - [ ] **2.3** Wire `core/mir/` into the real compilation pipeline (`Typed AST -> CFG/SSA MIR`); delete `mir_flush_types_stub`.
-- [ ] **2.4** Port Borrow, Move, Capability, `with_cap` Effect, OODA Phase, `SECRET:` Taint, `Send`/`Sync`, and SMT VC checks onto MIR CFG dataflow; delete token-scanning checkers.
+- [ ] **2.4** Port Borrow, Move, Capability, capability bundles/attenuation, `with_cap` Effect, OODA Phase, `SECRET:` Taint, `Send`/`Sync` data-race freedom, and SMT VC checks onto MIR CFG dataflow; delete token-scanning checkers.
 - [ ] **2.5** Implement MIR optimization passes (mem2reg, const-fold, copy-prop, DCE, inlining, LICM, bounds-check elision, unified MIR ARC/drop elaboration).
-- [ ] **2.6** Multi-error diagnostics with source-span carets, `--error-format=json`, DWARF debug info (`-g`), and readable trap/panic `file:line` stack traces.
+- [ ] **2.6** Sub-second incremental `ooda check` cache, multi-error diagnostics with source-span carets, `--error-format=json`, DWARF debug info (`-g`) & profiling symbols (`gdb`/`lldb`/`perf`), and readable trap/panic `file:line` stack traces.
 - [ ] **2.7** **Seed Bump Gate 2:** Byte-identical `S1 == S2` compiling through Typed AST → MIR under `< 512 MiB` RAM; release tagged `ooda-compiler`.
 
 ## Phase 3: Clean-Break Runtime Overhaul, Real OS Concurrency & 234-Stub Purge (`ooda-runtime`)
@@ -45,7 +46,7 @@
 - [ ] **3.3** Rewrite `oo_int_to_str` using stack `[u8; 32]` (delete `rc_lock_off(16)` global spinlock).
 - [ ] **3.4** Replace every `rt_bss_ptr(slot, size)` with typed `static` structs.
 - [ ] **3.5** Redesign `mem_arena.oo` with typed `Arena` handles, thread-local active arena/scratch stack, and unlimited slots.
-- [ ] **3.6** Implement real OS threads (`clone3`/`futex` + native Ring-3 threads), `Mutex[T]`, `RwLock[T]`, `Condvar`, `Atomic*` with memory orderings, structured concurrency deadlines/cancellation, bounded channels (backpressure), and L2 actor/domain supervision trees with watchdogs and per-domain memory/CPU quotas.
+- [ ] **3.6** Implement real OS threads (`clone3`/`futex` + native Ring-3 threads), `Mutex[T]`, `RwLock[T]`, `Condvar`, `Atomic[T]` (`Acquire`/`Release`/`SeqCst`), compiler-enforced data-race-free `Send`/`Sync` concurrency, structured concurrency deadlines/cancellation, bounded channels (backpressure), and L2 actor/domain supervision trees with watchdogs and per-domain memory/CPU quotas.
 - [ ] **3.7** Complete native Ring-3 `libooda-runtime-openooda.a` ABI (`openooda/*`) and fix Landlock jail flake (delete `OODA_NO_JAIL=1`).
 - [ ] **3.8** Purge all **234** single-line stub exports (`stub_export_count == 0` verified automatically), including adding missing `crypto_mldsa65_{keygen,sign,verify}_internal` to `win64/pqc_anchor.oo` (`libooda-runtime-pqc-win64.a`) and fixing the Landlock jail flake.
 - [ ] **3.9** **Blackbox Flight Recorder & Autopsy Engine (L4):** Revive runtime Blackbox in `ooda-runtime` with zero-alloc flight-event ring buffer, signal/trap handler writing structured `.blackbox/autopsy.json` with stack traces & failure coordinates, compiler-enforced `SECRET:` redaction, and `AuditRing` witness hash chaining.
@@ -57,7 +58,7 @@
 - [ ] **4.3** Native **AArch64** (`core/emit/aarch64/`) and **RISC-V 64** (`core/emit/riscv64/`) backends verified under QEMU user + bare-metal emulation.
 - [ ] **4.4** Native **WASM32** (`core/emit/wasm/`) and **GPU PTX/SPIR-V** (`core/emit/gpu/`) backends (zero `nvcc`/`hipcc`).
 - [ ] **4.5** Pure-`.oo` **ELF64**, **PE32+/UEFI**, and **WASM32** object emitters, static/PIE/bare-metal linkers, symbol stripper, and `.a` archiver.
-- [ ] **4.6** Pure-`.oo` native-threaded `ooda build` / `ooda test` / `ooda det` replacing GNU `make`, `clang`, `lld`, `strip`, `xargs`, `bash`, and coreutils shell-outs across `@openOODA-core`.
+- [ ] **4.6** Pure-`.oo` native-threaded `ooda build` / `ooda test` / `ooda det` + hermetic single-binary cross-compilation (`ooda build --target=<arch-os>`, zero host cross-SDKs), replacing GNU `make`, `clang`, `lld`, `strip`, `xargs`, `bash`, and coreutils shell-outs across `@openOODA-core`.
 - [ ] **4.7** **Zero-Dependency Self-Host Gate (`PATH=""`):** With `PATH=""` (zero non-OODA binaries reachable), compile `ooda-runtime` + `ooda-compiler` `S1 -> S2` and verify byte-identical `OK_FIXED_POINT` + fast compile-time benchmark; release tagged `ooda-compiler` & `ooda`.
 
 ## Phase 5: `ooda-standard` Deduplication & Full Core + Scientific Validation
@@ -69,9 +70,9 @@
 - [ ] **5.6** Expand `ooda-standard/tests/` with full unit, property, numerical, KAT, and benchmark suites; release tagged `ooda-standard`.
 
 ## Phase 6: Toolchain & `@openOODA-system` Native Alignment
-- [ ] **6.1** Wire `ooda-language` (LSP) to Phase 2 Typed AST + Symbol Interner; release tagged `ooda-language`.
-- [ ] **6.2** Finish `ooda` CLI (`test`, `bench`, `doc`, AST-based `fmt`) and `ooda-package` (SemVer + SHA-256 `ooda.lock` + workspaces + 100% offline/airgapped `ooda build --offline` reproducible builds with `ooda-sign` verification); release tagged `ooda` & `ooda-package`.
-- [ ] **6.3** Audit & validate `ooda-sign`, `ooda-bridge`, `ooda-interface`, `ooda-version` (real KATs, clean `extern "C"`, zero stubs); release tagged versions.
+- [ ] **6.1** Wire `ooda-language` (`oolsp`) to incremental Phase 2 Typed AST + Symbol Interner (go-to-def, hover, rename, inline capability diagnostics); release tagged `ooda-language`.
+- [ ] **6.2** Finish unified `ooda` CLI (`test` / `bench` / `fuzz` + OCAP Deterministic Simulation Testing via seeded `with_cap` virtual time/rand/net/VFS, canonical Power-of-2 AST `fmt`, and capability-aware `doc` documenting required caps & OODA phase) and `ooda-package` (SemVer + SHA-256 `ooda.lock` + workspaces + 100% offline/airgapped `ooda build --offline` reproducible builds with `ooda-sign` verification); release tagged `ooda` & `ooda-package`.
+- [ ] **6.3** Audit & validate `ooda-sign`, `ooda-bridge` (including safe C `.h` bindgen generating capability-gated `extern "C"` & `@repr(C)` bindings), `ooda-interface`, `ooda-version` (real KATs, clean `extern "C"`, zero stubs); release tagged versions.
 - [ ] **6.4** Refactor `ooda-kernel`, `ooda-boot`, `ooda-drivers`, `ooda-hardware` onto hex literals, `@repr(C)`/`@repr(packed)` structs, `MmioPtr[T]`, `asm!` (deleting `oo_hw_op`), hardware DRAM encryption detection/enablement (AMD SME/SEV, Intel TME/MKTME), and real IOMMU DMA bounce-page lockdown; release tagged versions.
 - [ ] **6.5** Complete Ring-3 syscall ABI (`0..31`), SMP scheduling, real hardware drivers separated from models, wire universal `OodaTunnel` (WireGuard-style authenticated encrypted frames with `CapReg64` warrants + replay counters) across `ooda-bus`, `ooda-container`/`ooda-realm`, `ooda-vault`, and `ooda-connect` IPC/storage/net boundaries, and decouple the 208 `/proc`/`/dev`/`/sys` files across `@openOODA-system` daemons behind `linux`-vs-`openooda` adapters; release tagged versions.
 - [ ] **6.6** **Final Native OS Gate:** Pure-OODA (`PATH=""`) build of `ooda-boot` -> `ooda-kernel` -> `ooda-start` -> `ooda-shell` verified in QEMU (`qemu-smoke`) running an interactive command + Ring-3 capability-denial trap with zero Linux kernel underneath; final `openOODA` release tag & catalog sync.
