@@ -2,7 +2,7 @@
 
 > **Mandate:** Harden openOODA (`.oo`) into a sound, zero-theater, zero-external-dependency systems programming language across `@openOODA`, `@openOODA-core`, and `@openOODA-system`. Backwards compatibility is NOT required — every phase executes a clean break. Scientific & mathematical libraries remain inside `ooda-standard` and must be genuinely validated.
 >
-> **Dual Veto Law:** Every item below requires unanimous **`VERDICT: PASS`** from both read-only adversarial subagents (`integrity-auditor` and `systems-architect`), plus green build/tests/determinism/`ooda-verify cycle`, version bump, annotated tag, and GitHub push before being checked `[x]`.
+> **Triple Veto Law:** Every item below requires unanimous **`VERDICT: PASS`** from all three read-only adversarial subagents (`integrity-auditor`, `systems-architect`, and `ooda-domain-auditor`), plus green build/tests/determinism/`ooda-verify cycle`, version bump, annotated tag, and GitHub push before being checked `[x]`.
 
 ---
 
@@ -67,3 +67,17 @@
 - [ ] **6.4** Refactor `ooda-kernel`, `ooda-boot`, `ooda-drivers`, `ooda-hardware` onto hex literals, `@repr(C)`/`@repr(packed)` structs, `MmioPtr[T]`, and `asm!` — delete `oo_hw_op` completely; release tagged versions.
 - [ ] **6.5** Complete Ring-3 syscall ABI (`0..31`), SMP scheduling, real hardware drivers separated from models, and decouple the 208 `/proc`/`/dev`/`/sys` files across `@openOODA-system` daemons behind `linux`-vs-`openooda` adapters; release tagged versions.
 - [ ] **6.6** **Final Native OS Gate:** Pure-OODA (`PATH=""`) build of `ooda-boot` -> `ooda-kernel` -> `ooda-start` -> `ooda-shell` verified in QEMU (`qemu-smoke`) running an interactive command + Ring-3 capability-denial trap with zero Linux kernel underneath; final `openOODA` release tag & catalog sync.
+
+---
+
+## Phase 7: Full-Stack Performance, Security & Defender Hardening (`@openOODA`, `@openOODA-core`, `@openOODA-system`)
+- [ ] **7.1** **Performance Pass:** End-to-end profiling and flamegraphs across `ooda-compiler`, `ooda-runtime`, `ooda-standard`, and `ooda-kernel` (compile speed, ARC/slab overhead, collection throughput, zero-copy I/O, tail latency) with enforced regression budgets.
+- [ ] **7.2** **Security Pass:** Full memory-safety/UB audit, `SECRET:` taint & zeroization audit, constant-time crypto verification, supply-chain signature verification (`ooda-sign` + `ooda.lock`), and zero-`OODA_NO_JAIL` Landlock/Ring-3 confinement validation.
+- [ ] **7.3** **Defender / Red-Team Pass:** Adversarial fuzzing (lexer, parser, MIR, ELF/PE linker, allocator, syscalls, network/TLS), capability-laundering & sandbox-escape exploit suite, DoS/resource-exhaustion tests, and 8-hat `ooda-verify cycle` (`quorum_mask=255`) across every repo in `@openOODA`, `@openOODA-core`, and `@openOODA-system`.
+
+---
+
+## Phase 8: Full Ecosystem Rebuild, Verification & Republish (`@openOODA`, `@openOODA-core`, `@openOODA-system`)
+- [ ] **8.1** **Clean Rebuild Everything:** Rebuild every library, tool, daemon, kernel, and binary across `@openOODA`, `@openOODA-core`, and `@openOODA-system` (bottom-up stack order) using the final pure-OODA self-hosted compiler (`PATH=""`).
+- [ ] **8.2** **Full Determinism & 8-Hat Gate:** Verify every rebuilt repo passes its full test suite, leak checks (`OODA_LEAK_CHECK=1`), byte-identical determinism (`make det` / `ooda det`), and `ooda-verify cycle --json` (`quorum_mask=255`).
+- [ ] **8.3** **Republish & Release Sync:** Bump versions, install every rebuilt binary cleanly into `~/.openooda/bin`, create signed/annotated release tags, and push every updated repo and release tag to GitHub with synced `openOODA` catalog metadata.
