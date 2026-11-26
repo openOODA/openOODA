@@ -31,7 +31,7 @@
 - [x] **1.7** Monomorphized user generics (`struct`/`enum`/`fn`, `const` generics) + static-dispatch `trait`/`impl` (`Eq`, `Ord`, `Hash`, `Read`, `Write`, `Drop`) (`ooda-compiler` v0.24.0).
 - [x] **1.8** First-class function pointers `fn(...) -> ...`, real capture-struct closures, `?` error-propagation for `Result`/`Option` (L1 containment ergonomics), tuple/struct/enum destructuring patterns, and compile-time capability bundles (`capset`) & scoped capability attenuation (`ooda-compiler` v0.25.0).
 - [x] **1.9** Pure `const fn` compile-time evaluation and sandboxed `@derive(Eq, Clone, Debug, Hash, Serialize)` (zero ambient I/O / zero proc-macro RCE) (`ooda-compiler` v0.26.0).
-- [ ] **1.10** **Seed Bump Gate 1:** `S1 == S2` (`OK_FIXED_POINT`) across hosted + `nostd` + `openooda` + `uefi` + `wasm32`; release tagged `ooda-compiler`.
+- [x] **1.10** **Seed Bump Gate 1:** `S1 == S2` (`OK_FIXED_POINT`) across hosted + `nostd` + `openooda` + `uefi` + `wasm32`; release tagged `ooda-compiler` (`ooda-compiler` v0.27.0).
 
 ## Phase 2: Typed AST → CFG/SSA MIR Compiler Rewrite (`ooda-compiler`)
 - [ ] **2.1** Replace string-tagged AST with real typed recursive AST (`Item`/`Stmt`/`Expr`/`Pat`/`TypeExpr` + `Span`); delete old string AST helpers.
