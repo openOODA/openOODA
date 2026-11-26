@@ -12,6 +12,11 @@
 > - **L4 — Contested-Environment Survival:** Signed attestation, polymorphic builds (`--morph-seed` / `--morph-stealth`), `SECRET:` zeroization, Blackbox hash-chained crash autopsy, and `with_cap` chaos/fault-injection proofs.
 >
 > **License & Public Hub:** Canonical license across all openOODA repositories is **`Apache-2.0 WITH LLVM-exception`** ([`LICENSE`](LICENSE), stamped onto each repository as phases release; see [`TRADEMARKS.md`](TRADEMARKS.md)). While `openOODA-*` component repos remain private, [`openOODA/openOODA`](https://github.com/openOODA/openOODA) is the sole public hub for issues, discussions, and private vulnerability reports ([`SECURITY.md`](SECURITY.md), [`THREAT_MODEL.md`](THREAT_MODEL.md)).
+>
+> **Execution & Compute Allocation (`swarm` / `ringmaster` / `spotlight`):**
+> - **`ringmaster` (`100.88.249.93`, 12 threads, 62 GiB RAM):** Primary editing/git/tag/install host, heavy-RAM self-host builds (`make seed-gate`), primary `make check` / `make test`, `OODA_LEAK_CHECK=1`, `ooda-verify cycle`, and Triple Veto auditors.
+> - **`spotlight` (`100.66.54.24`, 12 threads, 31 GiB RAM, `bash -lc "unset OODA_OODAR_ROOT OODA_OOSTD_ROOT && ..."`):** Parallel offload for byte-identical `make det`, QEMU/WASM cross-target verification, `ct_dudect` timing suites, sustained fuzz/chaos campaigns, and secondary repo builds while `ringmaster` runs heavy gates.
+> - **`swarm` (`workspace:"share"` authors):** Skipped on tightly coupled serial compiler/runtime core changes (`2.1–2.3`, `2.7`, `3.1–3.4`, `4.7`); **light (2–3 workers)** on shardable subsystems (`2.4–2.6`, `3.5–3.9`); **full parallel fan-out** on multi-arch backends/linkers (`4.2–4.5`), `ooda-standard` modules (`5.1–5.5`), multi-repo toolchain/kernel/daemon alignment (`6.1–6.5`), security/fuzz/polymorphic suites (`7.1–7.4`), and bottom-up rebuild waves (`8.1–8.2`).
 
 ---
 
@@ -33,8 +38,8 @@
 - [x] **1.9** Pure `const fn` compile-time evaluation and sandboxed `@derive(Eq, Clone, Debug, Hash, Serialize)` (zero ambient I/O / zero proc-macro RCE) (`ooda-compiler` v0.26.0).
 - [x] **1.10** **Seed Bump Gate 1:** `S1 == S2` (`OK_FIXED_POINT`) across hosted + `nostd` + `openooda` + `uefi` + `wasm32`; release tagged `ooda-compiler` (`ooda-compiler` v0.27.0).
 
-## Phase 2: Typed AST → CFG/SSA MIR Compiler Rewrite (`ooda-compiler`)
-- [ ] **2.1** Replace string-tagged AST with real typed recursive AST (`Item`/`Stmt`/`Expr`/`Pat`/`TypeExpr` + `Span`); delete old string AST helpers.
+## Phase 2: Typed AST → CFG/SSA MIR Compiler Rewrite (`ooda-compiler`) — `[2.1–2.3, 2.7: ringmaster+spotlight; 2.4–2.6: swarm(2–3) + ringmaster+spotlight]`
+- [x] **2.1** Replace string-tagged AST with real typed recursive AST (`Item`/`Stmt`/`Expr`/`Pat`/`TypeExpr` + `Span`); delete old string AST helpers. (`ooda-compiler` v0.28.0)
 - [ ] **2.2** Replace delimited flat-string symbol/type tables with integer-ID interner + O(1) hash maps.
 - [ ] **2.3** Wire `core/mir/` into the real compilation pipeline (`Typed AST -> CFG/SSA MIR`); delete `mir_flush_types_stub`.
 - [ ] **2.4** Port Borrow, Move, Capability, capability bundles/attenuation, `with_cap` Effect, OODA Phase, `SECRET:` Taint, **`Untrusted[T]` dual-polarity IFC** (blocking unvalidated external inputs from `act_*`/`ProcessCap`/`FsWriteCap` without an explicit declassification gate or signed `Warrant`), compiler-enforced **`@const_time`** (`Secret` branch, secret-indexed load, variable-time ALU `div`/`rem`/var-shift, and unbucketed secret-length allocation bans), **linear single-use `Nonce[Aead]`**, **purpose/algorithm-typed `Key[Purpose, Alg]`** (`KeyExportCap` for raw export), **incompatible `MonotonicInstant` vs `WallUtc` time types**, `Send`/`Sync` data-race freedom, and SMT VC checks onto MIR CFG dataflow; delete token-scanning checkers.
@@ -42,7 +47,7 @@
 - [ ] **2.6** Sub-second incremental `ooda check` cache, multi-error diagnostics with source-span carets, `--error-format=json`, DWARF debug info (`-g`) & profiling symbols (`gdb`/`lldb`/`perf`), and readable trap/panic `file:line` stack traces.
 - [ ] **2.7** **Seed Bump Gate 2:** Byte-identical `S1 == S2` compiling through Typed AST → MIR under `< 512 MiB` RAM; release tagged `ooda-compiler`.
 
-## Phase 3: Clean-Break Runtime Overhaul, Real OS Concurrency & 234-Stub Purge (`ooda-runtime`)
+## Phase 3: Clean-Break Runtime Overhaul, Real OS Concurrency & 234-Stub Purge (`ooda-runtime`) — `[3.1–3.4: ringmaster+spotlight; 3.5–3.9: swarm(2–3) + ringmaster+spotlight]`
 - [ ] **3.1** Tag static/immortal string literals (1-bit tag) to eliminate `span_has_mt` hash probing on every `oo_str_retain`/`oo_str_release`.
 - [ ] **3.2** Compact 16-byte slab headers + 16B/32B/64B slab classes + per-thread slab caches (remove single global lock `rc_lock_off(8)`), plus a dedicated **`NO_SWAP | NO_DUMP | NO_FORK_COPY | ZERO_ON_FREE`** secret memory pool for `Secret`/`SealedBuf` allocations.
 - [ ] **3.3** Rewrite `oo_int_to_str` using stack `[u8; 32]` (delete `rc_lock_off(16)` global spinlock).
@@ -54,7 +59,7 @@
 - [ ] **3.9** **Blackbox Flight Recorder & Autopsy Engine (L4):** Revive runtime Blackbox in `ooda-runtime` with zero-alloc flight-event ring buffer, capability-input stream recording for **deterministic production replay ("time-travel forensics")**, signal/trap handler writing structured `.blackbox/autopsy.json` with stack traces & failure coordinates, compiler-enforced `SECRET:` redaction, and `AuditRing` witness hash chaining.
 - [ ] **3.10** Runtime microbenchmark gate proving ARC retain/release, small-alloc, and multi-thread scaling improvements; release tagged `ooda-runtime`.
 
-## Phase 4: Native Multi-Arch Backends, Pure-`.oo` Linker & `PATH=""` Zero-Dependency Self-Host
+## Phase 4: Native Multi-Arch Backends, Pure-`.oo` Linker & `PATH=""` Zero-Dependency Self-Host — `[4.1, 4.7: ringmaster+spotlight; 4.2–4.6: swarm + ringmaster+spotlight]`
 - [ ] **4.1** Complete shared MIR register allocator (fast linear-scan `-O0`/`-O1` + graph-coloring `-O2`), frame lowering, and ABI tables.
 - [ ] **4.2** Native **x86_64** backend (`core/emit/x86_64/`): full instruction selector + encoder (Linux, Win64, UEFI, `nostd`, `openooda`, SSE2/AVX2, atomics, inline `asm!`, `RETGUARD`/CET), preserving full **`@const_time`** bans (branches, secret-indexed loads, variable-time ALU) AND auto-emitting **`@zeroize_frame`** (dead register scrub + stack-frame wipe before `ret`) for any function touching `Secret` values across all native targets.
 - [ ] **4.3** Native **AArch64** (`core/emit/aarch64/`) and **RISC-V 64** (`core/emit/riscv64/`) backends verified under QEMU user + bare-metal emulation.
@@ -63,7 +68,7 @@
 - [ ] **4.6** Pure-`.oo` native-threaded `ooda build` / `ooda test` / `ooda det` + hermetic single-binary cross-compilation (`ooda build --target=<arch-os>`, zero host cross-SDKs), replacing GNU `make`, `clang`, `lld`, `strip`, `xargs`, `bash`, and coreutils shell-outs across `@openOODA-core`.
 - [ ] **4.7** **Zero-Dependency Self-Host Gate (`PATH=""`):** With `PATH=""` (zero non-OODA binaries reachable), compile `ooda-runtime` + `ooda-compiler` `S1 -> S2`, prove **Diverse Double-Compiling (DDC)** across independent backends/toolchains (defeating *Trusting Trust*), and verify byte-identical `OK_FIXED_POINT` + fast compile-time benchmark; release tagged `ooda-compiler` & `ooda`.
 
-## Phase 5: `ooda-standard` Deduplication & Full Core + Scientific Validation
+## Phase 5: `ooda-standard` Deduplication & Full Core + Scientific Validation — `[swarm + ringmaster+spotlight]`
 - [ ] **5.1** Remove ~32 duplicate `foo/` vs `foo_grp/` collection groups and empty placeholder stub files (`*_stub.oo`/`*_stubs.oo`); migrate any callers cleanly.
 - [ ] **5.2** Implement real generic O(1)/O(log N) collections: `Vec[T]`, `HashMap[K, V]`, `HashSet[K]`, real O(log N) `BTreeMap[K, V]`, `VecDeque[T]`, `BinaryHeap[T]`, `BitSet`.
 - [ ] **5.3** Implement real systems I/O (`Bytes`/`ByteBuf`, `Read`/`Write`, `BufReader`/`BufWriter`, UTF-8, `fmt`, event loop I/O), directory-rooted **`RelPath`** (structurally rejecting `..`, leading `/`, NUL, symlink escapes), fuel-bounded `Untrusted[Bytes]` parsers, incompatible `MonotonicInstant` vs `WallUtc` time APIs, typed `Secret[ConfigKey]` config/env handling (no ambient `os.environ` dumps), L1/L3 resilience primitives (bounded retry with jittered backoff, circuit breaker, deadline/budget helpers, PACE fallback helpers), crash-safe atomic WAL + `fsync`/rename persistence, and canonical fuzz-tested binary wire serialization.
@@ -71,7 +76,7 @@
 - [ ] **5.5** Validate every scientific, math, physics, chem, bio, comm, econ, proof, and AI module in `ooda-standard` against analytical ground-truth, numerical accuracy, conservation laws, and finite-difference gradient checks (delete anything that fails real validation).
 - [ ] **5.6** Expand `ooda-standard/tests/` with full unit, property, numerical, KAT, and benchmark suites; release tagged `ooda-standard`.
 
-## Phase 6: Toolchain & `@openOODA-system` Native Alignment
+## Phase 6: Toolchain & `@openOODA-system` Native Alignment — `[6.1, 6.6: ringmaster+spotlight; 6.2–6.5: swarm + ringmaster+spotlight]`
 - [ ] **6.1** Wire `ooda-language` (`oolsp`) to incremental Phase 2 Typed AST + Symbol Interner (go-to-def, hover, rename, inline capability diagnostics); release tagged `ooda-language`.
 - [ ] **6.2** Finish unified `ooda` CLI (`test` — including seed-controlled **deterministic concurrency scheduling** — `bench` / `fuzz` + OCAP Deterministic Simulation Testing via seeded `with_cap` virtual time/rand/net/VFS, canonical Power-of-2 AST `fmt`, capability-aware `doc` documenting required caps & OODA phase, plus **"Hardened Enclave / Sidecar"** static-binary / microVM deployment target) and `ooda-package` (SemVer + SHA-256 `ooda.lock` + workspaces + 100% offline/airgapped `ooda build --offline` reproducible builds with `ooda-sign` verification); release tagged `ooda` & `ooda-package`.
 - [ ] **6.3** Audit & validate `ooda-sign` (dual `ML-DSA-65` + `SLH-DSA` FIPS 205 signatures + **`QuorumWarrant[K]`** `t-of-n` threshold signing), `ooda-bridge` (including safe C `.h` bindgen generating capability-gated `extern "C"` & `@repr(C)` bindings), `ooda-interface`, `ooda-version` (real KATs, clean `extern "C"`, zero stubs), and signed minimal **SPDX SBOM** emission via `ooda-sign` alongside release `SHA256SUMS`; release tagged versions.
@@ -81,7 +86,7 @@
 
 ---
 
-## Phase 7: Full-Stack Performance, Security & Defender Hardening (`@openOODA`, `@openOODA-core`, `@openOODA-system`)
+## Phase 7: Full-Stack Performance, Security & Defender Hardening (`@openOODA`, `@openOODA-core`, `@openOODA-system`) — `[swarm + ringmaster+spotlight]`
 - [ ] **7.1** **Performance Pass:** End-to-end profiling and flamegraphs across `ooda-compiler`, `ooda-runtime`, `ooda-standard`, and `ooda-kernel` (compile speed, ARC/slab overhead, collection throughput, zero-copy I/O, tail latency) with enforced regression budgets.
 - [ ] **7.2** **Security Pass:** Full memory-safety/UB audit, `SECRET:` taint & `@const_time` / `@zeroize_frame` compiled-binary `ct_dudect` zero-timing-leak audit, linear `Nonce[Aead]` + purpose-typed `Key` + AEAD-only + zero-weak-algos-in-binary verification, `Untrusted[T]` IFC enforcement audit, `NO_SWAP | NO_DUMP` secret pages + `ooda-vault` software-HSM non-mapping + metadata-blind storage audit, `RelPath` + peer-scoped `NetCap` + `FsWriteCap`-non-executable + no-`fork`/no-shell-`exec` confinement verification, end-to-end `OodaTunnel` (hybrid PQ + continuous ratcheting + lease revocation) + `MemTunnel` zeroization + hardware SME/TME/IOMMU enforcement verification, `QuorumWarrant` threshold + `SLH-DSA`/`ML-DSA-65` supply-chain signature verification (`ooda-sign` + `ooda.lock`), and zero-`OODA_NO_JAIL` Landlock/Ring-3 confinement validation.
 - [ ] **7.3** **Defensive Compliance & Resilience Pass:** Strictly defensive fuzzing of our own lexer, parser, MIR, ELF/PE linker, allocator, syscalls, and protocol parsers; fuel-bounded `Untrusted[Bytes]` DoS-parser tests and deterministic-scheduler concurrency suites; negative capability/sandbox-confinement refusal suites; resource-limit/DoS resilience tests; `with_cap` chaos & fault-injection suite (disk-full, EIO, OOM, packet drop, clock jump, capability denial) proving L1–L4 resilience and Blackbox autopsy capture; and 8-hat `ooda-verify cycle` (`quorum_mask=255`) across every repo in `@openOODA`, `@openOODA-core`, and `@openOODA-system`.
@@ -89,7 +94,7 @@
 
 ---
 
-## Phase 8: Full Ecosystem Rebuild, Verification & Republish (`@openOODA`, `@openOODA-core`, `@openOODA-system`)
+## Phase 8: Full Ecosystem Rebuild, Verification & Republish (`@openOODA`, `@openOODA-core`, `@openOODA-system`) — `[8.1–8.2: swarm + ringmaster+spotlight; 8.3: ringmaster]`
 - [ ] **8.1** **Clean Rebuild Everything:** Rebuild every library, tool, daemon, kernel, and binary across `@openOODA`, `@openOODA-core`, and `@openOODA-system` (bottom-up stack order) using the final pure-OODA self-hosted compiler (`PATH=""`).
 - [ ] **8.2** **Realistic Verification & 8-Hat Gate:** Never weaken or fake tests for unfinished repos — verify every ready/completed repo passes its full test suite, leak checks (`OODA_LEAK_CHECK=1`), byte-identical determinism (`make det` / `ooda det`), and `ooda-verify cycle --json` (`quorum_mask=255`), and report any still-incomplete repos transparently.
 - [ ] **8.3** **Republish & Catalog Release Sync:** Bump version numbers, install every rebuilt real binary cleanly into `~/.openooda/bin`, create annotated release tags, update `@openOODA/catalog` (`layers/...`, `COMMIT_LEDGER`, `SHA256SUMS`, `make sync && make verify`) + `@openOODA/install/versions.toml`, and push every updated repo and tag to GitHub so `ooda-package` pulls the latest binaries.
