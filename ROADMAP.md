@@ -40,7 +40,7 @@
 
 ## Phase 2: Typed AST → CFG/SSA MIR Compiler Rewrite (`ooda-compiler`) — `[2.1–2.3, 2.7: ringmaster+spotlight; 2.4–2.6: swarm(2–3) + ringmaster+spotlight]`
 - [x] **2.1** Replace string-tagged AST with real typed recursive AST (`Item`/`Stmt`/`Expr`/`Pat`/`TypeExpr` + `Span`); delete old string AST helpers. (`ooda-compiler` v0.28.0)
-- [ ] **2.2** Replace delimited flat-string symbol/type tables with integer-ID interner + O(1) hash maps.
+- [x] **2.2** Replace delimited flat-string symbol/type tables with integer-ID interner + O(1) hash maps (`ooda-compiler` v0.29.0).
 - [ ] **2.3** Wire `core/mir/` into the real compilation pipeline (`Typed AST -> CFG/SSA MIR`); delete `mir_flush_types_stub`.
 - [ ] **2.4** Port Borrow, Move, Capability, capability bundles/attenuation, `with_cap` Effect, OODA Phase, `SECRET:` Taint, **`Untrusted[T]` dual-polarity IFC** (blocking unvalidated external inputs from `act_*`/`ProcessCap`/`FsWriteCap` without an explicit declassification gate or signed `Warrant`), compiler-enforced **`@const_time`** (`Secret` branch, secret-indexed load, variable-time ALU `div`/`rem`/var-shift, and unbucketed secret-length allocation bans), **linear single-use `Nonce[Aead]`**, **purpose/algorithm-typed `Key[Purpose, Alg]`** (`KeyExportCap` for raw export), **incompatible `MonotonicInstant` vs `WallUtc` time types**, `Send`/`Sync` data-race freedom, and SMT VC checks onto MIR CFG dataflow; delete token-scanning checkers.
 - [ ] **2.5** Implement MIR optimization passes (mem2reg, const-fold, copy-prop, DCE, inlining, LICM, bounds-check elision, unified MIR ARC/drop elaboration).
