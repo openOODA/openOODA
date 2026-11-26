@@ -67,3 +67,12 @@ ooda-package install @all          # Complete 5-organization stack (66 packages)
 | **Tier 2: Bare-Metal OS & Desktop** | `ooda-boot` + `ooda-kernel` + desktop shell (`ooda-compositor`, `ooda-terminal`, `ooda-browser`, 128 Hz engines) | 2+ cores (`4+` rec; Intel RDT / ARM MPAM L3 QoS) | **512 MiB** min (TUI) / **2 – 4 GiB** rec (Wayland desktop & 3D apps) | **1 – 4 GiB** NVMe (ZNS), SATA/AHCI, VirtIO-Blk, SDHCI/eMMC/UFS, or USB4 | UEFI (`x86_64`/`AA64`) + TPM 2.0 / DICE / Caliptra Root-of-Trust, GOP/DRM-KMS/VirtIO-GPU 3D |
 | **Tier 3: Developer Workstation** | Building from source with `ooda-compiler`, SMT/Z3 proofs & 8-hat `ooda-verify` verification | 4+ cores / 8+ threads (`16+` threads; AMD SEV-SNP / Intel TDX / ARM CCA TEE) | **8 – 16 GiB** min (`3` compiler slots) / **32 – 64 GiB+** rec (`8` slots) | **20 – 50 GiB** NVMe SSD (75 repos + `.ooda-cache`) | Linux `x86_64` / `ARM64` or openOODA Buildbox container (SR-IOV VF / VirtIO-FS DAX) |
 | **Tier 4: AI & Frontier Science** | Local agent swarms (`ooda`, `ooda-inference`) & `ooda-standard` GPU/NPU compute kernels | Multi-core CPU (Intel AMX / ARM SME) + NVIDIA (`CUDA` SM 7.5+) or AMD (`ROCm`) | **16 GiB+** system RAM / **CXL 3.0** pool + **8 – 24 GiB+ VRAM** per GPU | **50 GiB+** NVMe / Peer-to-Peer DMA (`peer_dma`) | Zero-Copy **RDMA / RoCEv2 / InfiniBand** fabric + CUDA, ROCm, or Vulkan (automatic CPU fallback) |
+
+## License, Security & Public Hub
+
+- **License:** [`Apache-2.0 WITH LLVM-exception`](LICENSE) — permissive commercial & open-source adoption with patent grant and zero runtime attribution friction on compiled binaries. See [`TRADEMARKS.md`](TRADEMARKS.md) for brand guidelines.
+- **Security & Threat Model:** [`SECURITY.md`](SECURITY.md) & [`THREAT_MODEL.md`](THREAT_MODEL.md).
+- **Public Issues, Discussions & Advisories:** All `openOODA-*` component repositories remain **private**. Direct all public comments, bug reports, design discussions, and private vulnerability reports exclusively to [`openOODA/openOODA`](https://github.com/openOODA/openOODA):
+  - **Issues:** [github.com/openOODA/openOODA/issues](https://github.com/openOODA/openOODA/issues)
+  - **Discussions:** [github.com/openOODA/openOODA/discussions](https://github.com/openOODA/openOODA/discussions)
+  - **Private Security Advisories:** [github.com/openOODA/openOODA/security/advisories/new](https://github.com/openOODA/openOODA/security/advisories/new)
