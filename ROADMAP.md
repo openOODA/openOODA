@@ -48,7 +48,7 @@
 - [x] **2.7** **Seed Bump Gate 2:** Byte-identical `S1 == S2` compiling through Typed AST → MIR under `< 512 MiB` RAM; release tagged `ooda-compiler` (`ooda-compiler` v0.34.0 — cold `check cli/main.oo` Peak RSS `111,060 KiB` (`108.46 MiB`), `ringmaster` `S1==S2` `5038744:98b23eebb69799e9c82678953dfc472cc81fc09e5d3ddd3d812a26e5e3c50143` + `OK_SEED_GATE_MATRIX 6/6`, `spotlight` `make clean det` `5038912:541d45f53d43d707779ce6f319f830b87a6c26c46dd734a004f1120f3244805b`, `OODA_LEAK_CHECK=1 make test` `38/38`, `3/3` Triple Veto PASS).
 
 ## Phase 3: Clean-Break Runtime Overhaul, Real OS Concurrency & 234-Stub Purge (`ooda-runtime`) — `[3.1–3.4: ringmaster+spotlight; 3.5–3.9: swarm(2–3) + ringmaster+spotlight]`
-- [ ] **3.1** Tag static/immortal string literals (1-bit tag) to eliminate `span_has_mt` hash probing on every `oo_str_retain`/`oo_str_release`.
+- [x] **3.1** Tag static/immortal string literals (1-bit tag) to eliminate `span_has_mt` hash probing on every `oo_str_retain`/`oo_str_release` (`ooda-compiler` v0.35.0 emitting odd-tagged `@.s*` literals + `ooda-runtime` Phase 3.1: `objdump -dr` 0 `span_has_mt`, `.text` 68,642 B <= 92,160 B, `make test` + `make repro` PASS on `ringmaster` & `spotlight` incl. `test_gpu`, `3/3` Triple Veto PASS).
 - [ ] **3.2** Compact 16-byte slab headers + 16B/32B/64B slab classes + per-thread slab caches (remove single global lock `rc_lock_off(8)`), plus a dedicated **`NO_SWAP | NO_DUMP | NO_FORK_COPY | ZERO_ON_FREE`** secret memory pool for `Secret`/`SealedBuf` allocations.
 - [ ] **3.3** Rewrite `oo_int_to_str` using stack `[u8; 32]` (delete `rc_lock_off(16)` global spinlock).
 - [ ] **3.4** Replace every `rt_bss_ptr(slot, size)` with typed `static` structs.
